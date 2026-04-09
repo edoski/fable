@@ -65,6 +65,7 @@ def build_supervised_examples(
                 inputs=[row.features for row in sequence],
                 class_label=min_offset,
                 target_log_fee=future_log_fees[min_offset],
+                future_log_fees=future_log_fees,
                 next_block_log_fee=future_log_fees[0],
                 optimal_log_fee=min(future_log_fees),
             )

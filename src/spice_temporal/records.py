@@ -36,5 +36,6 @@ class SupervisedExample:
     inputs: list[list[float]]
     class_label: int
     target_log_fee: float
+    future_log_fees: list[float]
     next_block_log_fee: float
     optimal_log_fee: float

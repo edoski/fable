@@ -43,6 +43,7 @@ class DatasetLogicTestCase(unittest.TestCase):
         first = examples[0]
         self.assertEqual(len(first.inputs), 5)
         self.assertIn(first.class_label, {0, 1, 2})
+        self.assertEqual(len(first.future_log_fees), 3)
         self.assertLessEqual(first.optimal_log_fee, first.next_block_log_fee)
 
     def test_chronological_split_preserves_order(self) -> None:
