@@ -42,7 +42,7 @@ Practical reproduction scaffold for the temporal module described in `ICDCS_2026
 
 Use the dedicated pilot config to validate the full raw-data-to-training path before larger pulls:
 
-1. `python -m spice_temporal.cli pull-blocks configs/pilots/ethereum-36s.yaml ethereum history --dry-run false`
+1. `python -m spice_temporal.cli pull-blocks configs/pilots/ethereum-36s.yaml ethereum history --no-dry-run`
 2. `python -m spice_temporal.cli enrich-blocks configs/pilots/ethereum-36s.yaml ethereum artifacts/pilots/ethereum-36s/raw/ethereum/history artifacts/pilots/ethereum-36s/enriched/ethereum/history`
 3. `python -m spice_temporal.cli train-single configs/pilots/ethereum-36s.yaml artifacts/pilots/ethereum-36s/enriched/ethereum/history ethereum lstm 36 --report-path artifacts/pilots/ethereum-36s/train-report.json`
 
@@ -62,6 +62,6 @@ Typing is intentionally boundary-focused for now rather than repo-wide strict.
 - `python -m spice_temporal.cli show-config configs/pilots/ethereum-36s.yaml`
 - `python -m spice_temporal.cli plan-pull configs/baseline.yaml`
 - `python -m spice_temporal.cli plan-pull configs/pilots/ethereum-36s.yaml`
-- `python -m spice_temporal.cli pull-blocks configs/pilots/ethereum-36s.yaml ethereum history --dry-run false`
+- `python -m spice_temporal.cli pull-blocks configs/pilots/ethereum-36s.yaml ethereum history --no-dry-run`
 - `python -m spice_temporal.cli enrich-blocks configs/pilots/ethereum-36s.yaml ethereum <input-dir> <output-dir>`
 - `python -m spice_temporal.cli train-single configs/pilots/ethereum-36s.yaml <dataset-path> ethereum lstm 36 --report-path <report.json>`

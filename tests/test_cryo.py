@@ -11,7 +11,7 @@ class CryoPlanTestCase(unittest.TestCase):
         plans = build_pull_plan(config)
         self.assertEqual(len(plans), 1)
         command = plans[0].command
-        self.assertIn("--requests-per-second 10.0", command)
+        self.assertIn("--requests-per-second 10", command)
         self.assertIn("--max-concurrent-requests 2", command)
         self.assertIn("--max-concurrent-chunks 1", command)
 

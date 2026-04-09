@@ -44,7 +44,7 @@ class TrainingConfig:
 
 @dataclass(slots=True)
 class PullConfig:
-    requests_per_second: float
+    requests_per_second: int
     max_concurrent_requests: int
     max_concurrent_chunks: int
 
@@ -72,7 +72,7 @@ class ExperimentConfig:
     anchor_buffer: int = 20_000
     pull: PullConfig = field(
         default_factory=lambda: PullConfig(
-            requests_per_second=10.0,
+            requests_per_second=10,
             max_concurrent_requests=2,
             max_concurrent_chunks=1,
         )
