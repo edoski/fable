@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import cast
 
+from spice_temporal.contracts import BlockRow, EnrichedBlockRow, RawBlockRow
 from spice_temporal.records import BlockRecord
 
 REQUIRED_BLOCK_COLUMNS = {
@@ -19,18 +21,18 @@ REQUIRED_BLOCK_COLUMNS = {
 }
 
 
-def load_rows(path: Path) -> list[dict[str, Any]]:
+def load_rows(path: Path) -> list[RawBlockRow]:
     suffix = path.suffix.lower()
     if suffix == ".json":
         with path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
         if not isinstance(data, list):
             raise TypeError("JSON block files must contain a list of rows")
-        return data
+        return cast(list[RawBlockRow], data)
     if suffix == ".csv":
         with path.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
-            return [dict(row) for row in reader]
+            return cast(list[RawBlockRow], [dict(row) for row in reader])
     if suffix == ".parquet":
         try:
             import pyarrow.parquet as pq
@@ -40,11 +42,11 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
             ) from exc
 
         table = pq.read_table(path)
-        return table.to_pylist()
+        return cast(list[RawBlockRow], table.to_pylist())
     raise ValueError(f"Unsupported block file format: {path.suffix}")
 
 
-def write_rows(path: Path, rows: list[dict[str, Any]]) -> None:
+def write_rows(path: Path, rows: Sequence[BlockRow]) -> None:
     suffix = path.suffix.lower()
     path.parent.mkdir(parents=True, exist_ok=True)
     if suffix == ".json":
@@ -74,7 +76,7 @@ def write_rows(path: Path, rows: list[dict[str, Any]]) -> None:
     raise ValueError(f"Unsupported block file format: {path.suffix}")
 
 
-def _coerce_block_row(row: dict[str, Any]) -> BlockRecord:
+def _coerce_block_row(row: EnrichedBlockRow) -> BlockRecord:
     missing = REQUIRED_BLOCK_COLUMNS - row.keys()
     if missing:
         raise ValueError(f"Missing required block columns: {sorted(missing)}")
@@ -89,4 +91,5 @@ def _coerce_block_row(row: dict[str, Any]) -> BlockRecord:
 
 
 def load_block_records(path: Path) -> list[BlockRecord]:
-    return [_coerce_block_row(row) for row in load_rows(path)]
+    rows = load_rows(path)
+    return [_coerce_block_row(cast(EnrichedBlockRow, row)) for row in rows]

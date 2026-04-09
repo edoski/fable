@@ -1,0 +1,7 @@
+{
+  "include": ["src/spice_temporal"],
+  "typeCheckingMode": "basic",
+  "venvPath": ".",
+  "venv": ".venv",
+  "reportMissingTypeStubs": false
+}

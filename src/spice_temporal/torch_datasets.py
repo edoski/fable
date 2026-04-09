@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Sequence
 
 import torch
 from torch.utils.data import Dataset
 
+from spice_temporal.contracts import SequenceBatch
 from spice_temporal.records import SupervisedExample
 
 
-class SequenceDataset(Dataset[dict[str, torch.Tensor]]):
+class SequenceDataset(Dataset[SequenceBatch]):
     """Simple tensor adapter for sequence examples."""
 
-    def __init__(self, examples: list[SupervisedExample]) -> None:
+    def __init__(self, examples: Sequence[SupervisedExample]) -> None:
         if not examples:
             raise ValueError("SequenceDataset requires at least one example")
         self.examples = examples
@@ -21,7 +23,7 @@ class SequenceDataset(Dataset[dict[str, torch.Tensor]]):
     def __len__(self) -> int:
         return len(self.examples)
 
-    def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
+    def __getitem__(self, index: int) -> SequenceBatch:
         example = self.examples[index]
         return {
             "inputs": torch.tensor(example.inputs, dtype=torch.float32),
@@ -33,7 +35,7 @@ class SequenceDataset(Dataset[dict[str, torch.Tensor]]):
         }
 
 
-def build_class_weights(examples: list[SupervisedExample], n_classes: int) -> torch.Tensor:
+def build_class_weights(examples: Sequence[SupervisedExample], n_classes: int) -> torch.Tensor:
     counts = Counter(example.class_label for example in examples)
     if not counts:
         raise ValueError("Cannot build class weights for an empty example list")

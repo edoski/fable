@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -12,6 +13,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from spice_temporal.config import TrainingConfig
+from spice_temporal.contracts import ModelOutputs, SequenceBatch
 from spice_temporal.evaluation import BatchMetrics, compute_batch_metrics
 from spice_temporal.records import SupervisedExample
 from spice_temporal.torch_datasets import SequenceDataset, build_class_weights
@@ -76,7 +78,7 @@ def _mean_metrics(metrics: list[BatchMetrics]) -> EpochMetrics:
 
 def _run_epoch(
     model: nn.Module,
-    loader: DataLoader[dict[str, torch.Tensor]],
+    loader: DataLoader[SequenceBatch],
     *,
     optimizer: torch.optim.Optimizer | None,
     class_weights: torch.Tensor,
@@ -104,9 +106,9 @@ def _run_epoch(
         optimal_log_fee = batch["optimal_log_fee"].to(device)
 
         with torch.set_grad_enabled(is_training):
-            outputs = model(inputs)
-            block_loss = ce_loss(outputs["logits"], class_labels)
-            fee_loss = smooth_l1(outputs["fee_hat"], target_log_fee)
+            outputs: ModelOutputs = model(inputs)
+            block_loss = ce_loss(outputs.logits, class_labels)
+            fee_loss = smooth_l1(outputs.fee_hat, target_log_fee)
             total_loss = config.alpha * block_loss + config.beta * fee_loss
 
             if is_training:
@@ -119,7 +121,7 @@ def _run_epoch(
 
         batch_metrics.append(
             compute_batch_metrics(
-                logits=outputs["logits"].detach(),
+                logits=outputs.logits.detach(),
                 total_loss=total_loss.detach(),
                 class_labels=class_labels.detach(),
                 future_log_fees=future_log_fees.detach(),
@@ -137,8 +139,8 @@ def _run_epoch(
 def train_model(
     model: nn.Module,
     *,
-    train_examples: list[SupervisedExample],
-    validation_examples: list[SupervisedExample],
+    train_examples: Sequence[SupervisedExample],
+    validation_examples: Sequence[SupervisedExample],
     config: TrainingConfig,
 ) -> TrainingResult:
     if not train_examples or not validation_examples:
@@ -221,7 +223,7 @@ def train_model(
 def evaluate_model(
     model: nn.Module,
     *,
-    examples: list[SupervisedExample],
+    examples: Sequence[SupervisedExample],
     training_config: TrainingConfig,
     class_weights: torch.Tensor | None = None,
 ) -> EpochMetrics:

@@ -75,7 +75,7 @@ class TrainingSmokeTestCase(unittest.TestCase):
         with torch.no_grad():
             inputs = torch.tensor(train_examples[0].inputs, dtype=torch.float32).unsqueeze(0)
             outputs = model(inputs)
-        self.assertEqual(outputs["logits"].shape[-1], 3)
+        self.assertEqual(outputs.logits.shape[-1], 3)
 
 
 if __name__ == "__main__":

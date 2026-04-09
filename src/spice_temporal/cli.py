@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 import typer
 
-from spice_temporal.config import ChainConfig, ExperimentConfig, ModelConfig
+from spice_temporal.config import ChainConfig, ExperimentConfig, ModelConfig, ModelFamily
 from spice_temporal.cryo import build_pull_plan, evaluation_range, history_range_for_chain, run_cryo
 from spice_temporal.enrich import enrich_path
 from spice_temporal.env import load_project_env, redact_sensitive_text, resolve_rpc_url
@@ -120,13 +121,14 @@ def train_single(
     chain = require_chain(config, chain_name)
     if family not in {"lstm", "transformer", "transformer_lstm"}:
         raise typer.BadParameter(f"Unknown model family: {family}")
+    family_name = cast(ModelFamily, family)
 
     result = run_single_training(
         block_file=block_file,
         chain=chain,
         window_seconds=window_seconds,
         lookback_seconds=config.lookback_seconds,
-        model_config=ModelConfig(family=family),
+        model_config=ModelConfig(family=family_name),
         training_config=replace(config.training, device=device),
         split_config=config.split,
     )

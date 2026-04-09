@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import torch
 from torch import nn
 
 from spice_temporal.config import ModelConfig
+from spice_temporal.contracts import ModelOutputs
 
 
 class MLPHead(nn.Module):
@@ -36,7 +38,8 @@ class SinusoidalPositionalEncoding(nn.Module):
         self.register_buffer("pe", pe.unsqueeze(0), persistent=False)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        return inputs + self.pe[:, : inputs.size(1)]
+        pe = cast(torch.Tensor, self.pe)
+        return inputs + pe[:, : inputs.size(1)]
 
 
 class LSTMBaseline(nn.Module):
@@ -53,14 +56,14 @@ class LSTMBaseline(nn.Module):
         self.classifier = MLPHead(config.hidden_size, config.head_hidden_dim, n_classes)
         self.regressor = MLPHead(config.hidden_size, config.head_hidden_dim, 1)
 
-    def forward(self, inputs: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, inputs: torch.Tensor) -> ModelOutputs:
         projected = self.input_projection(inputs)
         outputs, _ = self.backbone(projected)
         last_state = outputs[:, -1, :]
-        return {
-            "logits": self.classifier(last_state),
-            "fee_hat": self.regressor(last_state).squeeze(-1),
-        }
+        return ModelOutputs(
+            logits=self.classifier(last_state),
+            fee_hat=self.regressor(last_state).squeeze(-1),
+        )
 
 
 class TransformerBaseline(nn.Module):
@@ -80,14 +83,14 @@ class TransformerBaseline(nn.Module):
         self.classifier = MLPHead(config.d_model, config.head_hidden_dim, n_classes)
         self.regressor = MLPHead(config.d_model, config.head_hidden_dim, 1)
 
-    def forward(self, inputs: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, inputs: torch.Tensor) -> ModelOutputs:
         projected = self.input_projection(inputs)
         encoded = self.encoder(self.position_encoding(projected))
         last_state = encoded[:, -1, :]
-        return {
-            "logits": self.classifier(last_state),
-            "fee_hat": self.regressor(last_state).squeeze(-1),
-        }
+        return ModelOutputs(
+            logits=self.classifier(last_state),
+            fee_hat=self.regressor(last_state).squeeze(-1),
+        )
 
 
 class TransformerLSTMBaseline(nn.Module):
@@ -114,15 +117,15 @@ class TransformerLSTMBaseline(nn.Module):
         self.classifier = MLPHead(config.hidden_size, config.head_hidden_dim, n_classes)
         self.regressor = MLPHead(config.hidden_size, config.head_hidden_dim, 1)
 
-    def forward(self, inputs: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, inputs: torch.Tensor) -> ModelOutputs:
         projected = self.input_projection(inputs)
         encoded = self.encoder(self.position_encoding(projected))
         recurrent, _ = self.lstm(encoded)
         last_state = recurrent[:, -1, :]
-        return {
-            "logits": self.classifier(last_state),
-            "fee_hat": self.regressor(last_state).squeeze(-1),
-        }
+        return ModelOutputs(
+            logits=self.classifier(last_state),
+            fee_hat=self.regressor(last_state).squeeze(-1),
+        )
 
 
 def build_model(n_features: int, n_classes: int, config: ModelConfig) -> nn.Module:

@@ -12,6 +12,7 @@ Practical reproduction scaffold for the temporal module described in `ICDCS_2026
 ## Architecture
 
 - `config.py`: typed experiment, training, and chain configuration.
+- `contracts.py`: typed boundary contracts for raw rows, tensor batches, and model outputs.
 - `env.py`: local `.env` loading and Alchemy URL resolution.
 - `cryo.py`: cryo pull planning and execution.
 - `io.py` and `enrich.py`: block-file loading plus `gas_limit` enrichment for cryo output.
@@ -45,6 +46,14 @@ Use a small Ethereum history slice to validate the full raw-data-to-training pat
 3. `python -m spice_temporal.cli train-single configs/baseline.yaml <enriched-file> ethereum lstm 12`
 
 The first pilot target is `Ethereum + 12s + LSTM`, because it is the simplest and most stable baseline cell.
+
+## Verification
+
+- `ruff check src tests`
+- `pyright`
+- `PYTHONPATH=src pytest -q`
+
+Typing is intentionally boundary-focused for now rather than repo-wide strict.
 
 ## Useful commands
 

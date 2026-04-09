@@ -5,7 +5,9 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
+from spice_temporal.contracts import EnrichedBlockRow, RawBlockRow
 from spice_temporal.io import load_rows, write_rows
 
 FetchGasLimits = Callable[[list[int]], dict[int, int]]
@@ -22,25 +24,25 @@ def iter_block_files(path: Path) -> list[Path]:
 
 
 def enrich_rows_with_gas_limit(
-    rows: list[dict],
+    rows: list[RawBlockRow],
     *,
     fetch_gas_limits: FetchGasLimits,
     batch_size: int = 100,
     max_methods_per_second: float = 20.0,
-) -> list[dict]:
+) -> list[EnrichedBlockRow]:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
     if max_methods_per_second <= 0:
         raise ValueError("max_methods_per_second must be positive")
 
-    enriched = [dict(row) for row in rows]
+    enriched = [cast(RawBlockRow, dict(row)) for row in rows]
     missing_block_numbers = [
         int(row["block_number"])
         for row in enriched
         if row.get("gas_limit") in (None, "", 0, "0")
     ]
     if not missing_block_numbers:
-        return enriched
+        return [cast(EnrichedBlockRow, row) for row in enriched]
 
     lookup: dict[int, int] = {}
     for offset in range(0, len(missing_block_numbers), batch_size):
@@ -56,7 +58,7 @@ def enrich_rows_with_gas_limit(
         if row.get("gas_limit") not in (None, "", 0, "0"):
             continue
         row["gas_limit"] = lookup[int(row["block_number"])]
-    return enriched
+    return [cast(EnrichedBlockRow, row) for row in enriched]
 
 
 def enrich_file(
