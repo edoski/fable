@@ -15,7 +15,7 @@ from spice_temporal.datasets import (
     max_extra_wait_steps_for_delay,
     trim_history_blocks_for_target,
 )
-from spice_temporal.features import build_feature_table, feature_names
+from spice_temporal.features import FEATURE_NAMES, build_feature_table
 from spice_temporal.normalization import fit_standard_scaler
 from spice_temporal.records import BlockRecord
 from spice_temporal.torch_datasets import SequenceDataset
@@ -77,7 +77,7 @@ class DatasetLogicTestCase(unittest.TestCase):
     def test_build_temporal_store(self) -> None:
         blocks = [make_block(index, 100 + (index % 5)) for index in range(260)]
         table = build_feature_table(blocks)
-        self.assertEqual(table.feature_matrix.shape[1], len(feature_names()))
+        self.assertEqual(table.feature_matrix.shape[1], len(FEATURE_NAMES))
         store = build_temporal_store(table, lookback_steps=5, action_count=4)
         self.assertGreater(store.n_samples, 0)
         self.assertEqual(store.action_count, 4)

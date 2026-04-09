@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,6 +55,78 @@ class RawPullValidationReport:
     status: str = "clean"
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class CryoReportSummary:
+    path: Path
+    output_dir: str
+    network_name: str
+    chunk_size: int
+
+
+def _normalized_path_strings(path: Path) -> set[str]:
+    candidates = {path.as_posix()}
+    try:
+        candidates.add(path.resolve().as_posix())
+    except OSError:
+        pass
+    return candidates
+
+
+def _load_cryo_report_summary(path: Path) -> CryoReportSummary | None:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    args = raw.get("args")
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(args, dict):
+        return None
+
+    output_dir = args.get("output_dir")
+    network_name = args.get("network_name")
+    chunk_size = args.get("chunk_size")
+    if not isinstance(output_dir, str) or not isinstance(network_name, str):
+        return None
+    if not isinstance(chunk_size, int) or chunk_size <= 0:
+        return None
+    return CryoReportSummary(
+        path=path,
+        output_dir=output_dir,
+        network_name=network_name,
+        chunk_size=chunk_size,
+    )
+
+
+def _read_expected_chunk_size(dataset_path: Path, expected_chain_name: str) -> int:
+    reports_dir = dataset_path / ".cryo" / "reports"
+    if not reports_dir.is_dir():
+        return CRYO_DEFAULT_CHUNK_SIZE
+
+    dataset_path_strings = _normalized_path_strings(dataset_path)
+    matches: list[CryoReportSummary] = []
+    for path in reports_dir.glob("*.json"):
+        report = _load_cryo_report_summary(path)
+        if report is None:
+            continue
+        if report.network_name != expected_chain_name:
+            continue
+        if not (_normalized_path_strings(Path(report.output_dir)) & dataset_path_strings):
+            continue
+        matches.append(report)
+
+    if not matches:
+        return CRYO_DEFAULT_CHUNK_SIZE
+
+    newest = max(matches, key=lambda item: (item.path.stat().st_mtime_ns, item.path.name))
+    return newest.chunk_size
 
 
 def _read_lightweight_columns(path: Path) -> tuple[list[int], list[int], list[int]]:
@@ -162,13 +235,16 @@ def validate_raw_pull(
     expected_chain_id: int,
     expected_start_timestamp: int,
     expected_end_timestamp: int,
-    expected_chunk_size: int = CRYO_DEFAULT_CHUNK_SIZE,
+    expected_chunk_size: int | None = None,
 ) -> RawPullValidationReport:
     report = RawPullValidationReport(
         dataset_path=dataset_path,
         expected_start_timestamp=expected_start_timestamp,
         expected_end_timestamp=expected_end_timestamp,
     )
+    chunk_size = expected_chunk_size
+    if chunk_size is None:
+        chunk_size = _read_expected_chunk_size(dataset_path, expected_chain_name)
     files = iter_block_files(dataset_path)
     summaries: list[RawFileSummary] = []
     for path in files:
@@ -208,10 +284,10 @@ def validate_raw_pull(
                 f"{summary.path.name}: row_count={summary.row_count} does not match "
                 f"filename range size={expected_row_count}"
             )
-        if summary.row_count > expected_chunk_size:
+        if summary.row_count > chunk_size:
             report.errors.append(
                 f"{summary.path.name}: row_count={summary.row_count} "
-                f"exceeds chunk_size={expected_chunk_size}"
+                f"exceeds chunk_size={chunk_size}"
             )
         if summary.non_sequential_transition_count:
             report.errors.append(

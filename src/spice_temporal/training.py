@@ -94,11 +94,9 @@ def _run_epoch(
     ce_loss = nn.CrossEntropyLoss(weight=class_weights)
     smooth_l1 = nn.SmoothL1Loss()
     batch_metrics: list[BatchMetrics] = []
-    optimizer_zeroed = False
 
     if is_training:
         optimizer.zero_grad(set_to_none=True)
-        optimizer_zeroed = True
 
     for step, batch in enumerate(loader, start=1):
         inputs = batch["inputs"].to(device)
@@ -120,7 +118,6 @@ def _run_epoch(
                     nn.utils.clip_grad_norm_(model.parameters(), config.gradient_clip_norm)
                     optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
-                    optimizer_zeroed = True
 
         batch_metrics.append(
             compute_batch_metrics(
@@ -132,9 +129,6 @@ def _run_epoch(
                 optimal_log_fee=optimal_log_fee.detach(),
             )
         )
-
-    if is_training and not optimizer_zeroed:
-        optimizer.zero_grad(set_to_none=True)
 
     return _mean_metrics(batch_metrics)
 

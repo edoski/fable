@@ -87,9 +87,6 @@ def enrich_path(
     max_methods_per_second: float = 20.0,
 ) -> list[Path]:
     files = iter_block_files(input_path)
-    if not files:
-        raise ValueError(f"No supported block files found under {input_path}")
-
     written_files: list[Path] = []
     if input_path.is_file():
         enrich_file(

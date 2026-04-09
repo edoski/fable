@@ -1,3 +1,5 @@
+import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +20,35 @@ def make_raw_row(block_number: int, timestamp: int, *, chain_id: int = 1) -> dic
 
 def write_raw_file(path: Path, rows: list[dict[str, int]]) -> None:
     write_rows(path, rows)
+
+
+def write_cryo_report(
+    dataset_dir: Path,
+    *,
+    network_name: str,
+    output_dir: str,
+    chunk_size: int,
+    report_name: str,
+    mtime: int,
+) -> None:
+    reports_dir = dataset_dir / ".cryo" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    report_path = reports_dir / report_name
+    report_path.write_text(
+        json.dumps(
+            {
+                "args": json.dumps(
+                    {
+                        "chunk_size": chunk_size,
+                        "output_dir": output_dir,
+                        "network_name": network_name,
+                    }
+                )
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(report_path, (mtime, mtime))
 
 
 class RawPullValidationTestCase(unittest.TestCase):
@@ -168,6 +199,119 @@ class RawPullValidationTestCase(unittest.TestCase):
 
         self.assertEqual(report.status, "error")
         self.assertEqual(report.below_start_count, 2)
+
+    def test_validate_raw_pull_uses_default_chunk_size_when_report_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dataset_dir = Path(tmp_dir)
+            write_raw_file(
+                dataset_dir / "ethereum__blocks__1_to_1000.parquet",
+                [make_raw_row(index, 1_000 + 12 * index) for index in range(1, 1_001)],
+            )
+
+            report = validate_raw_pull(
+                dataset_dir,
+                expected_chain_name="ethereum",
+                expected_chain_id=1,
+                expected_start_timestamp=999,
+                expected_end_timestamp=20_000,
+            )
+
+        self.assertEqual(report.status, "clean")
+
+    def test_validate_raw_pull_reads_matching_report_chunk_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dataset_dir = Path(tmp_dir)
+            write_raw_file(
+                dataset_dir / "ethereum__blocks__1_to_1500.parquet",
+                [make_raw_row(index, 1_000 + 12 * index) for index in range(1, 1_501)],
+            )
+            write_cryo_report(
+                dataset_dir,
+                network_name="ethereum",
+                output_dir=str(dataset_dir),
+                chunk_size=2_000,
+                report_name="matching.json",
+                mtime=2,
+            )
+
+            report = validate_raw_pull(
+                dataset_dir,
+                expected_chain_name="ethereum",
+                expected_chain_id=1,
+                expected_start_timestamp=999,
+                expected_end_timestamp=30_000,
+            )
+
+        self.assertEqual(report.status, "clean")
+
+    def test_validate_raw_pull_selects_newest_matching_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dataset_dir = Path(tmp_dir)
+            write_raw_file(
+                dataset_dir / "ethereum__blocks__1_to_1500.parquet",
+                [make_raw_row(index, 1_000 + 12 * index) for index in range(1, 1_501)],
+            )
+            write_cryo_report(
+                dataset_dir,
+                network_name="ethereum",
+                output_dir=str(dataset_dir),
+                chunk_size=1_000,
+                report_name="older.json",
+                mtime=1,
+            )
+            write_cryo_report(
+                dataset_dir,
+                network_name="ethereum",
+                output_dir=str(dataset_dir),
+                chunk_size=2_000,
+                report_name="newer.json",
+                mtime=2,
+            )
+
+            report = validate_raw_pull(
+                dataset_dir,
+                expected_chain_name="ethereum",
+                expected_chain_id=1,
+                expected_start_timestamp=999,
+                expected_end_timestamp=30_000,
+            )
+
+        self.assertEqual(report.status, "clean")
+
+    def test_validate_raw_pull_ignores_non_matching_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dataset_dir = Path(tmp_dir)
+            write_raw_file(
+                dataset_dir / "ethereum__blocks__1_to_1500.parquet",
+                [make_raw_row(index, 1_000 + 12 * index) for index in range(1, 1_501)],
+            )
+            write_cryo_report(
+                dataset_dir,
+                network_name="polygon",
+                output_dir=str(dataset_dir),
+                chunk_size=2_000,
+                report_name="wrong-network.json",
+                mtime=2,
+            )
+            write_cryo_report(
+                dataset_dir,
+                network_name="ethereum",
+                output_dir="artifacts/somewhere/else",
+                chunk_size=2_000,
+                report_name="wrong-output.json",
+                mtime=3,
+            )
+
+            report = validate_raw_pull(
+                dataset_dir,
+                expected_chain_name="ethereum",
+                expected_chain_id=1,
+                expected_start_timestamp=999,
+                expected_end_timestamp=30_000,
+            )
+
+        self.assertEqual(report.status, "error")
+        self.assertTrue(any("exceeds chunk_size=1000" in error for error in report.errors))
 
 
 if __name__ == "__main__":

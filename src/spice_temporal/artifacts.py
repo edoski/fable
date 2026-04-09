@@ -10,7 +10,7 @@ import torch
 
 from spice_temporal.config import ChainConfig, ModelConfig
 from spice_temporal.contracts import TemporalModel
-from spice_temporal.features import feature_names
+from spice_temporal.features import FEATURE_NAMES
 from spice_temporal.models import build_model
 from spice_temporal.normalization import StandardScaler
 from spice_temporal.pipeline import PreparedTrainingDataset
@@ -60,7 +60,7 @@ def build_training_artifact_manifest(
         max_extra_wait_steps=prepared.geometry.max_extra_wait_steps,
         action_count=prepared.geometry.action_count,
         n_features=prepared.n_features,
-        feature_names=feature_names(),
+        feature_names=list(FEATURE_NAMES),
         model_config=model_config,
         scaler=prepared.scaler,
     )

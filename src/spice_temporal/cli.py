@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import Literal
 
 import typer
 
@@ -43,6 +44,8 @@ from spice_temporal.simulation import run_temporal_simulation
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 load_project_env()
 
+SegmentName = Literal["history", "evaluation"]
+
 
 def require_chain(config: ExperimentConfig, chain_name: str) -> ChainConfig:
     chain = next((item for item in config.chains if item.name == chain_name), None)
@@ -61,24 +64,29 @@ def parse_model_family(family: str) -> ModelFamily:
     raise typer.BadParameter(f"Unknown model family: {family}")
 
 
-def require_segment(segment: str) -> str:
-    if segment not in {"history", "evaluation"}:
-        raise typer.BadParameter("segment must be 'history' or 'evaluation'")
-    return segment
+def require_segment(segment: str) -> SegmentName:
+    if segment == "history":
+        return "history"
+    if segment == "evaluation":
+        return "evaluation"
+    raise typer.BadParameter("segment must be 'history' or 'evaluation'")
 
 
 def resolve_pull_segment(
     config: ExperimentConfig,
     chain: ChainConfig,
-    segment: str,
+    segment: SegmentName,
 ) -> tuple[Path, TimestampRange]:
-    require_segment(segment)
     output_dir = config.output_root / "raw" / chain.name / segment
     timestamps = history_range_for_chain(chain) if segment == "history" else evaluation_range()
     return output_dir, timestamps
 
 
-def emit_raw_validation_report(config: ExperimentConfig, chain: ChainConfig, segment: str) -> bool:
+def emit_raw_validation_report(
+    config: ExperimentConfig,
+    chain: ChainConfig,
+    segment: SegmentName,
+) -> bool:
     output_dir, timestamps = resolve_pull_segment(config, chain, segment)
     report = validate_raw_pull(
         output_dir,
@@ -171,11 +179,11 @@ def pull_blocks(
     """Run cryo for one chain and one dataset segment."""
     config = ExperimentConfig.from_yaml(config_path)
     chain = require_chain(config, chain_name)
-    require_segment(segment)
+    segment_name = require_segment(segment)
     if dry_run and validate_on_success:
         raise typer.BadParameter("Cannot use --validate-on-success with dry-run pulls")
 
-    output_dir, timestamps = resolve_pull_segment(config, chain, segment)
+    output_dir, timestamps = resolve_pull_segment(config, chain, segment_name)
     result = run_cryo(
         chain,
         config.pull,
@@ -189,7 +197,7 @@ def pull_blocks(
     if result.stderr:
         typer.echo(redact_sensitive_text(result.stderr.rstrip()))
     if validate_on_success:
-        if not emit_raw_validation_report(config, chain, segment):
+        if not emit_raw_validation_report(config, chain, segment_name):
             raise typer.Exit(code=1)
 
 
@@ -198,8 +206,8 @@ def validate_pull(config_path: Path, chain_name: str, segment: str) -> None:
     """Validate one completed raw block pull without mutating its files."""
     config = ExperimentConfig.from_yaml(config_path)
     chain = require_chain(config, chain_name)
-    require_segment(segment)
-    if not emit_raw_validation_report(config, chain, segment):
+    segment_name = require_segment(segment)
+    if not emit_raw_validation_report(config, chain, segment_name):
         raise typer.Exit(code=1)
 
 

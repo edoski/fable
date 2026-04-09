@@ -12,6 +12,26 @@ from numpy.typing import NDArray
 from spice_temporal.records import BlockRecord
 
 ROLLING_WINDOWS = (10, 50, 200)
+FEATURE_NAMES = (
+    "log_base_fee",
+    "gas_utilization",
+    "hour_sin",
+    "hour_cos",
+    "weekday_sin",
+    "weekday_cos",
+    "elapsed_blocks",
+    "trend_slope_200",
+) + tuple(
+    feature_name
+    for window in ROLLING_WINDOWS
+    for feature_name in (
+        f"rolling_mean_log_base_fee_{window}",
+        f"rolling_std_log_base_fee_{window}",
+        f"rolling_mean_gas_utilization_{window}",
+        f"rolling_std_gas_utilization_{window}",
+    )
+)
+N_FEATURES = len(FEATURE_NAMES)
 
 FloatMatrix = NDArray[np.float32]
 FloatVector = NDArray[np.float32]
@@ -68,35 +88,12 @@ def ols_slope(values: Sequence[float]) -> float:
     return numerator / denominator
 
 
-def feature_names() -> list[str]:
-    names = [
-        "log_base_fee",
-        "gas_utilization",
-        "hour_sin",
-        "hour_cos",
-        "weekday_sin",
-        "weekday_cos",
-        "elapsed_blocks",
-        "trend_slope_200",
-    ]
-    for window in ROLLING_WINDOWS:
-        names.extend(
-            [
-                f"rolling_mean_log_base_fee_{window}",
-                f"rolling_std_log_base_fee_{window}",
-                f"rolling_mean_gas_utilization_{window}",
-                f"rolling_std_gas_utilization_{window}",
-            ]
-        )
-    return names
-
-
 def build_feature_table(blocks: Sequence[BlockRecord]) -> FeatureTable:
     if not blocks:
         return FeatureTable(
             block_numbers=np.empty(0, dtype=np.int64),
             timestamps=np.empty(0, dtype=np.int64),
-            feature_matrix=np.empty((0, len(feature_names())), dtype=np.float32),
+            feature_matrix=np.empty((0, N_FEATURES), dtype=np.float32),
             log_base_fees=np.empty(0, dtype=np.float32),
         )
 
@@ -105,8 +102,7 @@ def build_feature_table(blocks: Sequence[BlockRecord]) -> FeatureTable:
     gas_utilizations = [block.gas_utilization for block in sorted_blocks]
     min_index = feature_warmup_blocks()
     n_rows = len(sorted_blocks) - min_index
-    n_features = len(feature_names())
-    feature_matrix = np.empty((n_rows, n_features), dtype=np.float32)
+    feature_matrix = np.empty((n_rows, N_FEATURES), dtype=np.float32)
     block_numbers = np.empty(n_rows, dtype=np.int64)
     timestamps = np.empty(n_rows, dtype=np.int64)
     log_base_fees = np.empty(n_rows, dtype=np.float32)
