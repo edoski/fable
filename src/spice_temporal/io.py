@@ -6,6 +6,7 @@ import csv
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import cast
 
 from spice_temporal.contracts import BlockRow, BlockScalar, EnrichedBlockRow, RawBlockRow
 from spice_temporal.records import BlockRecord
@@ -62,8 +63,12 @@ def parse_raw_block_row(row: object) -> RawBlockRow:
     return raw_row
 
 
+def is_missing_gas_limit(value: object) -> bool:
+    return value in MISSING_GAS_LIMIT_VALUES
+
+
 def has_missing_gas_limit(row: RawBlockRow) -> bool:
-    return row.get("gas_limit") in MISSING_GAS_LIMIT_VALUES
+    return is_missing_gas_limit(row.get("gas_limit"))
 
 
 def build_enriched_block_row(row: RawBlockRow, *, gas_limit: BlockScalar) -> EnrichedBlockRow:
@@ -79,9 +84,9 @@ def build_enriched_block_row(row: RawBlockRow, *, gas_limit: BlockScalar) -> Enr
 
 def parse_enriched_block_row(row: RawBlockRow) -> EnrichedBlockRow:
     gas_limit = row.get("gas_limit")
-    if gas_limit is None or gas_limit == "" or gas_limit == 0 or gas_limit == "0":
+    if is_missing_gas_limit(gas_limit):
         raise ValueError("Block dataset must contain gas_limit for every row")
-    return build_enriched_block_row(row, gas_limit=gas_limit)
+    return build_enriched_block_row(row, gas_limit=cast(BlockScalar, gas_limit))
 
 
 def _is_hidden_relative_path(path: Path) -> bool:

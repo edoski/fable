@@ -1,4 +1,4 @@
-"""Minimal Alchemy JSON-RPC client for block enrichment."""
+"""Minimal Alchemy JSON-RPC client used only during block enrichment."""
 
 from __future__ import annotations
 

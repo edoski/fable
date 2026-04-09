@@ -87,6 +87,42 @@ def write_config(path: Path, *, output_root: Path | None = None) -> None:
 
 
 class CliTrainingTestCase(unittest.TestCase):
+    def test_pull_blocks_rejects_unknown_segment_choice(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            config_path = tmp_path / "config.yaml"
+            write_config(config_path, output_root=tmp_path / "artifacts")
+            result = runner.invoke(
+                app,
+                ["pull-blocks", str(config_path), "ethereum", "invalid-segment"],
+            )
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Invalid value for", result.output)
+
+    def test_train_rejects_unknown_model_family_choice(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            config_path = tmp_path / "config.yaml"
+            write_config(config_path)
+            result = runner.invoke(
+                app,
+                [
+                    "train",
+                    str(config_path),
+                    str(tmp_path / "history"),
+                    str(tmp_path / "artifact"),
+                    "ethereum",
+                    "invalid-family",
+                    "36",
+                ],
+            )
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Invalid value for", result.output)
+
     def test_train_and_simulate_write_artifact_reports(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp_dir:

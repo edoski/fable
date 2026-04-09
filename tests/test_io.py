@@ -4,7 +4,13 @@ import unittest
 from dataclasses import asdict
 from pathlib import Path
 
-from spice_temporal.io import load_block_records, load_rows, write_rows
+from spice_temporal.io import (
+    has_missing_gas_limit,
+    load_block_records,
+    load_rows,
+    parse_enriched_block_row,
+    write_rows,
+)
 from spice_temporal.records import BlockRecord
 
 
@@ -122,6 +128,20 @@ class BlockIoTestCase(unittest.TestCase):
             path.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
             with self.assertRaisesRegex(TypeError, "Block rows must be JSON-like mappings"):
                 load_rows(path)
+
+    def test_missing_gas_limit_values_use_one_validation_rule(self) -> None:
+        for missing_value in (None, "", 0, "0"):
+            row = {
+                "block_number": 1,
+                "timestamp": 1_700_000_012,
+                "base_fee_per_gas": 100,
+                "gas_used": 15_000_001,
+                "chain_id": 1,
+                "gas_limit": missing_value,
+            }
+            self.assertTrue(has_missing_gas_limit(row))
+            with self.assertRaisesRegex(ValueError, "must contain gas_limit"):
+                parse_enriched_block_row(row)
 
 
 if __name__ == "__main__":

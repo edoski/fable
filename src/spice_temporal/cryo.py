@@ -40,21 +40,22 @@ def evaluation_range() -> TimestampRange:
     return TimestampRange(start=EVALUATION_START_TS, end=EVALUATION_END_TS)
 
 
-def build_cryo_args(
+def _build_cryo_tokens(
     chain: ChainConfig,
     pull: PullConfig,
     output_dir: Path,
     timestamps: TimestampRange,
     *,
+    rpc_url: str,
     overwrite: bool = False,
 ) -> list[str]:
-    args = [
+    tokens = [
         "cryo",
         "blocks",
         "--timestamps",
         timestamps.as_cryo_arg(),
         "--rpc",
-        resolve_rpc_url(chain.name),
+        rpc_url,
         "--network-name",
         chain.name,
         "--include-columns",
@@ -69,8 +70,26 @@ def build_cryo_args(
         str(pull.max_concurrent_chunks),
     ]
     if overwrite:
-        args.append("--overwrite")
-    return args
+        tokens.append("--overwrite")
+    return tokens
+
+
+def build_cryo_args(
+    chain: ChainConfig,
+    pull: PullConfig,
+    output_dir: Path,
+    timestamps: TimestampRange,
+    *,
+    overwrite: bool = False,
+) -> list[str]:
+    return _build_cryo_tokens(
+        chain,
+        pull,
+        output_dir,
+        timestamps,
+        rpc_url=resolve_rpc_url(chain.name),
+        overwrite=overwrite,
+    )
 
 
 def build_cryo_command(
@@ -82,29 +101,15 @@ def build_cryo_command(
     overwrite: bool = False,
 ) -> str:
     rpc_template = ALCHEMY_RPC_TEMPLATE[chain.name].replace("{api_key}", "$ALCHEMY_API_KEY")
-    parts = [
-        "cryo",
-        "blocks",
-        "--timestamps",
-        timestamps.as_cryo_arg(),
-        "--rpc",
-        shlex.quote(rpc_template),
-        "--network-name",
-        chain.name,
-        "--include-columns",
-        "all",
-        "--output-dir",
-        shlex.quote(str(output_dir)),
-        "--requests-per-second",
-        str(pull.requests_per_second),
-        "--max-concurrent-requests",
-        str(pull.max_concurrent_requests),
-        "--max-concurrent-chunks",
-        str(pull.max_concurrent_chunks),
-    ]
-    if overwrite:
-        parts.append("--overwrite")
-    return " ".join(parts)
+    tokens = _build_cryo_tokens(
+        chain,
+        pull,
+        output_dir,
+        timestamps,
+        rpc_url=rpc_template,
+        overwrite=overwrite,
+    )
+    return " ".join(shlex.quote(token) for token in tokens)
 
 
 def run_cryo(

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import cast
 
 import typer
 
@@ -44,7 +45,16 @@ from spice_temporal.simulation import run_temporal_simulation
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 load_project_env()
 
-SegmentName = Literal["history", "evaluation"]
+
+class SegmentName(StrEnum):
+    HISTORY = "history"
+    EVALUATION = "evaluation"
+
+
+class ModelFamilyChoice(StrEnum):
+    LSTM = "lstm"
+    TRANSFORMER = "transformer"
+    TRANSFORMER_LSTM = "transformer_lstm"
 
 
 def require_chain(config: ExperimentConfig, chain_name: str) -> ChainConfig:
@@ -54,22 +64,8 @@ def require_chain(config: ExperimentConfig, chain_name: str) -> ChainConfig:
     return chain
 
 
-def parse_model_family(family: str) -> ModelFamily:
-    if family == "lstm":
-        return "lstm"
-    if family == "transformer":
-        return "transformer"
-    if family == "transformer_lstm":
-        return "transformer_lstm"
-    raise typer.BadParameter(f"Unknown model family: {family}")
-
-
-def require_segment(segment: str) -> SegmentName:
-    if segment == "history":
-        return "history"
-    if segment == "evaluation":
-        return "evaluation"
-    raise typer.BadParameter("segment must be 'history' or 'evaluation'")
+def model_family_from_choice(family: ModelFamilyChoice) -> ModelFamily:
+    return cast(ModelFamily, family.value)
 
 
 def resolve_pull_segment(
@@ -77,8 +73,12 @@ def resolve_pull_segment(
     chain: ChainConfig,
     segment: SegmentName,
 ) -> tuple[Path, TimestampRange]:
-    output_dir = config.output_root / "raw" / chain.name / segment
-    timestamps = history_range_for_chain(chain) if segment == "history" else evaluation_range()
+    output_dir = config.output_root / "raw" / chain.name / segment.value
+    timestamps = (
+        history_range_for_chain(chain)
+        if segment is SegmentName.HISTORY
+        else evaluation_range()
+    )
     return output_dir, timestamps
 
 
@@ -98,36 +98,6 @@ def emit_raw_validation_report(
     for line in format_raw_pull_validation_report(report):
         typer.echo(line)
     return report.status != "error"
-
-
-@app.command("show-config")
-def show_config(config_path: Path) -> None:
-    """Print a quick summary of the experiment configuration."""
-    config = ExperimentConfig.from_yaml(config_path)
-    typer.echo(f"Output root: {config.output_root}")
-    typer.echo(f"Max delays: {config.max_delay_seconds}")
-    typer.echo(f"Lookback: {config.lookback_seconds}s")
-    typer.echo(f"Target anchors: {config.target_anchor_count}")
-    typer.echo(
-        "Pull: "
-        f"requests_per_second={config.pull.requests_per_second}, "
-        f"max_concurrent_requests={config.pull.max_concurrent_requests}, "
-        f"max_concurrent_chunks={config.pull.max_concurrent_chunks}"
-    )
-    typer.echo(
-        "Simulation: "
-        f"window_seconds={config.simulation.window_seconds}, "
-        f"arrival_rate_per_second={config.simulation.arrival_rate_per_second}, "
-        f"repetitions={config.simulation.repetitions}, "
-        f"seed={config.simulation.seed}"
-    )
-    typer.echo("Chains:")
-    for chain in config.chains:
-        typer.echo(
-            f"  - {chain.name}: chain_id={chain.chain_id}, "
-            f"block_time={chain.block_time_seconds}s, "
-            f"history_days={chain.history_days}"
-        )
 
 
 @app.command("plan-pull")
@@ -171,7 +141,7 @@ def enrich_blocks(
 def pull_blocks(
     config_path: Path,
     chain_name: str,
-    segment: str,
+    segment: SegmentName,
     dry_run: bool = True,
     overwrite: bool = False,
     validate_on_success: bool = False,
@@ -179,11 +149,10 @@ def pull_blocks(
     """Run cryo for one chain and one dataset segment."""
     config = ExperimentConfig.from_yaml(config_path)
     chain = require_chain(config, chain_name)
-    segment_name = require_segment(segment)
     if dry_run and validate_on_success:
         raise typer.BadParameter("Cannot use --validate-on-success with dry-run pulls")
 
-    output_dir, timestamps = resolve_pull_segment(config, chain, segment_name)
+    output_dir, timestamps = resolve_pull_segment(config, chain, segment)
     result = run_cryo(
         chain,
         config.pull,
@@ -197,17 +166,16 @@ def pull_blocks(
     if result.stderr:
         typer.echo(redact_sensitive_text(result.stderr.rstrip()))
     if validate_on_success:
-        if not emit_raw_validation_report(config, chain, segment_name):
+        if not emit_raw_validation_report(config, chain, segment):
             raise typer.Exit(code=1)
 
 
 @app.command("validate-pull")
-def validate_pull(config_path: Path, chain_name: str, segment: str) -> None:
+def validate_pull(config_path: Path, chain_name: str, segment: SegmentName) -> None:
     """Validate one completed raw block pull without mutating its files."""
     config = ExperimentConfig.from_yaml(config_path)
     chain = require_chain(config, chain_name)
-    segment_name = require_segment(segment)
-    if not emit_raw_validation_report(config, chain, segment_name):
+    if not emit_raw_validation_report(config, chain, segment):
         raise typer.Exit(code=1)
 
 
@@ -217,14 +185,14 @@ def train(
     history_block_path: Path,
     artifact_dir: Path,
     chain_name: str,
-    family: str,
+    family: ModelFamilyChoice,
     max_delay_seconds: int,
     device: str = "auto",
 ) -> None:
     """Train one temporal model and write a canonical artifact directory."""
     config = ExperimentConfig.from_yaml(config_path)
     chain = require_chain(config, chain_name)
-    model_config = ModelConfig(family=parse_model_family(family))
+    model_config = ModelConfig(family=model_family_from_choice(family))
 
     result = run_training(
         history_block_path=history_block_path,

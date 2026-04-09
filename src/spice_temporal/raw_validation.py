@@ -6,6 +6,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from spice_temporal.io import iter_block_files, load_rows
 
@@ -14,6 +15,7 @@ RAW_BLOCK_FILENAME_RE = re.compile(
 )
 CRYO_DEFAULT_CHUNK_SIZE = 1_000
 EDGE_TIMESTAMP_TOLERANCE_ROWS = 1
+ValidationStatus = Literal["clean", "warning", "error"]
 
 
 @dataclass(slots=True)
@@ -52,7 +54,7 @@ class RawPullValidationReport:
     chain_id_mismatch_count: int = 0
     below_start_count: int = 0
     above_end_count: int = 0
-    status: str = "clean"
+    status: ValidationStatus = "clean"
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 

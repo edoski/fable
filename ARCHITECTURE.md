@@ -1,6 +1,7 @@
 # Architecture Guide
 
 This document is the deep-dive guide to the `spice-temporal-baseline` codebase. It explains the current architecture, the data and math contracts, how the modules fit together, and what invariants the implementation relies on.
+The repository is intentionally a temporal-module reproduction of the paper, not an implementation of the full SPICE framework.
 
 The scope of this repository is the **temporal module only** from the SPICE paper:
 
@@ -131,6 +132,10 @@ This module does one thing only:
 
 It does **not** modify the pulled schema and does **not** hide extra RPC hydration.
 
+[rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/rpc.py) is deliberately narrow infrastructure for the enrichment stage only.
+
+It is **not** a public service layer and it is **not** part of the training or simulation interface.
+
 [raw_validation.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/raw_validation.py) is the adjacent audit layer for completed raw pulls.
 
 This module is intentionally separate from `cryo.py`:
@@ -168,6 +173,8 @@ If `cryo` later exposes `gas_limit` directly in the block schema, `enrich.py` sh
 This is the most important conceptual contract in the repository.
 
 The temporal model does **not** predict an absolute timestamp. It chooses a discrete action under a bounded extra-wait budget.
+
+This mirrors the paper's temporal framing: the goal is to identify the minimum-cost execution block inside a bounded future window, not to forecast the full future base-fee trajectory and then optimize over that forecast afterward.
 
 Action semantics:
 
@@ -521,7 +528,6 @@ Those are the fields to inspect when comparing experiment runs.
 
 Commands:
 
-- `show-config`
 - `plan-pull`
 - `pull-blocks`
 - `validate-pull`
@@ -530,6 +536,8 @@ Commands:
 - `simulate`
 
 `pull-blocks` also supports an optional `--validate-on-success` hook that runs the raw validator once after a successful completed segment pull.
+
+The CLI intentionally exposes only operational stages that correspond to the temporal-module workflow. There are no convenience aliases, deprecated commands, or compatibility shims.
 
 There is no alternative legacy CLI path. `train` is the one canonical training command and `simulate` is the one canonical paper-comparison command.
 
