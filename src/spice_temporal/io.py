@@ -19,6 +19,61 @@ REQUIRED_BLOCK_COLUMNS = {
 }
 
 
+def load_rows(path: Path) -> list[dict[str, Any]]:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if not isinstance(data, list):
+            raise TypeError("JSON block files must contain a list of rows")
+        return data
+    if suffix == ".csv":
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            return [dict(row) for row in reader]
+    if suffix == ".parquet":
+        try:
+            import pyarrow.parquet as pq
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "Reading parquet files requires pyarrow. Install project dependencies first."
+            ) from exc
+
+        table = pq.read_table(path)
+        return table.to_pylist()
+    raise ValueError(f"Unsupported block file format: {path.suffix}")
+
+
+def write_rows(path: Path, rows: list[dict[str, Any]]) -> None:
+    suffix = path.suffix.lower()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if suffix == ".json":
+        with path.open("w", encoding="utf-8") as handle:
+            json.dump(rows, handle, ensure_ascii=True, indent=2)
+        return
+    if suffix == ".csv":
+        if not rows:
+            raise ValueError("Cannot write an empty CSV without headers")
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+        return
+    if suffix == ".parquet":
+        try:
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "Writing parquet files requires pyarrow. Install project dependencies first."
+            ) from exc
+
+        table = pa.Table.from_pylist(rows)
+        pq.write_table(table, path)
+        return
+    raise ValueError(f"Unsupported block file format: {path.suffix}")
+
+
 def _coerce_block_row(row: dict[str, Any]) -> BlockRecord:
     missing = REQUIRED_BLOCK_COLUMNS - row.keys()
     if missing:
@@ -34,25 +89,4 @@ def _coerce_block_row(row: dict[str, Any]) -> BlockRecord:
 
 
 def load_block_records(path: Path) -> list[BlockRecord]:
-    suffix = path.suffix.lower()
-    if suffix == ".json":
-        with path.open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        if not isinstance(data, list):
-            raise TypeError("JSON block files must contain a list of rows")
-        return [_coerce_block_row(item) for item in data]
-    if suffix == ".csv":
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            return [_coerce_block_row(row) for row in reader]
-    if suffix == ".parquet":
-        try:
-            import pyarrow.parquet as pq
-        except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError(
-                "Reading parquet files requires pyarrow. Install project dependencies first."
-            ) from exc
-
-        table = pq.read_table(path)
-        return [_coerce_block_row(row) for row in table.to_pylist()]
-    raise ValueError(f"Unsupported block file format: {path.suffix}")
+    return [_coerce_block_row(row) for row in load_rows(path)]

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from spice_temporal.config import ChainConfig, ExperimentConfig
 from spice_temporal.constants import EVALUATION_END_TS, EVALUATION_START_TS
-from spice_temporal.env import resolve_rpc_url
+from spice_temporal.env import ALCHEMY_RPC_TEMPLATE, resolve_rpc_url
 
 
 @dataclass(slots=True)
@@ -47,16 +47,13 @@ def build_cryo_args(
     *,
     overwrite: bool = False,
 ) -> list[str]:
-    rpc_url = resolve_rpc_url(chain.rpc_env_var)
-    if not rpc_url:
-        raise ValueError(f"Missing RPC URL for {chain.name} ({chain.rpc_env_var})")
     args = [
         "cryo",
         "blocks",
         "--timestamps",
         timestamps.as_cryo_arg(),
         "--rpc",
-        rpc_url,
+        resolve_rpc_url(chain.rpc_env_var),
         "--network-name",
         chain.name,
         "--include-columns",
@@ -76,13 +73,14 @@ def build_cryo_command(
     *,
     overwrite: bool = False,
 ) -> str:
+    rpc_template = ALCHEMY_RPC_TEMPLATE[chain.rpc_env_var].replace("{api_key}", "$ALCHEMY_API_KEY")
     parts = [
         "cryo",
         "blocks",
         "--timestamps",
         timestamps.as_cryo_arg(),
         "--rpc",
-        f"${chain.rpc_env_var}",
+        shlex.quote(rpc_template),
         "--network-name",
         chain.name,
         "--include-columns",

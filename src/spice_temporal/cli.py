@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import typer
 
 from spice_temporal.config import ExperimentConfig, ModelConfig
 from spice_temporal.cryo import build_pull_plan, evaluation_range, history_range_for_chain, run_cryo
-from spice_temporal.env import env_file_path, load_project_env, resolve_rpc_url
+from spice_temporal.enrich import enrich_path
+from spice_temporal.env import load_project_env, redact_sensitive_text, resolve_rpc_url
 from spice_temporal.pipeline import run_single_training
+from spice_temporal.rpc import RpcClient
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 load_project_env()
@@ -43,20 +46,31 @@ def plan_pull(config_path: Path) -> None:
         typer.echo("")
 
 
-@app.command("verify-env")
-def verify_env(config_path: Path) -> None:
-    """Check whether the expected RPC environment variables are configured."""
+@app.command("enrich-blocks")
+def enrich_blocks(
+    config_path: Path,
+    chain_name: str,
+    input_path: Path,
+    output_path: Path,
+    batch_size: int = 100,
+    max_methods_per_second: float = 20.0,
+) -> None:
+    """Add gas_limit to cryo block files using direct JSON-RPC lookups."""
     config = ExperimentConfig.from_yaml(config_path)
-    missing: list[str] = []
-    typer.echo(f"env_file={env_file_path()}")
-    for chain in config.chains:
-        rpc_url = resolve_rpc_url(chain.rpc_env_var)
-        status = "set" if rpc_url else "missing"
-        typer.echo(f"{chain.name}: {chain.rpc_env_var}={status}")
-        if status == "missing":
-            missing.append(chain.rpc_env_var)
-    if missing:
-        raise typer.Exit(code=1)
+    chain = next((item for item in config.chains if item.name == chain_name), None)
+    if chain is None:
+        raise typer.BadParameter(f"Unknown chain: {chain_name}")
+    client = RpcClient(resolve_rpc_url(chain.rpc_env_var))
+    written = enrich_path(
+        input_path,
+        output_path,
+        fetch_gas_limits=client.get_block_gas_limits,
+        batch_size=batch_size,
+        max_methods_per_second=max_methods_per_second,
+    )
+    typer.echo(f"enriched_files={len(written)}")
+    if written:
+        typer.echo(f"first_output={written[0]}")
 
 
 @app.command("pull-blocks")
@@ -85,9 +99,9 @@ def pull_blocks(
         dry_run=dry_run,
     )
     if result.stdout:
-        typer.echo(result.stdout.rstrip())
+        typer.echo(redact_sensitive_text(result.stdout.rstrip()))
     if result.stderr:
-        typer.echo(result.stderr.rstrip())
+        typer.echo(redact_sensitive_text(result.stderr.rstrip()))
 
 
 @app.command("train-single")
@@ -113,7 +127,7 @@ def train_single(
         window_seconds=window_seconds,
         lookback_seconds=config.lookback_seconds,
         model_config=ModelConfig(family=family),
-        training_config=config.training,
+        training_config=replace(config.training, device=device),
         split_config=config.split,
     )
     typer.echo(f"lookback_steps={result.prepared.lookback_steps}")

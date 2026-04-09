@@ -1,9 +1,8 @@
-"""Environment loading and RPC URL resolution."""
+"""Alchemy environment helpers."""
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -20,19 +19,16 @@ def load_project_env() -> None:
     load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 
-def resolve_rpc_url(env_var: str) -> str | None:
-    explicit = os.environ.get(env_var)
-    if explicit:
-        return explicit
-
+def get_alchemy_api_key() -> str:
     api_key = os.environ.get("ALCHEMY_API_KEY")
-    template = ALCHEMY_RPC_TEMPLATE.get(env_var)
-    if api_key and template:
-        derived = template.format(api_key=api_key)
-        os.environ.setdefault(env_var, derived)
-        return derived
-    return None
+    if not api_key:
+        raise RuntimeError("Missing ALCHEMY_API_KEY in .env")
+    return api_key
 
 
-def env_file_path() -> Path:
-    return PROJECT_ROOT / ".env"
+def resolve_rpc_url(env_var: str) -> str:
+    return ALCHEMY_RPC_TEMPLATE[env_var].format(api_key=get_alchemy_api_key())
+
+
+def redact_sensitive_text(text: str) -> str:
+    return text.replace(get_alchemy_api_key(), "***")
