@@ -6,6 +6,12 @@ import time
 
 import httpx
 
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+}
+
 
 def _hex_to_int(value: str) -> int:
     return int(value, 16)
@@ -24,7 +30,7 @@ class JsonRpcClient:
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
         self.retry_backoff_seconds = retry_backoff_seconds
-        self._client = httpx.Client(timeout=timeout_seconds)
+        self._client = httpx.Client(timeout=timeout_seconds, headers=DEFAULT_HEADERS)
 
     def close(self) -> None:
         self._client.close()

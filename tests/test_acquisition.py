@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import sys
+
 import polars as pl
 import pytest
 
-from spice.acquisition.cryo import TimestampRange
+from spice.acquisition.cryo import TimestampRange, run_cryo
 from spice.acquisition.enrich import enrich_frame_with_gas_limit, enrich_path
 from spice.acquisition.provenance import (
     load_source_manifest,
@@ -14,6 +16,7 @@ from spice.acquisition.provenance import (
 from spice.acquisition.raw_validation import RawPullValidationReport
 from spice.acquisition.rpc import JsonRpcClient
 from spice.acquisition.rpc_providers import RpcProviderName, resolve_rpc_provider
+from spice.core.console import NullReporter
 from spice.core.config import BlockSegment, ChainConfig, ChainName, PullConfig
 from tests.support import make_block_rows, make_history_rows, write_dataset_dir
 
@@ -137,3 +140,73 @@ def test_source_manifest_round_trip(tmp_path) -> None:
     assert loaded is not None
     assert loaded.chain == "ethereum"
     assert loaded.provider == "publicnode"
+
+
+def test_run_cryo_polls_progress_before_stdout_lines(tmp_path, monkeypatch) -> None:
+    class RecordingReporter(NullReporter):
+        def __init__(self) -> None:
+            self.pull_updates: list[tuple[int, int | None, str | None]] = []
+
+        def update_pull(
+            self,
+            *,
+            completed_chunks: int,
+            total_chunks: int | None,
+            latest_output: str | None = None,
+        ) -> None:
+            self.pull_updates.append((completed_chunks, total_chunks, latest_output))
+
+    output_dir = tmp_path / "raw"
+    reporter = RecordingReporter()
+    provider = resolve_rpc_provider(RpcProviderName.PUBLICNODE, chains=(ChainName.ETHEREUM,))
+    script = "\n".join(
+        [
+            "from pathlib import Path",
+            "import sys",
+            "import time",
+            "output_dir = Path(sys.argv[1])",
+            "output_dir.mkdir(parents=True, exist_ok=True)",
+            "time.sleep(0.05)",
+            "(output_dir / 'ethereum__blocks__1_to_1.parquet').write_text('ok', encoding='utf-8')",
+            "time.sleep(0.15)",
+            "print('done', flush=True)",
+        ]
+    )
+
+    monkeypatch.setattr(
+        "spice.acquisition.cryo.build_cryo_args",
+        lambda *args, **kwargs: [sys.executable, "-c", script, str(output_dir)],
+    )
+    monkeypatch.setattr(
+        "spice.acquisition.cryo.build_cryo_command",
+        lambda *args, **kwargs: f"{sys.executable} -c <script>",
+    )
+    monkeypatch.setattr("spice.acquisition.cryo.CRYO_PROGRESS_POLL_INTERVAL_SECONDS", 0.02)
+
+    result = run_cryo(
+        ChainConfig(
+            name=ChainName.ETHEREUM,
+            chain_id=1,
+            block_time_seconds=12.0,
+            history_days=1,
+        ),
+        PullConfig(),
+        output_dir,
+        TimestampRange(start=1, end=13),
+        provider=provider,
+        reporter=reporter,
+    )
+
+    done_index = next(
+        index
+        for index, (_completed, _total, latest_output) in enumerate(reporter.pull_updates)
+        if latest_output == "done"
+    )
+    progress_index = next(
+        index
+        for index, (completed, _total, latest_output) in enumerate(reporter.pull_updates)
+        if completed == 1 and latest_output is None
+    )
+
+    assert progress_index < done_index
+    assert result.completed_chunks == 1

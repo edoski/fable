@@ -164,7 +164,11 @@ class RichReporter(NullReporter):
 
     def start_pull(self, *, label: str, total_chunks: int | None) -> None:
         if self.enabled:
-            self._pull_task = self.progress.add_task(label, total=total_chunks)
+            self._pull_task = self.progress.add_task(
+                label,
+                total=total_chunks,
+                start=total_chunks is None,
+            )
         self.log(f"pull started: {label}")
 
     def update_pull(
@@ -175,6 +179,9 @@ class RichReporter(NullReporter):
         latest_output: str | None = None,
     ) -> None:
         if self.enabled and self._pull_task is not None:
+            task = self.progress.tasks[self._pull_task]
+            if total_chunks is not None and completed_chunks > 0 and not task.started:
+                self.progress.start_task(self._pull_task)
             self.progress.update(self._pull_task, completed=completed_chunks, total=total_chunks)
         if latest_output:
             now = time.monotonic()
@@ -184,8 +191,11 @@ class RichReporter(NullReporter):
 
     def finish_pull(self, *, output_dir: Path) -> None:
         if self.enabled and self._pull_task is not None:
-            task_total = self.progress.tasks[self._pull_task].total
+            task = self.progress.tasks[self._pull_task]
+            task_total = task.total
             if task_total is not None:
+                if not task.started:
+                    self.progress.start_task(self._pull_task)
                 self.progress.update(self._pull_task, completed=task_total)
         self.log(f"pull finished: {output_dir}")
 
