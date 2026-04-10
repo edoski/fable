@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "spice-temporal-baseline"
+name = "spice"
 version = "0.1.0"
 description = "Practical reproduction of the SPICE temporal module baseline."
 readme = "README.md"
@@ -15,12 +15,14 @@ authors = [
 dependencies = [
   "numpy>=1.26",
   "polars>=1.5",
-  "pyarrow>=17.0",
   "PyYAML>=6.0",
   "typer>=0.12",
   "torch>=2.5",
-  "optuna>=4.0",
-  "python-dotenv>=1.0",
+  "pydantic>=2.12",
+  "pydantic-settings>=2.13",
+  "rich>=14.3",
+  "httpx>=0.28",
+  "scikit-learn>=1.8",
 ]
 
 [project.optional-dependencies]
@@ -31,10 +33,10 @@ dev = [
 ]
 
 [project.scripts]
-spice-temporal = "spice_temporal.cli:app"
+spice = "spice.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/spice_temporal"]
+packages = ["src/spice"]
 
 [tool.ruff]
 line-length = 100

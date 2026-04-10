@@ -1,121 +1,83 @@
-# SPICE Temporal Baseline
+# SPICE
 
-Practical reproduction scaffold for the temporal module described in `ICDCS_2026.pdf`.
-This repository intentionally reproduces the paper's temporal module only, not the
-full SPICE framework.
+Lean temporal-module baseline for SPICE-style fee-timing experiments.
 
-## Scope
+This repository is intentionally scoped to the temporal module only:
 
-- Build chain-local datasets from raw block data.
-- Train baseline LSTM, Transformer, and Transformer-LSTM models.
-- Evaluate training diagnostics on pre-evaluation history and paper-comparable temporal profit on the evaluation day.
-- Predict the minimum-cost execution block inside a bounded future window rather than forecasting the full future fee trajectory.
-- Prepare a later handoff to chain-specific hyperparameter optimization.
-- Exclude spatial routing, token-price routing, oracle integration, and distributed reputation.
+- pull raw EVM block data
+- enrich missing block fields
+- build fixed-horizon temporal datasets
+- train baseline sequence models
+- run evaluation-day temporal simulations
 
-## Architecture
+It does not implement the broader SPICE spatial/oracle/reputation system.
 
-- `config.py`: typed experiment, training, and chain configuration.
-- `api.py`: the supported high-level Python API for training and simulation workflows.
-- `contracts.py`: typed boundary contracts for raw rows, tensor batches, and model outputs.
-- `env.py`: local `.env` loading.
-- `cryo.py`: cryo pull planning and execution.
-- `_rpc.py`: internal generic JSON-RPC client used to hydrate missing `gas_limit`.
-- `rpc_providers.py`: standalone RPC provider registry for direct URLs and hosted providers.
-- `io.py` and `enrich.py`: block-dataset loading plus `gas_limit` enrichment for cryo output.
-- `features.py`, `datasets.py`, and `normalization.py`: feature engineering, array-backed temporal dataset stores, chronological split indices, and exact train-only scaling over overlapping windows.
-- `models.py`, `torch_datasets.py`, `training.py`, and `evaluation.py`: PyTorch models, lazy sequence slicing, training loop, inverse-frequency class weighting, and ratio-of-sums economic metrics.
-- `pipeline.py`: training-dataset preparation, inference-dataset preparation, and one-run model training.
-- `artifacts.py`: canonical training artifact manifest plus model save/load helpers.
-- `reporting.py`: structured JSON report artifacts for training and simulation runs.
-- `simulation.py`: paper-style evaluation-day temporal simulation.
-- `cli.py`: Typer entrypoints for `blocks ...`, `train`, and `simulate`.
+## Stack
 
-## Recommended environment
+- `Typer` + `Rich` for CLI and progress output
+- `Pydantic v2` + `pydantic-settings` for config, settings, manifests, and reports
+- `Polars` for Parquet IO, validation scans, enrichment staging, and feature prep
+- `HTTPX` for JSON-RPC transport
+- `scikit-learn` for weighted feature scaling
+- `NumPy` + `PyTorch` for dataset math, modeling, training, inference, and simulation
 
-- Python 3.11 or 3.12 for the most predictable PyTorch support.
-- Apple Silicon is supported through the PyTorch MPS backend.
-- Define `RPC_PROVIDER` in a local `.env` to select a provider such as `direct`, `alchemy`,
-  or `publicnode`.
-- For `direct`, define per-chain URLs such as `ETHEREUM_RPC_URL`, `POLYGON_RPC_URL`,
-  and `AVALANCHE_RPC_URL`.
-- For `alchemy`, define `ALCHEMY_API_KEY`.
-- `publicnode` currently requires no additional secrets.
+## Package Layout
 
-## Planned workflow
+The installable namespace is `spice`, so the source layout stays `src/spice/...`.
+The package itself is now split into four shallow subpackages plus two top-level entrypoints:
 
-1. Pull raw block data with `cryo`.
-2. Enrich missing block fields if needed.
-3. Build supervised datasets with fixed lookback and bounded delay budgets, where action `0` means next-block execution and action `k` means waiting `k` extra blocks.
-4. Train models that choose the minimum-cost block inside the admissible future window, rather than attempting to forecast the full future fee curve.
-5. Train the 27-model baseline matrix into canonical artifact directories.
-6. Run evaluation-day temporal simulations from persisted artifacts.
-7. Start chain-specific HPO only after the baseline matrix is verified.
+- `src/spice/core`: config, settings, constants, and console/reporting primitives
+- `src/spice/acquisition`: raw pulls, RPC, enrichment, validation, and provenance
+- `src/spice/data`: Parquet IO, feature engineering, dataset geometry, and scaling
+- `src/spice/modeling`: models, training, inference, simulation, artifacts, and reports
+- `src/spice/api.py`: supported high-level Python API
+- `src/spice/cli.py`: supported CLI surface
 
-## First pilot
+There are no dual paths for old/new formats. Runtime block datasets are Parquet-only.
 
-Use the dedicated pilot config to validate the full raw-data-to-training-and-simulation path before larger pulls:
+## Configuration
 
-1. `python -m spice_temporal.cli blocks pull configs/pilots/ethereum-36s.yaml ethereum history --no-dry-run`
-2. `python -m spice_temporal.cli blocks enrich configs/pilots/ethereum-36s.yaml ethereum artifacts/pilots/ethereum-36s/raw/ethereum/history artifacts/pilots/ethereum-36s/enriched/ethereum/history`
-3. `python -m spice_temporal.cli blocks pull configs/pilots/ethereum-36s.yaml ethereum evaluation --no-dry-run`
-4. `python -m spice_temporal.cli blocks enrich configs/pilots/ethereum-36s.yaml ethereum artifacts/pilots/ethereum-36s/raw/ethereum/evaluation artifacts/pilots/ethereum-36s/enriched/ethereum/evaluation`
-5. `python -m spice_temporal.cli train configs/pilots/ethereum-36s.yaml artifacts/pilots/ethereum-36s/enriched/ethereum/history artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s ethereum lstm 36`
-6. `python -m spice_temporal.cli simulate configs/pilots/ethereum-36s.yaml artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s artifacts/pilots/ethereum-36s/enriched/ethereum/history artifacts/pilots/ethereum-36s/enriched/ethereum/evaluation`
+Experiment configuration is loaded from YAML through `spice.core.config.ExperimentConfig`.
+Environment-backed RPC settings are loaded through `spice.core.settings.RuntimeSettings`.
 
-Each completed raw pull also writes a dataset-level `.spice/source.json` under the target history
-or evaluation directory. Keeping provenance under a hidden metadata directory ensures block-file
-scans do not accidentally treat the manifest itself as data. The manifest records the provider,
-redacted provider reference, requested timestamp window, config path, and optional validation
-summary for that dataset directory.
+Supported environment variables:
 
-The composite `blocks acquire` workflow stages both `raw` and `enriched` datasets together. It
-accepts a shared `--rpc-provider` plus optional `--pull-rpc-provider` and
-`--enrich-rpc-provider` overrides. The staging namespace is anchored to the pull provider, while
-the enriched dataset manifest records the enrichment provider that filled `gas_limit`.
+- `RPC_PROVIDER`
+- `ETHEREUM_RPC_URL`
+- `POLYGON_RPC_URL`
+- `AVALANCHE_RPC_URL`
+- `ALCHEMY_API_KEY`
 
-The first pilot target is `Ethereum + 36s + LSTM`, using fixed chain block times and a 36-second maximum additional delay budget over next-block execution.
+## CLI
 
-Training writes a canonical artifact directory containing:
+The installed command is `spice`.
 
-- `artifact.json`: model and dataset contract metadata
-- `model.pt`: trained model weights
-- `train_report.json`: supervised training/test diagnostics
-- `simulation_report.json`: paper-comparable evaluation-day temporal metrics
+Examples:
 
-## Verification
+- `spice blocks plan configs/baseline.yaml`
+- `spice blocks pull configs/pilots/ethereum-36s.yaml ethereum history --rpc-provider publicnode --no-dry-run`
+- `spice blocks enrich configs/pilots/ethereum-36s.yaml ethereum <raw-dir> <enriched-dir>`
+- `spice train configs/pilots/ethereum-36s.yaml <history-dir> <artifact-dir> ethereum lstm 36 --device cpu`
+- `spice simulate configs/pilots/ethereum-36s.yaml <artifact-dir> <history-dir> <evaluation-dir> --device cpu`
 
-- `ruff check src tests`
-- `pyright`
-- `PYTHONPATH=src pytest -q`
-
-Run verification inside a dedicated `.venv` with project dependencies installed.
-
-## Useful commands
-
-- `python -m spice_temporal.cli blocks plan configs/baseline.yaml`
-- `python -m spice_temporal.cli blocks plan configs/pilots/ethereum-36s.yaml`
-- `python -m spice_temporal.cli blocks pull configs/pilots/ethereum-36s.yaml ethereum history --no-dry-run`
-- `python -m spice_temporal.cli blocks pull configs/pilots/ethereum-36s.yaml ethereum evaluation --no-dry-run`
-- `python -m spice_temporal.cli blocks stage configs/baseline.yaml ethereum history --rpc-provider publicnode --no-dry-run`
-- `python -m spice_temporal.cli blocks acquire configs/baseline.yaml ethereum history --pull-rpc-provider alchemy --enrich-rpc-provider publicnode --no-dry-run`
-- `python -m spice_temporal.cli blocks validate configs/pilots/ethereum-36s.yaml ethereum history`
-- `python -m spice_temporal.cli blocks validate configs/pilots/ethereum-36s.yaml ethereum evaluation`
-- `python -m spice_temporal.cli blocks promote configs/baseline.yaml ethereum history artifacts/staging/publicnode/raw/ethereum/history`
-- `python -m spice_temporal.cli blocks enrich configs/pilots/ethereum-36s.yaml ethereum <input-dir> <output-dir>`
-- `python -m spice_temporal.cli train configs/pilots/ethereum-36s.yaml <history-dataset-path> <artifact-dir> ethereum lstm 36`
-- `python -m spice_temporal.cli simulate configs/pilots/ethereum-36s.yaml <artifact-dir> <history-dataset-path> <evaluation-dataset-path>`
+The CLI uses Rich progress for pull, enrich, and train stages and then prints concise stable summary lines at the end.
 
 ## Python API
 
-The only supported Python API surface is [`spice_temporal.api`](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/api.py).
+`spice.api` is the only supported Python API surface.
 
 ```python
 from pathlib import Path
 
-from spice_temporal.api import load_artifact, load_config, run_simulation_workflow, run_training_workflow
+from spice.api import (
+    load_artifact,
+    load_config,
+    run_simulation_workflow,
+    run_training_workflow,
+)
 
 config = load_config(Path("configs/pilots/ethereum-36s.yaml"))
+
 train_report = run_training_workflow(
     config,
     Path("artifacts/pilots/ethereum-36s/enriched/ethereum/history"),
@@ -123,14 +85,35 @@ train_report = run_training_workflow(
     "ethereum",
     "lstm",
     36,
+    device="cpu",
 )
+
 artifact = load_artifact(Path("artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s"))
+
 simulation_report = run_simulation_workflow(
     config,
     Path("artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s"),
     Path("artifacts/pilots/ethereum-36s/enriched/ethereum/history"),
     Path("artifacts/pilots/ethereum-36s/enriched/ethereum/evaluation"),
+    device="cpu",
 )
 ```
 
-Lower-level modules remain internal implementation details and may change without notice.
+## Artifacts
+
+Training writes:
+
+- `artifact.json`
+- `model.pt`
+- `train_report.json`
+- `simulation_report.json`
+
+Dataset provenance is stored under `.spice/source.json` inside dataset directories.
+
+## Verification
+
+Run all checks inside the project virtual environment:
+
+- `.venv/bin/ruff check src/spice tests`
+- `.venv/bin/pyright src/spice tests`
+- `.venv/bin/pytest -q`

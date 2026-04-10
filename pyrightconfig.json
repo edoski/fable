@@ -1,5 +1,5 @@
 {
-  "include": ["src/spice_temporal"],
+  "include": ["src/spice"],
   "typeCheckingMode": "standard",
   "venvPath": ".",
   "venv": ".venv",
