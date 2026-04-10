@@ -16,8 +16,9 @@ from spice.acquisition.provenance import (
 from spice.acquisition.raw_validation import RawPullValidationReport
 from spice.acquisition.rpc import JsonRpcClient
 from spice.acquisition.rpc_providers import RpcProviderName, resolve_rpc_provider
-from spice.core.console import NullReporter
 from spice.core.config import BlockSegment, ChainConfig, ChainName, PullConfig
+from spice.core.console import NullReporter
+from spice.data.block_schema import ENRICHED_BLOCK_SCHEMA
 from tests.support import make_block_rows, make_history_rows, write_dataset_dir
 
 
@@ -43,7 +44,36 @@ def test_enrich_frame_with_gas_limit_fills_missing_blocks() -> None:
     )
 
     assert fetched == 2
+    assert enriched.schema == ENRICHED_BLOCK_SCHEMA
     assert enriched["gas_limit"].to_list() == [30_000_000, 30_000_002, 30_000_000, 30_000_004]
+
+
+def test_enrich_frame_with_gas_limit_canonicalizes_wide_uint_input() -> None:
+    def fetch_gas_limits(block_numbers: list[int]) -> dict[int, int]:
+        return {block: 45_000_000 for block in block_numbers}
+
+    frame = pl.DataFrame(
+        {
+            "block_hash": [b"a", b"b"],
+            "block_number": pl.Series([1, 2], dtype=pl.UInt32),
+            "timestamp": pl.Series([1_700_000_000, 1_700_000_002], dtype=pl.UInt32),
+            "base_fee_per_gas": pl.Series([3_000_000_000, 3_100_000_000], dtype=pl.UInt64),
+            "gas_used": pl.Series([20_000_000, 21_000_000], dtype=pl.UInt64),
+            "chain_id": pl.Series([137, 137], dtype=pl.UInt64),
+            "gas_limit": pl.Series([None, None], dtype=pl.Int64),
+        }
+    )
+
+    enriched, fetched = enrich_frame_with_gas_limit(
+        frame,
+        fetch_gas_limits=fetch_gas_limits,
+        batch_size=2,
+        max_methods_per_second=1_000.0,
+    )
+
+    assert fetched == 2
+    assert enriched.schema == ENRICHED_BLOCK_SCHEMA
+    assert enriched.columns == list(ENRICHED_BLOCK_SCHEMA)
 
 
 def test_enrich_path_writes_parquet_outputs(tmp_path) -> None:
@@ -73,7 +103,9 @@ def test_enrich_path_writes_parquet_outputs(tmp_path) -> None:
 
     assert len(written) == 1
     assert written[0].is_file()
-    assert pl.read_parquet(written[0])["gas_limit"].null_count() == 0
+    written_frame = pl.read_parquet(written[0])
+    assert written_frame.schema == ENRICHED_BLOCK_SCHEMA
+    assert written_frame["gas_limit"].null_count() == 0
 
 
 def test_json_rpc_client_retries_throttled_items(monkeypatch) -> None:

@@ -1,3 +1,4 @@
+import polars as pl
 import pytest
 
 from spice.acquisition.raw_validation import validate_raw_pull
@@ -9,6 +10,7 @@ from spice.core.config import (
     SplitConfig,
     TrainingConfig,
 )
+from spice.data.block_schema import ENRICHED_BLOCK_SCHEMA
 from spice.data.datasets import derive_dataset_geometry
 from spice.data.io import iter_block_files, load_enriched_block_frame
 from spice.modeling.pipeline import (
@@ -46,6 +48,31 @@ def test_load_enriched_block_frame_rejects_duplicate_block_numbers(tmp_path) -> 
         load_enriched_block_frame(dataset_dir)
 
 
+def test_load_enriched_block_frame_rejects_noncanonical_schema(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    frame = make_history_rows(4)
+    # Simulate a provider-shaped "enriched" dataset that was never canonicalized.
+
+    wide_frame = pl.DataFrame(
+        {
+            "block_hash": [b"a", b"b", b"c", b"d"],
+            "block_number": pl.Series([row["block_number"] for row in frame], dtype=pl.UInt32),
+            "timestamp": pl.Series([row["timestamp"] for row in frame], dtype=pl.UInt32),
+            "base_fee_per_gas": pl.Series(
+                [row["base_fee_per_gas"] for row in frame], dtype=pl.UInt64
+            ),
+            "gas_used": pl.Series([row["gas_used"] for row in frame], dtype=pl.UInt64),
+            "chain_id": pl.Series([row["chain_id"] for row in frame], dtype=pl.UInt64),
+            "gas_limit": pl.Series([row["gas_limit"] for row in frame], dtype=pl.Int64),
+        }
+    )
+    wide_frame.write_parquet(dataset_dir / "blocks.parquet")
+
+    with pytest.raises(ValueError, match="canonical enriched block schema"):
+        load_enriched_block_frame(dataset_dir)
+
+
 def test_validate_raw_pull_detects_file_range_gaps(tmp_path) -> None:
     dataset_dir = tmp_path / "raw"
     write_raw_chunk(
@@ -80,6 +107,8 @@ def test_prepare_training_and_inference_datasets(tmp_path) -> None:
 
     history_blocks = load_enriched_block_frame(history_dir)
     evaluation_blocks = load_enriched_block_frame(evaluation_dir)
+    assert history_blocks.schema == ENRICHED_BLOCK_SCHEMA
+    assert evaluation_blocks.schema == ENRICHED_BLOCK_SCHEMA
     spec = TrainingSpec(
         chain=ChainConfig(
             name=ChainName.ETHEREUM,

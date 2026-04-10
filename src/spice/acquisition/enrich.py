@@ -9,6 +9,7 @@ from pathlib import Path
 import polars as pl
 
 from ..core.console import NullReporter, Reporter
+from ..data.block_schema import canonicalize_enriched_block_frame
 from ..data.io import iter_block_files, write_block_file
 
 FetchGasLimits = Callable[[list[int]], dict[int, int]]
@@ -54,7 +55,7 @@ def enrich_frame_with_gas_limit(
     frame = _ensure_gas_limit_column(frame)
     missing_block_numbers = _missing_block_numbers(frame)
     if not missing_block_numbers:
-        return frame.with_columns(pl.col("gas_limit").cast(pl.Int64)), 0
+        return canonicalize_enriched_block_frame(frame), 0
 
     lookup: dict[int, int] = {}
     fetched_count = 0
@@ -89,7 +90,7 @@ def enrich_frame_with_gas_limit(
     remaining_missing = enriched.filter(_missing_gas_limit_expr()).height
     if remaining_missing:
         raise RuntimeError(f"Missing gas_limit remained after enrichment: {remaining_missing}")
-    return enriched, fetched_count
+    return canonicalize_enriched_block_frame(enriched), fetched_count
 
 
 def count_missing_gas_limits(path: Path) -> tuple[int, int]:

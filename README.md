@@ -34,6 +34,9 @@ The package itself is now split into four shallow subpackages plus two top-level
 - `src/spice/cli.py`: supported CLI surface
 
 There are no dual paths for old/new formats. Runtime block datasets are Parquet-only.
+Under `enriched/`, datasets are canonical model inputs with exactly these six `Int64`
+columns: `block_number`, `timestamp`, `base_fee_per_gas`, `gas_used`, `chain_id`,
+and `gas_limit`.
 
 ## Configuration
 

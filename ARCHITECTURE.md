@@ -76,6 +76,7 @@ Key invariants:
 Key invariants:
 
 - runtime block datasets are Parquet only
+- enriched datasets are canonical model inputs with exactly six `Int64` block columns
 - duplicate block numbers are rejected
 - mixed chain IDs are rejected
 - train-only scaling is computed from overlapped window coverage

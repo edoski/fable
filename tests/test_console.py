@@ -52,9 +52,11 @@ def test_rich_reporter_starts_known_pull_task_on_first_progress_update() -> None
     reporter = RichReporter(console=Console(file=StringIO(), force_terminal=True, width=120))
 
     reporter.start_pull(label="pull test", total_chunks=10)
-    assert reporter.progress.tasks[reporter._pull_task].started is False
+    pull_task = reporter._pull_task
+    assert pull_task is not None
+    assert reporter.progress.tasks[pull_task].started is False
 
     reporter.update_pull(completed_chunks=1, total_chunks=10)
 
-    assert reporter.progress.tasks[reporter._pull_task].started is True
+    assert reporter.progress.tasks[pull_task].started is True
     reporter.close()
