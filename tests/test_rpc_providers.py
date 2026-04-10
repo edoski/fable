@@ -6,6 +6,7 @@ from spice_temporal.config import ChainName
 from spice_temporal.rpc_providers import (
     RpcProviderName,
     redact_sensitive_text,
+    resolve_acquisition_providers,
     resolve_rpc_provider,
 )
 
@@ -63,3 +64,25 @@ class RpcProvidersTestCase(unittest.TestCase):
                 redact_sensitive_text(text, provider),
                 "https://eth-mainnet.g.alchemy.com/v2/*** uses ***",
             )
+
+    def test_resolve_acquisition_providers_uses_shared_default_when_no_overrides(self) -> None:
+        providers = resolve_acquisition_providers(
+            RpcProviderName.PUBLICNODE,
+            chains=(ChainName.ETHEREUM,),
+        )
+        self.assertEqual(providers.pull.name, "publicnode")
+        self.assertEqual(providers.enrich.name, "publicnode")
+
+    def test_resolve_acquisition_providers_applies_stage_specific_overrides(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"ALCHEMY_API_KEY": "test-key"},
+            clear=True,
+        ):
+            providers = resolve_acquisition_providers(
+                RpcProviderName.PUBLICNODE,
+                pull_provider_name=RpcProviderName.ALCHEMY,
+                chains=(ChainName.ETHEREUM,),
+            )
+        self.assertEqual(providers.pull.name, "alchemy")
+        self.assertEqual(providers.enrich.name, "publicnode")

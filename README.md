@@ -63,6 +63,17 @@ Use the dedicated pilot config to validate the full raw-data-to-training-and-sim
 5. `python -m spice_temporal.cli train configs/pilots/ethereum-36s.yaml artifacts/pilots/ethereum-36s/enriched/ethereum/history artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s ethereum lstm 36`
 6. `python -m spice_temporal.cli simulate configs/pilots/ethereum-36s.yaml artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s artifacts/pilots/ethereum-36s/enriched/ethereum/history artifacts/pilots/ethereum-36s/enriched/ethereum/evaluation`
 
+Each completed raw pull also writes a dataset-level `.spice/source.json` under the target history
+or evaluation directory. Keeping provenance under a hidden metadata directory ensures block-file
+scans do not accidentally treat the manifest itself as data. The manifest records the provider,
+redacted provider reference, requested timestamp window, config path, and optional validation
+summary for that dataset directory.
+
+The composite `blocks acquire` workflow stages both `raw` and `enriched` datasets together. It
+accepts a shared `--rpc-provider` plus optional `--pull-rpc-provider` and
+`--enrich-rpc-provider` overrides. The staging namespace is anchored to the pull provider, while
+the enriched dataset manifest records the enrichment provider that filled `gas_limit`.
+
 The first pilot target is `Ethereum + 36s + LSTM`, using fixed chain block times and a 36-second maximum additional delay budget over next-block execution.
 
 Training writes a canonical artifact directory containing:
@@ -86,8 +97,11 @@ Run verification inside a dedicated `.venv` with project dependencies installed.
 - `python -m spice_temporal.cli blocks plan configs/pilots/ethereum-36s.yaml`
 - `python -m spice_temporal.cli blocks pull configs/pilots/ethereum-36s.yaml ethereum history --no-dry-run`
 - `python -m spice_temporal.cli blocks pull configs/pilots/ethereum-36s.yaml ethereum evaluation --no-dry-run`
+- `python -m spice_temporal.cli blocks stage configs/baseline.yaml ethereum history --rpc-provider publicnode --no-dry-run`
+- `python -m spice_temporal.cli blocks acquire configs/baseline.yaml ethereum history --pull-rpc-provider alchemy --enrich-rpc-provider publicnode --no-dry-run`
 - `python -m spice_temporal.cli blocks validate configs/pilots/ethereum-36s.yaml ethereum history`
 - `python -m spice_temporal.cli blocks validate configs/pilots/ethereum-36s.yaml ethereum evaluation`
+- `python -m spice_temporal.cli blocks promote configs/baseline.yaml ethereum history artifacts/staging/publicnode/raw/ethereum/history`
 - `python -m spice_temporal.cli blocks enrich configs/pilots/ethereum-36s.yaml ethereum <input-dir> <output-dir>`
 - `python -m spice_temporal.cli train configs/pilots/ethereum-36s.yaml <history-dataset-path> <artifact-dir> ethereum lstm 36`
 - `python -m spice_temporal.cli simulate configs/pilots/ethereum-36s.yaml <artifact-dir> <history-dataset-path> <evaluation-dataset-path>`

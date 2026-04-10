@@ -74,7 +74,9 @@ flowchart LR
 - [env.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/env.py)
 - [cryo.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/cryo.py)
 - [raw_validation.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/raw_validation.py)
-- [_alchemy_rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/_alchemy_rpc.py)
+- [_rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/_rpc.py)
+- [rpc_providers.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/rpc_providers.py)
+- [provenance.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/provenance.py)
 - [io.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/io.py)
 - [enrich.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/enrich.py)
 - [records.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/records.py)
@@ -126,7 +128,7 @@ Current defaults match the intended temporal setup:
 
 ## Data Ingestion and Enrichment
 
-### Raw Pulls
+### Raw Pulls And Staging
 
 [cryo.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/cryo.py) builds and runs `cryo` commands for history and evaluation-day pulls.
 
@@ -136,9 +138,15 @@ This module does one thing only:
 
 It does **not** modify the pulled schema and does **not** hide extra RPC hydration.
 
-[_alchemy_rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/_alchemy_rpc.py) is deliberately narrow infrastructure for the enrichment stage only.
+[rpc_providers.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/rpc_providers.py) resolves provider objects once at the acquisition boundary.
 
-It is internal implementation detail, not a public service layer and not part of the supported training or simulation API.
+The provider layer is intentionally generic:
+
+- `RpcProvider` is the one runtime contract for an EVM JSON-RPC source
+- `AcquisitionProviders` groups the pull and enrich provider roles for composite acquisition
+- supported providers are peers, not fallbacks
+
+[_rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/_rpc.py) is the deliberately narrow generic JSON-RPC client used only for enrichment hydration.
 
 [raw_validation.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/raw_validation.py) is the adjacent audit layer for completed raw pulls.
 
@@ -148,6 +156,13 @@ This module is intentionally separate from `cryo.py`:
 - validation stays read-only and rerunnable
 - pull integrity checks can be invoked explicitly or via an optional post-pull hook
 - raw files are never rewritten by the validator
+
+The acquisition path now distinguishes between:
+
+- canonical baseline datasets under `artifacts/.../raw/...`
+- provider-scoped staged datasets under `artifacts/staging/<provider>/raw/...`
+
+Promotion into baseline is explicit. Staged data must validate before it can become canonical baseline.
 
 ### Why Enrichment Exists
 
@@ -164,6 +179,15 @@ This separation matters:
 - loaders stay offline and pure
 - network IO stays out of the training/inference path
 
+The high-level `blocks acquire` workflow composes these two stages without collapsing them into one implementation concept:
+
+- stage raw blocks
+- validate raw if requested
+- enrich into a staged enriched dataset
+- persist provenance for both raw and enriched outputs
+
+That orchestration exists for operational convenience, but `pull` and `enrich` remain separate primitives.
+
 If `cryo` later exposes `gas_limit` directly in the block schema, `enrich.py` should be deleted rather than bypassed piecemeal.
 
 ### Loading
@@ -171,6 +195,8 @@ If `cryo` later exposes `gas_limit` directly in the block schema, `enrich.py` sh
 [io.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/io.py) loads files or directories of JSON/CSV/Parquet block data and normalizes them into `BlockRecord`.
 
 [records.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/records.py) intentionally contains only `BlockRecord`. The earlier example-level record types were removed because they did not scale cleanly.
+
+[provenance.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/provenance.py) writes dataset-level manifests under `.spice/source.json`. Keeping provenance in a hidden metadata directory ensures block-file scans never confuse manifests with block data.
 
 ## Temporal Semantics
 
@@ -534,12 +560,27 @@ Commands:
 
 - `blocks plan`
 - `blocks pull`
+- `blocks stage`
+- `blocks acquire`
 - `blocks validate`
+- `blocks promote`
 - `blocks enrich`
 - `train`
 - `simulate`
 
 `blocks pull` supports an optional `--validate-on-success` hook that runs the raw validator once after a successful completed segment pull.
+
+`blocks stage` is the provider-scoped raw acquisition path for temporary datasets.
+
+`blocks acquire` is the composite staged workflow. It accepts:
+
+- `--rpc-provider` as a shared default
+- `--pull-rpc-provider` as an optional raw acquisition override
+- `--enrich-rpc-provider` as an optional enrichment override
+
+Those provider roles are resolved once at the CLI boundary and passed through the workflow as explicit provider objects.
+
+`blocks promote` is the gate into canonical baseline storage. Promotion validates the staged raw dataset first and refuses promotion on validation errors.
 
 The CLI intentionally exposes only operational stages that correspond to the temporal-module workflow. There are no convenience aliases, deprecated commands, or compatibility shims.
 
@@ -552,11 +593,15 @@ There is no alternative legacy CLI path. `train` is the one canonical training c
 Supported high-level entrypoints:
 
 - `load_config(...)`
+- `_pull_blocks(...)`
+- `_stage_block_pull(...)`
+- `_acquire_blocks(...)`
+- `_promote_block_pull(...)`
 - `run_training_workflow(...)`
 - `load_artifact(...)`
 - `run_simulation_workflow(...)`
 
-Lower-level modules such as dataset assembly, feature engineering, PyTorch adapters, raw validation internals, and the internal Alchemy RPC client are implementation detail rather than supported public API.
+The supported operational API is provider-agnostic. Lower-level modules such as dataset assembly, feature engineering, PyTorch adapters, raw validation internals, and the generic JSON-RPC client remain implementation detail rather than stable public API.
 
 ## Testing Strategy
 
@@ -591,6 +636,8 @@ These are the most important invariants to preserve when modifying the codebase.
 - economic metrics are aggregate ratio-of-sums metrics.
 - `enrich.py` is the only place where gas-limit hydration occurs.
 - raw data loading and model training stay offline once enriched data exists.
+- dataset provenance lives under `.spice/source.json`, never alongside block files at dataset root.
+- canonical baseline replacement happens only through explicit promotion after validation.
 
 ## Extension Guidance
 

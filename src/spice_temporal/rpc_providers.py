@@ -35,6 +35,12 @@ class RpcProvider:
         return self.references[chain_name]
 
 
+@dataclass(frozen=True, slots=True)
+class AcquisitionProviders:
+    pull: RpcProvider
+    enrich: RpcProvider
+
+
 def _require_env_var(env: Mapping[str, str], env_var: str, *, provider_name: str) -> str:
     value = env.get(env_var)
     if value:
@@ -138,6 +144,27 @@ def resolve_rpc_provider(
         ) from exc
     builder = PROVIDER_BUILDERS[selected]
     return builder(os.environ if env is None else env, _coerce_chains(chains))
+
+
+def resolve_acquisition_providers(
+    provider_name: RpcProviderName | str | None = None,
+    *,
+    pull_provider_name: RpcProviderName | str | None = None,
+    enrich_provider_name: RpcProviderName | str | None = None,
+    chains: Iterable[ChainName] | None = None,
+    env: Mapping[str, str] | None = None,
+) -> AcquisitionProviders:
+    pull = resolve_rpc_provider(
+        pull_provider_name or provider_name,
+        chains=chains,
+        env=env,
+    )
+    enrich = resolve_rpc_provider(
+        enrich_provider_name or provider_name,
+        chains=chains,
+        env=env,
+    )
+    return AcquisitionProviders(pull=pull, enrich=enrich)
 
 
 def redact_sensitive_text(text: str, provider: RpcProvider) -> str:
