@@ -11,29 +11,8 @@ from spice_temporal.pipeline import (
     prepare_training_dataset,
     run_training,
 )
-from spice_temporal.records import BlockRecord
-
-
-def make_history_block(index: int) -> BlockRecord:
-    return BlockRecord(
-        block_number=index,
-        timestamp=EVALUATION_START_TS - 12 * (420 - index),
-        base_fee_per_gas=100 + ((index // 3) % 7),
-        gas_used=15_000_000 + (index % 1000),
-        gas_limit=30_000_000,
-        chain_id=1,
-    )
-
-
-def make_evaluation_block(index: int) -> BlockRecord:
-    return BlockRecord(
-        block_number=1_000 + index,
-        timestamp=EVALUATION_START_TS + 12 * index,
-        base_fee_per_gas=120 + ((index // 5) % 9),
-        gas_used=15_100_000 + (index % 1000),
-        gas_limit=30_000_000,
-        chain_id=1,
-    )
+from spice_temporal.specs import TrainingSpec
+from tests.support import make_evaluation_block, make_history_block
 
 
 class PipelineTestCase(unittest.TestCase):
@@ -42,18 +21,23 @@ class PipelineTestCase(unittest.TestCase):
 
     def test_prepare_training_dataset_enforces_target_anchor_count(self) -> None:
         blocks = [make_history_block(index) for index in range(420)]
-        prepared = prepare_training_dataset(
-            blocks,
+        spec = TrainingSpec(
             chain=ChainConfig(
                 name="ethereum",
                 chain_id=1,
                 block_time_seconds=12.0,
                 history_days=70,
             ),
+            model=ModelConfig(family="lstm"),
             max_delay_seconds=12,
             lookback_seconds=600,
             target_anchor_count=64,
-            split_config=SplitConfig(),
+            split=SplitConfig(),
+            training=TrainingConfig(device="cpu"),
+        )
+        prepared = prepare_training_dataset(
+            blocks,
+            spec=spec,
         )
         self.assertEqual(prepared.n_blocks_available, 420)
         self.assertEqual(prepared.n_examples_total, 64)
@@ -66,18 +50,23 @@ class PipelineTestCase(unittest.TestCase):
     def test_prepare_inference_dataset_uses_history_context(self) -> None:
         history_blocks = [make_history_block(index) for index in range(420)]
         evaluation_blocks = [make_evaluation_block(index) for index in range(720)]
-        training = prepare_training_dataset(
-            history_blocks,
+        spec = TrainingSpec(
             chain=ChainConfig(
                 name="ethereum",
                 chain_id=1,
                 block_time_seconds=12.0,
                 history_days=70,
             ),
+            model=ModelConfig(family="lstm"),
             max_delay_seconds=36,
             lookback_seconds=600,
             target_anchor_count=64,
-            split_config=SplitConfig(),
+            split=SplitConfig(),
+            training=TrainingConfig(device="cpu"),
+        )
+        training = prepare_training_dataset(
+            history_blocks,
+            spec=spec,
         )
         geometry = derive_dataset_geometry(
             lookback_seconds=600,
@@ -105,18 +94,24 @@ class PipelineTestCase(unittest.TestCase):
         try:
             result = run_training(
                 history_block_path=fixture,
-                chain=ChainConfig(
-                    name="ethereum",
-                    chain_id=1,
-                    block_time_seconds=12.0,
-                    history_days=70,
+                spec=TrainingSpec(
+                    chain=ChainConfig(
+                        name="ethereum",
+                        chain_id=1,
+                        block_time_seconds=12.0,
+                        history_days=70,
+                    ),
+                    model=ModelConfig(family="lstm"),
+                    max_delay_seconds=12,
+                    lookback_seconds=600,
+                    target_anchor_count=64,
+                    split=SplitConfig(),
+                    training=TrainingConfig(
+                        max_epochs=2,
+                        effective_batch_size=8,
+                        device="cpu",
+                    ),
                 ),
-                max_delay_seconds=12,
-                lookback_seconds=600,
-                target_anchor_count=64,
-                model_config=ModelConfig(family="lstm"),
-                training_config=TrainingConfig(max_epochs=2, effective_batch_size=8, device="cpu"),
-                split_config=SplitConfig(),
             )
         finally:
             fixture.unlink(missing_ok=True)

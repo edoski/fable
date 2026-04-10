@@ -12,7 +12,7 @@ def _hex_to_int(value: str) -> int:
 
 
 @dataclass(slots=True)
-class RpcClient:
+class AlchemyRpcClient:
     url: str
     timeout_seconds: float = 30.0
 

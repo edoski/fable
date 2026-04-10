@@ -8,9 +8,7 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-from spice_temporal.config import ChainConfig, ModelConfig, SplitConfig, TrainingConfig
 from spice_temporal.constants import EVALUATION_END_TS, EVALUATION_START_TS
-from spice_temporal.contracts import TemporalModel
 from spice_temporal.datasets import (
     DatasetGeometry,
     DatasetSplitIndices,
@@ -24,13 +22,14 @@ from spice_temporal.datasets import (
 )
 from spice_temporal.features import build_feature_table
 from spice_temporal.io import load_block_records
-from spice_temporal.models import build_model
+from spice_temporal.models import TemporalModel, build_model
 from spice_temporal.normalization import (
     StandardScaler,
     fit_standard_scaler,
     transform_feature_matrix,
 )
 from spice_temporal.records import BlockRecord
+from spice_temporal.specs import TrainingSpec
 from spice_temporal.torch_datasets import build_class_weights
 from spice_temporal.training import EpochMetrics, TrainingResult, evaluate_model, train_model
 
@@ -81,20 +80,16 @@ class TrainingRunResult:
 def prepare_training_dataset(
     blocks: list[BlockRecord],
     *,
-    chain: ChainConfig,
-    max_delay_seconds: int,
-    lookback_seconds: int,
-    target_anchor_count: int,
-    split_config: SplitConfig,
+    spec: TrainingSpec,
 ) -> PreparedTrainingDataset:
     geometry = derive_dataset_geometry(
-        lookback_seconds=lookback_seconds,
-        max_delay_seconds=max_delay_seconds,
-        block_time_seconds=chain.block_time_seconds,
+        lookback_seconds=spec.lookback_seconds,
+        max_delay_seconds=spec.max_delay_seconds,
+        block_time_seconds=spec.chain.block_time_seconds,
     )
     trimmed_blocks = trim_history_blocks_for_target(
         blocks,
-        target_anchor_count=target_anchor_count,
+        target_anchor_count=spec.target_anchor_count,
         geometry=geometry,
     )
     feature_table = build_feature_table(trimmed_blocks)
@@ -103,13 +98,13 @@ def prepare_training_dataset(
         lookback_steps=geometry.lookback_steps,
         action_count=geometry.action_count,
     )
-    if store.n_samples != target_anchor_count:
+    if store.n_samples != spec.target_anchor_count:
         raise RuntimeError(
             "Training dataset preparation produced an unexpected number of anchors; "
-            f"expected {target_anchor_count}, got {store.n_samples}"
+            f"expected {spec.target_anchor_count}, got {store.n_samples}"
         )
 
-    split_indices = chronological_split_indices(store.n_samples, split_config)
+    split_indices = chronological_split_indices(store.n_samples, spec.split)
     scaler = fit_standard_scaler(
         store.feature_matrix,
         anchor_row_indices=store.anchor_row_indices,
@@ -171,31 +166,21 @@ def prepare_inference_dataset(
 def run_training(
     history_block_path: Path,
     *,
-    chain: ChainConfig,
-    max_delay_seconds: int,
-    lookback_seconds: int,
-    target_anchor_count: int,
-    model_config: ModelConfig,
-    training_config: TrainingConfig,
-    split_config: SplitConfig,
+    spec: TrainingSpec,
 ) -> TrainingRunResult:
     blocks = load_block_records(history_block_path)
     prepared = prepare_training_dataset(
         blocks,
-        chain=chain,
-        max_delay_seconds=max_delay_seconds,
-        lookback_seconds=lookback_seconds,
-        target_anchor_count=target_anchor_count,
-        split_config=split_config,
+        spec=spec,
     )
-    model = build_model(prepared.n_features, prepared.action_count, model_config)
+    model = build_model(prepared.n_features, prepared.action_count, spec.model)
     training_result = train_model(
         model,
         store=prepared.store,
         train_sample_indices=prepared.split_indices.train,
         validation_sample_indices=prepared.split_indices.validation,
         lookback_steps=prepared.geometry.lookback_steps,
-        training_config=training_config,
+        training_config=spec.training,
     )
     class_weights = build_class_weights(
         prepared.store.class_labels,
@@ -207,7 +192,7 @@ def run_training(
         store=prepared.store,
         sample_indices=prepared.split_indices.test,
         lookback_steps=prepared.geometry.lookback_steps,
-        training_config=training_config,
+        training_config=spec.training,
         class_weights=class_weights,
     )
     return TrainingRunResult(

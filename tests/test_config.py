@@ -1,7 +1,11 @@
+import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 from spice_temporal.config import ExperimentConfig
+from tests.support import build_test_config
 
 
 class ConfigTestCase(unittest.TestCase):
@@ -29,6 +33,24 @@ class ConfigTestCase(unittest.TestCase):
         self.assertEqual(config.chains[0].name, "ethereum")
         self.assertEqual(config.chains[0].block_time_seconds, 12.0)
         self.assertEqual(config.chains[0].history_days, 1)
+
+    def test_config_rejects_invalid_split_sum(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "config.yaml"
+            config = build_test_config()
+            config["split"] = {"train_fraction": 0.8, "validation_fraction": 0.2}
+            path.write_text(yaml.safe_dump(config), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must be less than 1"):
+                ExperimentConfig.from_yaml(path)
+
+    def test_config_rejects_unknown_top_level_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "config.yaml"
+            config = build_test_config()
+            config["extra"] = True
+            path.write_text(yaml.safe_dump(config), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unknown top-level keys"):
+                ExperimentConfig.from_yaml(path)
 
 
 if __name__ == "__main__":

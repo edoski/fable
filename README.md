@@ -16,10 +16,11 @@ full SPICE framework.
 ## Architecture
 
 - `config.py`: typed experiment, training, and chain configuration.
+- `api.py`: the supported high-level Python API for training and simulation workflows.
 - `contracts.py`: typed boundary contracts for raw rows, tensor batches, and model outputs.
 - `env.py`: local `.env` loading and Alchemy URL resolution.
 - `cryo.py`: cryo pull planning and execution.
-- `rpc.py`: enrichment-only JSON-RPC client used to hydrate missing `gas_limit`.
+- `_alchemy_rpc.py`: internal enrichment-only JSON-RPC client used to hydrate missing `gas_limit`.
 - `io.py` and `enrich.py`: block-dataset loading plus `gas_limit` enrichment for cryo output.
 - `features.py`, `datasets.py`, and `normalization.py`: feature engineering, array-backed temporal dataset stores, chronological split indices, and exact train-only scaling over overlapping windows.
 - `models.py`, `torch_datasets.py`, `training.py`, and `evaluation.py`: PyTorch models, lazy sequence slicing, training loop, inverse-frequency class weighting, and ratio-of-sums economic metrics.
@@ -27,7 +28,7 @@ full SPICE framework.
 - `artifacts.py`: canonical training artifact manifest plus model save/load helpers.
 - `reporting.py`: structured JSON report artifacts for training and simulation runs.
 - `simulation.py`: paper-style evaluation-day temporal simulation.
-- `cli.py`: Typer entrypoints for plan, pull, validate, enrich, train, and simulate commands.
+- `cli.py`: Typer entrypoints for `blocks ...`, `train`, and `simulate`.
 
 ## Recommended environment
 
@@ -49,10 +50,10 @@ full SPICE framework.
 
 Use the dedicated pilot config to validate the full raw-data-to-training-and-simulation path before larger pulls:
 
-1. `python -m spice_temporal.cli pull-blocks configs/pilots/ethereum-36s.yaml ethereum history --no-dry-run`
-2. `python -m spice_temporal.cli enrich-blocks configs/pilots/ethereum-36s.yaml ethereum artifacts/pilots/ethereum-36s/raw/ethereum/history artifacts/pilots/ethereum-36s/enriched/ethereum/history`
-3. `python -m spice_temporal.cli pull-blocks configs/pilots/ethereum-36s.yaml ethereum evaluation --no-dry-run`
-4. `python -m spice_temporal.cli enrich-blocks configs/pilots/ethereum-36s.yaml ethereum artifacts/pilots/ethereum-36s/raw/ethereum/evaluation artifacts/pilots/ethereum-36s/enriched/ethereum/evaluation`
+1. `python -m spice_temporal.cli blocks pull configs/pilots/ethereum-36s.yaml ethereum history --no-dry-run`
+2. `python -m spice_temporal.cli blocks enrich configs/pilots/ethereum-36s.yaml ethereum artifacts/pilots/ethereum-36s/raw/ethereum/history artifacts/pilots/ethereum-36s/enriched/ethereum/history`
+3. `python -m spice_temporal.cli blocks pull configs/pilots/ethereum-36s.yaml ethereum evaluation --no-dry-run`
+4. `python -m spice_temporal.cli blocks enrich configs/pilots/ethereum-36s.yaml ethereum artifacts/pilots/ethereum-36s/raw/ethereum/evaluation artifacts/pilots/ethereum-36s/enriched/ethereum/evaluation`
 5. `python -m spice_temporal.cli train configs/pilots/ethereum-36s.yaml artifacts/pilots/ethereum-36s/enriched/ethereum/history artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s ethereum lstm 36`
 6. `python -m spice_temporal.cli simulate configs/pilots/ethereum-36s.yaml artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s artifacts/pilots/ethereum-36s/enriched/ethereum/history artifacts/pilots/ethereum-36s/enriched/ethereum/evaluation`
 
@@ -71,16 +72,45 @@ Training writes a canonical artifact directory containing:
 - `pyright`
 - `PYTHONPATH=src pytest -q`
 
-Typing is intentionally boundary-focused for now rather than repo-wide strict.
+Run verification inside a dedicated `.venv` with project dependencies installed.
 
 ## Useful commands
 
-- `python -m spice_temporal.cli plan-pull configs/baseline.yaml`
-- `python -m spice_temporal.cli plan-pull configs/pilots/ethereum-36s.yaml`
-- `python -m spice_temporal.cli pull-blocks configs/pilots/ethereum-36s.yaml ethereum history --no-dry-run`
-- `python -m spice_temporal.cli pull-blocks configs/pilots/ethereum-36s.yaml ethereum evaluation --no-dry-run`
-- `python -m spice_temporal.cli validate-pull configs/pilots/ethereum-36s.yaml ethereum history`
-- `python -m spice_temporal.cli validate-pull configs/pilots/ethereum-36s.yaml ethereum evaluation`
-- `python -m spice_temporal.cli enrich-blocks configs/pilots/ethereum-36s.yaml ethereum <input-dir> <output-dir>`
+- `python -m spice_temporal.cli blocks plan configs/baseline.yaml`
+- `python -m spice_temporal.cli blocks plan configs/pilots/ethereum-36s.yaml`
+- `python -m spice_temporal.cli blocks pull configs/pilots/ethereum-36s.yaml ethereum history --no-dry-run`
+- `python -m spice_temporal.cli blocks pull configs/pilots/ethereum-36s.yaml ethereum evaluation --no-dry-run`
+- `python -m spice_temporal.cli blocks validate configs/pilots/ethereum-36s.yaml ethereum history`
+- `python -m spice_temporal.cli blocks validate configs/pilots/ethereum-36s.yaml ethereum evaluation`
+- `python -m spice_temporal.cli blocks enrich configs/pilots/ethereum-36s.yaml ethereum <input-dir> <output-dir>`
 - `python -m spice_temporal.cli train configs/pilots/ethereum-36s.yaml <history-dataset-path> <artifact-dir> ethereum lstm 36`
 - `python -m spice_temporal.cli simulate configs/pilots/ethereum-36s.yaml <artifact-dir> <history-dataset-path> <evaluation-dataset-path>`
+
+## Python API
+
+The only supported Python API surface is [`spice_temporal.api`](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/api.py).
+
+```python
+from pathlib import Path
+
+from spice_temporal.api import load_artifact, load_config, run_simulation_workflow, run_training_workflow
+
+config = load_config(Path("configs/pilots/ethereum-36s.yaml"))
+train_report = run_training_workflow(
+    config,
+    Path("artifacts/pilots/ethereum-36s/enriched/ethereum/history"),
+    Path("artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s"),
+    "ethereum",
+    "lstm",
+    36,
+)
+artifact = load_artifact(Path("artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s"))
+simulation_report = run_simulation_workflow(
+    config,
+    Path("artifacts/pilots/ethereum-36s/runs/ethereum/lstm-36s"),
+    Path("artifacts/pilots/ethereum-36s/enriched/ethereum/history"),
+    Path("artifacts/pilots/ethereum-36s/enriched/ethereum/evaluation"),
+)
+```
+
+Lower-level modules remain internal implementation details and may change without notice.

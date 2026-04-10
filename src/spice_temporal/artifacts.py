@@ -9,11 +9,11 @@ from pathlib import Path
 import torch
 
 from spice_temporal.config import ChainConfig, ModelConfig
-from spice_temporal.contracts import TemporalModel
 from spice_temporal.features import FEATURE_NAMES
-from spice_temporal.models import build_model
+from spice_temporal.models import TemporalModel, build_model
 from spice_temporal.normalization import StandardScaler
 from spice_temporal.pipeline import PreparedTrainingDataset
+from spice_temporal.specs import TrainingSpec
 
 ARTIFACT_MANIFEST_FILENAME = "artifact.json"
 MODEL_STATE_FILENAME = "model.pt"
@@ -45,23 +45,19 @@ class LoadedTrainingArtifact:
 def build_training_artifact_manifest(
     prepared: PreparedTrainingDataset,
     *,
-    chain: ChainConfig,
-    max_delay_seconds: int,
-    lookback_seconds: int,
-    target_anchor_count: int,
-    model_config: ModelConfig,
+    spec: TrainingSpec,
 ) -> TrainingArtifactManifest:
     return TrainingArtifactManifest(
-        chain=chain,
-        max_delay_seconds=max_delay_seconds,
-        lookback_seconds=lookback_seconds,
-        target_anchor_count=target_anchor_count,
+        chain=spec.chain,
+        max_delay_seconds=spec.max_delay_seconds,
+        lookback_seconds=spec.lookback_seconds,
+        target_anchor_count=spec.target_anchor_count,
         lookback_steps=prepared.geometry.lookback_steps,
         max_extra_wait_steps=prepared.geometry.max_extra_wait_steps,
         action_count=prepared.geometry.action_count,
         n_features=prepared.n_features,
         feature_names=list(FEATURE_NAMES),
-        model_config=model_config,
+        model_config=spec.model,
         scaler=prepared.scaler,
     )
 

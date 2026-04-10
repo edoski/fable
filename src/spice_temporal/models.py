@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import math
+from abc import ABC, abstractmethod
 
 import torch
 from torch import nn
 
-from spice_temporal.config import ModelConfig
-from spice_temporal.contracts import ModelOutputs, TemporalModel
+from spice_temporal.config import ModelConfig, ModelFamily
+from spice_temporal.contracts import ModelOutputs
 
 
 class MLPHead(nn.Module):
@@ -41,7 +42,26 @@ class SinusoidalPositionalEncoding(nn.Module):
         return inputs + self.pe[:, : inputs.size(1)]
 
 
-class LSTMBaseline(nn.Module):
+class TemporalModel(nn.Module, ABC):
+    @abstractmethod
+    def forward(self, inputs: torch.Tensor) -> ModelOutputs:
+        raise NotImplementedError
+
+
+class TemporalOutputHead(nn.Module):
+    def __init__(self, hidden_dim: int, action_count: int, head_hidden_dim: int) -> None:
+        super().__init__()
+        self.classifier = MLPHead(hidden_dim, head_hidden_dim, action_count)
+        self.regressor = MLPHead(hidden_dim, head_hidden_dim, 1)
+
+    def forward(self, encoded: torch.Tensor) -> ModelOutputs:
+        return ModelOutputs(
+            logits=self.classifier(encoded),
+            fee_hat=self.regressor(encoded).squeeze(-1),
+        )
+
+
+class LSTMBaseline(TemporalModel):
     def __init__(self, n_features: int, action_count: int, config: ModelConfig) -> None:
         super().__init__()
         self.input_projection = nn.Linear(n_features, config.input_projection_dim)
@@ -52,20 +72,20 @@ class LSTMBaseline(nn.Module):
             dropout=config.dropout if config.num_layers > 1 else 0.0,
             batch_first=True,
         )
-        self.classifier = MLPHead(config.hidden_size, config.head_hidden_dim, action_count)
-        self.regressor = MLPHead(config.hidden_size, config.head_hidden_dim, 1)
+        self.output_head = TemporalOutputHead(
+            config.hidden_size,
+            action_count,
+            config.head_hidden_dim,
+        )
 
     def forward(self, inputs: torch.Tensor) -> ModelOutputs:
         projected = self.input_projection(inputs)
         outputs, _ = self.backbone(projected)
         last_state = outputs[:, -1, :]
-        return ModelOutputs(
-            logits=self.classifier(last_state),
-            fee_hat=self.regressor(last_state).squeeze(-1),
-        )
+        return self.output_head(last_state)
 
 
-class TransformerBaseline(nn.Module):
+class TransformerBaseline(TemporalModel):
     def __init__(self, n_features: int, action_count: int, config: ModelConfig) -> None:
         super().__init__()
         self.input_projection = nn.Linear(n_features, config.d_model)
@@ -79,20 +99,20 @@ class TransformerBaseline(nn.Module):
             batch_first=True,
         )
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=config.transformer_layers)
-        self.classifier = MLPHead(config.d_model, config.head_hidden_dim, action_count)
-        self.regressor = MLPHead(config.d_model, config.head_hidden_dim, 1)
+        self.output_head = TemporalOutputHead(
+            config.d_model,
+            action_count,
+            config.head_hidden_dim,
+        )
 
     def forward(self, inputs: torch.Tensor) -> ModelOutputs:
         projected = self.input_projection(inputs)
         encoded = self.encoder(self.position_encoding(projected))
         last_state = encoded[:, -1, :]
-        return ModelOutputs(
-            logits=self.classifier(last_state),
-            fee_hat=self.regressor(last_state).squeeze(-1),
-        )
+        return self.output_head(last_state)
 
 
-class TransformerLSTMBaseline(nn.Module):
+class TransformerLSTMBaseline(TemporalModel):
     def __init__(self, n_features: int, action_count: int, config: ModelConfig) -> None:
         super().__init__()
         self.input_projection = nn.Linear(n_features, config.d_model)
@@ -113,26 +133,26 @@ class TransformerLSTMBaseline(nn.Module):
             dropout=config.dropout if config.num_layers > 2 else 0.0,
             batch_first=True,
         )
-        self.classifier = MLPHead(config.hidden_size, config.head_hidden_dim, action_count)
-        self.regressor = MLPHead(config.hidden_size, config.head_hidden_dim, 1)
+        self.output_head = TemporalOutputHead(
+            config.hidden_size,
+            action_count,
+            config.head_hidden_dim,
+        )
 
     def forward(self, inputs: torch.Tensor) -> ModelOutputs:
         projected = self.input_projection(inputs)
         encoded = self.encoder(self.position_encoding(projected))
         recurrent, _ = self.lstm(encoded)
         last_state = recurrent[:, -1, :]
-        return ModelOutputs(
-            logits=self.classifier(last_state),
-            fee_hat=self.regressor(last_state).squeeze(-1),
-        )
+        return self.output_head(last_state)
 
 
 def build_model(n_features: int, action_count: int, config: ModelConfig) -> TemporalModel:
     family = config.family
-    if family == "lstm":
+    if family is ModelFamily.LSTM:
         return LSTMBaseline(n_features, action_count, config)
-    if family == "transformer":
+    if family is ModelFamily.TRANSFORMER:
         return TransformerBaseline(n_features, action_count, config)
-    if family == "transformer_lstm":
+    if family is ModelFamily.TRANSFORMER_LSTM:
         return TransformerLSTMBaseline(n_features, action_count, config)
     raise ValueError(f"Unsupported model family: {family}")

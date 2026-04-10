@@ -14,20 +14,9 @@ from spice_temporal.artifacts import (
     write_training_artifact,
 )
 from spice_temporal.config import ChainConfig, ModelConfig, SplitConfig, TrainingConfig
-from spice_temporal.constants import EVALUATION_START_TS
 from spice_temporal.pipeline import run_training
-from spice_temporal.records import BlockRecord
-
-
-def make_history_block(index: int) -> BlockRecord:
-    return BlockRecord(
-        block_number=index,
-        timestamp=EVALUATION_START_TS - 12 * (420 - index),
-        base_fee_per_gas=100 + ((index // 3) % 7),
-        gas_used=15_000_000 + (index % 1000),
-        gas_limit=30_000_000,
-        chain_id=1,
-    )
+from spice_temporal.specs import TrainingSpec
+from tests.support import make_history_block
 
 
 class ArtifactRoundTripTestCase(unittest.TestCase):
@@ -39,33 +28,27 @@ class ArtifactRoundTripTestCase(unittest.TestCase):
                 json.dumps([asdict(make_history_block(index)) for index in range(420)]),
                 encoding="utf-8",
             )
-            result = run_training(
-                history_block_path=history_blocks_path,
+            spec = TrainingSpec(
                 chain=ChainConfig(
                     name="ethereum",
                     chain_id=1,
                     block_time_seconds=12.0,
                     history_days=1,
                 ),
+                model=ModelConfig(family="lstm"),
                 max_delay_seconds=36,
                 lookback_seconds=600,
                 target_anchor_count=64,
-                model_config=ModelConfig(family="lstm"),
-                training_config=TrainingConfig(max_epochs=2, effective_batch_size=8, device="cpu"),
-                split_config=SplitConfig(),
+                split=SplitConfig(),
+                training=TrainingConfig(max_epochs=2, effective_batch_size=8, device="cpu"),
+            )
+            result = run_training(
+                history_block_path=history_blocks_path,
+                spec=spec,
             )
             manifest = build_training_artifact_manifest(
                 result.prepared,
-                chain=ChainConfig(
-                    name="ethereum",
-                    chain_id=1,
-                    block_time_seconds=12.0,
-                    history_days=1,
-                ),
-                max_delay_seconds=36,
-                lookback_seconds=600,
-                target_anchor_count=64,
-                model_config=ModelConfig(family="lstm"),
+                spec=spec,
             )
             artifact_dir = tmp_path / "artifact"
             write_training_artifact(artifact_dir, manifest=manifest, model=result.model)

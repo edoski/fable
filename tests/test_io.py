@@ -11,18 +11,7 @@ from spice_temporal.io import (
     parse_enriched_block_row,
     write_rows,
 )
-from spice_temporal.records import BlockRecord
-
-
-def make_block(index: int, *, chain_id: int = 1) -> BlockRecord:
-    return BlockRecord(
-        block_number=index,
-        timestamp=1_700_000_000 + 12 * index,
-        base_fee_per_gas=100 + (index % 5),
-        gas_used=15_000_000 + index,
-        gas_limit=30_000_000,
-        chain_id=chain_id,
-    )
+from tests.support import make_block
 
 
 class BlockIoTestCase(unittest.TestCase):

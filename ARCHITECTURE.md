@@ -69,11 +69,12 @@ flowchart LR
 
 ### Core Modules
 
+- [api.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/api.py)
 - [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/config.py)
 - [env.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/env.py)
 - [cryo.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/cryo.py)
 - [raw_validation.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/raw_validation.py)
-- [rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/rpc.py)
+- [_alchemy_rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/_alchemy_rpc.py)
 - [io.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/io.py)
 - [enrich.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/enrich.py)
 - [records.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/records.py)
@@ -97,7 +98,10 @@ The entire runtime contract starts with [config.py](/Users/edo/Documents/Obsidia
 
 Important config types:
 
+- `BlockSegment`
+- `ChainName`
 - `ChainConfig`
+- `ModelFamily`
 - `PullConfig`
 - `SplitConfig`
 - `TrainingConfig`
@@ -132,9 +136,9 @@ This module does one thing only:
 
 It does **not** modify the pulled schema and does **not** hide extra RPC hydration.
 
-[rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/rpc.py) is deliberately narrow infrastructure for the enrichment stage only.
+[_alchemy_rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/_alchemy_rpc.py) is deliberately narrow infrastructure for the enrichment stage only.
 
-It is **not** a public service layer and it is **not** part of the training or simulation interface.
+It is internal implementation detail, not a public service layer and not part of the supported training or simulation API.
 
 [raw_validation.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/raw_validation.py) is the adjacent audit layer for completed raw pulls.
 
@@ -528,18 +532,31 @@ Those are the fields to inspect when comparing experiment runs.
 
 Commands:
 
-- `plan-pull`
-- `pull-blocks`
-- `validate-pull`
-- `enrich-blocks`
+- `blocks plan`
+- `blocks pull`
+- `blocks validate`
+- `blocks enrich`
 - `train`
 - `simulate`
 
-`pull-blocks` also supports an optional `--validate-on-success` hook that runs the raw validator once after a successful completed segment pull.
+`blocks pull` supports an optional `--validate-on-success` hook that runs the raw validator once after a successful completed segment pull.
 
 The CLI intentionally exposes only operational stages that correspond to the temporal-module workflow. There are no convenience aliases, deprecated commands, or compatibility shims.
 
 There is no alternative legacy CLI path. `train` is the one canonical training command and `simulate` is the one canonical paper-comparison command.
+
+## Python API
+
+[api.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice-temporal-baseline/src/spice_temporal/api.py) is the only supported Python API surface.
+
+Supported high-level entrypoints:
+
+- `load_config(...)`
+- `run_training_workflow(...)`
+- `load_artifact(...)`
+- `run_simulation_workflow(...)`
+
+Lower-level modules such as dataset assembly, feature engineering, PyTorch adapters, raw validation internals, and the internal Alchemy RPC client are implementation detail rather than supported public API.
 
 ## Testing Strategy
 
@@ -554,7 +571,7 @@ The test suite in [tests/](/Users/edo/Documents/Obsidian/the-vault/university/Th
 - inverse-frequency class weights
 - training/evaluation aggregation
 - artifact roundtrip
-- CLI smoke flow for `train` and `simulate`
+- CLI smoke flow for `blocks ...`, `train`, and `simulate`
 
 The verification bar is:
 

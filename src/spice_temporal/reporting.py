@@ -13,6 +13,7 @@ from spice_temporal.pipeline import (
     TrainingRunResult,
 )
 from spice_temporal.simulation import SimulationSummary
+from spice_temporal.specs import SimulationSpec, TrainingSpec
 
 
 @dataclass(slots=True)
@@ -99,6 +100,7 @@ class SimulationReport:
 def build_training_run_report(
     result: TrainingRunResult,
     *,
+    spec: TrainingSpec,
     manifest: TrainingArtifactManifest,
     prepared: PreparedTrainingDataset,
     artifact_dir: Path,
@@ -109,13 +111,13 @@ def build_training_run_report(
     return TrainingRunReport(
         history_block_path=str(history_block_path),
         artifact_dir=str(artifact_dir),
-        chain=manifest.chain.name,
-        family=manifest.model_config.family,
-        max_delay_seconds=manifest.max_delay_seconds,
+        chain=spec.chain.name,
+        family=spec.model.family,
+        max_delay_seconds=spec.max_delay_seconds,
         device_requested=device_requested,
-        lookback_seconds=manifest.lookback_seconds,
-        block_time_seconds=manifest.chain.block_time_seconds,
-        target_anchor_count=manifest.target_anchor_count,
+        lookback_seconds=spec.lookback_seconds,
+        block_time_seconds=spec.chain.block_time_seconds,
+        target_anchor_count=spec.target_anchor_count,
         n_blocks_available=prepared.n_blocks_available,
         n_blocks_used=prepared.n_blocks_used,
         n_examples_total=prepared.n_examples_total,
@@ -146,9 +148,7 @@ def build_simulation_report(
     evaluation_block_path: Path,
     prepared: PreparedInferenceDataset,
     simulation: SimulationSummary,
-    simulation_window_seconds: int,
-    arrival_rate_per_second: float,
-    repetitions: int,
+    spec: SimulationSpec,
 ) -> SimulationReport:
     manifest = loaded_artifact.manifest
     return SimulationReport(
@@ -163,9 +163,9 @@ def build_simulation_report(
         lookback_steps=manifest.lookback_steps,
         max_extra_wait_steps=manifest.max_extra_wait_steps,
         action_count=manifest.action_count,
-        simulation_window_seconds=simulation_window_seconds,
-        arrival_rate_per_second=arrival_rate_per_second,
-        repetitions=repetitions,
+        simulation_window_seconds=spec.window_seconds,
+        arrival_rate_per_second=spec.arrival_rate_per_second,
+        repetitions=spec.repetitions,
         n_history_context_blocks=prepared.n_history_context_blocks,
         n_evaluation_blocks=prepared.n_evaluation_blocks,
         n_examples_total=prepared.n_examples_total,

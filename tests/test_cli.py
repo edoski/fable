@@ -1,12 +1,11 @@
 import json
-import subprocess
 import tempfile
 import unittest
 from dataclasses import asdict
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-import yaml
 from typer.testing import CliRunner
 
 from spice_temporal.artifacts import SIMULATION_REPORT_FILENAME, TRAIN_REPORT_FILENAME
@@ -14,76 +13,7 @@ from spice_temporal.cli import app
 from spice_temporal.constants import EVALUATION_START_TS
 from spice_temporal.io import write_rows
 from spice_temporal.raw_validation import RawPullValidationReport
-from spice_temporal.records import BlockRecord
-
-
-def make_history_block(index: int) -> BlockRecord:
-    return BlockRecord(
-        block_number=index,
-        timestamp=EVALUATION_START_TS - 12 * (420 - index),
-        base_fee_per_gas=100 + ((index // 3) % 7),
-        gas_used=15_000_000 + (index % 1000),
-        gas_limit=30_000_000,
-        chain_id=1,
-    )
-
-
-def make_evaluation_block(index: int) -> BlockRecord:
-    return BlockRecord(
-        block_number=1_000 + index,
-        timestamp=EVALUATION_START_TS + 12 * index,
-        base_fee_per_gas=120 + ((index // 5) % 9),
-        gas_used=15_100_000 + (index % 1000),
-        gas_limit=30_000_000,
-        chain_id=1,
-    )
-
-
-def write_config(path: Path, *, output_root: Path | None = None) -> None:
-    config = {
-        "output_root": str(output_root or Path("./artifacts/test")),
-        "max_delay_seconds": [36],
-        "lookback_seconds": 600,
-        "target_anchor_count": 64,
-        "pull": {
-            "requests_per_second": 10,
-            "max_concurrent_requests": 2,
-            "max_concurrent_chunks": 1,
-        },
-        "split": {
-            "train_fraction": 0.8,
-            "validation_fraction": 0.1,
-            "test_fraction": 0.1,
-        },
-        "training": {
-            "learning_rate": 0.0003,
-            "weight_decay": 0.01,
-            "effective_batch_size": 8,
-            "max_epochs": 2,
-            "early_stopping_patience": 2,
-            "early_stopping_min_delta": 0.0001,
-            "gradient_clip_norm": 1.0,
-            "alpha": 1.0,
-            "beta": 0.25,
-            "device": "cpu",
-            "seed": 2026,
-        },
-        "simulation": {
-            "window_seconds": 600,
-            "arrival_rate_per_second": 0.02,
-            "repetitions": 3,
-            "seed": 2026,
-        },
-        "chains": [
-            {
-                "name": "ethereum",
-                "chain_id": 1,
-                "block_time_seconds": 12.0,
-                "history_days": 1,
-            }
-        ],
-    }
-    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+from tests.support import make_evaluation_block, make_history_block, write_config
 
 
 class CliTrainingTestCase(unittest.TestCase):
@@ -95,7 +25,7 @@ class CliTrainingTestCase(unittest.TestCase):
             write_config(config_path, output_root=tmp_path / "artifacts")
             result = runner.invoke(
                 app,
-                ["pull-blocks", str(config_path), "ethereum", "invalid-segment"],
+                ["blocks", "pull", str(config_path), "ethereum", "invalid-segment"],
             )
 
         self.assertNotEqual(result.exit_code, 0)
@@ -233,8 +163,10 @@ class CliTrainingTestCase(unittest.TestCase):
                 ],
             )
 
-            result = runner.invoke(app, ["validate-pull", str(config_path), "ethereum", "history"])
-
+            result = runner.invoke(
+                app,
+                ["blocks", "validate", str(config_path), "ethereum", "history"],
+            )
         self.assertEqual(result.exit_code, 0, msg=result.stdout)
         self.assertIn("status=clean", result.stdout)
 
@@ -250,20 +182,18 @@ class CliTrainingTestCase(unittest.TestCase):
                 expected_end_timestamp=2,
             )
 
-            with (
-                patch("spice_temporal.cli.run_cryo") as run_cryo_mock,
-                patch("spice_temporal.cli.validate_raw_pull", return_value=report) as validate_mock,
-            ):
-                run_cryo_mock.return_value = subprocess.CompletedProcess(
-                    args=["cryo"],
-                    returncode=0,
-                    stdout="",
-                    stderr="",
-                )
+            with patch(
+                "spice_temporal.cli._pull_blocks",
+                return_value=SimpleNamespace(
+                    process=SimpleNamespace(stdout="", stderr=""),
+                    validation=report,
+                ),
+            ) as pull_blocks_mock:
                 result = runner.invoke(
                     app,
                     [
-                        "pull-blocks",
+                        "blocks",
+                        "pull",
                         str(config_path),
                         "ethereum",
                         "history",
@@ -273,7 +203,7 @@ class CliTrainingTestCase(unittest.TestCase):
                 )
 
         self.assertEqual(result.exit_code, 0, msg=result.stdout)
-        validate_mock.assert_called_once()
+        pull_blocks_mock.assert_called_once()
 
     def test_pull_blocks_validate_on_success_returns_non_zero_on_validation_error(self) -> None:
         runner = CliRunner()
@@ -289,20 +219,18 @@ class CliTrainingTestCase(unittest.TestCase):
                 errors=["gap"],
             )
 
-            with (
-                patch("spice_temporal.cli.run_cryo") as run_cryo_mock,
-                patch("spice_temporal.cli.validate_raw_pull", return_value=report),
+            with patch(
+                "spice_temporal.cli._pull_blocks",
+                return_value=SimpleNamespace(
+                    process=SimpleNamespace(stdout="", stderr=""),
+                    validation=report,
+                ),
             ):
-                run_cryo_mock.return_value = subprocess.CompletedProcess(
-                    args=["cryo"],
-                    returncode=0,
-                    stdout="",
-                    stderr="",
-                )
                 result = runner.invoke(
                     app,
                     [
-                        "pull-blocks",
+                        "blocks",
+                        "pull",
                         str(config_path),
                         "ethereum",
                         "history",

@@ -5,12 +5,10 @@ from __future__ import annotations
 import numpy as np
 import torch
 from numpy.typing import NDArray
-from torch.utils.data import DataLoader
 
-from spice_temporal.contracts import TemporalModel
+from spice_temporal._runtime import build_sequence_loader, resolve_device
 from spice_temporal.datasets import TemporalDatasetStore
-from spice_temporal.torch_datasets import SequenceDataset
-from spice_temporal.training import choose_microbatch_size, resolve_device
+from spice_temporal.models import TemporalModel
 
 IntVector = NDArray[np.int64]
 
@@ -30,11 +28,12 @@ def predict_class_offsets(
     resolved_device = resolve_device(device)
     model.to(resolved_device)
     model.eval()
-    microbatch_size = choose_microbatch_size(effective_batch_size, resolved_device)
-    loader = DataLoader(
-        SequenceDataset(store, sample_indices, lookback_steps=lookback_steps),
-        batch_size=microbatch_size,
-        shuffle=False,
+    loader = build_sequence_loader(
+        store,
+        sample_indices,
+        lookback_steps=lookback_steps,
+        effective_batch_size=effective_batch_size,
+        device=resolved_device,
     )
 
     predictions: list[int] = []

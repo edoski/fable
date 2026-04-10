@@ -185,31 +185,16 @@ def _summarize_file(
     if not block_numbers:
         raise ValueError(f"Raw block file is empty: {path.name}")
 
-    below_start_count = 0
-    above_end_count = 0
-    first_in_range_seen = False
-    above_end_started = False
-    internal_timestamp_violation = False
-    for timestamp in timestamps:
-        if timestamp < expected_start_timestamp:
-            below_start_count += 1
-            if first_in_range_seen:
-                internal_timestamp_violation = True
-        elif timestamp >= expected_end_timestamp:
-            above_end_count += 1
-            above_end_started = True
-        else:
-            if above_end_started:
-                internal_timestamp_violation = True
-            first_in_range_seen = True
-
-    duplicate_count = 0
-    non_sequential_transition_count = 0
-    for left, right in zip(block_numbers, block_numbers[1:], strict=False):
-        if right == left:
-            duplicate_count += 1
-        elif right != left + 1:
-            non_sequential_transition_count += 1
+    (
+        below_start_count,
+        above_end_count,
+        internal_timestamp_violation,
+    ) = _scan_timestamp_window(
+        timestamps,
+        expected_start_timestamp=expected_start_timestamp,
+        expected_end_timestamp=expected_end_timestamp,
+    )
+    duplicate_count, non_sequential_transition_count = _scan_block_transitions(block_numbers)
 
     return RawFileSummary(
         path=path,
@@ -228,6 +213,43 @@ def _summarize_file(
         above_end_count=above_end_count,
         internal_timestamp_violation=internal_timestamp_violation,
     )
+
+
+def _scan_timestamp_window(
+    timestamps: list[int],
+    *,
+    expected_start_timestamp: int,
+    expected_end_timestamp: int,
+) -> tuple[int, int, bool]:
+    below_start_count = 0
+    above_end_count = 0
+    first_in_range_seen = False
+    above_end_started = False
+    internal_timestamp_violation = False
+    for timestamp in timestamps:
+        if timestamp < expected_start_timestamp:
+            below_start_count += 1
+            if first_in_range_seen:
+                internal_timestamp_violation = True
+        elif timestamp >= expected_end_timestamp:
+            above_end_count += 1
+            above_end_started = True
+        else:
+            if above_end_started:
+                internal_timestamp_violation = True
+            first_in_range_seen = True
+    return below_start_count, above_end_count, internal_timestamp_violation
+
+
+def _scan_block_transitions(block_numbers: list[int]) -> tuple[int, int]:
+    duplicate_count = 0
+    non_sequential_transition_count = 0
+    for left, right in zip(block_numbers, block_numbers[1:], strict=False):
+        if right == left:
+            duplicate_count += 1
+        elif right != left + 1:
+            non_sequential_transition_count += 1
+    return duplicate_count, non_sequential_transition_count
 
 
 def validate_raw_pull(
@@ -268,50 +290,8 @@ def validate_raw_pull(
     previous_summary: RawFileSummary | None = None
     previous_last_block_number: int | None = None
     for summary in summaries:
-        report.row_count += summary.row_count
-        report.chain_id_mismatch_count += summary.chain_id_mismatch_count
-        report.duplicate_count += summary.duplicate_count
-        report.below_start_count += summary.below_start_count
-        report.above_end_count += summary.above_end_count
-
-        if report.first_block_number is None:
-            report.first_block_number = summary.first_block_number
-            report.first_timestamp = summary.first_timestamp
-        report.last_block_number = summary.last_block_number
-        report.last_timestamp = summary.last_timestamp
-
-        expected_row_count = summary.range_end - summary.range_start + 1
-        if summary.row_count != expected_row_count:
-            report.errors.append(
-                f"{summary.path.name}: row_count={summary.row_count} does not match "
-                f"filename range size={expected_row_count}"
-            )
-        if summary.row_count > chunk_size:
-            report.errors.append(
-                f"{summary.path.name}: row_count={summary.row_count} "
-                f"exceeds chunk_size={chunk_size}"
-            )
-        if summary.non_sequential_transition_count:
-            report.errors.append(
-                f"{summary.path.name}: detected "
-                f"{summary.non_sequential_transition_count} non-sequential "
-                "block transition(s) inside the file"
-            )
-        if summary.first_block_number != summary.range_start:
-            report.errors.append(
-                f"{summary.path.name}: first block {summary.first_block_number} does not match "
-                f"filename start {summary.range_start}"
-            )
-        if summary.last_block_number != summary.range_end:
-            report.errors.append(
-                f"{summary.path.name}: last block {summary.last_block_number} does not match "
-                f"filename end {summary.range_end}"
-            )
-        if summary.internal_timestamp_violation:
-            report.errors.append(
-                f"{summary.path.name}: timestamps drift outside the expected window "
-                "away from dataset edges"
-            )
+        _merge_summary_into_report(report, summary)
+        report.errors.extend(_summary_errors(summary, chunk_size))
 
         if previous_summary is not None:
             if summary.range_start > previous_summary.range_end + 1:
@@ -346,28 +326,87 @@ def validate_raw_pull(
             f"from {expected_chain_id}"
         )
 
-    if report.below_start_count or report.above_end_count:
-        if (
-            report.below_start_count <= EDGE_TIMESTAMP_TOLERANCE_ROWS
-            and report.above_end_count <= EDGE_TIMESTAMP_TOLERANCE_ROWS
-            and not report.errors
-        ):
-            report.warnings.append(
-                "Observed only tiny edge timestamp drift consistent with cryo boundary resolution"
-            )
-        else:
-            report.errors.append(
-                f"Detected out-of-range timestamps: below_start={report.below_start_count}, "
-                f"above_end={report.above_end_count}"
-            )
+    _finalize_timestamp_drift(report)
+    _finalize_status(report)
+    return report
 
+
+def _merge_summary_into_report(report: RawPullValidationReport, summary: RawFileSummary) -> None:
+    report.row_count += summary.row_count
+    report.chain_id_mismatch_count += summary.chain_id_mismatch_count
+    report.duplicate_count += summary.duplicate_count
+    report.below_start_count += summary.below_start_count
+    report.above_end_count += summary.above_end_count
+
+    if report.first_block_number is None:
+        report.first_block_number = summary.first_block_number
+        report.first_timestamp = summary.first_timestamp
+    report.last_block_number = summary.last_block_number
+    report.last_timestamp = summary.last_timestamp
+
+
+def _summary_errors(summary: RawFileSummary, chunk_size: int) -> list[str]:
+    errors: list[str] = []
+    expected_row_count = summary.range_end - summary.range_start + 1
+    if summary.row_count != expected_row_count:
+        errors.append(
+            f"{summary.path.name}: row_count={summary.row_count} does not match "
+            f"filename range size={expected_row_count}"
+        )
+    if summary.row_count > chunk_size:
+        errors.append(
+            f"{summary.path.name}: row_count={summary.row_count} "
+            f"exceeds chunk_size={chunk_size}"
+        )
+    if summary.non_sequential_transition_count:
+        errors.append(
+            f"{summary.path.name}: detected "
+            f"{summary.non_sequential_transition_count} non-sequential "
+            "block transition(s) inside the file"
+        )
+    if summary.first_block_number != summary.range_start:
+        errors.append(
+            f"{summary.path.name}: first block {summary.first_block_number} does not match "
+            f"filename start {summary.range_start}"
+        )
+    if summary.last_block_number != summary.range_end:
+        errors.append(
+            f"{summary.path.name}: last block {summary.last_block_number} does not match "
+            f"filename end {summary.range_end}"
+        )
+    if summary.internal_timestamp_violation:
+        errors.append(
+            f"{summary.path.name}: timestamps drift outside the expected window "
+            "away from dataset edges"
+        )
+    return errors
+
+
+def _finalize_timestamp_drift(report: RawPullValidationReport) -> None:
+    if not (report.below_start_count or report.above_end_count):
+        return
+    if (
+        report.below_start_count <= EDGE_TIMESTAMP_TOLERANCE_ROWS
+        and report.above_end_count <= EDGE_TIMESTAMP_TOLERANCE_ROWS
+        and not report.errors
+    ):
+        report.warnings.append(
+            "Observed only tiny edge timestamp drift consistent with cryo boundary resolution"
+        )
+        return
+    report.errors.append(
+        f"Detected out-of-range timestamps: below_start={report.below_start_count}, "
+        f"above_end={report.above_end_count}"
+    )
+
+
+def _finalize_status(report: RawPullValidationReport) -> None:
     if report.errors:
         report.status = "error"
     elif report.warnings:
         report.status = "warning"
     else:
         report.status = "clean"
-    return report
 
 
 def format_raw_pull_validation_report(report: RawPullValidationReport) -> list[str]:

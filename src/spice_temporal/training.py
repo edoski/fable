@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-import random
 from dataclasses import dataclass
 
 import numpy as np
@@ -12,11 +10,20 @@ from numpy.typing import NDArray
 from torch import nn
 from torch.utils.data import DataLoader
 
+from spice_temporal._runtime import (
+    accumulation_steps as resolve_accumulation_steps,
+)
+from spice_temporal._runtime import (
+    build_sequence_loader,
+    resolve_device,
+    set_global_seed,
+)
 from spice_temporal.config import TrainingConfig
-from spice_temporal.contracts import ModelOutputs, SequenceBatch, TemporalModel
+from spice_temporal.contracts import ModelOutputs, SequenceBatch
 from spice_temporal.datasets import TemporalDatasetStore
 from spice_temporal.evaluation import BatchMetrics, compute_batch_metrics
-from spice_temporal.torch_datasets import SequenceDataset, build_class_weights
+from spice_temporal.models import TemporalModel
+from spice_temporal.torch_datasets import build_class_weights
 
 IntVector = NDArray[np.int64]
 
@@ -34,32 +41,6 @@ class TrainingResult:
     best_epoch: int
     train_history: list[EpochMetrics]
     validation_history: list[EpochMetrics]
-
-
-def resolve_device(device: str) -> torch.device:
-    if device != "auto":
-        return torch.device(device)
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
-
-
-def set_global_seed(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-
-
-def choose_microbatch_size(effective_batch_size: int, device: torch.device) -> int:
-    candidates = [effective_batch_size, 32, 16, 8]
-    if device.type == "cpu":
-        return min(effective_batch_size, 16)
-    for candidate in candidates:
-        if candidate <= effective_batch_size:
-            return candidate
-    return 8
 
 
 def _mean_metrics(metrics: list[BatchMetrics]) -> EpochMetrics:
@@ -154,17 +135,23 @@ def train_model(
         store.action_count,
     ).to(device)
 
-    microbatch_size = choose_microbatch_size(training_config.effective_batch_size, device)
-    accumulation_steps = max(1, math.ceil(training_config.effective_batch_size / microbatch_size))
-    train_loader = DataLoader(
-        SequenceDataset(store, train_sample_indices, lookback_steps=lookback_steps),
-        batch_size=microbatch_size,
-        shuffle=False,
+    train_loader = build_sequence_loader(
+        store,
+        train_sample_indices,
+        lookback_steps=lookback_steps,
+        effective_batch_size=training_config.effective_batch_size,
+        device=device,
     )
-    validation_loader = DataLoader(
-        SequenceDataset(store, validation_sample_indices, lookback_steps=lookback_steps),
-        batch_size=microbatch_size,
-        shuffle=False,
+    validation_loader = build_sequence_loader(
+        store,
+        validation_sample_indices,
+        lookback_steps=lookback_steps,
+        effective_batch_size=training_config.effective_batch_size,
+        device=device,
+    )
+    accumulation_steps = resolve_accumulation_steps(
+        training_config.effective_batch_size,
+        train_loader.batch_size or training_config.effective_batch_size,
     )
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -238,11 +225,12 @@ def evaluate_model(
     if class_weights is None:
         class_weights = build_class_weights(store.class_labels, sample_indices, store.action_count)
     class_weights = class_weights.to(device)
-    microbatch_size = choose_microbatch_size(training_config.effective_batch_size, device)
-    loader = DataLoader(
-        SequenceDataset(store, sample_indices, lookback_steps=lookback_steps),
-        batch_size=microbatch_size,
-        shuffle=False,
+    loader = build_sequence_loader(
+        store,
+        sample_indices,
+        lookback_steps=lookback_steps,
+        effective_batch_size=training_config.effective_batch_size,
+        device=device,
     )
     return _run_epoch(
         model,

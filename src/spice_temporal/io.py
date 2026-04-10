@@ -116,25 +116,11 @@ def iter_block_files(path: Path) -> list[Path]:
 def load_rows(path: Path) -> list[RawBlockRow]:
     suffix = path.suffix.lower()
     if suffix == ".json":
-        with path.open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        if not isinstance(data, list):
-            raise TypeError("JSON block files must contain a list of rows")
-        return [parse_raw_block_row(row) for row in data]
+        return _load_json_rows(path)
     if suffix == ".csv":
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            return [parse_raw_block_row(dict(row)) for row in reader]
+        return _load_csv_rows(path)
     if suffix == ".parquet":
-        try:
-            import pyarrow.parquet as pq
-        except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError(
-                "Reading parquet files requires pyarrow. Install project dependencies first."
-            ) from exc
-
-        table = pq.read_table(path)
-        return [parse_raw_block_row(row) for row in table.to_pylist()]
+        return _load_parquet_rows(path)
     raise ValueError(f"Unsupported block file format: {path.suffix}")
 
 
@@ -142,28 +128,13 @@ def write_rows(path: Path, rows: Sequence[BlockRow]) -> None:
     suffix = path.suffix.lower()
     path.parent.mkdir(parents=True, exist_ok=True)
     if suffix == ".json":
-        with path.open("w", encoding="utf-8") as handle:
-            json.dump(rows, handle, ensure_ascii=True, indent=2)
+        _write_json_rows(path, rows)
         return
     if suffix == ".csv":
-        if not rows:
-            raise ValueError("Cannot write an empty CSV without headers")
-        with path.open("w", encoding="utf-8", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
-            writer.writeheader()
-            writer.writerows(rows)
+        _write_csv_rows(path, rows)
         return
     if suffix == ".parquet":
-        try:
-            import pyarrow as pa
-            import pyarrow.parquet as pq
-        except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError(
-                "Writing parquet files requires pyarrow. Install project dependencies first."
-            ) from exc
-
-        table = pa.Table.from_pylist(rows)
-        pq.write_table(table, path)
+        _write_parquet_rows(path, rows)
         return
     raise ValueError(f"Unsupported block file format: {path.suffix}")
 
@@ -182,19 +153,72 @@ def parse_block_record(row: EnrichedBlockRow) -> BlockRecord:
     )
 
 
+def _load_json_rows(path: Path) -> list[RawBlockRow]:
+    with path.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, list):
+        raise TypeError("JSON block files must contain a list of rows")
+    return [parse_raw_block_row(row) for row in data]
+
+
+def _load_csv_rows(path: Path) -> list[RawBlockRow]:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        return [parse_raw_block_row(dict(row)) for row in reader]
+
+
+def _load_parquet_rows(path: Path) -> list[RawBlockRow]:
+    try:
+        import pyarrow.parquet as pq
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "Reading parquet files requires pyarrow. Install project dependencies first."
+        ) from exc
+
+    table = pq.read_table(path)
+    return [parse_raw_block_row(row) for row in table.to_pylist()]
+
+
+def _write_json_rows(path: Path, rows: Sequence[BlockRow]) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(rows, handle, ensure_ascii=True, indent=2)
+
+
+def _write_csv_rows(path: Path, rows: Sequence[BlockRow]) -> None:
+    if not rows:
+        raise ValueError("Cannot write an empty CSV without headers")
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _write_parquet_rows(path: Path, rows: Sequence[BlockRow]) -> None:
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "Writing parquet files requires pyarrow. Install project dependencies first."
+        ) from exc
+
+    table = pa.Table.from_pylist(rows)
+    pq.write_table(table, path)
+
+
 def _validate_block_records(blocks: list[BlockRecord]) -> list[BlockRecord]:
     if not blocks:
         raise ValueError("Block dataset is empty")
-    blocks = sorted(blocks, key=lambda block: block.block_number)
-    chain_ids = {block.chain_id for block in blocks}
+    sorted_blocks = sorted(blocks, key=lambda block: block.block_number)
+    chain_ids = {block.chain_id for block in sorted_blocks}
     if len(chain_ids) != 1:
         raise ValueError(
             f"Block dataset must contain exactly one chain_id, got {sorted(chain_ids)}"
         )
-    for left, right in zip(blocks, blocks[1:], strict=False):
+    for left, right in zip(sorted_blocks, sorted_blocks[1:], strict=False):
         if left.block_number == right.block_number:
             raise ValueError(f"Duplicate block_number detected: {left.block_number}")
-    return blocks
+    return sorted_blocks
 
 
 def load_block_records(path: Path) -> list[BlockRecord]:

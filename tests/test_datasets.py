@@ -17,19 +17,8 @@ from spice_temporal.datasets import (
 )
 from spice_temporal.features import FEATURE_NAMES, build_feature_table
 from spice_temporal.normalization import fit_standard_scaler
-from spice_temporal.records import BlockRecord
 from spice_temporal.torch_datasets import SequenceDataset
-
-
-def make_block(index: int, base_fee: int, *, timestamp: int | None = None) -> BlockRecord:
-    return BlockRecord(
-        block_number=index,
-        timestamp=timestamp if timestamp is not None else 1_700_000_000 + 12 * index,
-        base_fee_per_gas=base_fee,
-        gas_used=15_000_000 + index,
-        gas_limit=30_000_000,
-        chain_id=1,
-    )
+from tests.support import make_block
 
 
 class DatasetLogicTestCase(unittest.TestCase):
@@ -47,7 +36,7 @@ class DatasetLogicTestCase(unittest.TestCase):
         self.assertEqual(action_count_for_delay(36, 1.6), 23)
 
     def test_trim_history_blocks_for_target_uses_exact_tail_length(self) -> None:
-        blocks = [make_block(index, 100 + index) for index in range(500)]
+        blocks = [make_block(index, base_fee_per_gas=100 + index) for index in range(500)]
         geometry = derive_dataset_geometry(
             lookback_seconds=600,
             max_delay_seconds=36,
@@ -63,7 +52,7 @@ class DatasetLogicTestCase(unittest.TestCase):
         self.assertEqual(trimmed[-1].block_number, 499)
 
     def test_history_context_blocks_returns_exact_context_tail(self) -> None:
-        blocks = [make_block(index, 100 + index) for index in range(500)]
+        blocks = [make_block(index, base_fee_per_gas=100 + index) for index in range(500)]
         geometry = derive_dataset_geometry(
             lookback_seconds=600,
             max_delay_seconds=36,
@@ -75,7 +64,7 @@ class DatasetLogicTestCase(unittest.TestCase):
         self.assertEqual(context[-1].block_number, 499)
 
     def test_build_temporal_store(self) -> None:
-        blocks = [make_block(index, 100 + (index % 5)) for index in range(260)]
+        blocks = [make_block(index, base_fee_per_gas=100 + (index % 5)) for index in range(260)]
         table = build_feature_table(blocks)
         self.assertEqual(table.feature_matrix.shape[1], len(FEATURE_NAMES))
         store = build_temporal_store(table, lookback_steps=5, action_count=4)
@@ -89,7 +78,7 @@ class DatasetLogicTestCase(unittest.TestCase):
         blocks = [
             make_block(
                 index,
-                100 + (index % 5),
+                base_fee_per_gas=100 + (index % 5),
                 timestamp=EVALUATION_START_TS - 3_600 + 12 * index,
             )
             for index in range(1_000)
@@ -107,7 +96,7 @@ class DatasetLogicTestCase(unittest.TestCase):
         self.assertLess(int(anchor_timestamps[-1]), EVALUATION_END_TS)
 
     def test_chronological_split_preserves_order(self) -> None:
-        blocks = [make_block(index, 100 + index) for index in range(260)]
+        blocks = [make_block(index, base_fee_per_gas=100 + index) for index in range(260)]
         store = build_temporal_store(build_feature_table(blocks), lookback_steps=5, action_count=4)
         split = chronological_split_indices(store.n_samples, SplitConfig())
         anchor_blocks = store.block_numbers[store.anchor_row_indices]
@@ -115,7 +104,7 @@ class DatasetLogicTestCase(unittest.TestCase):
         self.assertLess(int(anchor_blocks[split.validation[0]]), int(anchor_blocks[split.test[0]]))
 
     def test_sequence_dataset_slices_expected_window(self) -> None:
-        blocks = [make_block(index, 100 + (index % 5)) for index in range(260)]
+        blocks = [make_block(index, base_fee_per_gas=100 + (index % 5)) for index in range(260)]
         store = build_temporal_store(build_feature_table(blocks), lookback_steps=5, action_count=4)
         sample_indices = np.asarray([0], dtype=np.int64)
         dataset = SequenceDataset(store, sample_indices, lookback_steps=5)
@@ -125,7 +114,7 @@ class DatasetLogicTestCase(unittest.TestCase):
         self.assertEqual(int(batch["class_label"].item()), int(store.class_labels[0]))
 
     def test_weighted_scaler_matches_naive_window_expansion(self) -> None:
-        blocks = [make_block(index, 100 + (index % 7)) for index in range(320)]
+        blocks = [make_block(index, base_fee_per_gas=100 + (index % 7)) for index in range(320)]
         lookback_steps = 6
         store = build_temporal_store(
             build_feature_table(blocks),

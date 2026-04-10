@@ -11,7 +11,6 @@ pull:
 split:
   train_fraction: 0.8
   validation_fraction: 0.1
-  test_fraction: 0.1
 
 training:
   learning_rate: 0.0003
