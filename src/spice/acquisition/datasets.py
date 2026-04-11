@@ -10,8 +10,7 @@ from ..core.console import Reporter
 from ..data.io import load_block_frame
 from ..data.validation import BlockDatasetValidationReport, validate_exact_window_frame
 from .metadata import has_block_files
-from .rpc import BlockPullPlan, TimestampRange, Web3BlockClient
-from .windowing import expanded_history_range
+from .rpc import BlockPullPlan, Web3BlockClient
 
 MAX_HISTORY_WINDOW_ATTEMPTS = 3
 
@@ -46,7 +45,7 @@ def ensure_block_dataset(
     *,
     block_client: Web3BlockClient,
     output_dir: Path,
-    window: TimestampRange,
+    plan: BlockPullPlan,
     expected_chain_id: int,
     chunk_size: int,
     rpc_batch_size: int,
@@ -58,8 +57,8 @@ def ensure_block_dataset(
         validation = validate_block_dataset(
             output_dir,
             expected_chain_id=expected_chain_id,
-            expected_start_timestamp=window.start,
-            expected_end_timestamp=window.end,
+            expected_start_timestamp=plan.window.start,
+            expected_end_timestamp=plan.window.end,
         )
         reporter.finish_task(
             validate_existing_task,
@@ -79,9 +78,9 @@ def ensure_block_dataset(
         else:
             output_dir.unlink()
 
-    plan = block_client.pull_timestamp_window(
+    pulled_plan = block_client.pull_block_range(
         output_dir,
-        window=window,
+        plan=plan,
         chunk_size=chunk_size,
         rpc_batch_size=rpc_batch_size,
         reporter=reporter,
@@ -90,13 +89,13 @@ def ensure_block_dataset(
     validation = validate_block_dataset(
         output_dir,
         expected_chain_id=expected_chain_id,
-        expected_start_timestamp=window.start,
-        expected_end_timestamp=window.end,
+        expected_start_timestamp=plan.window.start,
+        expected_end_timestamp=plan.window.end,
     )
     reporter.finish_task(validate_final_task, message=f"{output_dir} ({validation.status})")
     if validation.status != "clean":
         raise ValueError(f"Canonical dataset validation failed for {output_dir}: {validation}")
-    return plan, validation
+    return pulled_plan, validation
 
 
 def ensure_history_dataset(
@@ -104,20 +103,20 @@ def ensure_history_dataset(
     config: ExperimentConfig,
     block_client: Web3BlockClient,
     output_dir: Path,
-    history_window: TimestampRange,
+    history_plan: BlockPullPlan,
     required_history_blocks: int,
     reporter: Reporter,
-) -> tuple[BlockPullPlan | None, BlockDatasetValidationReport, TimestampRange]:
-    window = history_window
+) -> tuple[BlockPullPlan | None, BlockDatasetValidationReport, BlockPullPlan]:
+    current_plan = history_plan
     overwrite = config.acquisition.overwrite
-    plan: BlockPullPlan | None = None
+    pulled_plan: BlockPullPlan | None = None
     validation: BlockDatasetValidationReport | None = None
 
     for attempt_index in range(MAX_HISTORY_WINDOW_ATTEMPTS):
-        plan, validation = ensure_block_dataset(
+        pulled_plan, validation = ensure_block_dataset(
             block_client=block_client,
             output_dir=output_dir,
-            window=window,
+            plan=current_plan,
             expected_chain_id=config.chain.chain_id,
             chunk_size=config.acquisition.chunk_size,
             rpc_batch_size=config.acquisition.rpc_batch_size,
@@ -125,23 +124,23 @@ def ensure_history_dataset(
             reporter=reporter,
         )
         if validation.row_count >= required_history_blocks:
-            return plan, validation, window
+            return pulled_plan, validation, current_plan
         if attempt_index == MAX_HISTORY_WINDOW_ATTEMPTS - 1:
             break
 
-        expanded_window = expanded_history_range(
-            window,
-            validation,
-            config=config,
+        expanded_plan = block_client.expand_history_plan(
+            current_plan,
+            observed_row_count=validation.row_count,
             required_history_blocks=required_history_blocks,
+            chunk_size=config.acquisition.chunk_size,
         )
         reporter.log(
-            "expanding history window backward "
-            f"from {window.start} to {expanded_window.start} "
+            "expanding history plan backward "
+            f"from block {current_plan.block_range.start} to {expanded_plan.block_range.start} "
             f"for {required_history_blocks} required blocks",
             level="warning",
         )
-        window = expanded_window
+        current_plan = expanded_plan
         overwrite = True
 
     if validation is None:
@@ -158,13 +157,13 @@ def ensure_evaluation_dataset(
     config: ExperimentConfig,
     block_client: Web3BlockClient,
     output_dir: Path,
-    evaluation_window: TimestampRange,
+    evaluation_plan: BlockPullPlan,
     reporter: Reporter,
 ) -> tuple[BlockPullPlan | None, BlockDatasetValidationReport]:
     return ensure_block_dataset(
         block_client=block_client,
         output_dir=output_dir,
-        window=evaluation_window,
+        plan=evaluation_plan,
         expected_chain_id=config.chain.chain_id,
         chunk_size=config.acquisition.chunk_size,
         rpc_batch_size=config.acquisition.rpc_batch_size,

@@ -1,23 +1,65 @@
-"""Console logging and progress reporting."""
+"""Console runtime, stage reporting, and native tool log bridging."""
 
 from __future__ import annotations
 
+import logging
+import re
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Protocol
+from io import StringIO
+from typing import TYPE_CHECKING, Protocol
 
+import optuna
+from lightning.pytorch.callbacks import RichProgressBar
+from lightning.pytorch.callbacks.progress.rich_progress import (
+    BatchesProcessedColumn,
+    CustomBarColumn,
+    CustomProgress,
+    CustomTimeColumn,
+    MetricsTextColumn,
+    ProcessingSpeedColumn,
+)
 from rich.console import Console
+from rich.logging import RichHandler
+from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     Progress,
+    ProgressColumn,
     TaskID,
     TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
+from rich.table import Table
+
+if TYPE_CHECKING:
+    import lightning.pytorch as pl
 
 ReporterTask = int
+
+_LIGHTNING_LOGGER_NAMES = (
+    "lightning",
+    "lightning.pytorch",
+    "lightning.pytorch.utilities.rank_zero",
+    "lightning.fabric",
+    "lightning.fabric.utilities.rank_zero",
+    "lightning_fabric",
+)
+_NATIVE_NOISE_PATTERNS = (
+    re.compile(r"^Seed set to \d+$"),
+    re.compile(r"^GPU available: .*"),
+    re.compile(r"^TPU available: .*"),
+    re.compile(r"litlogger", re.IGNORECASE),
+    re.compile(r"`Trainer\.fit` stopped: `max_epochs=.*` reached\."),
+    re.compile(r"GPU available but not used"),
+    re.compile(r"`isinstance\(treespec, LeafSpec\)` is deprecated"),
+    re.compile(r"The 'train_dataloader' does not have many workers"),
+    re.compile(r"The 'val_dataloader' does not have many workers"),
+)
 
 
 class Reporter(Protocol):
@@ -200,7 +242,7 @@ class PlainReporter(_BaseConsoleReporter):
                 state.completed != state.last_emitted_completed
                 or state.message != state.last_emitted_message
             )
-        if state.total <= 100:
+        if state.total <= 10:
             return (
                 state.completed != state.last_emitted_completed
                 or state.message != state.last_emitted_message
@@ -211,8 +253,9 @@ class PlainReporter(_BaseConsoleReporter):
     def _progress_bucket(self, state: _PlainTaskState) -> int:
         assert state.total is not None
         if state.total <= 0:
-            return 20
-        return min(20, (state.completed * 20) // state.total)
+            return 10
+        bucket_count = min(10, state.total)
+        return min(bucket_count, (state.completed * bucket_count) // state.total)
 
     def _format_start(self, name: str, *, total: int | None, unit: str | None) -> str:
         if total is None:
@@ -238,20 +281,11 @@ class PlainReporter(_BaseConsoleReporter):
 
 
 class RichReporter(_BaseConsoleReporter):
-    """Interactive reporter for real terminals."""
+    """Interactive reporter with task-local Rich progress."""
 
     def __init__(self, console: Console | None = None) -> None:
         super().__init__(console=console)
-        self.progress = Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-            console=self.console,
-            transient=False,
-        )
-        self.progress.start()
+        self._progress: Progress | None = None
         self._task_names: dict[ReporterTask, str] = {}
 
     def start_task(
@@ -261,7 +295,8 @@ class RichReporter(_BaseConsoleReporter):
         total: int | None = None,
         unit: str | None = None,
     ) -> ReporterTask:
-        task_id = self.progress.add_task(name, total=total)
+        progress = self._ensure_progress()
+        task_id = progress.add_task(name, total=total)
         self._task_names[task_id] = name
         return task_id
 
@@ -274,10 +309,10 @@ class RichReporter(_BaseConsoleReporter):
         message: str | None = None,
     ) -> None:
         name = self._task_names.get(task_id)
-        if name is None:
+        if name is None or self._progress is None:
             return
         description = name if message is None else f"{name} | {message}"
-        self.progress.update(
+        self._progress.update(
             TaskID(task_id),
             completed=completed,
             advance=advance,
@@ -286,13 +321,239 @@ class RichReporter(_BaseConsoleReporter):
 
     def finish_task(self, task_id: ReporterTask, *, message: str | None = None) -> None:
         name = self._task_names.pop(task_id, None)
-        if name is None:
+        if name is None or self._progress is None:
             return
-        self.progress.remove_task(TaskID(task_id))
+        self._progress.remove_task(TaskID(task_id))
+        if not self._task_names:
+            self._progress.stop()
+            self._progress = None
         self.log(f"{name} finished" if message is None else f"{name} finished: {message}")
 
     def close(self) -> None:
-        self.progress.stop()
+        if self._progress is not None:
+            self._progress.stop()
+            self._progress = None
+
+    def _ensure_progress(self) -> Progress:
+        if self._progress is None:
+            self._progress = Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+                console=self.console,
+                transient=False,
+            )
+            self._progress.start()
+        return self._progress
+
+
+@dataclass(slots=True)
+class _LoggerState:
+    handlers: list[logging.Handler]
+    level: int
+    propagate: bool
+
+
+class _NativeLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return not any(pattern.search(message) for pattern in _NATIVE_NOISE_PATTERNS)
+
+
+class SharedConsoleRichProgressBar(RichProgressBar):
+    """Lightning Rich progress bar bound to the workflow console."""
+
+    def __init__(self, console: Console) -> None:
+        super().__init__()
+        self._shared_console = console
+
+    def _init_progress(self, trainer: pl.Trainer) -> None:
+        if not self.is_enabled or (self.progress is not None and not self._progress_stopped):
+            return
+        self._reset_progress_bar_ids()
+        self._console = self._shared_console
+        if hasattr(self._console, "_live_stack") and len(self._console._live_stack) > 0:
+            self._console.clear_live()
+        elif getattr(self._console, "_live", None) is not None:
+            self._console.clear_live()
+        self._metric_component = MetricsTextColumn(
+            trainer,
+            self.theme.metrics,
+            self.theme.metrics_text_delimiter,
+            self.theme.metrics_format,
+        )
+        self.progress = CustomProgress(
+            *self.configure_columns(trainer),
+            self._metric_component,
+            auto_refresh=True,
+            refresh_per_second=self.refresh_rate if self.is_enabled else 1,
+            disable=self.is_disabled,
+            console=self._console,
+        )
+        self.progress.start()
+        self._progress_stopped = False
+
+    def configure_columns(self, trainer: pl.Trainer) -> list[str | ProgressColumn]:
+        return [
+            TextColumn("[progress.description]{task.description}"),
+            CustomBarColumn(
+                complete_style=self.theme.progress_bar,
+                finished_style=self.theme.progress_bar_finished,
+                pulse_style=self.theme.progress_bar_pulse,
+            ),
+            BatchesProcessedColumn(style=self.theme.batch_progress),
+            CustomTimeColumn(style=self.theme.time),
+            ProcessingSpeedColumn(style=self.theme.processing_speed),
+        ]
+
+
+class ConsoleRuntime:
+    """Workflow-scoped console owner with native log bridging."""
+
+    def __init__(
+        self,
+        *,
+        console: Console | None = None,
+        reporter: Reporter | None = None,
+    ) -> None:
+        active_console = console or _console_from_reporter(reporter) or Console()
+        self.console = active_console
+        self.reporter = reporter or create_reporter(active_console)
+        self._owns_reporter = reporter is None
+        self._activation_depth = 0
+        self._root_state: _LoggerState | None = None
+        self._pywarnings_state: _LoggerState | None = None
+        self._lightning_states: dict[str, _LoggerState] = {}
+        self._root_handler: RichHandler | None = None
+
+    @contextmanager
+    def activate(self) -> Iterator[ConsoleRuntime]:
+        first_entry = self._activation_depth == 0
+        self._activation_depth += 1
+        if first_entry:
+            self._install_logging_bridge()
+        try:
+            yield self
+        finally:
+            self._activation_depth -= 1
+            if first_entry and self._activation_depth == 0:
+                self._restore_logging_bridge()
+
+    @contextmanager
+    def optuna_logging(self) -> Iterator[None]:
+        optuna.logging.get_verbosity()
+        logger = logging.getLogger("optuna")
+        state = _LoggerState(list(logger.handlers), logger.level, logger.propagate)
+        optuna.logging.disable_default_handler()
+        optuna.logging.enable_propagation()
+        optuna.logging.set_verbosity(optuna.logging.INFO)
+        try:
+            yield
+        finally:
+            logger.handlers.clear()
+            for handler in state.handlers:
+                logger.addHandler(handler)
+            logger.setLevel(state.level)
+            logger.propagate = state.propagate
+
+    def lightning_progress_bar(self) -> SharedConsoleRichProgressBar | None:
+        if not self.console.is_terminal:
+            return None
+        return SharedConsoleRichProgressBar(self.console)
+
+    def log_summary(self, title: str, rows: list[tuple[str, str]]) -> None:
+        if self.console.is_terminal:
+            table = Table.grid(padding=(0, 1))
+            table.add_column(style="bold cyan", justify="right")
+            table.add_column()
+            for label, value in rows:
+                table.add_row(label, value)
+            self.console.print(Panel(table, title=title, border_style="cyan"))
+            return
+        self.reporter.log(title)
+        for label, value in rows:
+            self.reporter.log(f"{label}: {value}")
+
+    def close(self) -> None:
+        if self._activation_depth > 0:
+            self._activation_depth = 0
+            self._restore_logging_bridge()
+        if self._owns_reporter:
+            self.reporter.close()
+
+    def _install_logging_bridge(self) -> None:
+        root_logger = logging.getLogger()
+        self._root_state = _LoggerState(
+            handlers=list(root_logger.handlers),
+            level=root_logger.level,
+            propagate=root_logger.propagate,
+        )
+        root_logger.handlers.clear()
+        self._root_handler = RichHandler(
+            console=self.console,
+            show_time=False,
+            show_path=False,
+            markup=False,
+        )
+        self._root_handler.addFilter(_NativeLogFilter())
+        root_logger.addHandler(self._root_handler)
+        root_logger.setLevel(logging.INFO)
+
+        pywarnings_logger = logging.getLogger("py.warnings")
+        self._pywarnings_state = _LoggerState(
+            handlers=list(pywarnings_logger.handlers),
+            level=pywarnings_logger.level,
+            propagate=pywarnings_logger.propagate,
+        )
+        pywarnings_logger.handlers.clear()
+        pywarnings_logger.setLevel(logging.WARNING)
+        pywarnings_logger.propagate = True
+        logging.captureWarnings(True)
+
+        self._lightning_states = {}
+        for name in _LIGHTNING_LOGGER_NAMES:
+            logger = logging.getLogger(name)
+            self._lightning_states[name] = _LoggerState(
+                handlers=list(logger.handlers),
+                level=logger.level,
+                propagate=logger.propagate,
+            )
+            logger.handlers.clear()
+            logger.setLevel(logging.INFO)
+            logger.propagate = True
+
+    def _restore_logging_bridge(self) -> None:
+        logging.captureWarnings(False)
+
+        if self._pywarnings_state is not None:
+            pywarnings_logger = logging.getLogger("py.warnings")
+            pywarnings_logger.handlers.clear()
+            for handler in self._pywarnings_state.handlers:
+                pywarnings_logger.addHandler(handler)
+            pywarnings_logger.setLevel(self._pywarnings_state.level)
+            pywarnings_logger.propagate = self._pywarnings_state.propagate
+            self._pywarnings_state = None
+
+        for name, state in self._lightning_states.items():
+            logger = logging.getLogger(name)
+            logger.handlers.clear()
+            for handler in state.handlers:
+                logger.addHandler(handler)
+            logger.setLevel(state.level)
+            logger.propagate = state.propagate
+        self._lightning_states = {}
+
+        if self._root_state is not None:
+            root_logger = logging.getLogger()
+            root_logger.handlers.clear()
+            for handler in self._root_state.handlers:
+                root_logger.addHandler(handler)
+            root_logger.setLevel(self._root_state.level)
+            root_logger.propagate = self._root_state.propagate
+            self._root_state = None
+        self._root_handler = None
 
 
 def create_reporter(console: Console | None = None) -> Reporter:
@@ -300,3 +561,20 @@ def create_reporter(console: Console | None = None) -> Reporter:
     if active_console.is_terminal:
         return RichReporter(console=active_console)
     return PlainReporter(console=active_console)
+
+
+def create_console_runtime(
+    *,
+    console: Console | None = None,
+    reporter: Reporter | None = None,
+) -> ConsoleRuntime:
+    return ConsoleRuntime(console=console, reporter=reporter)
+
+
+def _console_from_reporter(reporter: Reporter | None) -> Console | None:
+    if reporter is None:
+        return None
+    candidate = getattr(reporter, "console", None)
+    if isinstance(candidate, Console):
+        return candidate
+    return Console(file=StringIO(), force_terminal=False, width=120)

@@ -8,7 +8,7 @@ from pathlib import Path
 import polars as pl
 
 from ..core.config import ChainConfig, ModelConfig, SplitConfig, TrainingConfig
-from ..core.console import NullReporter, Reporter
+from ..core.console import ConsoleRuntime, NullReporter, Reporter
 from ..data.datasets import (
     DatasetGeometry,
     DatasetSplitIndices,
@@ -188,6 +188,7 @@ def run_training(
     spec: TrainingSpec,
     artifact_dir: Path,
     reporter: Reporter | None = None,
+    runtime: ConsoleRuntime | None = None,
 ) -> TrainingRunResult:
     reporter = reporter or NullReporter()
     load_task = reporter.start_task("load history dataset")
@@ -213,6 +214,7 @@ def run_training(
         training_config=spec.training,
         artifact_dir=artifact_dir,
         reporter=reporter,
+        runtime=runtime,
     )
     class_weights = build_class_weights(
         prepared.store.class_labels,

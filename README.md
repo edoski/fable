@@ -19,7 +19,7 @@ It does not implement the broader SPICE spatial/oracle/reputation system.
 - `MLflow` for run tracking, params, metrics, and artifacts
 - `Lightning` for training orchestration
 - `Optuna` for hyperparameter optimization
-- `web3.py` for RPC transport
+- `web3.py` for HTTP and IPC RPC transport
 - `Pandera` + `Polars` for dataset validation and parquet/table work
 - `scikit-learn` for scaling
 - `NumPy` + `PyTorch` for dataset math, modeling, inference, and simulation
@@ -117,6 +117,12 @@ and Hydra defaults:
 `dataset.sampling.history_anchor_count` is optional. When unset, it follows
 `anchor_count`, but you can raise it to keep a larger reusable history window
 for acquisition.
+
+History acquisition is block-planned, not time-estimated. The acquisition
+workflow resolves the evaluation start block, counts backward by the exact
+required history block count, and records the actual first fetched block
+timestamp in dataset metadata. Provider defaults are unchanged, and local IPC
+nodes still fit through the same provider endpoint abstraction.
 
 ## Configuration
 

@@ -12,7 +12,7 @@ from omegaconf import DictConfig
 from optuna.trial import FrozenTrial, TrialState
 
 from ..core.config import ExperimentConfig, coerce_config, revalidate_config
-from ..core.console import Reporter
+from ..core.console import ConsoleRuntime, Reporter
 from ..core.json import write_json
 from ..core.tracking import log_artifacts
 from ..modeling.execution import run_persisted_training
@@ -135,8 +135,8 @@ def _objective(
     base_config: ExperimentConfig,
     trial: optuna.Trial,
     *,
+    runtime: ConsoleRuntime,
     reporter: Reporter,
-    total_trials: int,
 ) -> float:
     config = clone_config(base_config)
     for path, candidates in config.tuning.search_space.items():
@@ -149,9 +149,6 @@ def _objective(
             value = trial.suggest_categorical(path, list(candidates))
         set_nested_attr(config, path, value)
     config = revalidate_config(config)
-    reporter.log(
-        f"trial {trial.number + 1}/{total_trials} started: {dict(trial.params)}"
-    )
 
     spec = build_training_spec(config)
     artifact_dir = trial_artifact_dir(config, trial.number)
@@ -159,6 +156,7 @@ def _objective(
     with managed_workflow(
         config,
         run_name=f"trial-{trial.number:03d}",
+        runtime=runtime,
         reporter=reporter,
         nested=True,
     ) as session:
@@ -173,6 +171,7 @@ def _objective(
             artifact_dir=artifact_dir,
             report_path=artifact_dir / "train_report.json",
             reporter=session.reporter,
+            runtime=session.runtime,
         )
         metric_map = epoch_metrics_to_dict(persisted.best_validation_metrics)
         metric_value = metric_map[config.tuning.objective_metric.removeprefix("validation_")]
@@ -191,9 +190,6 @@ def _objective(
 
 
 def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
-    optuna.logging.disable_default_handler()
-    optuna.logging.disable_propagation()
-    optuna.logging.set_verbosity(optuna.logging.WARNING)
     with managed_workflow(
         config,
         run_name=(
@@ -219,27 +215,28 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
                 message=_trial_status_message(frozen_trial),
             )
 
-        study = optuna.create_study(
-            study_name=config.tuning.study_name,
-            direction=config.tuning.direction,
-            pruner=(
-                optuna.pruners.MedianPruner()
-                if config.tuning.enable_pruning
-                else optuna.pruners.NopPruner()
-            ),
-            sampler=optuna.samplers.TPESampler(seed=config.tuning.sampler_seed),
-        )
-        study.optimize(
-            lambda trial: _objective(
-                config,
-                trial,
-                reporter=session.reporter,
-                total_trials=config.tuning.trial_count,
-            ),
-            n_trials=config.tuning.trial_count,
-            timeout=config.tuning.timeout_seconds,
-            callbacks=[on_trial_complete],
-        )
+        with session.runtime.optuna_logging():
+            study = optuna.create_study(
+                study_name=config.tuning.study_name,
+                direction=config.tuning.direction,
+                pruner=(
+                    optuna.pruners.MedianPruner()
+                    if config.tuning.enable_pruning
+                    else optuna.pruners.NopPruner()
+                ),
+                sampler=optuna.samplers.TPESampler(seed=config.tuning.sampler_seed),
+            )
+            study.optimize(
+                lambda trial: _objective(
+                    config,
+                    trial,
+                    runtime=session.runtime,
+                    reporter=session.reporter,
+                ),
+                n_trials=config.tuning.trial_count,
+                timeout=config.tuning.timeout_seconds,
+                callbacks=[on_trial_complete],
+            )
         study_path = tuning_root / "study.json"
         trials_path = tuning_root / "trials.json"
         best_params_path = Path(config.paths.tuning_best_params_path)

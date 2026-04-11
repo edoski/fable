@@ -10,7 +10,7 @@ from typing import Any, cast
 import polars as pl
 from web3 import Web3
 
-from ..core.config import AcquisitionConfig, ChainConfig, ProviderConfig
+from ..core.config import ChainConfig, ProviderConfig
 from ..core.console import NullReporter, Reporter
 from ..data.block_schema import canonicalize_block_frame
 from ..data.io import write_block_file
@@ -61,15 +61,15 @@ class Web3BlockClient:
     def get_block(self, block_number: int) -> dict[str, Any]:
         return cast(dict[str, Any], dict(self._web3.eth.get_block(block_number, False)))
 
-    def get_latest_block_number(self) -> int:
-        return int(self._web3.eth.block_number)
+    def _get_latest_block(self) -> dict[str, Any]:
+        return cast(dict[str, Any], dict(self._web3.eth.get_block("latest", False)))
 
     def find_first_block_at_or_after(self, timestamp: int) -> int:
         if timestamp < 0:
             raise ValueError("timestamp must be non-negative")
 
-        latest_block_number = self.get_latest_block_number()
-        latest_block = self.get_block(latest_block_number)
+        latest_block = self._get_latest_block()
+        latest_block_number = self._as_int(latest_block["number"])
         latest_timestamp = self._as_int(latest_block["timestamp"])
         if timestamp > latest_timestamp:
             return latest_block_number + 1
@@ -92,7 +92,19 @@ class Web3BlockClient:
         )
 
     def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
-        block_range = self.resolve_block_range(window)
+        return self.plan_block_range(
+            self.resolve_block_range(window),
+            window=window,
+            chunk_size=chunk_size,
+        )
+
+    def plan_block_range(
+        self,
+        block_range: BlockRange,
+        *,
+        window: TimestampRange,
+        chunk_size: int,
+    ) -> BlockPullPlan:
         expected_rows = block_range.count
         expected_files = 0 if expected_rows == 0 else ceil(expected_rows / chunk_size)
         return BlockPullPlan(
@@ -100,6 +112,48 @@ class Web3BlockClient:
             block_range=block_range,
             expected_rows=expected_rows,
             expected_files=expected_files,
+        )
+
+    def plan_history_window(
+        self,
+        *,
+        end_timestamp: int,
+        required_history_blocks: int,
+        chunk_size: int,
+    ) -> BlockPullPlan:
+        if required_history_blocks <= 0:
+            raise ValueError("required_history_blocks must be positive")
+
+        evaluation_start_block = self.find_first_block_at_or_after(end_timestamp)
+        history_start_block = max(0, evaluation_start_block - required_history_blocks)
+        history_start_timestamp = self._as_int(self.get_block(history_start_block)["timestamp"])
+        return self.plan_block_range(
+            BlockRange(start=history_start_block, end=evaluation_start_block),
+            window=TimestampRange(start=history_start_timestamp, end=end_timestamp),
+            chunk_size=chunk_size,
+        )
+
+    def expand_history_plan(
+        self,
+        current: BlockPullPlan,
+        *,
+        observed_row_count: int,
+        required_history_blocks: int,
+        chunk_size: int,
+    ) -> BlockPullPlan:
+        missing_blocks = required_history_blocks - observed_row_count
+        if missing_blocks <= 0:
+            return current
+
+        expanded_start_block = max(
+            0,
+            current.block_range.start - (missing_blocks + chunk_size),
+        )
+        expanded_start_timestamp = self._as_int(self.get_block(expanded_start_block)["timestamp"])
+        return self.plan_block_range(
+            BlockRange(start=expanded_start_block, end=current.block_range.end),
+            window=TimestampRange(start=expanded_start_timestamp, end=current.window.end),
+            chunk_size=chunk_size,
         )
 
     def get_block_rows(self, block_numbers: list[int]) -> list[dict[str, int]]:
@@ -129,8 +183,28 @@ class Web3BlockClient:
     ) -> BlockPullPlan:
         reporter = reporter or NullReporter()
         plan = self.plan_window(window, chunk_size=chunk_size)
+        return self.pull_block_range(
+            output_dir,
+            plan=plan,
+            chunk_size=chunk_size,
+            rpc_batch_size=rpc_batch_size,
+            reporter=reporter,
+        )
+
+    def pull_block_range(
+        self,
+        output_dir: Path,
+        *,
+        plan: BlockPullPlan,
+        chunk_size: int,
+        rpc_batch_size: int,
+        reporter: Reporter | None = None,
+    ) -> BlockPullPlan:
+        reporter = reporter or NullReporter()
         if plan.expected_rows == 0:
-            raise ValueError(f"No blocks found inside requested timestamp window: {window}")
+            raise ValueError(
+                f"No blocks found inside requested block range: {plan.block_range}"
+            )
 
         task_id = reporter.start_task("pull blocks", total=plan.expected_rows, unit="blocks")
         pending_rows: list[dict[str, int]] = []
@@ -176,24 +250,6 @@ class Web3BlockClient:
         )
         write_block_file(destination, frame)
         return destination
-
-
-def history_range_for_required_blocks(
-    chain: ChainConfig,
-    acquisition: AcquisitionConfig,
-    *,
-    required_history_blocks: int,
-    window_start_timestamp: int,
-) -> TimestampRange:
-    if required_history_blocks <= 0:
-        raise ValueError("required_history_blocks must be positive")
-
-    block_count = required_history_blocks + acquisition.chunk_size
-    span_seconds = ceil(block_count * chain.block_time_seconds)
-    return TimestampRange(
-        start=window_start_timestamp - span_seconds,
-        end=window_start_timestamp,
-    )
 
 
 def evaluation_range(start_timestamp: int, end_timestamp: int) -> TimestampRange:

@@ -58,6 +58,7 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             artifact_dir=artifact_dir,
             report_path=report_path,
             reporter=session.reporter,
+            runtime=session.runtime,
         )
         if session.tracking_enabled:
             import mlflow

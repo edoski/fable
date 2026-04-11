@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,7 +12,7 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from numpy.typing import NDArray
 
 from ..core.config import TrainingConfig
-from ..core.console import NullReporter, Reporter
+from ..core.console import ConsoleRuntime, NullReporter, Reporter
 from ..data.datasets import TemporalDatasetStore
 from ._runtime import (
     accumulation_steps as resolve_accumulation_steps,
@@ -41,58 +38,6 @@ class TrainingResult:
     train_history: list[EpochMetrics]
     validation_history: list[EpochMetrics]
     best_checkpoint_path: Path | None
-
-
-@contextmanager
-def _silence_lightning_logs() -> Iterator[None]:
-    logger_names = (
-        "lightning",
-        "lightning.pytorch",
-        "lightning.pytorch.utilities",
-        "lightning.pytorch.utilities.rank_zero",
-        "lightning.fabric",
-        "lightning.fabric.utilities",
-        "lightning.fabric.utilities.seed",
-    )
-    previous_levels: list[tuple[logging.Logger, int]] = []
-    for name in logger_names:
-        logger = logging.getLogger(name)
-        previous_levels.append((logger, logger.level))
-        logger.setLevel(logging.WARNING)
-    try:
-        yield
-    finally:
-        for logger, level in previous_levels:
-            logger.setLevel(level)
-
-
-class _TrainingProgressCallback(L.Callback):
-    def __init__(self, reporter: Reporter, task_id: int) -> None:
-        self.reporter = reporter
-        self.task_id = task_id
-
-    def on_validation_epoch_end(
-        self,
-        trainer: L.Trainer,
-        pl_module: L.LightningModule,
-    ) -> None:
-        if trainer.sanity_checking:
-            return
-        validation_loss = trainer.callback_metrics.get("validation_loss")
-        validation_accuracy = trainer.callback_metrics.get("validation_accuracy")
-        validation_profit = trainer.callback_metrics.get("validation/profit_over_baseline")
-        parts: list[str] = []
-        if validation_loss is not None:
-            parts.append(f"loss={float(validation_loss):.4f}")
-        if validation_accuracy is not None:
-            parts.append(f"accuracy={float(validation_accuracy):.4f}")
-        if validation_profit is not None:
-            parts.append(f"profit={float(validation_profit):.4f}")
-        self.reporter.update_task(
-            self.task_id,
-            completed=trainer.current_epoch + 1,
-            message=" ".join(parts) if parts else None,
-        )
 
 
 def _trainer_device_args(device_name: str) -> tuple[str, int | str | list[int]]:
@@ -125,14 +70,14 @@ def train_model(
     training_config: TrainingConfig,
     artifact_dir: Path,
     reporter: Reporter | None = None,
+    runtime: ConsoleRuntime | None = None,
 ) -> TrainingResult:
     reporter = reporter or NullReporter()
     if train_sample_indices.size == 0 or validation_sample_indices.size == 0:
         raise ValueError("Train and validation sample selections must both be non-empty")
 
-    with _silence_lightning_logs():
-        set_global_seed(training_config.seed)
-        L.seed_everything(training_config.seed, workers=True)
+    set_global_seed(training_config.seed)
+    L.seed_everything(training_config.seed, workers=True)
     device = resolve_device(training_config.device)
     microbatch_size = choose_microbatch_size(training_config.batch_size, device)
     accumulation_steps = resolve_accumulation_steps(
@@ -155,12 +100,6 @@ def train_model(
         action_count=store.action_count,
         training_config=training_config,
     )
-    epoch_task_id = reporter.start_task(
-        "train epochs",
-        total=training_config.max_epochs,
-        unit="epochs",
-    )
-    progress_callback = _TrainingProgressCallback(reporter, epoch_task_id)
     checkpoint_callback = ModelCheckpoint(
         dirpath=artifact_dir / "checkpoints",
         filename="epoch={epoch:02d}-validation_loss={validation_loss:.6f}",
@@ -176,17 +115,21 @@ def train_model(
         min_delta=training_config.early_stopping.min_delta,
     )
     accelerator, devices = _trainer_device_args(training_config.device)
+    progress_bar = None if runtime is None else runtime.lightning_progress_bar()
+    callbacks: list[L.Callback] = [checkpoint_callback, early_stopping]
+    if progress_bar is not None:
+        callbacks.append(progress_bar)
     trainer = L.Trainer(
         accelerator=accelerator,
         devices=devices,
         max_epochs=training_config.max_epochs,
-        callbacks=[checkpoint_callback, early_stopping, progress_callback],
+        callbacks=callbacks,
         deterministic=training_config.deterministic,
         gradient_clip_val=training_config.gradient_clip_norm,
         accumulate_grad_batches=accumulation_steps,
         logger=False,
         enable_checkpointing=True,
-        enable_progress_bar=False,
+        enable_progress_bar=progress_bar is not None,
         enable_model_summary=False,
         log_every_n_steps=training_config.log_every_n_steps,
         num_sanity_val_steps=0,
@@ -196,19 +139,15 @@ def train_model(
         "training started "
         f"(accelerator={accelerator}, devices={devices}, microbatch={microbatch_size})"
     )
-    with _silence_lightning_logs():
-        trainer.fit(module, datamodule=data_module)
+    trainer.fit(module, datamodule=data_module)
 
     if checkpoint_callback.best_model_path:
         state = torch.load(checkpoint_callback.best_model_path, map_location="cpu")
         module.load_state_dict(state["state_dict"])
-    reporter.finish_task(
-        epoch_task_id,
-        message=f"best_epoch={_best_epoch(module.validation_history)}",
-    )
-    reporter.log("training finished")
+    best_epoch = _best_epoch(module.validation_history)
+    reporter.log(f"training finished: best_epoch={best_epoch}")
     return TrainingResult(
-        best_epoch=_best_epoch(module.validation_history),
+        best_epoch=best_epoch,
         train_history=module.train_history,
         validation_history=module.validation_history,
         best_checkpoint_path=(

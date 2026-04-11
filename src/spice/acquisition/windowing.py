@@ -1,14 +1,11 @@
-"""History and evaluation window planning for acquisition."""
+"""Acquisition planning helpers."""
 
 from __future__ import annotations
 
-from math import ceil
-
 from ..core.config import ExperimentConfig
 from ..data.datasets import derive_dataset_geometry
-from ..data.validation import BlockDatasetValidationReport
 from .metadata import DatasetMetadata
-from .rpc import TimestampRange, history_range_for_required_blocks
+from .rpc import TimestampRange
 
 
 def required_history_block_count(config: ExperimentConfig) -> int:
@@ -18,49 +15,6 @@ def required_history_block_count(config: ExperimentConfig) -> int:
         block_time_seconds=config.chain.block_time_seconds,
     )
     return geometry.required_block_count(config.dataset.sampling.effective_history_anchor_count)
-
-
-def initial_history_range(
-    config: ExperimentConfig,
-    *,
-    required_history_blocks: int,
-) -> TimestampRange:
-    return history_range_for_required_blocks(
-        config.chain,
-        config.acquisition,
-        required_history_blocks=required_history_blocks,
-        window_start_timestamp=config.dataset.window.start_timestamp,
-    )
-
-
-def expanded_history_range(
-    current: TimestampRange,
-    validation: BlockDatasetValidationReport,
-    *,
-    config: ExperimentConfig,
-    required_history_blocks: int,
-) -> TimestampRange:
-    missing_blocks = required_history_blocks - validation.row_count
-    if missing_blocks <= 0:
-        return current
-
-    if (
-        validation.first_timestamp is not None
-        and validation.last_timestamp is not None
-        and validation.row_count > 1
-    ):
-        seconds_per_block = max(
-            config.chain.block_time_seconds,
-            (validation.last_timestamp - validation.first_timestamp) / (validation.row_count - 1),
-        )
-    else:
-        seconds_per_block = config.chain.block_time_seconds
-
-    additional_blocks = missing_blocks + config.acquisition.chunk_size
-    return TimestampRange(
-        start=current.start - ceil(additional_blocks * seconds_per_block),
-        end=current.end,
-    )
 
 
 def history_range_from_metadata(metadata: DatasetMetadata) -> TimestampRange:

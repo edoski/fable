@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 from spice.acquisition.datasets import ensure_block_dataset, ensure_history_dataset
 from spice.acquisition.metadata import load_dataset_metadata
 from spice.acquisition.rpc import BlockPullPlan, BlockRange, TimestampRange, Web3BlockClient
-from spice.acquisition.windowing import history_range_from_metadata
+from spice.acquisition.windowing import history_range_from_metadata, required_history_block_count
 from spice.core.console import NullReporter
 from spice.data.io import load_block_frame
 from spice.workflows.acquire import run as run_acquire
@@ -37,16 +36,21 @@ def test_ensure_block_dataset_reuses_clean_output_without_pull(tmp_path) -> None
         include_gas_limit=True,
     )
     write_dataset_dir(output_dir, rows)
-    window = _window_for_rows(rows)
+    plan = BlockPullPlan(
+        window=_window_for_rows(rows),
+        block_range=BlockRange(start=100, end=104),
+        expected_rows=4,
+        expected_files=2,
+    )
 
     class NoPullClient:
-        def pull_timestamp_window(self, *_args, **_kwargs):
+        def pull_block_range(self, *_args, **_kwargs):
             raise AssertionError("clean dataset should be reused")
 
-    plan, validation = ensure_block_dataset(
+    pulled_plan, validation = ensure_block_dataset(
         block_client=NoPullClient(),
         output_dir=output_dir,
-        window=window,
+        plan=plan,
         expected_chain_id=1,
         chunk_size=2,
         rpc_batch_size=8,
@@ -54,7 +58,7 @@ def test_ensure_block_dataset_reuses_clean_output_without_pull(tmp_path) -> None
         reporter=NullReporter(),
     )
 
-    assert plan is None
+    assert pulled_plan is None
     assert validation.status == "clean"
     assert validation.row_count == 4
 
@@ -75,38 +79,39 @@ def test_ensure_block_dataset_rebuilds_invalid_existing_output(tmp_path) -> None
         start_timestamp=1_700_000_100,
         include_gas_limit=True,
     )
-    window = _window_for_rows(rebuilt_rows)
+    plan = BlockPullPlan(
+        window=_window_for_rows(rebuilt_rows),
+        block_range=BlockRange(start=200, end=204),
+        expected_rows=4,
+        expected_files=2,
+    )
 
     class RebuildingClient:
         def __init__(self) -> None:
             self.calls = 0
 
-        def pull_timestamp_window(
+        def pull_block_range(
             self,
             output_dir: Path,
             *,
-            window: TimestampRange,
+            plan: BlockPullPlan,
             chunk_size: int,
             rpc_batch_size: int,
             reporter,
         ) -> BlockPullPlan:
+            del reporter
             assert chunk_size == 2
             assert rpc_batch_size == 8
-            assert window == _window_for_rows(rebuilt_rows)
+            assert plan.block_range == BlockRange(start=200, end=204)
             self.calls += 1
             write_dataset_dir(output_dir, rebuilt_rows)
-            return BlockPullPlan(
-                window=window,
-                block_range=BlockRange(start=200, end=204),
-                expected_rows=4,
-                expected_files=1,
-            )
+            return plan
 
     client = RebuildingClient()
-    plan, validation = ensure_block_dataset(
+    pulled_plan, validation = ensure_block_dataset(
         block_client=client,
         output_dir=output_dir,
-        window=window,
+        plan=plan,
         expected_chain_id=1,
         chunk_size=2,
         rpc_batch_size=8,
@@ -115,64 +120,86 @@ def test_ensure_block_dataset_rebuilds_invalid_existing_output(tmp_path) -> None
     )
 
     assert client.calls == 1
-    assert plan is not None
+    assert pulled_plan == plan
     assert validation.status == "clean"
     assert load_block_frame(output_dir)["block_number"].to_list() == [200, 201, 202, 203]
 
 
-def test_ensure_history_dataset_expands_until_required_block_count(tmp_path) -> None:
-    config = compose_experiment("acquire", overrides=base_overrides(tmp_path))
-    initial_window = TimestampRange(start=1_700_000_000, end=1_700_000_120)
+def test_ensure_history_dataset_expands_by_block_count_until_requirement_met(tmp_path) -> None:
+    config = compose_experiment(
+        "acquire",
+        overrides=base_overrides(tmp_path) + ["acquisition.chunk_size=2"],
+    )
     output_dir = tmp_path / "history"
+    initial_plan = BlockPullPlan(
+        window=TimestampRange(start=1_700_000_000, end=1_700_000_120),
+        block_range=BlockRange(start=10, end=16),
+        expected_rows=6,
+        expected_files=3,
+    )
 
     class ExpandingHistoryClient:
         def __init__(self) -> None:
-            self.windows: list[TimestampRange] = []
+            self.plans: list[BlockPullPlan] = []
 
-        def pull_timestamp_window(
+        def pull_block_range(
             self,
             output_dir: Path,
             *,
-            window: TimestampRange,
+            plan: BlockPullPlan,
             chunk_size: int,
             rpc_batch_size: int,
             reporter,
         ) -> BlockPullPlan:
-            self.windows.append(window)
-            row_count = 4 if len(self.windows) == 1 else 6
+            del chunk_size, rpc_batch_size, reporter
+            self.plans.append(plan)
+            row_count = 4 if len(self.plans) == 1 else 6
             rows = make_block_rows(
                 row_count,
-                start_block=1 if len(self.windows) == 1 else 101,
-                start_timestamp=window.start,
+                start_block=plan.block_range.start,
+                start_timestamp=plan.window.start,
                 include_gas_limit=True,
             )
             write_dataset_dir(output_dir, rows)
+            return plan
+
+        def expand_history_plan(
+            self,
+            current: BlockPullPlan,
+            *,
+            observed_row_count: int,
+            required_history_blocks: int,
+            chunk_size: int,
+        ) -> BlockPullPlan:
+            assert observed_row_count == 4
+            assert required_history_blocks == 6
+            assert chunk_size == 2
             return BlockPullPlan(
-                window=window,
+                window=TimestampRange(start=current.window.start - 48, end=current.window.end),
                 block_range=BlockRange(
-                    start=int(rows[0]["block_number"]),
-                    end=int(rows[-1]["block_number"]) + 1,
+                    start=current.block_range.start - 4,
+                    end=current.block_range.end,
                 ),
-                expected_rows=row_count,
-                expected_files=1,
+                expected_rows=10,
+                expected_files=5,
             )
 
     client = ExpandingHistoryClient()
-    plan, validation, resolved_window = ensure_history_dataset(
+    pulled_plan, validation, resolved_plan = ensure_history_dataset(
         config=config,
         block_client=client,
         output_dir=output_dir,
-        history_window=initial_window,
+        history_plan=initial_plan,
         required_history_blocks=6,
         reporter=NullReporter(),
     )
 
-    assert plan is not None
+    assert pulled_plan == client.plans[1]
     assert validation.status == "clean"
     assert validation.row_count == 6
-    assert len(client.windows) == 2
-    assert client.windows[1].start < client.windows[0].start
-    assert resolved_window == client.windows[1]
+    assert len(client.plans) == 2
+    assert client.plans[1].block_range.start == 6
+    assert resolved_plan == client.plans[1]
     assert load_block_frame(output_dir).height == 6
 
 
@@ -206,8 +233,6 @@ def test_web3_block_client_pull_timestamp_window_writes_chunked_dataset(
             return list(self.requests)
 
     class FakeEth:
-        block_number = 5
-
         def get_block(
             self,
             block_number: int | str,
@@ -253,7 +278,7 @@ def test_web3_block_client_pull_timestamp_window_writes_chunked_dataset(
     assert len(list((tmp_path / "history").glob("*.parquet"))) == 2
 
 
-def test_acquire_workflow_writes_direct_block_datasets_and_metadata(
+def test_acquire_workflow_writes_block_planned_datasets_and_actual_history_metadata(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -266,54 +291,69 @@ def test_acquire_workflow_writes_direct_block_datasets_and_metadata(
             "dataset.sampling.anchor_count=4",
         ],
     )
+    required_history_blocks = required_history_block_count(config)
+    block_time_seconds = int(config.chain.block_time_seconds)
+    expected_history_start = (
+        config.dataset.window.start_timestamp - required_history_blocks * block_time_seconds
+    )
 
     class FakeWorkflowBlockClient:
+        history_requests: list[tuple[int, int, int]] = []
+
         def __init__(self, provider, chain) -> None:
             del provider
             self.chain = chain
 
-        def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
-            expected_rows = max(
-                1,
-                math.ceil((window.end - window.start) / self.chain.block_time_seconds),
+        def plan_history_window(
+            self,
+            *,
+            end_timestamp: int,
+            required_history_blocks: int,
+            chunk_size: int,
+        ) -> BlockPullPlan:
+            self.__class__.history_requests.append(
+                (end_timestamp, required_history_blocks, chunk_size)
             )
-            expected_files = math.ceil(expected_rows / chunk_size)
             return BlockPullPlan(
-                window=window,
-                block_range=BlockRange(start=0, end=expected_rows),
-                expected_rows=expected_rows,
-                expected_files=expected_files,
+                window=TimestampRange(start=expected_history_start, end=end_timestamp),
+                block_range=BlockRange(
+                    start=100,
+                    end=100 + required_history_blocks,
+                ),
+                expected_rows=required_history_blocks,
+                expected_files=1,
             )
 
-        def pull_timestamp_window(
+        def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
+            del chunk_size
+            expected_rows = 32
+            return BlockPullPlan(
+                window=window,
+                block_range=BlockRange(start=10_001, end=10_001 + expected_rows),
+                expected_rows=expected_rows,
+                expected_files=1,
+            )
+
+        def pull_block_range(
             self,
             output_dir: Path,
             *,
-            window: TimestampRange,
+            plan: BlockPullPlan,
             chunk_size: int,
             rpc_batch_size: int,
             reporter,
         ) -> BlockPullPlan:
             del chunk_size, rpc_batch_size, reporter
-            row_count = 256 if output_dir.name == "history" else 32
             rows = make_block_rows(
-                row_count,
-                start_block=1 if output_dir.name == "history" else 10_001,
-                start_timestamp=window.start,
-                block_time_seconds=int(self.chain.block_time_seconds),
+                plan.expected_rows,
+                start_block=plan.block_range.start,
+                start_timestamp=plan.window.start,
+                block_time_seconds=block_time_seconds,
                 include_gas_limit=True,
             )
-            assert int(rows[-1]["timestamp"]) < window.end
+            assert int(rows[-1]["timestamp"]) < plan.window.end
             write_dataset_dir(output_dir, rows)
-            return BlockPullPlan(
-                window=window,
-                block_range=BlockRange(
-                    start=int(rows[0]["block_number"]),
-                    end=int(rows[-1]["block_number"]) + 1,
-                ),
-                expected_rows=row_count,
-                expected_files=1,
-            )
+            return plan
 
     monkeypatch.setattr(
         "spice.workflows.acquire.Web3BlockClient",
@@ -328,10 +368,18 @@ def test_acquire_workflow_writes_direct_block_datasets_and_metadata(
     metadata = load_dataset_metadata(metadata_path)
 
     assert metadata is not None
+    assert FakeWorkflowBlockClient.history_requests == [
+        (
+            config.dataset.window.start_timestamp,
+            required_history_blocks,
+            config.acquisition.chunk_size,
+        )
+    ]
     assert metadata.paths.history == history_dir.as_posix()
     assert metadata.paths.evaluation == evaluation_dir.as_posix()
     assert metadata.validation.history.status == "clean"
     assert metadata.validation.evaluation.status == "clean"
+    assert history_range_from_metadata(metadata).start == expected_history_start
     assert history_range_from_metadata(metadata).end == config.dataset.window.start_timestamp
-    assert load_block_frame(history_dir).height == 256
+    assert load_block_frame(history_dir).height == required_history_blocks
     assert load_block_frame(evaluation_dir).height == 32

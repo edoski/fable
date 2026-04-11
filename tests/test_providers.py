@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Any, cast
 
 import pytest
+from web3.exceptions import BlockNotFound
 from web3.middleware import ExtraDataToPOAMiddleware
 
 from spice.acquisition.provider import build_web3, redact_sensitive_text
-from spice.acquisition.rpc import TimestampRange, Web3BlockClient
+from spice.acquisition.rpc import BlockPullPlan, BlockRange, TimestampRange, Web3BlockClient
 from tests.support import make_chain_config, make_provider_config
 
 
@@ -70,9 +71,11 @@ def test_web3_block_client_reads_canonical_block_rows(monkeypatch) -> None:
             return self.blocks
 
     class FakeEth:
-        block_number = 9
-
-        def get_block(self, block_number: int, _full_transactions: bool = False) -> dict[str, int]:
+        def get_block(
+            self,
+            block_number: int,
+            _full_transactions: bool = False,
+        ) -> dict[str, int]:
             return {
                 "number": block_number,
                 "timestamp": 1_700_000_000 + block_number,
@@ -115,13 +118,12 @@ def test_web3_block_client_reads_canonical_block_rows(monkeypatch) -> None:
     ]
 
 
-def test_web3_block_client_finds_first_block_at_or_after_timestamp(monkeypatch) -> None:
+def test_web3_block_client_uses_latest_block_for_head_resolution(monkeypatch) -> None:
     timestamps = {
         0: 100,
         1: 112,
         2: 124,
         3: 136,
-        4: 148,
     }
 
     class FakeEth:
@@ -133,11 +135,13 @@ def test_web3_block_client_finds_first_block_at_or_after_timestamp(monkeypatch) 
             _full_transactions: bool = False,
         ) -> dict[str, int]:
             if block_number == "latest":
-                block_number = 4
-            block_number = int(block_number)
+                block_number = 3
+            elif int(block_number) == 4:
+                raise BlockNotFound("stale numeric head")
+            number = int(block_number)
             return {
-                "number": block_number,
-                "timestamp": timestamps[block_number],
+                "number": number,
+                "timestamp": timestamps[number],
                 "baseFeePerGas": 1,
                 "gasUsed": 1,
                 "gasLimit": 1,
@@ -158,5 +162,104 @@ def test_web3_block_client_finds_first_block_at_or_after_timestamp(monkeypatch) 
 
     assert client.find_first_block_at_or_after(100) == 0
     assert client.find_first_block_at_or_after(113) == 2
-    assert client.find_first_block_at_or_after(149) == 5
-    assert client.resolve_block_range(TimestampRange(start=112, end=148)).count == 3
+    assert client.find_first_block_at_or_after(149) == 4
+    assert client.resolve_block_range(TimestampRange(start=112, end=136)) == BlockRange(
+        start=1,
+        end=3,
+    )
+
+
+def test_web3_block_client_plans_history_by_exact_block_count(monkeypatch) -> None:
+    class FakeEth:
+        def get_block(
+            self,
+            block_number: int | str,
+            _full_transactions: bool = False,
+        ) -> dict[str, int]:
+            if block_number == "latest":
+                block_number = 6
+            number = int(block_number)
+            return {
+                "number": number,
+                "timestamp": 100 + number * 12,
+                "baseFeePerGas": 1,
+                "gasUsed": 1,
+                "gasLimit": 1,
+            }
+
+    class FakeWeb3:
+        eth = FakeEth()
+
+        def batch_requests(self):
+            raise AssertionError("batch path not used in planning")
+
+    monkeypatch.setattr(
+        "spice.acquisition.rpc.build_web3",
+        lambda _provider, _chain: FakeWeb3(),
+    )
+
+    client = Web3BlockClient(make_provider_config(), make_chain_config())
+    plan = client.plan_history_window(
+        end_timestamp=136,
+        required_history_blocks=2,
+        chunk_size=5,
+    )
+
+    assert plan == BlockPullPlan(
+        window=TimestampRange(start=112, end=136),
+        block_range=BlockRange(start=1, end=3),
+        expected_rows=2,
+        expected_files=1,
+    )
+
+
+def test_web3_block_client_expands_history_plan_by_missing_blocks(monkeypatch) -> None:
+    class FakeEth:
+        def get_block(
+            self,
+            block_number: int | str,
+            _full_transactions: bool = False,
+        ) -> dict[str, int]:
+            if block_number == "latest":
+                block_number = 40
+            number = int(block_number)
+            return {
+                "number": number,
+                "timestamp": 100 + number * 12,
+                "baseFeePerGas": 1,
+                "gasUsed": 1,
+                "gasLimit": 1,
+            }
+
+    class FakeWeb3:
+        eth = FakeEth()
+
+        def batch_requests(self):
+            raise AssertionError("batch path not used in planning")
+
+    monkeypatch.setattr(
+        "spice.acquisition.rpc.build_web3",
+        lambda _provider, _chain: FakeWeb3(),
+    )
+
+    client = Web3BlockClient(make_provider_config(), make_chain_config())
+    current = BlockPullPlan(
+        window=TimestampRange(start=340, end=460),
+        block_range=BlockRange(start=20, end=30),
+        expected_rows=10,
+        expected_files=2,
+    )
+
+    expanded = client.expand_history_plan(
+        current,
+        observed_row_count=7,
+        required_history_blocks=10,
+        chunk_size=5,
+    )
+
+    assert expanded == BlockPullPlan(
+        window=TimestampRange(start=244, end=460),
+        block_range=BlockRange(start=12, end=30),
+        expected_rows=18,
+        expected_files=4,
+    )

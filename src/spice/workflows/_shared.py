@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.config import ExperimentConfig, revalidate_config
-from ..core.console import Reporter, create_reporter
+from ..core.console import ConsoleRuntime, Reporter, create_console_runtime
 from ..core.tracking import configure_mlflow, log_config
 from ..modeling.evaluation import EpochMetrics
 from ..modeling.pipeline import TrainingSpec
@@ -41,6 +41,7 @@ def epoch_metrics_to_dict(metrics: EpochMetrics) -> dict[str, float]:
 
 @dataclass(slots=True)
 class WorkflowSession:
+    runtime: ConsoleRuntime
     reporter: Reporter
     tracking_enabled: bool
 
@@ -50,32 +51,36 @@ def managed_workflow(
     config: ExperimentConfig,
     *,
     run_name: str,
+    runtime: ConsoleRuntime | None = None,
     reporter: Reporter | None = None,
-    default_reporter_factory: Callable[[], Reporter] = create_reporter,
+    default_runtime_factory: Callable[..., ConsoleRuntime] = create_console_runtime,
     nested: bool = False,
 ) -> Iterator[WorkflowSession]:
-    active_reporter = reporter or default_reporter_factory()
-    owns_reporter = reporter is None
+    active_runtime = runtime or default_runtime_factory(reporter=reporter)
+    owns_runtime = runtime is None
     try:
-        if config.tracking.enabled:
-            import mlflow
+        with active_runtime.activate():
+            if config.tracking.enabled:
+                import mlflow
 
-            configure_mlflow(config)
-            with mlflow.start_run(run_name=run_name, nested=nested):
-                log_config(config)
-                mlflow.set_tags(config.tracking.tags)
+                configure_mlflow(config)
+                with mlflow.start_run(run_name=run_name, nested=nested):
+                    log_config(config)
+                    mlflow.set_tags(config.tracking.tags)
+                    yield WorkflowSession(
+                        runtime=active_runtime,
+                        reporter=active_runtime.reporter,
+                        tracking_enabled=True,
+                    )
+            else:
                 yield WorkflowSession(
-                    reporter=active_reporter,
-                    tracking_enabled=True,
+                    runtime=active_runtime,
+                    reporter=active_runtime.reporter,
+                    tracking_enabled=False,
                 )
-        else:
-            yield WorkflowSession(
-                reporter=active_reporter,
-                tracking_enabled=False,
-            )
     finally:
-        if owns_reporter:
-            active_reporter.close()
+        if owns_runtime:
+            active_runtime.close()
 
 
 def trial_artifact_dir(config: ExperimentConfig, trial_number: int) -> Path:

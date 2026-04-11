@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..core.console import NullReporter, Reporter
+from ..core.console import ConsoleRuntime, NullReporter, Reporter
 from ..core.constants import ARTIFACT_MANIFEST_FILENAME, MODEL_STATE_FILENAME
 from .artifacts import (
     TrainingArtifactManifest,
@@ -35,6 +35,7 @@ def run_persisted_training(
     artifact_dir: Path,
     report_path: Path,
     reporter: Reporter | None = None,
+    runtime: ConsoleRuntime | None = None,
 ) -> PersistedTrainingRun:
     reporter = reporter or NullReporter()
     training_run = run_training(
@@ -42,6 +43,7 @@ def run_persisted_training(
         spec=spec,
         artifact_dir=artifact_dir,
         reporter=reporter,
+        runtime=runtime,
     )
     manifest = build_training_artifact_manifest(training_run.prepared, spec=spec)
     artifact_task = reporter.start_task("write training artifact")

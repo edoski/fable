@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+from io import StringIO
 from pathlib import Path
 
-from spice.core.console import NullReporter
+from rich.console import Console
+
+from spice.core.console import NullReporter, create_reporter
+from spice.workflows.acquire import run as run_acquire
 from spice.workflows.simulate import run as run_simulate
 from spice.workflows.train import run as run_train
 from spice.workflows.tune import run as run_tune
@@ -16,41 +20,12 @@ from tests.support import (
 )
 
 
-class RecordingReporter(NullReporter):
-    def __init__(self) -> None:
-        self.started: list[str] = []
-        self.updated: list[tuple[int, int | None, int | None, str | None]] = []
-        self.finished: list[tuple[int, str | None]] = []
-        self.logged: list[tuple[str, str]] = []
-        self._next_task_id = 1
+def _plain_reporter(stream: StringIO):
+    return create_reporter(Console(file=stream, force_terminal=False, width=120))
 
-    def log(self, message: str, *, level: str = "info") -> None:
-        self.logged.append((level, message))
 
-    def start_task(
-        self,
-        name: str,
-        *,
-        total: int | None = None,
-        unit: str | None = None,
-    ) -> int:
-        task_id = self._next_task_id
-        self._next_task_id += 1
-        self.started.append(name)
-        return task_id
-
-    def update_task(
-        self,
-        task_id: int,
-        *,
-        completed: int | None = None,
-        advance: int | None = None,
-        message: str | None = None,
-    ) -> None:
-        self.updated.append((task_id, completed, advance, message))
-
-    def finish_task(self, task_id: int, *, message: str | None = None) -> None:
-        self.finished.append((task_id, message))
+def _rich_reporter(stream: StringIO):
+    return create_reporter(Console(file=stream, force_terminal=True, width=120))
 
 
 def test_train_and_simulate_workflows_write_reports(tmp_path) -> None:
@@ -89,20 +64,46 @@ def test_train_and_simulate_workflows_write_reports(tmp_path) -> None:
     assert simulation_report.is_file()
 
 
-def test_train_workflow_reports_standardized_progress(tmp_path) -> None:
+def test_train_workflow_plain_output_filters_lightning_noise(tmp_path) -> None:
     config = compose_experiment("train", overrides=base_overrides(tmp_path))
     history_dir = Path(config.paths.history_dir)
     write_dataset_dir(history_dir, make_history_rows())
-    reporter = RecordingReporter()
+    stream = StringIO()
+    reporter = _plain_reporter(stream)
 
     run_train(config, reporter=reporter)
+    reporter.close()
 
-    assert "load history dataset" in reporter.started
-    assert "prepare training dataset" in reporter.started
-    assert "train epochs" in reporter.started
-    assert "evaluate model" in reporter.started
-    assert "write training artifact" in reporter.started
-    assert any(message and "loss=" in message for _, _, _, message in reporter.updated)
+    output = stream.getvalue()
+    assert "load history dataset started" in output
+    assert "prepare training dataset finished" in output
+    assert "training started" in output
+    assert "training finished: best_epoch=" in output
+    assert "evaluate model finished" in output
+    assert "GPU available" not in output
+    assert "TPU available" not in output
+    assert "litlogger" not in output.lower()
+    assert "LeafSpec" not in output
+    assert "train_dataloader" not in output
+    assert "val_dataloader" not in output
+
+
+def test_train_workflow_interactive_output_uses_shared_console(tmp_path) -> None:
+    config = compose_experiment("train", overrides=base_overrides(tmp_path))
+    history_dir = Path(config.paths.history_dir)
+    write_dataset_dir(history_dir, make_history_rows())
+    stream = StringIO()
+    reporter = _rich_reporter(stream)
+
+    run_train(config, reporter=reporter)
+    reporter.close()
+
+    output = stream.getvalue()
+    assert "load history dataset" in output
+    assert "training started" in output
+    assert "best_epoch=" in output
+    assert "GPU available" not in output
+    assert "litlogger" not in output.lower()
 
 
 def test_train_workflow_creates_local_mlflow_run(tmp_path) -> None:
@@ -227,7 +228,7 @@ def test_tune_workflow_writes_optuna_summary(tmp_path) -> None:
     assert best_params_payload["params"]
 
 
-def test_tune_workflow_reports_study_progress(tmp_path) -> None:
+def test_tune_workflow_plain_output_bridges_optuna_logs(tmp_path) -> None:
     config = compose_experiment("tune", overrides=base_overrides(tmp_path))
     config.tuning.trial_count = 2
     config.tuning.enable_pruning = False
@@ -239,17 +240,42 @@ def test_tune_workflow_reports_study_progress(tmp_path) -> None:
     }
     history_dir = Path(config.paths.history_dir)
     write_dataset_dir(history_dir, make_history_rows())
-    reporter = RecordingReporter()
+    stream = StringIO()
+    reporter = _plain_reporter(stream)
 
     run_tune(config, reporter=reporter)
+    reporter.close()
 
-    assert "tune study" in reporter.started
-    assert "write tuning summary" in reporter.started
-    assert any(message and "complete" in message for _, _, _, message in reporter.updated)
-    assert any("trial 1/2 started" in message for _, message in reporter.logged)
+    output = stream.getvalue()
+    assert "tune study started" in output
+    assert "A new study created" in output
+    assert "Trial 0 finished" in output
+    assert "Trial 1 finished" in output
+    assert "trial 1/2 started" not in output
+    assert "tune study finished: best_value=" in output
 
 
-def test_simulate_workflow_reports_standardized_progress(tmp_path) -> None:
+def test_acquire_dry_run_plain_output_is_human_summary(tmp_path) -> None:
+    config = compose_experiment(
+        "acquire",
+        overrides=base_overrides(tmp_path) + ["acquisition.dry_run=true"],
+    )
+    config.tracking.enabled = False
+    stream = StringIO()
+    reporter = _plain_reporter(stream)
+
+    run_acquire(config, reporter=reporter)
+    reporter.close()
+
+    output = stream.getvalue()
+    assert "acquire dry run" in output
+    assert "dataset: icdcs_2025_11_09" in output
+    assert "history window:" in output
+    assert "evaluation expected:" in output
+    assert '{"dataset_id"' not in output
+
+
+def test_simulate_workflow_plain_output_is_sparse(tmp_path) -> None:
     train_config = compose_experiment("train", overrides=base_overrides(tmp_path))
     simulate_config = compose_experiment("simulate", overrides=base_overrides(tmp_path))
     history_dir = Path(train_config.paths.history_dir)
@@ -257,12 +283,14 @@ def test_simulate_workflow_reports_standardized_progress(tmp_path) -> None:
     write_dataset_dir(history_dir, make_history_rows())
     write_dataset_dir(evaluation_dir, make_evaluation_rows())
     run_train(train_config, reporter=NullReporter())
-    reporter = RecordingReporter()
+    stream = StringIO()
+    reporter = _plain_reporter(stream)
 
     run_simulate(simulate_config, reporter=reporter)
+    reporter.close()
 
-    assert "load inference inputs" in reporter.started
-    assert "prepare inference dataset" in reporter.started
-    assert "predict offsets" in reporter.started
-    assert "simulate repetitions" in reporter.started
-    assert "write simulation report" in reporter.started
+    output = stream.getvalue()
+    predict_lines = [line for line in output.splitlines() if line.startswith("predict offsets:")]
+    assert "simulate repetitions finished: total_events=" in output
+    assert predict_lines
+    assert len(predict_lines) < 15
