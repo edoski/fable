@@ -203,7 +203,7 @@ def test_ensure_history_dataset_expands_by_block_count_until_requirement_met(tmp
     assert load_block_frame(output_dir).height == 6
 
 
-def test_web3_block_client_pull_timestamp_window_writes_chunked_dataset(
+def test_web3_block_client_pull_block_range_writes_chunked_dataset(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -262,9 +262,13 @@ def test_web3_block_client_pull_timestamp_window_writes_chunked_dataset(
 
     config = compose_experiment("acquire", overrides=base_overrides(tmp_path))
     client = Web3BlockClient(provider=config.provider, chain=config.chain)
-    plan = client.pull_timestamp_window(
+    plan = client.plan_window(
+        TimestampRange(start=112, end=160),
+        chunk_size=2,
+    )
+    pulled_plan = client.pull_block_range(
         tmp_path / "history",
-        window=TimestampRange(start=112, end=160),
+        plan=plan,
         chunk_size=2,
         rpc_batch_size=3,
         reporter=NullReporter(),
@@ -272,8 +276,9 @@ def test_web3_block_client_pull_timestamp_window_writes_chunked_dataset(
 
     frame = load_block_frame(tmp_path / "history")
 
-    assert plan.expected_rows == 4
-    assert plan.expected_files == 2
+    assert pulled_plan == plan
+    assert pulled_plan.expected_rows == 4
+    assert pulled_plan.expected_files == 2
     assert frame["block_number"].to_list() == [1, 2, 3, 4]
     assert len(list((tmp_path / "history").glob("*.parquet"))) == 2
 

@@ -4,7 +4,7 @@ from pandera.errors import SchemaError, SchemaErrors
 
 from spice.core.config import SplitConfig
 from spice.core.constants import DEFAULT_WINDOW_START_TIMESTAMP
-from spice.data.block_schema import BLOCK_SCHEMA
+from spice.data.block_contract import BLOCK_SCHEMA
 from spice.data.datasets import derive_dataset_geometry
 from spice.data.io import iter_block_files, load_block_frame
 from spice.data.validation import validate_exact_window_dataset

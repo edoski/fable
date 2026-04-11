@@ -44,7 +44,7 @@ params.yaml
 
 Consolidated runtime boundaries:
 
-- acquisition window planning, direct block pulling, dataset validation, and metadata shaping live under `src/spice/acquisition/`
+- acquisition window planning, canonical block-field extraction, dataset validation, and metadata shaping live under `src/spice/acquisition/`
 - workflow lifecycle and small shared workflow helpers live in `src/spice/workflows/_shared.py`
 - persisted training execution is centralized in `src/spice/modeling/execution.py`
 

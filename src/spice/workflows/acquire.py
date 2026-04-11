@@ -1,4 +1,4 @@
-"""Hydra entrypoint for direct block dataset acquisition."""
+"""Hydra entrypoint for canonical block dataset acquisition."""
 
 from __future__ import annotations
 

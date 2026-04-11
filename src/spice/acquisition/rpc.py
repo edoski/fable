@@ -1,4 +1,4 @@
-"""web3.py-backed helpers for direct block acquisition."""
+"""web3.py-backed helpers for canonical block acquisition."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from web3 import Web3
 
 from ..core.config import ChainConfig, ProviderConfig
 from ..core.console import NullReporter, Reporter
-from ..data.block_schema import canonicalize_block_frame
+from ..data.block_contract import build_canonical_block_row, canonicalize_block_frame
 from ..data.io import write_block_file
 from .provider import build_web3
 
@@ -170,26 +170,7 @@ class Web3BlockClient:
                 f"Expected {len(block_numbers)} block responses, got {len(blocks)}"
             )
 
-        return [self._canonical_block_row(block) for block in blocks]
-
-    def pull_timestamp_window(
-        self,
-        output_dir: Path,
-        *,
-        window: TimestampRange,
-        chunk_size: int,
-        rpc_batch_size: int,
-        reporter: Reporter | None = None,
-    ) -> BlockPullPlan:
-        reporter = reporter or NullReporter()
-        plan = self.plan_window(window, chunk_size=chunk_size)
-        return self.pull_block_range(
-            output_dir,
-            plan=plan,
-            chunk_size=chunk_size,
-            rpc_batch_size=rpc_batch_size,
-            reporter=reporter,
-        )
+        return [build_canonical_block_row(block, self.chain) for block in blocks]
 
     def pull_block_range(
         self,
@@ -224,17 +205,6 @@ class Web3BlockClient:
 
         reporter.finish_task(task_id, message=str(output_dir))
         return plan
-
-    def _canonical_block_row(self, block: dict[str, Any]) -> dict[str, int]:
-        base_fee = block.get("baseFeePerGas")
-        return {
-            "block_number": self._as_int(block["number"]),
-            "timestamp": self._as_int(block["timestamp"]),
-            "base_fee_per_gas": 0 if base_fee is None else self._as_int(base_fee),
-            "gas_used": self._as_int(block["gasUsed"]),
-            "chain_id": self.chain.chain_id,
-            "gas_limit": self._as_int(block["gasLimit"]),
-        }
 
     @staticmethod
     def _as_int(value: object) -> int:

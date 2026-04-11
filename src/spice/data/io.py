@@ -7,7 +7,7 @@ from pathlib import Path
 
 import polars as pl
 
-from .block_schema import (
+from .block_contract import (
     BLOCK_COLUMNS,
     validate_block_frame,
 )

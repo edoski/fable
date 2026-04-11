@@ -45,7 +45,7 @@ params.yaml
 ### `acquisition`
 
 - [provider.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/provider.py): thin provider config to `web3.py` bridge
-- [rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/rpc.py): timestamp-window resolution, block-range planning, batched block pulls, and canonical Parquet writing
+- [rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/rpc.py): timestamp-window resolution, block-range planning, canonical block-field extraction, and Parquet writing
 - [datasets.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/datasets.py): dataset reuse, validation, rebuilding, and history-window expansion
 - [metadata.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/metadata.py): dataset metadata loading, validation, and serialization
 - [windowing.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/windowing.py): history window sizing, reuse, and backward expansion rules
@@ -55,7 +55,7 @@ This layer no longer contains snapshot registries or a custom JSON-RPC transport
 ### `data`
 
 - [io.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/io.py): block-dataset discovery and parquet IO contract
-- [block_schema.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/block_schema.py): canonical block schemas and Pandera dataframe validation
+- [block_contract.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/block_contract.py): canonical block-field contract, row mapping, and Pandera dataframe validation
 - [features.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/features.py): feature engineering
 - [datasets.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/datasets.py): temporal geometry and store construction
 - [normalization.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/normalization.py): scaler fitting and transformation
