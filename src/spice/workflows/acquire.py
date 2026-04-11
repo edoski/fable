@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import hydra
 from omegaconf import DictConfig
 
@@ -45,9 +43,9 @@ def _window_summary_rows(
 
 
 def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
-    history_dir = Path(config.paths.history_dir)
-    evaluation_dir = Path(config.paths.evaluation_dir)
-    metadata_path = Path(config.paths.dataset_metadata_path)
+    history_dir = config.paths.history_dir
+    evaluation_dir = config.paths.evaluation_dir
+    metadata_path = config.paths.dataset_metadata_path
 
     required_history_blocks = required_history_block_count(config)
     evaluation_window = evaluation_range(

@@ -36,8 +36,8 @@ class TestMetricsReport(ReportModel):
 
 class TrainingRunReport(ReportModel):
     kind: Literal["training_run_report"] = "training_run_report"
-    history_block_path: str
-    artifact_dir: str
+    history_block_path: Path
+    artifact_dir: Path
     chain: str
     dataset_id: str
     family: str
@@ -75,9 +75,9 @@ class SimulationRunReport(ReportModel):
 
 class SimulationReport(ReportModel):
     kind: Literal["simulation_report"] = "simulation_report"
-    artifact_dir: str
-    history_block_path: str
-    evaluation_block_path: str
+    artifact_dir: Path
+    history_block_path: Path
+    evaluation_block_path: Path
     chain: str
     dataset_id: str
     family: str
@@ -118,8 +118,8 @@ def build_training_run_report(
 ) -> TrainingRunReport:
     metrics = result.test_metrics
     return TrainingRunReport(
-        history_block_path=str(history_block_path),
-        artifact_dir=str(artifact_dir),
+        history_block_path=history_block_path,
+        artifact_dir=artifact_dir,
         chain=chain_name,
         dataset_id=dataset_id,
         family=family,
@@ -164,9 +164,9 @@ def build_simulation_report(
 ) -> SimulationReport:
     manifest = loaded_artifact.manifest
     return SimulationReport(
-        artifact_dir=str(artifact_dir),
-        history_block_path=str(history_block_path),
-        evaluation_block_path=str(evaluation_block_path),
+        artifact_dir=artifact_dir,
+        history_block_path=history_block_path,
+        evaluation_block_path=evaluation_block_path,
         chain=manifest.chain.name.value,
         dataset_id=manifest.dataset_id,
         family=manifest.model.family.value,

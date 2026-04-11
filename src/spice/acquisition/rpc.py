@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from math import ceil
 from pathlib import Path
-from typing import Any, cast
+from typing import Literal, SupportsInt, cast
 
 import polars as pl
 from web3 import Web3
 
 from ..core.config import ChainConfig, ProviderConfig
 from ..core.console import NullReporter, Reporter
-from ..data.block_contract import build_canonical_block_row, canonicalize_block_frame
+from ..data.block_contract import (
+    CanonicalBlockRow,
+    RpcBlock,
+    build_canonical_block_row,
+    canonicalize_block_frame,
+)
 from ..data.io import write_block_file
 from .provider import build_web3
 
@@ -49,6 +55,12 @@ class BlockPullPlan:
     expected_files: int
 
 
+@dataclass(frozen=True, slots=True)
+class BlockHeader:
+    number: int
+    timestamp: int
+
+
 @dataclass(slots=True)
 class Web3BlockClient:
     provider: ProviderConfig
@@ -58,27 +70,25 @@ class Web3BlockClient:
     def __post_init__(self) -> None:
         self._web3 = build_web3(self.provider, self.chain)
 
-    def get_block(self, block_number: int) -> dict[str, Any]:
-        return cast(dict[str, Any], dict(self._web3.eth.get_block(block_number, False)))
+    def _get_block(self, block_number: int) -> BlockHeader:
+        return self._header_from_raw_block(self._raw_block_payload(block_number))
 
-    def _get_latest_block(self) -> dict[str, Any]:
-        return cast(dict[str, Any], dict(self._web3.eth.get_block("latest", False)))
+    def _get_latest_block(self) -> BlockHeader:
+        return self._header_from_raw_block(self._raw_block_payload("latest"))
 
     def find_first_block_at_or_after(self, timestamp: int) -> int:
         if timestamp < 0:
             raise ValueError("timestamp must be non-negative")
 
         latest_block = self._get_latest_block()
-        latest_block_number = self._as_int(latest_block["number"])
-        latest_timestamp = self._as_int(latest_block["timestamp"])
-        if timestamp > latest_timestamp:
-            return latest_block_number + 1
+        if timestamp > latest_block.timestamp:
+            return latest_block.number + 1
 
         low = 0
-        high = latest_block_number
+        high = latest_block.number
         while low < high:
             middle = (low + high) // 2
-            middle_timestamp = self._as_int(self.get_block(middle)["timestamp"])
+            middle_timestamp = self._get_block(middle).timestamp
             if middle_timestamp >= timestamp:
                 high = middle
             else:
@@ -126,7 +136,7 @@ class Web3BlockClient:
 
         evaluation_start_block = self.find_first_block_at_or_after(end_timestamp)
         history_start_block = max(0, evaluation_start_block - required_history_blocks)
-        history_start_timestamp = self._as_int(self.get_block(history_start_block)["timestamp"])
+        history_start_timestamp = self._get_block(history_start_block).timestamp
         return self.plan_block_range(
             BlockRange(start=history_start_block, end=evaluation_start_block),
             window=TimestampRange(start=history_start_timestamp, end=end_timestamp),
@@ -149,21 +159,26 @@ class Web3BlockClient:
             0,
             current.block_range.start - (missing_blocks + chunk_size),
         )
-        expanded_start_timestamp = self._as_int(self.get_block(expanded_start_block)["timestamp"])
+        expanded_start_timestamp = self._get_block(expanded_start_block).timestamp
         return self.plan_block_range(
             BlockRange(start=expanded_start_block, end=current.block_range.end),
             window=TimestampRange(start=expanded_start_timestamp, end=current.window.end),
             chunk_size=chunk_size,
         )
 
-    def get_block_rows(self, block_numbers: list[int]) -> list[dict[str, int]]:
+    def get_block_rows(self, block_numbers: list[int]) -> list[CanonicalBlockRow]:
         if not block_numbers:
             return []
 
         with self._web3.batch_requests() as batch:
             for block_number in block_numbers:
                 batch.add(self._web3.eth.get_block(block_number, False))
-            blocks = cast(list[dict[str, Any]], batch.execute())
+            raw_blocks = batch.execute()
+
+        if not isinstance(raw_blocks, list):
+            raise TypeError("Expected batch block responses as a list")
+
+        blocks = [self._raw_block_from_response(block) for block in raw_blocks]
 
         if len(blocks) != len(block_numbers):
             raise RuntimeError(
@@ -188,7 +203,7 @@ class Web3BlockClient:
             )
 
         task_id = reporter.start_task("pull blocks", total=plan.expected_rows, unit="blocks")
-        pending_rows: list[dict[str, int]] = []
+        pending_rows: list[CanonicalBlockRow] = []
         completed = 0
 
         for batch_start in range(plan.block_range.start, plan.block_range.end, rpc_batch_size):
@@ -208,9 +223,25 @@ class Web3BlockClient:
 
     @staticmethod
     def _as_int(value: object) -> int:
-        return int(cast(Any, value))
+        return int(cast(SupportsInt | str | bytes | bytearray, value))
 
-    def _write_chunk(self, output_dir: Path, rows: list[dict[str, int]]) -> Path:
+    def _raw_block_payload(self, block_number: int | Literal["latest"]) -> RpcBlock:
+        return self._raw_block_from_response(self._web3.eth.get_block(block_number, False))
+
+    @staticmethod
+    def _raw_block_from_response(response: object) -> RpcBlock:
+        if not isinstance(response, Mapping):
+            raise TypeError(f"Unsupported RPC block payload type: {type(response)!r}")
+        return {str(key): value for key, value in response.items()}
+
+    @classmethod
+    def _header_from_raw_block(cls, block: RpcBlock) -> BlockHeader:
+        return BlockHeader(
+            number=cls._as_int(block["number"]),
+            timestamp=cls._as_int(block["timestamp"]),
+        )
+
+    def _write_chunk(self, output_dir: Path, rows: list[CanonicalBlockRow]) -> Path:
         frame = canonicalize_block_frame(pl.DataFrame(rows))
         start_block = int(frame["block_number"][0])
         end_block = int(frame["block_number"][-1])

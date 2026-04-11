@@ -5,15 +5,15 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
 
 from .config import ExperimentConfig, config_to_dict
+from .json import JsonObject
 
 
 def resolve_tracking_uri(config: ExperimentConfig) -> str:
     if config.tracking.tracking_uri:
         return config.tracking.tracking_uri
-    database_path = Path(config.paths.mlruns_dir).resolve() / "mlflow.db"
+    database_path = config.paths.mlruns_dir.resolve() / "mlflow.db"
     return f"sqlite:///{database_path}"
 
 
@@ -23,7 +23,7 @@ def configure_mlflow(config: ExperimentConfig) -> None:
 
     logging.getLogger("mlflow").setLevel(logging.WARNING)
     logging.getLogger("mlflow.store.db.utils").setLevel(logging.WARNING)
-    tracking_root = Path(config.paths.mlruns_dir).resolve()
+    tracking_root = config.paths.mlruns_dir.resolve()
     tracking_root.mkdir(parents=True, exist_ok=True)
     tracking_uri = resolve_tracking_uri(config)
     mlflow.set_tracking_uri(tracking_uri)
@@ -43,7 +43,7 @@ def configure_mlflow(config: ExperimentConfig) -> None:
     mlflow.set_experiment(config.tracking.experiment_name)
 
 
-def _flatten_dict(payload: dict[str, Any], *, prefix: str = "") -> dict[str, str]:
+def _flatten_dict(payload: JsonObject, *, prefix: str = "") -> dict[str, str]:
     flattened: dict[str, str] = {}
     for key, value in payload.items():
         full_key = f"{prefix}.{key}" if prefix else key

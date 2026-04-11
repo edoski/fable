@@ -2,62 +2,62 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import SupportsInt, TypedDict, cast
 
 import pandera.polars as pa
 import polars as pl
+from polars.datatypes.classes import DataTypeClass
 
 from ..core.config import ChainConfig
 
 RpcBlock = Mapping[str, object]
-BlockFieldExtractor = Callable[[RpcBlock, ChainConfig], int]
+
+
+class CanonicalBlockRow(TypedDict):
+    block_number: int
+    timestamp: int
+    base_fee_per_gas: int
+    gas_used: int
+    chain_id: int
+    gas_limit: int
 
 
 @dataclass(frozen=True, slots=True)
 class CanonicalBlockFieldSpec:
     name: str
-    dtype: Any
-    extract: BlockFieldExtractor
+    dtype: DataTypeClass
 
 
 def _as_int(value: object) -> int:
-    return int(cast(Any, value))
+    return int(cast(SupportsInt | str | bytes | bytearray, value))
 
 
 CANONICAL_BLOCK_FIELDS = (
     CanonicalBlockFieldSpec(
         name="block_number",
         dtype=pl.Int64,
-        extract=lambda block, _chain: _as_int(block["number"]),
     ),
     CanonicalBlockFieldSpec(
         name="timestamp",
         dtype=pl.Int64,
-        extract=lambda block, _chain: _as_int(block["timestamp"]),
     ),
     CanonicalBlockFieldSpec(
         name="base_fee_per_gas",
         dtype=pl.Int64,
-        extract=lambda block, _chain: 0
-        if block.get("baseFeePerGas") is None
-        else _as_int(block["baseFeePerGas"]),
     ),
     CanonicalBlockFieldSpec(
         name="gas_used",
         dtype=pl.Int64,
-        extract=lambda block, _chain: _as_int(block["gasUsed"]),
     ),
     CanonicalBlockFieldSpec(
         name="chain_id",
         dtype=pl.Int64,
-        extract=lambda _block, chain: chain.chain_id,
     ),
     CanonicalBlockFieldSpec(
         name="gas_limit",
         dtype=pl.Int64,
-        extract=lambda block, _chain: _as_int(block["gasLimit"]),
     ),
 )
 
@@ -92,17 +92,20 @@ def _validate_contract() -> None:
         raise RuntimeError(f"Duplicate canonical block fields are not allowed: {field_names}")
 
 
-def build_canonical_block_row(block: RpcBlock, chain: ChainConfig) -> dict[str, int]:
-    row: dict[str, int] = {}
-    for field in CANONICAL_BLOCK_FIELDS:
-        try:
-            value = field.extract(block, chain)
-        except KeyError as exc:
-            raise KeyError(
-                f"Missing RPC block field while extracting canonical field {field.name}: {exc}"
-            ) from exc
-        row[field.name] = int(value)
-    return row
+def build_canonical_block_row(block: RpcBlock, chain: ChainConfig) -> CanonicalBlockRow:
+    try:
+        return CanonicalBlockRow(
+            block_number=_as_int(block["number"]),
+            timestamp=_as_int(block["timestamp"]),
+            base_fee_per_gas=(
+                0 if block.get("baseFeePerGas") is None else _as_int(block["baseFeePerGas"])
+            ),
+            gas_used=_as_int(block["gasUsed"]),
+            chain_id=chain.chain_id,
+            gas_limit=_as_int(block["gasLimit"]),
+        )
+    except KeyError as exc:
+        raise KeyError(f"Missing RPC block field while extracting canonical row: {exc}") from exc
 
 
 def canonicalize_block_frame(frame: pl.DataFrame) -> pl.DataFrame:

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import hydra
 from omegaconf import DictConfig
 
@@ -21,9 +19,9 @@ from ._shared import managed_workflow
 
 
 def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
-    artifact_dir = Path(config.paths.artifact_root)
-    history_block_path = Path(config.paths.history_dir)
-    evaluation_block_path = Path(config.paths.evaluation_dir)
+    artifact_dir = config.paths.artifact_root
+    history_block_path = config.paths.history_dir
+    evaluation_block_path = config.paths.evaluation_dir
     with managed_workflow(
         config,
         run_name=(
@@ -87,7 +85,7 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             arrival_rate_per_second=config.simulation.arrival_rate_per_second,
             repetitions=config.simulation.repetitions,
         )
-        report_path = Path(config.paths.simulation_report_path)
+        report_path = config.paths.simulation_report_path
         report_task = session.reporter.start_task("write simulation report")
         write_json_report(report_path, report)
         session.reporter.finish_task(report_task, message=str(report_path))

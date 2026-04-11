@@ -101,7 +101,8 @@ What stays custom here:
 - [train.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/train.py)
 - [simulate.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/simulate.py)
 - [tune.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/tune.py)
-- [_shared.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/_shared.py): workflow session/runtime helpers, JSON emission, and small shared config utilities
+- [_shared.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/_shared.py): workflow session/runtime helpers, MLflow setup, and best-params application
+- [_tuning.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/_tuning.py): typed tuning search-space sampling, tuned-parameter application, and tuning artifact models
 
 Each workflow exposes:
 
@@ -111,6 +112,7 @@ Each workflow exposes:
 The workflow layer is intentionally thin:
 
 - `workflows/_shared.py` owns reporter lifecycle, MLflow setup, config logging, and nested run handling
+- `workflows/_tuning.py` owns the typed tuning contract, structured study/trial/best-params artifacts, and explicit application of tuned `training.*` / `model.*` fields
 - `workflows/dvc.py` owns the DVC-only `params.yaml` loading path and then dispatches the same workflow functions
 - `acquire.py` orchestrates stage order only and delegates pull/window/metadata policy to `acquisition/*`
 - `train.py` and `tune.py` both route persisted model/report generation through `modeling/execution.py`
@@ -143,6 +145,19 @@ In the DVC thesis path, `train` explicitly depends on the tuned model-local
 `best_params.json` artifact. The `spice-dvc train` runner applies that artifact
 intentionally. Direct `spice-train` usage still defaults to
 `tuning.apply_best_params=false`.
+
+The tuning schema is intentionally closed:
+
+- `tuning.direction` is `maximize` or `minimize`
+- `tuning.objective_metric` is one of the explicit validation metrics
+- `tuning.search_space` is nested under `training` and `model`, not dotted-path keyed
+- unsupported tunable fields are rejected during config validation
+
+The tuning artifacts are structured JSON, not loose dict dumps:
+
+- `study.json` stores the typed study summary and nested search-space payload
+- `trials.json` stores typed per-trial records, including nested tuned params
+- `best_params.json` stores nested `params.training` / `params.model` values and is the only artifact consumed by `train`
 
 DVC Hydra composition is enabled in [.dvc/config](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/.dvc/config). Stage definitions live in [dvc.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/dvc.yaml), and the composed baseline consumed by the stages lives in [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml).
 

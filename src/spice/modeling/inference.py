@@ -10,6 +10,7 @@ from ..core.console import NullReporter, Reporter
 from ..data.datasets import TemporalDatasetStore
 from ._runtime import build_sequence_loader, resolve_device
 from .models import TemporalModel
+from .torch_datasets import move_batch_to_device
 
 IntVector = NDArray[np.int64]
 
@@ -42,7 +43,8 @@ def predict_class_offsets(
     predictions: list[int] = []
     with torch.no_grad():
         for batch in loader:
-            logits = model(batch["inputs"].to(resolved_device)).logits
+            device_batch = move_batch_to_device(batch, resolved_device)
+            logits = model(device_batch.inputs).logits
             predictions.extend(logits.argmax(dim=-1).cpu().tolist())
             reporter.update_task(task_id, advance=1)
     reporter.finish_task(task_id)

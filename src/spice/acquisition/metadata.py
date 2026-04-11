@@ -254,8 +254,8 @@ def build_dataset_metadata(
 
 def _metadata_has_dataset_files(config: ExperimentConfig) -> bool:
     for candidate in (
-        Path(config.paths.history_dir),
-        Path(config.paths.evaluation_dir),
+        config.paths.history_dir,
+        config.paths.evaluation_dir,
     ):
         if has_block_files(candidate):
             return True

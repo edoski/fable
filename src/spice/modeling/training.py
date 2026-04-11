@@ -27,7 +27,7 @@ from .datamodule import TemporalDataModule
 from .evaluation import EpochMetrics, compute_temporal_batch_metrics, mean_metrics
 from .lightning_module import TemporalLightningModule
 from .models import TemporalModel
-from .torch_datasets import build_class_weights
+from .torch_datasets import build_class_weights, move_batch_to_device
 
 IntVector = NDArray[np.int64]
 
@@ -188,8 +188,8 @@ def evaluate_model(
     metrics = []
     with torch.no_grad():
         for batch in loader:
-            device_batch = {key: value.to(device) for key, value in batch.items()}
-            outputs = model(device_batch["inputs"])
+            device_batch = move_batch_to_device(batch, device)
+            outputs = model(device_batch.inputs)
             _, batch_metrics = compute_temporal_batch_metrics(
                 outputs,
                 device_batch,

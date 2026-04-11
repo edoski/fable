@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from spice.core.config import WorkflowTask
 from spice.workflows.dvc import load_stage_config
 from tests.support import (
     REPO_ROOT,
@@ -19,16 +20,22 @@ def test_hydra_train_config_composes_and_resolves_paths(tmp_path) -> None:
         + ["dataset.temporal.max_delay_seconds=24", "model=transformer"],
     )
 
-    assert config.task == "train"
+    assert config.task is WorkflowTask.TRAIN
     assert config.dataset.temporal.max_delay_seconds == 24
     assert config.model.family.value == "transformer"
     assert config.dataset.id == "icdcs_2025_11_09"
     assert config.dataset.sampling.history_anchor_count is None
     assert config.dataset.sampling.effective_history_anchor_count == 48
-    assert config.paths.artifact_root.endswith("/ethereum/icdcs_2025_11_09/transformer/24s")
-    assert config.paths.history_dir.endswith("/datasets/ethereum/icdcs_2025_11_09/history")
-    assert config.paths.metadata_root.endswith("/datasets/ethereum/icdcs_2025_11_09/.spice")
-    assert config.paths.dataset_metadata_path.endswith(
+    assert config.paths.artifact_root.as_posix().endswith(
+        "/ethereum/icdcs_2025_11_09/transformer/24s"
+    )
+    assert config.paths.history_dir.as_posix().endswith(
+        "/datasets/ethereum/icdcs_2025_11_09/history"
+    )
+    assert config.paths.metadata_root.as_posix().endswith(
+        "/datasets/ethereum/icdcs_2025_11_09/.spice"
+    )
+    assert config.paths.dataset_metadata_path.as_posix().endswith(
         "/datasets/ethereum/icdcs_2025_11_09/.spice/metadata.json"
     )
 
@@ -124,9 +131,45 @@ def test_history_anchor_count_cannot_be_smaller_than_anchor_count(tmp_path) -> N
         )
 
 
+def test_invalid_tuning_direction_fails_early(tmp_path) -> None:
+    with pytest.raises(ValueError, match="maximize|minimize"):
+        compose_experiment(
+            "tune",
+            overrides=base_overrides(tmp_path) + ["tuning.direction=sideways"],
+        )
+
+
+def test_invalid_tuning_objective_fails_early(tmp_path) -> None:
+    with pytest.raises(ValueError, match="validation_loss|validation_accuracy"):
+        compose_experiment(
+            "tune",
+            overrides=base_overrides(tmp_path) + ["tuning.objective_metric=validation_magic"],
+        )
+
+
+def test_tuning_search_space_rejects_empty_candidate_list(tmp_path) -> None:
+    with pytest.raises(ValueError, match="at least 1 item"):
+        compose_experiment(
+            "tune",
+            overrides=base_overrides(tmp_path)
+            + ["tuning.search_space.training.learning_rate=[]"],
+        )
+
+
+def test_tuning_search_space_rejects_unsupported_field(tmp_path) -> None:
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        compose_experiment(
+            "tune",
+            overrides=base_overrides(tmp_path)
+            + ["+tuning.search_space.training.momentum=[0.9]"],
+        )
+
+
 def test_dvc_runner_loads_generated_params_and_forces_stage_task() -> None:
     config = load_stage_config("train", REPO_ROOT / "params.yaml")
 
-    assert config.task == "train"
+    assert config.task is WorkflowTask.TRAIN
     assert config.tuning.apply_best_params is True
-    assert config.paths.artifact_root.endswith("/models/ethereum/icdcs_2025_11_09/lstm/36s")
+    assert config.paths.artifact_root.as_posix().endswith(
+        "/models/ethereum/icdcs_2025_11_09/lstm/36s"
+    )

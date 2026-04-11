@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import shutil
-from pathlib import Path
 
 import hydra
 from omegaconf import DictConfig
@@ -22,14 +21,14 @@ from ._shared import (
 
 
 def _clean_training_outputs(config: ExperimentConfig) -> None:
-    checkpoint_dir = Path(config.paths.checkpoint_dir)
+    checkpoint_dir = config.paths.checkpoint_dir
     if checkpoint_dir.exists():
         shutil.rmtree(checkpoint_dir)
     for path in (
-        Path(config.paths.artifact_root) / ARTIFACT_MANIFEST_FILENAME,
-        Path(config.paths.artifact_root) / MODEL_STATE_FILENAME,
-        Path(config.paths.train_report_path),
-        Path(config.paths.simulation_report_path),
+        config.paths.artifact_root / ARTIFACT_MANIFEST_FILENAME,
+        config.paths.artifact_root / MODEL_STATE_FILENAME,
+        config.paths.train_report_path,
+        config.paths.simulation_report_path,
     ):
         if path.exists():
             path.unlink()
@@ -39,9 +38,9 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
     if config.tuning.apply_best_params:
         config = apply_best_tuning_params(config)
     spec = build_training_spec(config)
-    artifact_dir = Path(config.paths.artifact_root)
-    report_path = Path(config.paths.train_report_path)
-    history_block_path = Path(config.paths.history_dir)
+    artifact_dir = config.paths.artifact_root
+    report_path = config.paths.train_report_path
+    history_block_path = config.paths.history_dir
     with managed_workflow(
         config,
         run_name=(

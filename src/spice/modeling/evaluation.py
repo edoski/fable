@@ -9,6 +9,7 @@ import torch.nn.functional as F
 
 from ..core.config import TrainingConfig
 from .models import ModelOutputs
+from .torch_datasets import SequenceBatch
 
 
 @dataclass(slots=True)
@@ -55,17 +56,17 @@ def mean_metrics(metrics: list[BatchMetrics]) -> EpochMetrics:
 
 def compute_temporal_losses(
     outputs: ModelOutputs,
-    batch: dict[str, torch.Tensor],
+    batch: SequenceBatch,
     *,
     class_weights: torch.Tensor,
     training_config: TrainingConfig,
 ) -> TemporalLosses:
     action_loss = F.cross_entropy(
         outputs.logits,
-        batch["class_label"],
+        batch.class_label,
         weight=class_weights,
     )
-    fee_loss = F.smooth_l1_loss(outputs.fee_hat, batch["target_log_fee"])
+    fee_loss = F.smooth_l1_loss(outputs.fee_hat, batch.target_log_fee)
     total_loss = (
         training_config.action_loss_weight * action_loss
         + training_config.fee_loss_weight * fee_loss
@@ -79,7 +80,7 @@ def compute_temporal_losses(
 
 def compute_temporal_batch_metrics(
     outputs: ModelOutputs,
-    batch: dict[str, torch.Tensor],
+    batch: SequenceBatch,
     *,
     class_weights: torch.Tensor,
     training_config: TrainingConfig,
@@ -93,10 +94,10 @@ def compute_temporal_batch_metrics(
     return losses.total_loss, compute_batch_metrics(
         logits=outputs.logits.detach(),
         total_loss=losses.total_loss.detach(),
-        class_labels=batch["class_label"].detach(),
-        action_log_fees=batch["action_log_fees"].detach(),
-        next_block_log_fee=batch["next_block_log_fee"].detach(),
-        optimal_log_fee=batch["optimal_log_fee"].detach(),
+        class_labels=batch.class_label.detach(),
+        action_log_fees=batch.action_log_fees.detach(),
+        next_block_log_fee=batch.next_block_log_fee.detach(),
+        optimal_log_fee=batch.optimal_log_fee.detach(),
     )
 
 

@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from ..core.config import ExperimentConfig, revalidate_config
+from ..core.config import ExperimentConfig
 from ..core.console import ConsoleRuntime, Reporter, create_console_runtime
 from ..core.tracking import configure_mlflow, log_config
 from ..modeling.evaluation import EpochMetrics
 from ..modeling.pipeline import TrainingSpec
+from ._tuning import TuningBestParamsReport, apply_tuned_parameters
 
 
 def build_training_spec(config: ExperimentConfig) -> TrainingSpec:
@@ -84,37 +82,15 @@ def managed_workflow(
 
 
 def trial_artifact_dir(config: ExperimentConfig, trial_number: int) -> Path:
-    return Path(config.paths.tuning_root) / "trials" / f"trial-{trial_number:03d}"
+    return config.paths.tuning_root / "trials" / f"trial-{trial_number:03d}"
 
 
 def apply_best_tuning_params(config: ExperimentConfig) -> ExperimentConfig:
-    tuned_config = clone_config(config)
-    path = Path(tuned_config.paths.tuning_best_params_path)
+    path = config.paths.tuning_best_params_path
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        report = TuningBestParamsReport.model_validate_json(path.read_text(encoding="utf-8"))
     except OSError as exc:
         raise FileNotFoundError(
             f"Best tuning params are required but missing: {path}"
         ) from exc
-    if not isinstance(payload, dict) or payload.get("kind") != "tuning_best_params":
-        raise ValueError(f"Invalid best tuning params file: {path}")
-    params = payload.get("params")
-    if not isinstance(params, dict) or not params:
-        raise ValueError(f"Best tuning params file contains no params: {path}")
-    for key, value in params.items():
-        if not isinstance(key, str):
-            raise ValueError(f"Invalid tuned parameter key in {path}: {key!r}")
-        set_nested_attr(tuned_config, key, value)
-    return revalidate_config(tuned_config)
-
-
-def clone_config(config: ExperimentConfig) -> ExperimentConfig:
-    return deepcopy(config)
-
-
-def set_nested_attr(config: ExperimentConfig, dotted_path: str, value: Any) -> None:
-    current: Any = config
-    parts = dotted_path.split(".")
-    for part in parts[:-1]:
-        current = getattr(current, part)
-    setattr(current, parts[-1], value)
+    return apply_tuned_parameters(config, report.params)

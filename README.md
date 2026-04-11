@@ -141,7 +141,35 @@ Hydra config groups live under [src/spice/conf](/Users/edo/Documents/Obsidian/th
 - `training/`
 - `tuning/`
 
-Runtime validation happens in [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py). Hydra YAML owns defaults; Pydantic models enforce structural invariants, including transformer head divisibility and provider endpoint availability.
+Runtime validation happens in [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py). Hydra YAML owns defaults; Pydantic models enforce structural invariants, including transformer head divisibility, closed tuning search-space fields, and acquire-only provider endpoint availability.
+
+The tuning contract is explicit and closed. `tuning.search_space` is nested by subsystem, not dotted-path keyed:
+
+```yaml
+tuning:
+  direction: maximize
+  objective_metric: validation_profit_over_baseline
+  search_space:
+    training:
+      learning_rate: [0.0001, 0.0003, 0.001]
+      weight_decay: [0.0, 0.01, 0.05]
+    model:
+      hidden_size: [64, 128, 256]
+      dropout: [0.0, 0.1, 0.2]
+```
+
+Supported objective metrics are:
+
+- `validation_loss`
+- `validation_accuracy`
+- `validation_cost_over_optimum`
+- `validation_profit_over_baseline`
+
+Tuning outputs are structured JSON artifacts under `paths.tuning_root`:
+
+- `study.json`: typed study summary including the nested search space and best-trial payload
+- `trials.json`: typed per-trial records
+- `best_params.json`: nested `params.training` / `params.model` payload consumed by `train` when `tuning.apply_best_params=true`
 
 ## Verification
 

@@ -367,9 +367,9 @@ def test_acquire_workflow_writes_block_planned_datasets_and_actual_history_metad
 
     run_acquire(config, reporter=NullReporter())
 
-    metadata_path = Path(config.paths.dataset_metadata_path)
-    history_dir = Path(config.paths.history_dir)
-    evaluation_dir = Path(config.paths.evaluation_dir)
+    metadata_path = config.paths.dataset_metadata_path
+    history_dir = config.paths.history_dir
+    evaluation_dir = config.paths.evaluation_dir
     metadata = load_dataset_metadata(metadata_path)
 
     assert metadata is not None

@@ -8,6 +8,7 @@ import torch
 from ..core.config import TrainingConfig
 from .evaluation import BatchMetrics, EpochMetrics, compute_temporal_batch_metrics, mean_metrics
 from .models import ModelOutputs, TemporalModel
+from .torch_datasets import SequenceBatch
 
 
 class TemporalLightningModule(L.LightningModule):
@@ -47,8 +48,8 @@ class TemporalLightningModule(L.LightningModule):
     def on_validation_epoch_start(self) -> None:
         self._validation_batches = []
 
-    def _shared_step(self, batch: dict[str, torch.Tensor], *, stage: str) -> torch.Tensor:
-        outputs = self.model(batch["inputs"])
+    def _shared_step(self, batch: SequenceBatch, *, stage: str) -> torch.Tensor:
+        outputs = self.model(batch.inputs)
         total_loss, metrics = compute_temporal_batch_metrics(
             outputs,
             batch,
@@ -90,10 +91,10 @@ class TemporalLightningModule(L.LightningModule):
             self._validation_batches.append(metrics)
         return total_loss
 
-    def training_step(self, batch: dict[str, torch.Tensor], _batch_idx: int) -> torch.Tensor:
+    def training_step(self, batch: SequenceBatch, _batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, stage="train")
 
-    def validation_step(self, batch: dict[str, torch.Tensor], _batch_idx: int) -> torch.Tensor:
+    def validation_step(self, batch: SequenceBatch, _batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, stage="validation")
 
     def on_train_epoch_end(self) -> None:

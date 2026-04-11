@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
-from typing import Any, Self
+from pathlib import Path
+from typing import Self, cast
 
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+
+from .json import JsonObject
 
 
 class ChainName(StrEnum):
@@ -26,6 +29,29 @@ class RpcProviderName(StrEnum):
     DIRECT = "direct"
     ALCHEMY = "alchemy"
     PUBLICNODE = "publicnode"
+
+
+class WorkflowTask(StrEnum):
+    ACQUIRE = "acquire"
+    TUNE = "tune"
+    TRAIN = "train"
+    SIMULATE = "simulate"
+
+
+class StudyDirection(StrEnum):
+    MAXIMIZE = "maximize"
+    MINIMIZE = "minimize"
+
+
+class TuningObjective(StrEnum):
+    VALIDATION_LOSS = "validation_loss"
+    VALIDATION_ACCURACY = "validation_accuracy"
+    VALIDATION_COST_OVER_OPTIMUM = "validation_cost_over_optimum"
+    VALIDATION_PROFIT_OVER_BASELINE = "validation_profit_over_baseline"
+
+    @property
+    def metric_name(self) -> str:
+        return self.value.removeprefix("validation_")
 
 
 class ConfigModel(BaseModel):
@@ -175,65 +201,159 @@ class TrackingConfig(ConfigModel):
     tags: dict[str, str]
 
 
+class TuningTrainingSearchSpace(ConfigModel):
+    learning_rate: list[float] | None = Field(default=None, min_length=1)
+    weight_decay: list[float] | None = Field(default=None, min_length=1)
+
+    @field_validator("learning_rate")
+    @classmethod
+    def validate_learning_rate_candidates(cls, values: list[float] | None) -> list[float] | None:
+        if values is not None and any(value <= 0.0 for value in values):
+            raise ValueError("tuning.search_space.training.learning_rate values must be positive")
+        return values
+
+    @field_validator("weight_decay")
+    @classmethod
+    def validate_weight_decay_candidates(cls, values: list[float] | None) -> list[float] | None:
+        if values is not None and any(value < 0.0 for value in values):
+            raise ValueError(
+                "tuning.search_space.training.weight_decay values must be non-negative"
+            )
+        return values
+
+    @model_validator(mode="after")
+    def validate_non_empty_group(self) -> Self:
+        if self.learning_rate is None and self.weight_decay is None:
+            raise ValueError("tuning.search_space.training must declare at least one field")
+        return self
+
+
+class TuningModelSearchSpace(ConfigModel):
+    hidden_size: list[int] | None = Field(default=None, min_length=1)
+    dropout: list[float] | None = Field(default=None, min_length=1)
+
+    @field_validator("hidden_size")
+    @classmethod
+    def validate_hidden_size_candidates(cls, values: list[int] | None) -> list[int] | None:
+        if values is not None and any(value <= 0 for value in values):
+            raise ValueError("tuning.search_space.model.hidden_size values must be positive")
+        return values
+
+    @field_validator("dropout")
+    @classmethod
+    def validate_dropout_candidates(cls, values: list[float] | None) -> list[float] | None:
+        if values is not None and any(value < 0.0 or value >= 1.0 for value in values):
+            raise ValueError("tuning.search_space.model.dropout values must be in [0.0, 1.0)")
+        return values
+
+    @model_validator(mode="after")
+    def validate_non_empty_group(self) -> Self:
+        if self.hidden_size is None and self.dropout is None:
+            raise ValueError("tuning.search_space.model must declare at least one field")
+        return self
+
+
+class TuningSearchSpace(ConfigModel):
+    training: TuningTrainingSearchSpace | None = None
+    model: TuningModelSearchSpace | None = None
+
+    @model_validator(mode="after")
+    def validate_non_empty_search_space(self) -> Self:
+        if self.training is None and self.model is None:
+            raise ValueError("tuning.search_space must declare at least one parameter group")
+        return self
+
+
+class TunedTrainingParams(ConfigModel):
+    learning_rate: float | None = Field(default=None, gt=0.0)
+    weight_decay: float | None = Field(default=None, ge=0.0)
+
+    @model_validator(mode="after")
+    def validate_non_empty_group(self) -> Self:
+        if self.learning_rate is None and self.weight_decay is None:
+            raise ValueError("tuned training params must declare at least one field")
+        return self
+
+
+class TunedModelParams(ConfigModel):
+    hidden_size: int | None = Field(default=None, gt=0)
+    dropout: float | None = Field(default=None, ge=0.0, lt=1.0)
+
+    @model_validator(mode="after")
+    def validate_non_empty_group(self) -> Self:
+        if self.hidden_size is None and self.dropout is None:
+            raise ValueError("tuned model params must declare at least one field")
+        return self
+
+
+class TunedParameterSet(ConfigModel):
+    training: TunedTrainingParams | None = None
+    model: TunedModelParams | None = None
+
+    @model_validator(mode="after")
+    def validate_non_empty_param_set(self) -> Self:
+        if self.training is None and self.model is None:
+            raise ValueError("tuned parameter set must declare at least one parameter group")
+        return self
+
+
 class TuningConfig(ConfigModel):
     apply_best_params: bool
     study_name: str
-    direction: str
+    direction: StudyDirection
     trial_count: int = Field(gt=0)
     timeout_seconds: int | None = Field(default=None, gt=0)
-    objective_metric: str
+    objective_metric: TuningObjective
     sampler_seed: int = Field(ge=0)
     enable_pruning: bool
-    search_space: dict[str, list[Any]]
+    search_space: TuningSearchSpace
 
 
 class RuntimeConfig(ConfigModel):
-    output_root: str
-    hydra_run_dir: str
-    hydra_sweep_dir: str
+    output_root: Path
+    hydra_run_dir: Path
+    hydra_sweep_dir: Path
 
 
 class PathsConfig(ConfigModel):
-    output_root: str
-    dataset_root: str
-    metadata_root: str
-    history_dir: str
-    evaluation_dir: str
-    dataset_metadata_path: str
-    artifact_root: str
-    checkpoint_dir: str
-    train_report_path: str
-    simulation_report_path: str
-    tuning_root: str
-    tuning_best_params_path: str
-    mlruns_dir: str
+    output_root: Path
+    dataset_root: Path
+    metadata_root: Path
+    history_dir: Path
+    evaluation_dir: Path
+    dataset_metadata_path: Path
+    artifact_root: Path
+    checkpoint_dir: Path
+    train_report_path: Path
+    simulation_report_path: Path
+    tuning_root: Path
+    tuning_best_params_path: Path
+    mlruns_dir: Path
 
 
 class ProviderConfig(ConfigModel):
     name: RpcProviderName
-    endpoints: dict[str, str]
-    references: dict[str, str]
+    endpoints: dict[ChainName, str]
+    references: dict[ChainName, str]
     timeout_seconds: float = Field(gt=0.0)
     retry_count: int = Field(ge=0)
     backoff_factor: float = Field(ge=0.0)
 
-    def endpoint_for(self, chain_name: ChainName | str) -> str:
-        key = chain_name.value if isinstance(chain_name, ChainName) else str(chain_name)
-        value = self.endpoints.get(key, "")
+    def endpoint_for(self, chain_name: ChainName) -> str:
+        value = self.endpoints.get(chain_name, "")
         if not value:
-            raise ValueError(f"Missing RPC endpoint for chain: {key}")
+            raise ValueError(f"Missing RPC endpoint for chain: {chain_name.value}")
         return value
 
-    def reference_for(self, chain_name: ChainName | str) -> str:
-        key = chain_name.value if isinstance(chain_name, ChainName) else str(chain_name)
-        reference = self.references.get(key)
+    def reference_for(self, chain_name: ChainName) -> str:
+        reference = self.references.get(chain_name)
         if reference:
             return reference
-        return self.endpoint_for(key)
+        return self.endpoint_for(chain_name)
 
 
 class ExperimentConfig(ConfigModel):
-    task: str
+    task: WorkflowTask
     chain: ChainConfig
     dataset: DatasetConfig
     model: ModelConfig
@@ -249,7 +369,7 @@ class ExperimentConfig(ConfigModel):
 
     @model_validator(mode="after")
     def validate_provider_for_task(self) -> Self:
-        if self.task == "acquire":
+        if self.task is WorkflowTask.ACQUIRE:
             self.provider.endpoint_for(self.chain.name)
         return self
 
@@ -257,10 +377,11 @@ class ExperimentConfig(ConfigModel):
 _EXPERIMENT_CONFIG_ADAPTER = TypeAdapter(ExperimentConfig)
 
 
-def coerce_config(cfg: DictConfig, *, task: str) -> ExperimentConfig:
+def coerce_config(cfg: DictConfig, *, task: WorkflowTask | str) -> ExperimentConfig:
+    resolved_task = WorkflowTask(task)
     working = OmegaConf.create(OmegaConf.to_container(cfg, resolve=False))
     OmegaConf.set_struct(working, False)
-    OmegaConf.update(working, "task", task, merge=False)
+    OmegaConf.update(working, "task", resolved_task.value, merge=False)
     OmegaConf.resolve(working)
     payload = OmegaConf.to_container(working, resolve=True, enum_to_str=True)
     if not isinstance(payload, dict):
@@ -269,11 +390,11 @@ def coerce_config(cfg: DictConfig, *, task: str) -> ExperimentConfig:
     return _EXPERIMENT_CONFIG_ADAPTER.validate_python(payload)
 
 
-def config_to_dict(cfg: ExperimentConfig) -> dict[str, Any]:
+def config_to_dict(cfg: ExperimentConfig) -> JsonObject:
     payload = _EXPERIMENT_CONFIG_ADAPTER.dump_python(cfg, mode="json")
     if not isinstance(payload, dict):
         raise TypeError("ExperimentConfig did not serialize to a mapping payload")
-    return payload
+    return cast(JsonObject, payload)
 
 
 def revalidate_config(cfg: ExperimentConfig) -> ExperimentConfig:

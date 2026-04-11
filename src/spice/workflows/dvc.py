@@ -8,7 +8,7 @@ from pathlib import Path
 
 from omegaconf import DictConfig, OmegaConf
 
-from ..core.config import ExperimentConfig, coerce_config, revalidate_config
+from ..core.config import ExperimentConfig, WorkflowTask, coerce_config, revalidate_config
 
 STAGE_MODULES: dict[str, str] = {
     "acquire": "spice.workflows.acquire",
@@ -18,12 +18,13 @@ STAGE_MODULES: dict[str, str] = {
 }
 
 
-def load_stage_config(stage: str, params_path: Path) -> ExperimentConfig:
+def load_stage_config(stage: WorkflowTask | str, params_path: Path) -> ExperimentConfig:
+    resolved_stage = WorkflowTask(stage)
     raw_config = OmegaConf.load(params_path)
     if not isinstance(raw_config, DictConfig):
         raise TypeError(f"DVC params must be a mapping: {params_path}")
-    config = coerce_config(raw_config, task=stage)
-    if stage == "train":
+    config = coerce_config(raw_config, task=resolved_stage)
+    if resolved_stage is WorkflowTask.TRAIN:
         config.tuning.apply_best_params = True
         config = revalidate_config(config)
     return config
@@ -35,7 +36,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--params", type=Path, default=Path("params.yaml"))
     args = parser.parse_args(argv)
     module = import_module(STAGE_MODULES[args.stage])
-    module.run(load_stage_config(args.stage, args.params))
+    module.run(load_stage_config(WorkflowTask(args.stage), args.params))
 
 
 if __name__ == "__main__":

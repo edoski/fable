@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import numpy as np
 import torch
 from numpy.typing import NDArray
@@ -10,7 +12,15 @@ from torch.utils.data import Dataset
 from ..data.datasets import TemporalDatasetStore
 
 IntVector = NDArray[np.int64]
-SequenceBatch = dict[str, torch.Tensor]
+
+
+class SequenceBatch(NamedTuple):
+    inputs: torch.Tensor
+    class_label: torch.Tensor
+    target_log_fee: torch.Tensor
+    action_log_fees: torch.Tensor
+    next_block_log_fee: torch.Tensor
+    optimal_log_fee: torch.Tensor
 
 
 class SequenceDataset(Dataset[SequenceBatch]):
@@ -36,22 +46,27 @@ class SequenceDataset(Dataset[SequenceBatch]):
         sample_index = int(self.sample_indices[index])
         anchor_row_index = int(self.store.anchor_row_indices[sample_index])
         sequence_start = anchor_row_index - self.lookback_steps + 1
-        return {
-            "inputs": torch.from_numpy(
-                self.store.feature_matrix[sequence_start : anchor_row_index + 1]
-            ),
-            "class_label": torch.tensor(self.store.class_labels[sample_index], dtype=torch.long),
-            "target_log_fee": torch.tensor(
+        inputs = torch.from_numpy(
+            self.store.feature_matrix[sequence_start : anchor_row_index + 1]
+        )
+        return SequenceBatch(
+            inputs=inputs,
+            class_label=torch.tensor(self.store.class_labels[sample_index], dtype=torch.long),
+            target_log_fee=torch.tensor(
                 self.store.target_log_fee[sample_index], dtype=torch.float32
             ),
-            "action_log_fees": torch.from_numpy(self.store.action_log_fees[sample_index]),
-            "next_block_log_fee": torch.tensor(
+            action_log_fees=torch.from_numpy(self.store.action_log_fees[sample_index]),
+            next_block_log_fee=torch.tensor(
                 self.store.next_block_log_fee[sample_index], dtype=torch.float32
             ),
-            "optimal_log_fee": torch.tensor(
+            optimal_log_fee=torch.tensor(
                 self.store.optimal_log_fee[sample_index], dtype=torch.float32
             ),
-        }
+        )
+
+
+def move_batch_to_device(batch: SequenceBatch, device: torch.device) -> SequenceBatch:
+    return SequenceBatch(*(tensor.to(device) for tensor in batch))
 
 
 def build_class_weights(

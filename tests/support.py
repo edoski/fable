@@ -72,12 +72,13 @@ def make_provider_config(
     reference = "$ETHEREUM_RPC_URL" if name is RpcProviderName.DIRECT else endpoint
     return ProviderConfig(
         name=name,
-        endpoints={"ethereum": endpoint},
-        references={"ethereum": reference},
+        endpoints={ChainName.ETHEREUM: endpoint},
+        references={ChainName.ETHEREUM: reference},
         timeout_seconds=30.0,
         retry_count=5,
         backoff_factor=0.125,
     )
+
 
 def make_model_config(*, family: ModelFamily = ModelFamily.LSTM) -> ModelConfig:
     return ModelConfig(

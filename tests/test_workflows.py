@@ -9,6 +9,7 @@ from rich.console import Console
 
 from spice.acquisition.rpc import BlockPullPlan, BlockRange, TimestampRange
 from spice.core.console import NullReporter, create_reporter
+from spice.workflows._tuning import TuningBestParamsReport, TuningStudyReport, TuningTrialRecord
 from spice.workflows.acquire import run as run_acquire
 from spice.workflows.simulate import run as run_simulate
 from spice.workflows.train import run as run_train
@@ -27,30 +28,30 @@ def _reporter(stream: StringIO, *, interactive: bool):
 
 
 def _artifact_dir(config) -> Path:
-    return Path(config.paths.artifact_root)
+    return config.paths.artifact_root
 
 
 def _train_report_path(config) -> Path:
-    return Path(config.paths.train_report_path)
+    return config.paths.train_report_path
 
 
 def _simulation_report_path(config) -> Path:
-    return Path(config.paths.simulation_report_path)
+    return config.paths.simulation_report_path
 
 
 def _tuning_root(config) -> Path:
-    return Path(config.paths.tuning_root)
+    return config.paths.tuning_root
 
 
 def _seed_train_history(config) -> Path:
-    history_dir = Path(config.paths.history_dir)
+    history_dir = config.paths.history_dir
     write_dataset_dir(history_dir, make_history_rows())
     return history_dir
 
 
 def _seed_simulation_inputs(train_config, simulate_config) -> tuple[Path, Path]:
     history_dir = _seed_train_history(train_config)
-    evaluation_dir = Path(simulate_config.paths.evaluation_dir)
+    evaluation_dir = simulate_config.paths.evaluation_dir
     write_dataset_dir(evaluation_dir, make_evaluation_rows())
     return history_dir, evaluation_dir
 
@@ -90,16 +91,33 @@ def test_train_applies_best_tuning_params_cleans_stale_outputs_and_tracks(tmp_pa
 
     artifact_dir = _artifact_dir(config)
     train_report_path = _train_report_path(config)
-    mlruns_dir = Path(config.paths.mlruns_dir)
-    best_params_path = Path(config.paths.tuning_best_params_path)
+    mlruns_dir = config.paths.mlruns_dir
+    best_params_path = config.paths.tuning_best_params_path
     best_params_path.parent.mkdir(parents=True, exist_ok=True)
     best_params_path.write_text(
         json.dumps(
             {
                 "kind": "tuning_best_params",
+                "study_name": config.tuning.study_name,
+                "chain": config.chain.name.value,
+                "dataset_id": config.dataset.id,
+                "family": config.model.family.value,
+                "max_delay_seconds": config.dataset.temporal.max_delay_seconds,
+                "lookback_seconds": config.dataset.temporal.lookback_seconds,
+                "anchor_count": config.dataset.sampling.anchor_count,
+                "objective_metric": config.tuning.objective_metric.value,
+                "direction": config.tuning.direction.value,
+                "trial": {
+                    "number": 0,
+                    "value": 1.234,
+                },
                 "params": {
-                    "model.hidden_size": 64,
-                    "training.learning_rate": 0.001,
+                    "model": {
+                        "hidden_size": 64,
+                    },
+                    "training": {
+                        "learning_rate": 0.001,
+                    },
                 },
             }
         ),
@@ -132,8 +150,12 @@ def test_tune_workflow_writes_optuna_summary(tmp_path) -> None:
     config.training.max_epochs = 1
     config.tracking.enabled = False
     config.tuning.search_space = {
-        "training.learning_rate": [1e-4, 3e-4],
-        "model.hidden_size": [64, 128],
+        "training": {
+            "learning_rate": [1e-4, 3e-4],
+        },
+        "model": {
+            "hidden_size": [64, 128],
+        },
     }
 
     _seed_train_history(config)
@@ -153,15 +175,24 @@ def test_tune_workflow_writes_optuna_summary(tmp_path) -> None:
     assert not stale_trial.exists()
     assert (tuning_root / "trials" / "trial-000" / "train_report.json").is_file()
 
-    study_payload = json.loads(study_path.read_text(encoding="utf-8"))
-    trials_payload = json.loads(trials_path.read_text(encoding="utf-8"))
-    best_params_payload = json.loads(best_params_path.read_text(encoding="utf-8"))
-    assert study_payload["kind"] == "tuning_study"
-    assert study_payload["dataset_id"] == "icdcs_2025_11_09"
-    assert study_payload["trial_counts"]["total"] == 2
-    assert len(trials_payload) == 2
-    assert best_params_payload["kind"] == "tuning_best_params"
-    assert best_params_payload["params"]
+    study_report = TuningStudyReport.model_validate_json(study_path.read_text(encoding="utf-8"))
+    trial_records = [
+        TuningTrialRecord.model_validate(payload)
+        for payload in json.loads(trials_path.read_text(encoding="utf-8"))
+    ]
+    best_params_report = TuningBestParamsReport.model_validate_json(
+        best_params_path.read_text(encoding="utf-8")
+    )
+    assert study_report.kind == "tuning_study"
+    assert study_report.dataset_id == "icdcs_2025_11_09"
+    assert study_report.trial_counts.total == 2
+    assert len(trial_records) == 2
+    assert trial_records[0].params.model is not None
+    assert best_params_report.kind == "tuning_best_params"
+    assert (
+        best_params_report.params.model is not None
+        or best_params_report.params.training is not None
+    )
 
 
 def test_acquire_dry_run_plain_output_is_human_summary(tmp_path, monkeypatch) -> None:
