@@ -52,6 +52,7 @@ _NATIVE_NOISE_PATTERNS = (
     re.compile(r"^Seed set to \d+$"),
     re.compile(r"^GPU available: .*"),
     re.compile(r"^TPU available: .*"),
+    re.compile(r"^Successfully disconnected from: .*"),
     re.compile(r"litlogger", re.IGNORECASE),
     re.compile(r"`Trainer\.fit` stopped: `max_epochs=.*` reached\."),
     re.compile(r"GPU available but not used"),
@@ -78,7 +79,13 @@ class Reporter(Protocol):
         advance: int | None = None,
         message: str | None = None,
     ) -> None: ...
-    def finish_task(self, task_id: ReporterTask, *, message: str | None = None) -> None: ...
+    def finish_task(
+        self,
+        task_id: ReporterTask,
+        *,
+        message: str | None = None,
+        silent: bool = False,
+    ) -> None: ...
     def close(self) -> None: ...
 
 
@@ -107,7 +114,14 @@ class NullReporter:
     ) -> None:
         return None
 
-    def finish_task(self, task_id: ReporterTask, *, message: str | None = None) -> None:
+    def finish_task(
+        self,
+        task_id: ReporterTask,
+        *,
+        message: str | None = None,
+        silent: bool = False,
+    ) -> None:
+        del task_id, message, silent
         return None
 
     def close(self) -> None:
@@ -193,12 +207,20 @@ class PlainReporter(_BaseConsoleReporter):
         state.last_emitted_message = state.message
         state.last_emitted_bucket = self._progress_bucket(state)
 
-    def finish_task(self, task_id: ReporterTask, *, message: str | None = None) -> None:
+    def finish_task(
+        self,
+        task_id: ReporterTask,
+        *,
+        message: str | None = None,
+        silent: bool = False,
+    ) -> None:
         state = self._tasks.pop(task_id, None)
         if state is None:
             return
         if message is not None:
             state.message = message
+        if silent:
+            return
         self.log(self._format_finish(state))
 
     def _should_emit(self, state: _PlainTaskState) -> bool:
@@ -261,7 +283,7 @@ class RichReporter(_BaseConsoleReporter):
         unit: str | None = None,
     ) -> ReporterTask:
         progress = self._ensure_progress()
-        task_id = progress.add_task(name, total=total)
+        task_id = progress.add_task(name, total=total, status="")
         self._task_names[task_id] = name
         return task_id
 
@@ -276,15 +298,21 @@ class RichReporter(_BaseConsoleReporter):
         name = self._task_names.get(task_id)
         if name is None or self._progress is None:
             return
-        description = name if message is None else f"{name} | {message}"
         self._progress.update(
             TaskID(task_id),
             completed=completed,
             advance=advance,
-            description=description,
+            description=name,
+            status="" if message is None else message,
         )
 
-    def finish_task(self, task_id: ReporterTask, *, message: str | None = None) -> None:
+    def finish_task(
+        self,
+        task_id: ReporterTask,
+        *,
+        message: str | None = None,
+        silent: bool = False,
+    ) -> None:
         name = self._task_names.pop(task_id, None)
         if name is None or self._progress is None:
             return
@@ -292,6 +320,8 @@ class RichReporter(_BaseConsoleReporter):
         if not self._task_names:
             self._progress.stop()
             self._progress = None
+        if silent:
+            return
         self.log(f"{name} finished" if message is None else f"{name} finished: {message}")
 
     def close(self) -> None:
@@ -307,6 +337,7 @@ class RichReporter(_BaseConsoleReporter):
                 TaskProgressColumn(),
                 TimeElapsedColumn(),
                 TimeRemainingColumn(),
+                TextColumn("[dim]{task.fields[status]}[/dim]"),
                 console=self.console,
                 transient=False,
             )
@@ -440,6 +471,33 @@ class ConsoleRuntime:
         self.reporter.log(title)
         for label, value in rows:
             self.reporter.log(f"{label}: {value}")
+
+    def log_sectioned_summary(
+        self,
+        title: str,
+        sections: list[tuple[str, list[tuple[str, str]]]],
+    ) -> None:
+        if self.console.is_terminal:
+            body = Table.grid(expand=True)
+            body.add_column()
+            for index, (section_title, rows) in enumerate(sections):
+                if index > 0:
+                    body.add_row("")
+                section = Table.grid(padding=(0, 1))
+                section.add_column(style="bold cyan", justify="right", no_wrap=True)
+                section.add_column()
+                for label, value in rows:
+                    section.add_row(label, value)
+                body.add_row(f"[bold]{section_title}[/bold]")
+                body.add_row(section)
+            self.console.print(Panel(body, title=title, border_style="cyan"))
+            return
+
+        self.reporter.log(title)
+        for section_title, rows in sections:
+            self.reporter.log(f"{section_title}:")
+            for label, value in rows:
+                self.reporter.log(f"  {label}: {value}")
 
     def close(self) -> None:
         if self._activation_depth > 0:

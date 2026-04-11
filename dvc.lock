@@ -1,0 +1,167 @@
+schema: '2.0'
+stages:
+  acquire:
+    cmd: ./bin/spice-awake .venv/bin/spice-dvc acquire
+    deps:
+    - path: pyproject.toml
+      hash: md5
+      md5: 6ceaf8c5955c09daaf25bbf85a808016
+      size: 1670
+    - path: src/spice
+      hash: md5
+      md5: fa9fed3d6faf4c3388b2646e3b993fd2.dir
+      size: 210226
+      nfiles: 71
+    params:
+      params.yaml:
+        acquisition:
+          dry_run: false
+          overwrite: false
+          chunk_size: 8192
+          rpc_batch_size: 256
+          rpc_concurrency: 48
+          rpc_min_batch_size: 64
+          rpc_concurrency_rungs:
+          - 8
+          - 16
+          - 24
+          - 32
+          - 48
+        chain:
+          name: ethereum
+          chain_id: 1
+          block_time_seconds: 12.0
+          uses_poa_extra_data: false
+        dataset:
+          id: icdcs_2025_11_09
+          window:
+            start_date: '2025-11-09'
+            end_date: '2025-11-09'
+          temporal:
+            max_delay_seconds: 36
+            lookback_seconds: 600
+          sampling:
+            anchor_count: 1000000
+            history_anchor_count:
+        model:
+          family: lstm
+          input_projection_dim: 128
+          hidden_size: 128
+          num_layers: 2
+          dropout: 0.1
+          d_model: 128
+          nhead: 4
+          transformer_layers: 2
+          feedforward_dim: 512
+          head_hidden_dim: 64
+        paths:
+          output_root: artifacts
+          dataset_root: artifacts/datasets/ethereum/icdcs_2025_11_09
+          metadata_root: artifacts/datasets/ethereum/icdcs_2025_11_09/.spice
+          history_dir: artifacts/datasets/ethereum/icdcs_2025_11_09/history
+          evaluation_dir: 
+            artifacts/datasets/ethereum/icdcs_2025_11_09/evaluation
+          dataset_metadata_path: 
+            artifacts/datasets/ethereum/icdcs_2025_11_09/.spice/metadata.json
+          artifact_root: artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s
+          checkpoint_dir: 
+            artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/checkpoints
+          train_report_path: 
+            artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/train_report.json
+          simulation_report_path: 
+            artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/simulation_report.json
+          tuning_root: 
+            artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/tuning
+          tuning_best_params_path: 
+            artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/tuning/best_params.json
+          mlruns_dir: artifacts/../.mlflow
+        provider:
+          timeout_seconds: 30.0
+          retry_count: 5
+          backoff_factor: 0.125
+          name: publicnode
+          endpoints:
+            ethereum: https://ethereum-rpc.publicnode.com
+            polygon: https://polygon-bor-rpc.publicnode.com
+            avalanche: https://avalanche-c-chain-rpc.publicnode.com
+          references:
+            ethereum: https://ethereum-rpc.publicnode.com
+            polygon: https://polygon-bor-rpc.publicnode.com
+            avalanche: https://avalanche-c-chain-rpc.publicnode.com
+        runtime:
+          output_root: artifacts
+          hydra_run_dir: .hydra/runs/train
+          hydra_sweep_dir: .hydra/sweeps/train
+        simulation:
+          window_seconds: 7200
+          arrival_rate_per_second: 0.05
+          repetitions: 50
+          seed: 2026
+        split:
+          train_fraction: 0.8
+          validation_fraction: 0.1
+        task: train
+        tracking:
+          enabled: true
+          experiment_name: spice
+          tracking_uri: ''
+          tags: {}
+        training:
+          learning_rate: 0.0003
+          weight_decay: 0.01
+          batch_size: 64
+          max_epochs: 50
+          early_stopping:
+            patience: 8
+            min_delta: 0.0001
+          gradient_clip_norm: 1.0
+          action_loss_weight: 1.0
+          fee_loss_weight: 0.25
+          device: auto
+          seed: 2026
+          deterministic: true
+          log_every_n_steps: 10
+        tuning:
+          apply_best_params: false
+          study_name: spice-study
+          direction: maximize
+          trial_count: 20
+          timeout_seconds:
+          objective_metric: validation_profit_over_baseline
+          sampler_seed: 2026
+          enable_pruning: true
+          search_space:
+            training:
+              learning_rate:
+              - 0.0001
+              - 0.0003
+              - 0.001
+              weight_decay:
+              - 0.0
+              - 0.01
+              - 0.05
+            model:
+              hidden_size:
+              - 64
+              - 128
+              - 256
+              dropout:
+              - 0.0
+              - 0.1
+              - 0.2
+    outs:
+    - path: artifacts/datasets/ethereum/icdcs_2025_11_09/.spice
+      hash: md5
+      md5: b700e07098d50a1a7800d0193dc9a0e1.dir
+      size: 2064
+      nfiles: 1
+    - path: artifacts/datasets/ethereum/icdcs_2025_11_09/evaluation
+      hash: md5
+      md5: f5393eb2b863da304f7332bae2eafe69.dir
+      size: 73716
+      nfiles: 1
+    - path: artifacts/datasets/ethereum/icdcs_2025_11_09/history
+      hash: md5
+      md5: a4c67cd0af00edcc8456ebae7f5a3756.dir
+      size: 10891963
+      nfiles: 123

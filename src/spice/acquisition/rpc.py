@@ -377,7 +377,11 @@ class Web3BlockClient:
                 f"No blocks found inside requested block range: {plan.block_range}"
             )
 
-        task_id = reporter.start_task("pull blocks", total=plan.expected_rows, unit="blocks")
+        task_id = reporter.start_task(
+            f"pull {self.chain.name.value.replace('_', ' ').title()} blocks",
+            total=plan.expected_rows,
+            unit="blocks",
+        )
         pending_rows: list[CanonicalBlockRow] = []
         pending_requests: list[_BatchRequest] = []
         in_flight: dict[asyncio.Task[list[CanonicalBlockRow]], _BatchRequest] = {}
@@ -387,6 +391,11 @@ class Web3BlockClient:
         next_write_start = plan.block_range.start
 
         try:
+            reporter.update_task(
+                task_id,
+                completed=0,
+                message=self._live_rpc_status(rpc_controller),
+            )
             while next_write_start < plan.block_range.end:
                 while len(in_flight) < rpc_controller.current_concurrency:
                     request = self._next_request(
@@ -423,10 +432,10 @@ class Web3BlockClient:
                                     "RPC batch remained too large at the configured minimum "
                                     f"batch size ({rpc_controller.min_batch_size})"
                                 ) from exc
-                            reporter.log(
-                                "rpc oversized response; "
-                                f"reducing batch size to {next_batch_size} and retrying",
-                                level="warning",
+                            reporter.update_task(
+                                task_id,
+                                completed=completed,
+                                message=self._live_rpc_status(rpc_controller),
                             )
                             for retry_request in self._split_request(
                                 request,
@@ -436,29 +445,23 @@ class Web3BlockClient:
                             continue
 
                         if self._is_transient_error(exc):
-                            next_concurrency = rpc_controller.record_transient_failure()
+                            rpc_controller.record_transient_failure()
                             if request.attempts + 1 >= MAX_RPC_ATTEMPTS_PER_RANGE:
                                 raise RuntimeError(
                                     f"RPC range {request.start}..{request.end} exceeded "
                                     f"{MAX_RPC_ATTEMPTS_PER_RANGE} transient retry attempts"
                                 ) from exc
-                            if next_concurrency is not None:
-                                reporter.log(
-                                    "rpc transient failures; "
-                                    f"reducing concurrency to {next_concurrency}",
-                                    level="warning",
-                                )
+                            reporter.update_task(
+                                task_id,
+                                completed=completed,
+                                message=self._live_rpc_status(rpc_controller),
+                            )
                             heappush(pending_requests, request.retry())
                             continue
 
                         raise
 
-                    recovered_concurrency = rpc_controller.record_success()
-                    if recovered_concurrency is not None:
-                        reporter.log(
-                            "rpc recovered; "
-                            f"increasing concurrency to {recovered_concurrency}",
-                        )
+                    rpc_controller.record_success()
 
                     if len(rows) != request.size:
                         raise RuntimeError(
@@ -472,7 +475,11 @@ class Web3BlockClient:
                         rows=rows,
                     )
                     completed += len(rows)
-                    reporter.update_task(task_id, completed=completed)
+                    reporter.update_task(
+                        task_id,
+                        completed=completed,
+                        message=self._live_rpc_status(rpc_controller),
+                    )
 
                     while next_write_start in completed_results:
                         finished_batch = completed_results.pop(next_write_start)
@@ -489,7 +496,7 @@ class Web3BlockClient:
             if pending_rows:
                 await asyncio.to_thread(self._write_chunk, output_dir, pending_rows)
 
-            reporter.finish_task(task_id, message=str(output_dir))
+            reporter.finish_task(task_id, message=str(output_dir), silent=True)
             return plan
         finally:
             for task in in_flight:
@@ -528,6 +535,13 @@ class Web3BlockClient:
             )
             for batch_start in range(request.start, request.end, batch_size)
         ]
+
+    @staticmethod
+    def _live_rpc_status(rpc_controller: RpcController) -> str:
+        return (
+            f"batch {rpc_controller.current_batch_size} | "
+            f"conc {rpc_controller.current_concurrency}"
+        )
 
     @staticmethod
     def _as_int(value: object) -> int:

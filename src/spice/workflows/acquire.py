@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 
 import hydra
 from omegaconf import DictConfig
@@ -27,21 +28,68 @@ from ..core.tracking import log_artifacts
 from ._shared import managed_workflow
 
 
-def _window_summary_rows(
-    label: str,
+def _chain_label(chain_name: str) -> str:
+    return chain_name.replace("_", " ").title()
+
+
+def _format_timestamp(value: int) -> str:
+    return datetime.fromtimestamp(value, tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _format_duration(start_timestamp: int, end_timestamp: int) -> str:
+    remaining = max(0, end_timestamp - start_timestamp)
+    units = (
+        ("d", 24 * 60 * 60),
+        ("h", 60 * 60),
+        ("m", 60),
+        ("s", 1),
+    )
+    parts: list[str] = []
+    for suffix, size in units:
+        if remaining < size and parts:
+            continue
+        value, remaining = divmod(remaining, size)
+        if value > 0 or not parts:
+            parts.append(f"{value}{suffix}")
+        if len(parts) == 2:
+            break
+    return " ".join(parts)
+
+
+def _format_count(value: int, singular: str, plural: str | None = None) -> str:
+    unit = singular if value == 1 else (plural or f"{singular}s")
+    return f"{value:,} {unit}"
+
+
+def _planned_window_rows(
     *,
     start_timestamp: int,
     end_timestamp: int,
-    block_start: int,
-    block_end: int,
     expected_rows: int,
     expected_files: int,
 ) -> list[tuple[str, str]]:
     return [
-        (f"{label} window", f"{start_timestamp}..{end_timestamp}"),
-        (f"{label} blocks", f"{block_start}..{block_end}"),
-        (f"{label} expected", f"{expected_rows} rows in {expected_files} files"),
+        ("window", f"{_format_timestamp(start_timestamp)} -> {_format_timestamp(end_timestamp)}"),
+        ("duration", _format_duration(start_timestamp, end_timestamp)),
+        (
+            "planned",
+            f"{_format_count(expected_rows, 'block')} in {_format_count(expected_files, 'file')}",
+        ),
     ]
+
+
+def _final_window_rows(
+    *,
+    row_count: int,
+    expected_files: int | None,
+    reused: bool,
+) -> list[tuple[str, str]]:
+    result = _format_count(row_count, "block")
+    if expected_files is not None:
+        result = f"{result} in {_format_count(expected_files, 'file')}"
+    elif reused:
+        result = f"{result} reused"
+    return [("result", result)]
 
 
 def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
@@ -59,56 +107,70 @@ async def _run_async(config: ExperimentConfig, *, reporter: Reporter | None = No
         config.dataset.window.start_timestamp,
         config.dataset.window.end_timestamp,
     )
-    block_client = Web3BlockClient(config.provider, config.chain)
-    try:
-        evaluation_plan = await block_client.plan_window(
-            evaluation_window,
-            chunk_size=config.acquisition.chunk_size,
-        )
-        existing_metadata = check_existing_dataset_metadata(
-            config=config,
-            metadata_path=metadata_path,
-            overwrite=config.acquisition.overwrite,
-        )
-        if existing_metadata is not None and not config.acquisition.overwrite:
-            history_plan = await block_client.plan_window(
-                history_range_from_metadata(existing_metadata),
-                chunk_size=config.acquisition.chunk_size,
-            )
-        else:
-            history_plan = await block_client.plan_history_window(
-                end_timestamp=config.dataset.window.start_timestamp,
-                required_history_blocks=required_history_blocks,
-                chunk_size=config.acquisition.chunk_size,
-            )
+    chain_label = _chain_label(config.chain.name.value)
 
-        with managed_workflow(
-            config,
-            run_name=f"acquire-{config.chain.name.value}-{config.provider.name.value}",
-            reporter=reporter,
-        ) as session:
+    with managed_workflow(
+        config,
+        run_name=f"acquire-{config.chain.name.value}-{config.provider.name.value}",
+        reporter=reporter,
+    ) as session:
+        block_client = Web3BlockClient(config.provider, config.chain)
+        try:
+            evaluation_plan = await block_client.plan_window(
+                evaluation_window,
+                chunk_size=config.acquisition.chunk_size,
+            )
+            existing_metadata = check_existing_dataset_metadata(
+                config=config,
+                metadata_path=metadata_path,
+                overwrite=config.acquisition.overwrite,
+            )
+            if existing_metadata is not None and not config.acquisition.overwrite:
+                history_plan = await block_client.plan_window(
+                    history_range_from_metadata(existing_metadata),
+                    chunk_size=config.acquisition.chunk_size,
+                )
+            else:
+                history_plan = await block_client.plan_history_window(
+                    end_timestamp=config.dataset.window.start_timestamp,
+                    required_history_blocks=required_history_blocks,
+                    chunk_size=config.acquisition.chunk_size,
+                )
+
             if config.acquisition.dry_run:
-                session.runtime.log_summary(
+                session.runtime.log_sectioned_summary(
                     "acquire dry run",
-                    [("dataset", config.dataset.id)]
-                    + _window_summary_rows(
-                        "history",
-                        start_timestamp=history_plan.window.start,
-                        end_timestamp=history_plan.window.end,
-                        block_start=history_plan.block_range.start,
-                        block_end=history_plan.block_range.end,
-                        expected_rows=history_plan.expected_rows,
-                        expected_files=history_plan.expected_files,
-                    )
-                    + _window_summary_rows(
-                        "evaluation",
-                        start_timestamp=evaluation_window.start,
-                        end_timestamp=evaluation_window.end,
-                        block_start=evaluation_plan.block_range.start,
-                        block_end=evaluation_plan.block_range.end,
-                        expected_rows=evaluation_plan.expected_rows,
-                        expected_files=evaluation_plan.expected_files,
-                    ),
+                    [
+                        (
+                            "dataset",
+                            [
+                                ("id", config.dataset.id),
+                                ("chain", chain_label),
+                                (
+                                    "required history",
+                                    _format_count(required_history_blocks, "block"),
+                                ),
+                            ],
+                        ),
+                        (
+                            "history",
+                            _planned_window_rows(
+                                start_timestamp=history_plan.window.start,
+                                end_timestamp=history_plan.window.end,
+                                expected_rows=history_plan.expected_rows,
+                                expected_files=history_plan.expected_files,
+                            ),
+                        ),
+                        (
+                            "evaluation",
+                            _planned_window_rows(
+                                start_timestamp=evaluation_window.start,
+                                end_timestamp=evaluation_window.end,
+                                expected_rows=evaluation_plan.expected_rows,
+                                expected_files=evaluation_plan.expected_files,
+                            ),
+                        ),
+                    ],
                 )
                 return
 
@@ -143,30 +205,44 @@ async def _run_async(config: ExperimentConfig, *, reporter: Reporter | None = No
             )
             metadata_task = session.reporter.start_task("write dataset metadata")
             write_json(metadata_path, metadata)
-            session.reporter.finish_task(metadata_task, message=str(metadata_path))
-            session.runtime.log_summary(
+            session.reporter.finish_task(
+                metadata_task,
+                message=str(metadata_path),
+                silent=True,
+            )
+            session.runtime.log_sectioned_summary(
                 "acquisition summary",
-                {
-                    "dataset": config.dataset.id,
-                    "history": (
-                        f"{history_validation.row_count} rows, "
-                        f"{0 if history_result is None else history_result.expected_files} files, "
-                        f"validation={history_validation.status}"
+                [
+                    (
+                        "dataset",
+                        [
+                            ("id", config.dataset.id),
+                            ("chain", chain_label),
+                        ],
                     ),
-                    "evaluation": (
-                        f"{evaluation_validation.row_count} rows, "
-                        f"{0 if evaluation_result is None else evaluation_result.expected_files} "
-                        f"files, validation={evaluation_validation.status}"
+                    (
+                        "history",
+                        _final_window_rows(
+                            row_count=history_validation.row_count,
+                            expected_files=(
+                                None if history_result is None else history_result.expected_files
+                            ),
+                            reused=history_result is None,
+                        ),
                     ),
-                    "rpc": (
-                        f"batch={rpc_controller.current_batch_size}, "
-                        f"concurrency={rpc_controller.current_concurrency}, "
-                        f"oversize_backoffs={rpc_controller.oversize_backoffs}, "
-                        f"transient_backoffs={rpc_controller.transient_backoffs}"
+                    (
+                        "evaluation",
+                        _final_window_rows(
+                            row_count=evaluation_validation.row_count,
+                            expected_files=(
+                                None
+                                if evaluation_result is None
+                                else evaluation_result.expected_files
+                            ),
+                            reused=evaluation_result is None,
+                        ),
                     ),
-                    "required history blocks": str(required_history_blocks),
-                    "metadata": str(metadata_path),
-                }.items(),
+                ],
             )
             if session.tracking_enabled:
                 import mlflow
@@ -186,8 +262,8 @@ async def _run_async(config: ExperimentConfig, *, reporter: Reporter | None = No
                     }
                 )
                 log_artifacts([metadata_path])
-    finally:
-        await block_client.close()
+        finally:
+            await block_client.close()
 
 
 @hydra.main(version_base=None, config_path="../conf", config_name="acquire")

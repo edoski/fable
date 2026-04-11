@@ -21,18 +21,21 @@ def test_create_reporter_uses_plain_for_non_terminal_console() -> None:
     assert isinstance(reporter, PlainReporter)
 
 
-def test_rich_reporter_logs_task_finish() -> None:
+def test_rich_reporter_uses_status_field_and_can_finish_silently() -> None:
     stream = StringIO()
     reporter = RichReporter(console=Console(file=stream, force_terminal=True, width=120))
 
     task_id = reporter.start_task("train epochs", total=3, unit="epochs")
     reporter.update_task(task_id, completed=1, message="loss=1.0")
-    reporter.finish_task(task_id, message="best_epoch=1")
+    assert reporter._progress is not None
+    task = reporter._progress.tasks[0]
+    assert task.description == "train epochs"
+    assert task.fields["status"] == "loss=1.0"
+    reporter.finish_task(task_id, message="best_epoch=1", silent=True)
     reporter.close()
     output = stream.getvalue()
 
-    assert "train epochs" in output
-    assert "best_epoch=1" in output
+    assert "best_epoch=1" not in output
 
 
 def test_console_runtime_bridges_python_logging_and_warnings() -> None:

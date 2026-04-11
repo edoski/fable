@@ -8,6 +8,7 @@ import pytest
 from rich.console import Console
 
 from spice.acquisition.rpc import BlockPullPlan, BlockRange, TimestampRange
+from spice.acquisition.windowing import required_history_block_count
 from spice.core.console import NullReporter, create_reporter
 from spice.workflows._tuning import TuningBestParamsReport, TuningStudyReport, TuningTrialRecord
 from spice.workflows.acquire import run as run_acquire
@@ -17,6 +18,7 @@ from spice.workflows.tune import run as run_tune
 from tests.support import (
     base_overrides,
     compose_experiment,
+    make_block_rows,
     make_evaluation_rows,
     make_history_rows,
     write_dataset_dir,
@@ -195,21 +197,26 @@ def test_tune_workflow_writes_optuna_summary(tmp_path) -> None:
     )
 
 
-def test_acquire_dry_run_plain_output_is_human_summary(tmp_path, monkeypatch) -> None:
+def test_acquire_success_output_is_small_summary(tmp_path, monkeypatch) -> None:
     config = compose_experiment(
         "acquire",
-        overrides=base_overrides(tmp_path) + ["acquisition.dry_run=true"],
+        overrides=base_overrides(tmp_path)
+        + [
+            "dataset.temporal.lookback_seconds=24",
+            "dataset.temporal.max_delay_seconds=12",
+            "dataset.sampling.anchor_count=4",
+        ],
     )
-    history_window_end = config.dataset.window.start_timestamp
-    evaluation_window_start = config.dataset.window.start_timestamp
-    evaluation_window_end = config.dataset.window.end_timestamp
+    required_history_blocks = required_history_block_count(config)
+    block_time_seconds = int(config.chain.block_time_seconds)
+    expected_history_start = (
+        config.dataset.window.start_timestamp - required_history_blocks * block_time_seconds
+    )
 
-    class FakeDryRunBlockClient:
-        history_requests: list[tuple[int, int, int]] = []
-        evaluation_requests: list[tuple[int, int, int]] = []
-
+    class FakeSummaryBlockClient:
         def __init__(self, provider, chain) -> None:
-            del provider, chain
+            del provider
+            self.chain = chain
 
         async def close(self) -> None:
             return None
@@ -221,52 +228,64 @@ def test_acquire_dry_run_plain_output_is_human_summary(tmp_path, monkeypatch) ->
             required_history_blocks: int,
             chunk_size: int,
         ) -> BlockPullPlan:
-            self.__class__.history_requests.append(
-                (end_timestamp, required_history_blocks, chunk_size)
-            )
+            del chunk_size
             return BlockPullPlan(
-                window=TimestampRange(start=end_timestamp - 120, end=end_timestamp),
-                block_range=BlockRange(start=100, end=110),
-                expected_rows=10,
-                expected_files=2,
+                window=TimestampRange(start=expected_history_start, end=end_timestamp),
+                block_range=BlockRange(start=100, end=100 + required_history_blocks),
+                expected_rows=required_history_blocks,
+                expected_files=1,
             )
 
         async def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
-            self.__class__.evaluation_requests.append((window.start, window.end, chunk_size))
+            del chunk_size
             return BlockPullPlan(
                 window=window,
-                block_range=BlockRange(start=10_001, end=10_009),
-                expected_rows=8,
-                expected_files=2,
+                block_range=BlockRange(start=10_001, end=10_033),
+                expected_rows=32,
+                expected_files=1,
             )
 
-        async def pull_block_range(self, *_args, **_kwargs):
-            raise AssertionError("dry run should not pull blocks")
+        async def pull_block_range(
+            self,
+            output_dir: Path,
+            *,
+            plan: BlockPullPlan,
+            chunk_size: int,
+            rpc_controller,
+            reporter,
+        ) -> BlockPullPlan:
+            del chunk_size, rpc_controller, reporter
+            rows = make_block_rows(
+                plan.expected_rows,
+                start_block=plan.block_range.start,
+                start_timestamp=plan.window.start,
+                block_time_seconds=block_time_seconds,
+                include_gas_limit=True,
+            )
+            write_dataset_dir(output_dir, rows)
+            return plan
 
-    monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", FakeDryRunBlockClient)
+    monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", FakeSummaryBlockClient)
 
     stream = StringIO()
-    reporter = _reporter(stream, interactive=False)
+    reporter = _reporter(stream, interactive=True)
 
     run_acquire(config, reporter=reporter)
     reporter.close()
 
     output = stream.getvalue()
-    assert len(FakeDryRunBlockClient.history_requests) == 1
-    assert FakeDryRunBlockClient.history_requests[0][0] == history_window_end
-    assert FakeDryRunBlockClient.history_requests[0][2] == config.acquisition.chunk_size
-    assert FakeDryRunBlockClient.evaluation_requests == [
-        (
-            evaluation_window_start,
-            evaluation_window_end,
-            config.acquisition.chunk_size,
-        )
-    ]
-    assert "acquire dry run" in output
-    assert "dataset: icdcs_2025_11_09" in output
-    assert "history window:" in output
-    assert "evaluation expected:" in output
-    assert '{"dataset_id"' not in output
+    assert "acquisition summary" in output
+    assert "icdcs_2025_11_09" in output
+    assert "Ethereum" in output
+    assert f"{required_history_blocks:,} blocks in 1 file" in output
+    assert "32 blocks in 1 file" in output
+    assert "metadata" not in output
+    assert "required history" not in output
+    assert "validation" not in output
+    assert "rpc" not in output
+    assert "write dataset metadata finished" not in output
+    assert "validate dataset history finished" not in output
+    assert "validate dataset evaluation finished" not in output
 
 
 def test_simulate_workflow_plain_output_is_sparse(tmp_path) -> None:

@@ -63,6 +63,7 @@ async def ensure_block_dataset(
         reporter.finish_task(
             validate_existing_task,
             message=f"{output_dir} ({validation.status})",
+            silent=True,
         )
         if validation.status == "clean":
             reporter.log(f"reusing canonical dataset: {output_dir}")
@@ -92,7 +93,11 @@ async def ensure_block_dataset(
         expected_start_timestamp=plan.window.start,
         expected_end_timestamp=plan.window.end,
     )
-    reporter.finish_task(validate_final_task, message=f"{output_dir} ({validation.status})")
+    reporter.finish_task(
+        validate_final_task,
+        message=f"{output_dir} ({validation.status})",
+        silent=True,
+    )
     if validation.status != "clean":
         raise ValueError(f"Canonical dataset validation failed for {output_dir}: {validation}")
     return pulled_plan, validation
