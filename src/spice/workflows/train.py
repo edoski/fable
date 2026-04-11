@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import hydra
@@ -15,10 +16,31 @@ from ..core.tracking import configure_mlflow, log_artifacts, log_config, log_epo
 from ..modeling.artifacts import build_training_artifact_manifest, write_training_artifact
 from ..modeling.pipeline import run_training
 from ..modeling.reporting import build_training_run_report, write_json_report
-from ._shared import build_training_spec, epoch_metrics_to_dict, start_run_if_enabled
+from ._shared import (
+    apply_best_tuning_params,
+    build_training_spec,
+    epoch_metrics_to_dict,
+    start_run_if_enabled,
+)
+
+
+def _clean_training_outputs(config: ExperimentConfig) -> None:
+    checkpoint_dir = Path(config.paths.checkpoint_dir)
+    if checkpoint_dir.exists():
+        shutil.rmtree(checkpoint_dir)
+    for path in (
+        Path(config.paths.artifact_root) / ARTIFACT_MANIFEST_FILENAME,
+        Path(config.paths.artifact_root) / MODEL_STATE_FILENAME,
+        Path(config.paths.train_report_path),
+        Path(config.paths.simulation_report_path),
+    ):
+        if path.exists():
+            path.unlink()
 
 
 def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
+    if config.tuning.apply_best_params:
+        config = apply_best_tuning_params(config)
     spec = build_training_spec(config)
     artifact_dir = Path(config.paths.artifact_root)
     history_block_path = Path(config.paths.enriched_history_dir)
@@ -36,6 +58,7 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             log_config(config)
             mlflow.set_tags(config.tracking.tags)
 
+        _clean_training_outputs(config)
         result = run_training(
             history_block_path,
             spec=spec,
@@ -54,6 +77,7 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             max_delay_seconds=config.max_delay_seconds,
             lookback_seconds=config.lookback_seconds,
             chain_name=config.chain.name.value,
+            dataset_id=config.dataset.id,
             family=config.model.family.value,
             block_time_seconds=config.chain.block_time_seconds,
             manifest=manifest,

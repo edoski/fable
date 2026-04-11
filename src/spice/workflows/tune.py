@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,7 @@ def _study_summary(config: ExperimentConfig, study: optuna.Study) -> dict[str, A
         "kind": "tuning_study",
         "study_name": config.tuning.study_name,
         "chain": config.chain.name.value,
+        "dataset_id": config.dataset.id,
         "family": config.model.family.value,
         "max_delay_seconds": config.max_delay_seconds,
         "lookback_seconds": config.lookback_seconds,
@@ -97,6 +99,34 @@ def _study_summary(config: ExperimentConfig, study: optuna.Study) -> dict[str, A
                 "artifact_dir": best_trial.user_attrs.get("artifact_dir"),
             }
         ),
+    }
+
+
+def _best_params_summary(config: ExperimentConfig, study: optuna.Study) -> dict[str, Any]:
+    completed_trials = [
+        trial for trial in study.trials if trial.state == TrialState.COMPLETE
+    ]
+    if not completed_trials:
+        raise RuntimeError("Optuna study completed without any successful trials")
+    best_trial = study.best_trial
+    return {
+        "kind": "tuning_best_params",
+        "study_name": config.tuning.study_name,
+        "chain": config.chain.name.value,
+        "dataset_id": config.dataset.id,
+        "family": config.model.family.value,
+        "max_delay_seconds": config.max_delay_seconds,
+        "lookback_seconds": config.lookback_seconds,
+        "target_anchor_count": config.target_anchor_count,
+        "metric_name": config.tuning.metric_name,
+        "direction": config.tuning.direction,
+        "trial": {
+            "number": best_trial.number,
+            "value": best_trial.value,
+            "best_epoch": best_trial.user_attrs.get("best_epoch"),
+            "artifact_dir": best_trial.user_attrs.get("artifact_dir"),
+        },
+        "params": dict(best_trial.params),
     }
 
 
@@ -141,6 +171,7 @@ def _objective(base_config, trial: optuna.Trial) -> float:
             max_delay_seconds=config.max_delay_seconds,
             lookback_seconds=config.lookback_seconds,
             chain_name=config.chain.name.value,
+            dataset_id=config.dataset.id,
             family=config.model.family.value,
             block_time_seconds=config.chain.block_time_seconds,
             manifest=manifest,
@@ -191,6 +222,9 @@ def run(config: ExperimentConfig) -> None:
             log_config(config)
             mlflow.set_tags(config.tracking.tags)
 
+        tuning_root = Path(config.paths.tuning_root)
+        if tuning_root.exists():
+            shutil.rmtree(tuning_root)
         study = optuna.create_study(
             study_name=config.tuning.study_name,
             direction=config.tuning.direction,
@@ -206,11 +240,12 @@ def run(config: ExperimentConfig) -> None:
             n_trials=config.tuning.n_trials,
             timeout=config.tuning.timeout_seconds,
         )
-        tuning_root = Path(config.paths.tuning_root)
         study_path = tuning_root / "study.json"
         trials_path = tuning_root / "trials.json"
+        best_params_path = Path(config.paths.tuning_best_params_path)
         _write_json(study_path, _study_summary(config, study))
         _write_json(trials_path, [_trial_record(trial) for trial in study.trials])
+        _write_json(best_params_path, _best_params_summary(config, study))
         if config.tracking.enabled:
             metrics = {"study.n_trials": float(len(study.trials))}
             completed_trials = [
@@ -225,7 +260,7 @@ def run(config: ExperimentConfig) -> None:
                     }
                 )
             mlflow.log_metrics(metrics)
-            log_artifacts([study_path, trials_path])
+            log_artifacts([study_path, trials_path, best_params_path])
     finally:
         if run_context is not None:
             run_context.__exit__(None, None, None)

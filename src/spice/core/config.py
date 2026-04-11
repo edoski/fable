@@ -8,6 +8,8 @@ from typing import Any, cast
 
 from omegaconf import DictConfig, OmegaConf
 
+from .constants import EVALUATION_END_TS, EVALUATION_START_TS
+
 
 class ChainName(StrEnum):
     ETHEREUM = "ethereum"
@@ -32,8 +34,15 @@ class ChainConfig:
     name: ChainName = ChainName.ETHEREUM
     chain_id: int = 1
     block_time_seconds: float = 12.0
-    history_days: int = 60
     uses_poa_extra_data: bool = False
+
+
+@dataclass(slots=True)
+class DatasetConfig:
+    id: str = "icdcs_2025_11_09"
+    evaluation_start_timestamp: int = EVALUATION_START_TS
+    evaluation_end_timestamp: int = EVALUATION_END_TS
+    min_history_anchor_count: int = 400_000
 
 
 @dataclass(slots=True)
@@ -103,7 +112,7 @@ class TrackingConfig:
 
 @dataclass(slots=True)
 class TuningConfig:
-    enabled: bool = False
+    apply_best_params: bool = False
     study_name: str = "spice-study"
     direction: str = "maximize"
     n_trials: int = 20
@@ -131,7 +140,7 @@ class RuntimeConfig:
 @dataclass(slots=True)
 class PathsConfig:
     output_root: str = "${runtime.output_root}"
-    dataset_root: str = "${paths.output_root}/datasets/${chain.name}"
+    dataset_root: str = "${paths.output_root}/datasets/${chain.name}/${dataset.id}"
     metadata_root: str = "${paths.dataset_root}/.spice"
     raw_root: str = "${paths.dataset_root}/raw"
     raw_history_dir: str = "${paths.raw_root}/history"
@@ -141,12 +150,13 @@ class PathsConfig:
     enriched_evaluation_dir: str = "${paths.enriched_root}/evaluation"
     dataset_metadata_path: str = "${paths.metadata_root}/metadata.json"
     artifact_root: str = (
-        "${paths.output_root}/models/${chain.name}/${model.family}/${max_delay_seconds}s"
+        "${paths.output_root}/models/${chain.name}/${dataset.id}/${model.family}/${max_delay_seconds}s"
     )
     checkpoint_dir: str = "${paths.artifact_root}/checkpoints"
     train_report_path: str = "${paths.artifact_root}/train_report.json"
     simulation_report_path: str = "${paths.artifact_root}/simulation_report.json"
     tuning_root: str = "${paths.artifact_root}/tuning"
+    tuning_best_params_path: str = "${paths.tuning_root}/best_params.json"
     mlruns_dir: str = "${paths.output_root}/mlruns"
 
 
@@ -168,7 +178,10 @@ class ProviderConfig:
 
     def reference_for(self, chain_name: ChainName | str) -> str:
         key = chain_name.value if isinstance(chain_name, ChainName) else str(chain_name)
-        return self.references.get(key, self.endpoint_for(key))
+        reference = self.references.get(key)
+        if reference:
+            return reference
+        return self.endpoint_for(key)
 
     def sensitive_values(self) -> tuple[str, ...]:
         return tuple(value for value in self.endpoints.values() if value)
@@ -181,6 +194,7 @@ class ExperimentConfig:
     lookback_seconds: int = 600
     target_anchor_count: int = 400_000
     chain: ChainConfig = field(default_factory=ChainConfig)
+    dataset: DatasetConfig = field(default_factory=DatasetConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     pull: PullConfig = field(default_factory=PullConfig)
     split: SplitConfig = field(default_factory=SplitConfig)
@@ -191,6 +205,10 @@ class ExperimentConfig:
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     provider: ProviderConfig = field(default_factory=ProviderConfig)
+
+
+def _task_uses_provider(task: str) -> bool:
+    return task == "acquire"
 
 
 def coerce_config(cfg: DictConfig, *, task: str) -> ExperimentConfig:
@@ -212,6 +230,7 @@ def config_to_dict(cfg: ExperimentConfig) -> dict[str, Any]:
 
 def _instantiate_experiment(payload: dict[str, Any], *, task: str) -> ExperimentConfig:
     chain = payload["chain"]
+    dataset = payload["dataset"]
     model = payload["model"]
     pull = payload["pull"]
     split = payload["split"]
@@ -231,8 +250,13 @@ def _instantiate_experiment(payload: dict[str, Any], *, task: str) -> Experiment
             name=ChainName(chain["name"]),
             chain_id=int(chain["chain_id"]),
             block_time_seconds=float(chain["block_time_seconds"]),
-            history_days=int(chain["history_days"]),
             uses_poa_extra_data=bool(chain["uses_poa_extra_data"]),
+        ),
+        dataset=DatasetConfig(
+            id=str(dataset["id"]),
+            evaluation_start_timestamp=int(dataset["evaluation_start_timestamp"]),
+            evaluation_end_timestamp=int(dataset["evaluation_end_timestamp"]),
+            min_history_anchor_count=int(dataset["min_history_anchor_count"]),
         ),
         model=ModelConfig(
             family=ModelFamily(model["family"]),
@@ -288,7 +312,7 @@ def _instantiate_experiment(payload: dict[str, Any], *, task: str) -> Experiment
             tags={str(key): str(value) for key, value in tracking["tags"].items()},
         ),
         tuning=TuningConfig(
-            enabled=bool(tuning["enabled"]),
+            apply_best_params=bool(tuning["apply_best_params"]),
             study_name=str(tuning["study_name"]),
             direction=str(tuning["direction"]),
             n_trials=int(tuning["n_trials"]),
@@ -326,6 +350,7 @@ def _instantiate_experiment(payload: dict[str, Any], *, task: str) -> Experiment
             train_report_path=str(paths["train_report_path"]),
             simulation_report_path=str(paths["simulation_report_path"]),
             tuning_root=str(paths["tuning_root"]),
+            tuning_best_params_path=str(paths["tuning_best_params_path"]),
             mlruns_dir=str(paths["mlruns_dir"]),
         ),
         provider=ProviderConfig(
@@ -352,12 +377,16 @@ def validate_config(cfg: ExperimentConfig) -> None:
         raise ValueError("lookback_seconds must be positive")
     if cfg.target_anchor_count <= 0:
         raise ValueError("target_anchor_count must be positive")
+    if not cfg.dataset.id or "/" in cfg.dataset.id or "\\" in cfg.dataset.id:
+        raise ValueError("dataset id must be a non-empty path segment")
+    if cfg.dataset.evaluation_start_timestamp >= cfg.dataset.evaluation_end_timestamp:
+        raise ValueError("evaluation_start_timestamp must be before evaluation_end_timestamp")
+    if cfg.dataset.min_history_anchor_count <= 0:
+        raise ValueError("min_history_anchor_count must be positive")
     if cfg.chain.chain_id <= 0:
         raise ValueError("chain_id must be positive")
     if cfg.chain.block_time_seconds <= 0:
         raise ValueError("block_time_seconds must be positive")
-    if cfg.chain.history_days <= 0:
-        raise ValueError("history_days must be positive")
     if not 0.0 < cfg.split.train_fraction < 1.0:
         raise ValueError("train_fraction must be greater than 0 and less than 1")
     if not 0.0 <= cfg.split.validation_fraction < 1.0:
@@ -422,13 +451,14 @@ def validate_config(cfg: ExperimentConfig) -> None:
         raise ValueError("feedforward_dim must be positive")
     if cfg.model.head_hidden_dim <= 0:
         raise ValueError("head_hidden_dim must be positive")
-    if cfg.provider.timeout_seconds <= 0:
-        raise ValueError("provider timeout_seconds must be positive")
-    if cfg.provider.retry_count < 0:
-        raise ValueError("provider retry_count must be non-negative")
-    if cfg.provider.backoff_factor < 0:
-        raise ValueError("provider backoff_factor must be non-negative")
-    cfg.provider.endpoint_for(cfg.chain.name)
+    if _task_uses_provider(cfg.task):
+        if cfg.provider.timeout_seconds <= 0:
+            raise ValueError("provider timeout_seconds must be positive")
+        if cfg.provider.retry_count < 0:
+            raise ValueError("provider retry_count must be non-negative")
+        if cfg.provider.backoff_factor < 0:
+            raise ValueError("provider backoff_factor must be non-negative")
+        cfg.provider.endpoint_for(cfg.chain.name)
     if cfg.tuning.n_trials <= 0:
         raise ValueError("tuning n_trials must be positive")
     if cfg.tuning.timeout_seconds is not None and cfg.tuning.timeout_seconds <= 0:

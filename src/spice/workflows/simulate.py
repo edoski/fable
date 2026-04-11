@@ -54,6 +54,8 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
                 block_time_seconds=loaded_artifact.manifest.chain.block_time_seconds,
             ),
             scaler=loaded_artifact.manifest.scaler,
+            evaluation_start_timestamp=config.dataset.evaluation_start_timestamp,
+            evaluation_end_timestamp=config.dataset.evaluation_end_timestamp,
         )
         predictions = predict_class_offsets(
             loaded_artifact.model,
@@ -84,6 +86,8 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             repetitions=config.simulation.repetitions,
         )
         report_path = Path(config.paths.simulation_report_path)
+        if report_path.exists():
+            report_path.unlink()
         write_json_report(report_path, report)
         active_reporter.log(f"simulation finished: {report_path}")
 

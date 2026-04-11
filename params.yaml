@@ -7,6 +7,21 @@ run:
   lookback_seconds: 600
   target_anchor_count: 400000
 
+dataset:
+  id: icdcs_2025_11_09
+  evaluation_start_timestamp: 1762646400
+  evaluation_end_timestamp: 1762732800
+  min_history_anchor_count: 400000
+
+pull:
+  requests_per_second: 25
+  max_concurrent_requests: 2
+  max_concurrent_chunks: 1
+  chunk_size: 1000
+  overwrite: false
+  enrich_batch_size: 100
+  max_methods_per_second: 20.0
+
 training:
   device: auto
   max_epochs: 50

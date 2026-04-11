@@ -11,6 +11,7 @@ from spice.core.config import (
     SplitConfig,
     TrainingConfig,
 )
+from spice.core.constants import EVALUATION_START_TS
 from spice.data.block_schema import ENRICHED_BLOCK_SCHEMA
 from spice.data.datasets import derive_dataset_geometry
 from spice.data.io import iter_block_files, load_enriched_block_frame
@@ -32,10 +33,6 @@ def _timestamp(row: dict[str, int | None]) -> int:
     value = row["timestamp"]
     assert value is not None
     return int(value)
-
-
-def _set_timestamp(row: dict[str, int | None], value: int) -> None:
-    row["timestamp"] = value
 
 
 def test_iter_block_files_ignores_hidden_metadata(tmp_path) -> None:
@@ -129,10 +126,38 @@ def test_validate_exact_window_dataset_passes_on_canonical_dataset(tmp_path) -> 
     assert report.gap_count == 0
 
 
-def test_validate_exact_window_dataset_rejects_duplicate_blocks(tmp_path) -> None:
+@pytest.mark.parametrize(
+    ("mutate_rows", "assert_report"),
+    [
+        (
+            lambda rows: rows[:3] + [rows[2]],
+            lambda report: report.duplicate_count == 1,
+        ),
+        (
+            lambda rows: [rows[0], rows[1], rows[3]],
+            lambda report: report.gap_count == 1,
+        ),
+        (
+            lambda rows: [
+                {**row, "timestamp": _timestamp(row) - 12} if index == 0 else dict(row)
+                for index, row in enumerate(rows)
+            ],
+            lambda report: report.below_start_count == 1,
+        ),
+        (
+            lambda rows: [{**row, "chain_id": 137} for row in rows],
+            lambda report: report.chain_id == 137,
+        ),
+    ],
+)
+def test_validate_exact_window_dataset_rejects_invalid_inputs(
+    tmp_path,
+    mutate_rows,
+    assert_report,
+) -> None:
     dataset_dir = tmp_path / "dataset"
     rows = make_history_rows(4)
-    write_dataset_dir(dataset_dir, rows[:3] + [rows[2]])
+    write_dataset_dir(dataset_dir, mutate_rows(rows))
 
     report = validate_exact_window_dataset(
         dataset_dir,
@@ -142,60 +167,7 @@ def test_validate_exact_window_dataset_rejects_duplicate_blocks(tmp_path) -> Non
     )
 
     assert report.status == "error"
-    assert report.duplicate_count == 1
-
-
-def test_validate_exact_window_dataset_rejects_gaps(tmp_path) -> None:
-    dataset_dir = tmp_path / "dataset"
-    rows = make_history_rows(4)
-    write_dataset_dir(dataset_dir, [rows[0], rows[1], rows[3]])
-
-    report = validate_exact_window_dataset(
-        dataset_dir,
-        expected_chain_id=1,
-        expected_start_timestamp=_timestamp(rows[0]),
-        expected_end_timestamp=_timestamp(rows[-1]) + 12,
-    )
-
-    assert report.status == "error"
-    assert report.gap_count == 1
-
-
-def test_validate_exact_window_dataset_rejects_out_of_range_timestamps(tmp_path) -> None:
-    dataset_dir = tmp_path / "dataset"
-    rows = make_history_rows(4)
-    shifted = [dict(row) for row in rows]
-    _set_timestamp(shifted[0], _timestamp(shifted[0]) - 12)
-    write_dataset_dir(dataset_dir, shifted)
-
-    report = validate_exact_window_dataset(
-        dataset_dir,
-        expected_chain_id=1,
-        expected_start_timestamp=_timestamp(rows[0]),
-        expected_end_timestamp=_timestamp(rows[-1]) + 12,
-    )
-
-    assert report.status == "error"
-    assert report.below_start_count == 1
-
-
-def test_validate_exact_window_dataset_rejects_chain_mismatch(tmp_path) -> None:
-    dataset_dir = tmp_path / "dataset"
-    rows = make_history_rows(4)
-    shifted = [dict(row) for row in rows]
-    for row in shifted:
-        row["chain_id"] = 137
-    write_dataset_dir(dataset_dir, shifted)
-
-    report = validate_exact_window_dataset(
-        dataset_dir,
-        expected_chain_id=1,
-        expected_start_timestamp=_timestamp(rows[0]),
-        expected_end_timestamp=_timestamp(rows[-1]) + 12,
-    )
-
-    assert report.status == "error"
-    assert report.chain_id == 137
+    assert assert_report(report)
 
 
 def test_prepare_training_and_inference_datasets(tmp_path) -> None:
@@ -213,8 +185,8 @@ def test_prepare_training_and_inference_datasets(tmp_path) -> None:
             name=ChainName.ETHEREUM,
             chain_id=1,
             block_time_seconds=12.0,
-            history_days=1,
         ),
+        dataset_id="icdcs_2025_11_09",
         model=ModelConfig(family=ModelFamily.LSTM),
         max_delay_seconds=36,
         lookback_seconds=120,
@@ -233,6 +205,8 @@ def test_prepare_training_and_inference_datasets(tmp_path) -> None:
             block_time_seconds=12.0,
         ),
         scaler=prepared.scaler,
+        evaluation_start_timestamp=EVALUATION_START_TS,
+        evaluation_end_timestamp=EVALUATION_START_TS + 180 * 12,
     )
 
     assert prepared.n_examples_total == 48

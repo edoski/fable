@@ -13,6 +13,12 @@ max_delay_seconds: 36
 lookback_seconds: 600
 target_anchor_count: 400000
 
+dataset:
+  id: icdcs_2025_11_09
+  evaluation_start_timestamp: 1762646400
+  evaluation_end_timestamp: 1762732800
+  min_history_anchor_count: ${target_anchor_count}
+
 pull:
   requests_per_second: 25
   max_concurrent_requests: 2
@@ -29,7 +35,7 @@ split:
 
 paths:
   output_root: ${runtime.output_root}
-  dataset_root: ${paths.output_root}/datasets/${chain.name}
+  dataset_root: ${paths.output_root}/datasets/${chain.name}/${dataset.id}
   metadata_root: ${paths.dataset_root}/.spice
   raw_root: ${paths.dataset_root}/raw
   raw_history_dir: ${paths.raw_root}/history
@@ -38,11 +44,12 @@ paths:
   enriched_history_dir: ${paths.enriched_root}/history
   enriched_evaluation_dir: ${paths.enriched_root}/evaluation
   dataset_metadata_path: ${paths.metadata_root}/metadata.json
-  artifact_root: ${paths.output_root}/models/${chain.name}/${model.family}/${max_delay_seconds}s
+  artifact_root: ${paths.output_root}/models/${chain.name}/${dataset.id}/${model.family}/${max_delay_seconds}s
   checkpoint_dir: ${paths.artifact_root}/checkpoints
   train_report_path: ${paths.artifact_root}/train_report.json
   simulation_report_path: ${paths.artifact_root}/simulation_report.json
   tuning_root: ${paths.artifact_root}/tuning
+  tuning_best_params_path: ${paths.tuning_root}/best_params.json
   mlruns_dir: ${paths.output_root}/mlruns
 
 hydra:

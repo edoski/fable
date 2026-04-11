@@ -46,12 +46,12 @@ params.yaml
 
 Key runtime paths:
 
-- raw datasets: `artifacts/datasets/<chain>/raw/...`
-- enriched datasets: `artifacts/datasets/<chain>/enriched/...`
-- chain dataset metadata: `artifacts/datasets/<chain>/.spice/metadata.json`
-- model artifacts: `artifacts/models/<chain>/<family>/<delay>s/...`
-- simulation reports: `artifacts/models/<chain>/<family>/<delay>s/simulation_report.json`
-- tuning outputs: `artifacts/models/<chain>/<family>/<delay>s/tuning/...`
+- raw datasets: `artifacts/datasets/<chain>/<dataset_id>/raw/...`
+- enriched datasets: `artifacts/datasets/<chain>/<dataset_id>/enriched/...`
+- dataset metadata: `artifacts/datasets/<chain>/<dataset_id>/.spice/metadata.json`
+- model artifacts: `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/...`
+- simulation reports: `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/simulation_report.json`
+- tuning outputs: `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/tuning/...`
 - MLflow store: `artifacts/mlruns/`
 
 ## Setup
@@ -76,9 +76,10 @@ Use DVC as the primary surface:
 
 ```bash
 .venv/bin/dvc repro acquire
+.venv/bin/dvc repro tune
 .venv/bin/dvc repro train
 .venv/bin/dvc repro simulate
-.venv/bin/dvc repro tune
+.venv/bin/dvc repro
 ```
 
 The baseline DVC variables live in [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml). Hydra defaults live under [src/spice/conf](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/conf).
@@ -92,6 +93,20 @@ You can also run the workflow entrypoints directly:
 .venv/bin/spice-tune chain=ethereum model=lstm tuning.n_trials=20
 ```
 
+The default dataset window is configured explicitly through `dataset.*` in
+[params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml)
+and Hydra defaults:
+
+- `dataset.id`
+- `dataset.evaluation_start_timestamp`
+- `dataset.evaluation_end_timestamp`
+- `dataset.min_history_anchor_count`
+
+`target_anchor_count` remains the training/tuning sample count. By default,
+`dataset.min_history_anchor_count` follows it so one knob still covers the
+common path, but acquisition reuse/expansion decisions stay explicit inside the
+workflow code.
+
 ## Configuration
 
 Hydra config groups live under [src/spice/conf](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/conf):
@@ -99,6 +114,7 @@ Hydra config groups live under [src/spice/conf](/Users/edo/Documents/Obsidian/th
 - `chain/`
 - `model/`
 - `provider/`
+- `dataset/` via the structured `dataset` section in `base.yaml`
 - `training/`
 - `simulation/`
 - `tracking/`

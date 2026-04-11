@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Callable, Mapping
+from hashlib import sha256
+from math import ceil
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -13,7 +15,13 @@ import hydra
 import mlflow
 from omegaconf import DictConfig
 
-from ..acquisition.cryo import CryoRunResult, evaluation_range, history_range_for_chain, run_cryo
+from ..acquisition.cryo import (
+    CryoRunResult,
+    TimestampRange,
+    evaluation_range,
+    history_range_for_required_blocks,
+    run_cryo,
+)
 from ..acquisition.enrich import enrich_path
 from ..acquisition.raw_normalization import normalize_raw_dataset
 from ..acquisition.raw_validation import RawPullValidationReport, validate_raw_pull
@@ -21,6 +29,7 @@ from ..acquisition.rpc import Web3BlockClient
 from ..core.config import ExperimentConfig, coerce_config
 from ..core.console import Reporter, RichReporter
 from ..core.tracking import configure_mlflow, log_artifacts, log_config
+from ..data.datasets import derive_dataset_geometry
 from ..data.io import iter_block_files, load_enriched_block_frame
 from ..data.validation import BlockDatasetValidationReport, validate_exact_window_frame
 from ._shared import start_run_if_enabled
@@ -33,6 +42,139 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 def _path_string(path: Path) -> str:
     return path.as_posix()
+
+
+def _provider_metadata(config: ExperimentConfig) -> dict[str, str]:
+    endpoint = config.provider.endpoint_for(config.chain.name)
+    return {
+        "name": config.provider.name.value,
+        "reference": config.provider.reference_for(config.chain.name),
+        "endpoint_fingerprint": sha256(endpoint.encode("utf-8")).hexdigest()[:16],
+    }
+
+
+def _required_history_block_count(config: ExperimentConfig) -> int:
+    geometry = derive_dataset_geometry(
+        lookback_seconds=config.lookback_seconds,
+        max_delay_seconds=config.max_delay_seconds,
+        block_time_seconds=config.chain.block_time_seconds,
+    )
+    return geometry.required_block_count(config.dataset.min_history_anchor_count)
+
+
+def _initial_history_range(
+    config: ExperimentConfig,
+    *,
+    required_history_blocks: int,
+) -> TimestampRange:
+    return history_range_for_required_blocks(
+        config.chain,
+        config.pull,
+        required_history_blocks=required_history_blocks,
+        evaluation_start_timestamp=config.dataset.evaluation_start_timestamp,
+    )
+
+
+def _expanded_history_range(
+    current: TimestampRange,
+    validation: RawPullValidationReport,
+    *,
+    config: ExperimentConfig,
+    required_history_blocks: int,
+) -> TimestampRange:
+    missing_blocks = required_history_blocks - validation.row_count
+    if missing_blocks <= 0:
+        return current
+    if (
+        validation.first_timestamp is not None
+        and validation.last_timestamp is not None
+        and validation.row_count > 1
+    ):
+        seconds_per_block = max(
+            config.chain.block_time_seconds,
+            (validation.last_timestamp - validation.first_timestamp) / (validation.row_count - 1),
+        )
+    else:
+        seconds_per_block = config.chain.block_time_seconds
+    additional_blocks = missing_blocks + config.pull.chunk_size
+    return TimestampRange(
+        start=current.start - ceil(additional_blocks * seconds_per_block),
+        end=current.end,
+    )
+
+
+def _load_metadata(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Dataset metadata is not a JSON object: {path}")
+    return payload
+
+
+def _metadata_has_dataset_files(config: ExperimentConfig) -> bool:
+    for candidate in (
+        Path(config.paths.raw_history_dir),
+        Path(config.paths.raw_evaluation_dir),
+        Path(config.paths.enriched_history_dir),
+        Path(config.paths.enriched_evaluation_dir),
+    ):
+        if _has_block_files(candidate):
+            return True
+    return False
+
+
+def _check_existing_metadata(
+    *,
+    config: ExperimentConfig,
+    metadata_path: Path,
+    overwrite: bool,
+) -> dict[str, Any] | None:
+    metadata = _load_metadata(metadata_path)
+    if metadata is None:
+        if not overwrite and _metadata_has_dataset_files(config):
+            raise ValueError(
+                f"Dataset files exist without canonical metadata at {metadata_path}; "
+                "rerun with pull.overwrite=true to replace them."
+            )
+        return None
+
+    if overwrite:
+        return metadata
+
+    expected = {
+        "dataset_id": config.dataset.id,
+        "chain_name": config.chain.name.value,
+        "chain_id": config.chain.chain_id,
+        "provider": _provider_metadata(config),
+        "evaluation_window": {
+            "start_timestamp": config.dataset.evaluation_start_timestamp,
+            "end_timestamp": config.dataset.evaluation_end_timestamp,
+        },
+    }
+    actual = {
+        "dataset_id": metadata.get("dataset", {}).get("id"),
+        "chain_name": metadata.get("chain", {}).get("name"),
+        "chain_id": metadata.get("chain", {}).get("chain_id"),
+        "provider": metadata.get("provider"),
+        "evaluation_window": metadata.get("windows", {}).get("evaluation"),
+    }
+    if actual != expected:
+        raise ValueError(
+            "Existing dataset metadata does not match the requested dataset window/provider. "
+            f"Expected {expected}, got {actual}. Use pull.overwrite=true to replace it."
+        )
+    return metadata
+
+
+def _history_range_from_metadata(metadata: Mapping[str, Any]) -> TimestampRange:
+    history = metadata.get("windows", {}).get("history")
+    if not isinstance(history, Mapping):
+        raise ValueError("Dataset metadata is missing windows.history")
+    return TimestampRange(
+        start=int(history["start_timestamp"]),
+        end=int(history["end_timestamp"]),
+    )
 
 
 def _compact_validation_report(
@@ -91,8 +233,14 @@ def _build_dataset_metadata(
     evaluation_enriched: BlockDatasetValidationReport,
 ) -> dict[str, object]:
     return {
-        "chain": config.chain.name.value,
-        "provider": config.provider.name.value,
+        "dataset": {
+            "id": config.dataset.id,
+        },
+        "chain": {
+            "name": config.chain.name.value,
+            "chain_id": config.chain.chain_id,
+        },
+        "provider": _provider_metadata(config),
         "paths": {
             "raw": {
                 "history": _path_string(raw_history_dir),
@@ -114,6 +262,10 @@ def _build_dataset_metadata(
             },
         },
         "settings": {
+            "min_history_anchor_count": config.dataset.min_history_anchor_count,
+            "target_anchor_count": config.target_anchor_count,
+            "lookback_seconds": config.lookback_seconds,
+            "max_delay_seconds": config.max_delay_seconds,
             "raw_chunk_size": config.pull.chunk_size,
             "enrich_batch_size": config.pull.enrich_batch_size,
             "max_methods_per_second": config.pull.max_methods_per_second,
@@ -270,6 +422,78 @@ def _ensure_enriched_dataset(
     return validation
 
 
+def _ensure_history_raw_dataset(
+    *,
+    config: ExperimentConfig,
+    output_dir: Path,
+    history_window: TimestampRange,
+    required_history_blocks: int,
+    reporter: Reporter,
+) -> tuple[CryoRunResult | None, RawPullValidationReport, TimestampRange]:
+    result, validation = _ensure_canonical_raw_dataset(
+        chain_name=config.chain.name.value,
+        chain_id=config.chain.chain_id,
+        output_dir=output_dir,
+        expected_start_timestamp=history_window.start,
+        expected_end_timestamp=history_window.end,
+        chunk_size=config.pull.chunk_size,
+        overwrite=config.pull.overwrite,
+        run_pull=lambda scratch_dir: run_cryo(
+            config.chain,
+            config.pull,
+            scratch_dir,
+            history_window,
+            provider=config.provider,
+            overwrite=True,
+            dry_run=False,
+            reporter=reporter,
+        ),
+        reporter=reporter,
+    )
+    if validation.row_count >= required_history_blocks:
+        return result, validation, history_window
+
+    expanded_window = _expanded_history_range(
+        history_window,
+        validation,
+        config=config,
+        required_history_blocks=required_history_blocks,
+    )
+    reporter.log(
+        "expanding history window backward "
+        f"from {history_window.start} to {expanded_window.start} "
+        f"for {required_history_blocks} required blocks",
+        level="warning",
+    )
+    expanded_result, expanded_validation = _ensure_canonical_raw_dataset(
+        chain_name=config.chain.name.value,
+        chain_id=config.chain.chain_id,
+        output_dir=output_dir,
+        expected_start_timestamp=expanded_window.start,
+        expected_end_timestamp=expanded_window.end,
+        chunk_size=config.pull.chunk_size,
+        overwrite=True,
+        run_pull=lambda scratch_dir: run_cryo(
+            config.chain,
+            config.pull,
+            scratch_dir,
+            expanded_window,
+            provider=config.provider,
+            overwrite=True,
+            dry_run=False,
+            reporter=reporter,
+        ),
+        reporter=reporter,
+    )
+    if expanded_validation.row_count < required_history_blocks:
+        raise ValueError(
+            "History dataset is too short after one expansion; "
+            f"need at least {required_history_blocks} blocks, "
+            f"got {expanded_validation.row_count}"
+        )
+    return expanded_result, expanded_validation, expanded_window
+
+
 def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
     raw_history_dir = Path(config.paths.raw_history_dir)
     raw_evaluation_dir = Path(config.paths.raw_evaluation_dir)
@@ -279,8 +503,22 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
     if config.tracking.enabled:
         configure_mlflow(config)
 
-    history_window = history_range_for_chain(config.chain)
-    evaluation_window = evaluation_range()
+    required_history_blocks = _required_history_block_count(config)
+    history_window = _initial_history_range(
+        config,
+        required_history_blocks=required_history_blocks,
+    )
+    evaluation_window = evaluation_range(
+        config.dataset.evaluation_start_timestamp,
+        config.dataset.evaluation_end_timestamp,
+    )
+    existing_metadata = _check_existing_metadata(
+        config=config,
+        metadata_path=metadata_path,
+        overwrite=config.pull.overwrite,
+    )
+    if existing_metadata is not None and not config.pull.overwrite:
+        history_window = _history_range_from_metadata(existing_metadata)
     block_client = Web3BlockClient(config.provider, config.chain)
     active_reporter = reporter or RichReporter()
     run_context = start_run_if_enabled(
@@ -325,6 +563,15 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
                     {
                         "history_completed_chunks": history_result.completed_chunks,
                         "evaluation_completed_chunks": evaluation_result.completed_chunks,
+                        "dataset_id": config.dataset.id,
+                        "history_window": {
+                            "start_timestamp": history_window.start,
+                            "end_timestamp": history_window.end,
+                        },
+                        "evaluation_window": {
+                            "start_timestamp": evaluation_window.start,
+                            "end_timestamp": evaluation_window.end,
+                        },
                         "history_validation": "dry_run",
                         "evaluation_validation": "dry_run",
                     }
@@ -332,24 +579,11 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             )
             return
 
-        history_result, history_validation = _ensure_canonical_raw_dataset(
-            chain_name=config.chain.name.value,
-            chain_id=config.chain.chain_id,
+        history_result, history_validation, history_window = _ensure_history_raw_dataset(
+            config=config,
             output_dir=raw_history_dir,
-            expected_start_timestamp=history_window.start,
-            expected_end_timestamp=history_window.end,
-            chunk_size=config.pull.chunk_size,
-            overwrite=config.pull.overwrite,
-            run_pull=lambda scratch_dir: run_cryo(
-                config.chain,
-                config.pull,
-                scratch_dir,
-                history_window,
-                provider=config.provider,
-                overwrite=True,
-                dry_run=False,
-                reporter=active_reporter,
-            ),
+            history_window=history_window,
+            required_history_blocks=required_history_blocks,
             reporter=active_reporter,
         )
         evaluation_result, evaluation_validation = _ensure_canonical_raw_dataset(
@@ -378,7 +612,7 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             expected_chain_id=config.chain.chain_id,
             expected_start_timestamp=history_window.start,
             expected_end_timestamp=history_window.end,
-            overwrite=config.pull.overwrite,
+            overwrite=config.pull.overwrite or history_result is not None,
             fetch_gas_limits=block_client.get_block_gas_limits,
             batch_size=config.pull.enrich_batch_size,
             max_methods_per_second=config.pull.max_methods_per_second,
@@ -390,7 +624,7 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             expected_chain_id=config.chain.chain_id,
             expected_start_timestamp=evaluation_window.start,
             expected_end_timestamp=evaluation_window.end,
-            overwrite=config.pull.overwrite,
+            overwrite=config.pull.overwrite or evaluation_result is not None,
             fetch_gas_limits=block_client.get_block_gas_limits,
             batch_size=config.pull.enrich_batch_size,
             max_methods_per_second=config.pull.max_methods_per_second,
@@ -425,6 +659,8 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
                     "evaluation_validation": evaluation_validation.status,
                     "history_enriched": history_enriched.status,
                     "evaluation_enriched": evaluation_enriched.status,
+                    "history_rows": history_validation.row_count,
+                    "required_history_blocks": required_history_blocks,
                 }
             )
         )

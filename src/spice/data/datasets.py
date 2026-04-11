@@ -21,13 +21,12 @@ class DatasetGeometry:
     lookback_steps: int
     max_extra_wait_steps: int
     action_count: int
-    feature_warmup_blocks: int
     context_block_count: int
 
-    def required_training_block_count(self, target_anchor_count: int) -> int:
-        if target_anchor_count <= 0:
-            raise ValueError("target_anchor_count must be positive")
-        return self.context_block_count + target_anchor_count + self.action_count
+    def required_block_count(self, anchor_count: int) -> int:
+        if anchor_count <= 0:
+            raise ValueError("anchor_count must be positive")
+        return self.context_block_count + anchor_count + self.action_count
 
 
 @dataclass(slots=True)
@@ -96,21 +95,20 @@ def derive_dataset_geometry(
         lookback_steps=lookback_steps,
         max_extra_wait_steps=max_extra_wait_steps,
         action_count=action_count,
-        feature_warmup_blocks=warmup_blocks,
         context_block_count=warmup_blocks + lookback_steps - 1,
     )
 
 
-def trim_history_for_target(
+def trim_history_for_anchor_count(
     n_blocks: int,
     *,
-    target_anchor_count: int,
+    anchor_count: int,
     geometry: DatasetGeometry,
 ) -> slice:
-    required_blocks = geometry.required_training_block_count(target_anchor_count)
+    required_blocks = geometry.required_block_count(anchor_count)
     if n_blocks < required_blocks:
         raise ValueError(
-            "History dataset is too short for the requested target_anchor_count; "
+            "History dataset is too short for the requested anchor count; "
             f"need at least {required_blocks} blocks, got {n_blocks}"
         )
     return slice(n_blocks - required_blocks, n_blocks)

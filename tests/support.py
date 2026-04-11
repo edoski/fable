@@ -31,7 +31,8 @@ def base_overrides(tmp_path: Path) -> list[str]:
         "simulation.window_seconds=600",
         "simulation.arrival_rate_per_second=0.02",
         "simulation.repetitions=3",
-        "chain.history_days=1",
+        "pull.enrich_batch_size=1000",
+        "pull.max_methods_per_second=1000000",
         "lookback_seconds=120",
         "target_anchor_count=48",
     ]

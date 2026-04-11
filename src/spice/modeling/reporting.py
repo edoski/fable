@@ -38,6 +38,7 @@ class TrainingRunReport(ReportModel):
     history_block_path: str
     artifact_dir: str
     chain: str
+    dataset_id: str
     family: str
     max_delay_seconds: int
     device_requested: str
@@ -77,6 +78,7 @@ class SimulationReport(ReportModel):
     history_block_path: str
     evaluation_block_path: str
     chain: str
+    dataset_id: str
     family: str
     max_delay_seconds: int
     lookback_seconds: int
@@ -104,6 +106,7 @@ def build_training_run_report(
     max_delay_seconds: int,
     lookback_seconds: int,
     chain_name: str,
+    dataset_id: str,
     family: str,
     block_time_seconds: float,
     manifest: TrainingArtifactManifest,
@@ -117,6 +120,7 @@ def build_training_run_report(
         history_block_path=str(history_block_path),
         artifact_dir=str(artifact_dir),
         chain=chain_name,
+        dataset_id=dataset_id,
         family=family,
         max_delay_seconds=max_delay_seconds,
         device_requested=device_requested,
@@ -163,6 +167,7 @@ def build_simulation_report(
         history_block_path=str(history_block_path),
         evaluation_block_path=str(evaluation_block_path),
         chain=manifest.chain.name.value,
+        dataset_id=manifest.dataset_id,
         family=manifest.model.family.value,
         max_delay_seconds=manifest.max_delay_seconds,
         lookback_seconds=manifest.lookback_seconds,

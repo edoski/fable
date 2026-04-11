@@ -111,11 +111,26 @@ DVC is the primary orchestration surface:
 3. `train`
 4. `simulate`
 
-`tune` is a first-class temporal workflow, but `train` does not implicitly consume
-the last Optuna result. Hyperparameters selected from tuning should be pinned in
-config before running the final training/simulation path. Tuning summaries live
-under the relevant model artifact directory:
-`artifacts/models/<chain>/<family>/<delay>s/tuning/`.
+Dataset storage is keyed by explicit dataset windows:
+
+- `artifacts/datasets/<chain>/<dataset_id>/raw/...`
+- `artifacts/datasets/<chain>/<dataset_id>/enriched/...`
+- `artifacts/datasets/<chain>/<dataset_id>/.spice/metadata.json`
+
+Model storage is keyed by the training dataset window:
+
+- `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/...`
+- `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/tuning/...`
+
+`dataset.id`, `dataset.evaluation_start_timestamp`,
+`dataset.evaluation_end_timestamp`, and `dataset.min_history_anchor_count`
+define the active dataset window. `target_anchor_count` remains the
+training/tuning sample count.
+
+In the DVC thesis path, `train` explicitly depends on the tuned model-local
+`best_params.json` artifact and runs with `tuning.apply_best_params=true`, so
+the best Optuna result is consumed intentionally rather than implicitly. Direct
+`spice-train` usage still defaults to `tuning.apply_best_params=false`.
 
 Stage definitions live in [dvc.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/dvc.yaml), and DVC-facing run variables live in [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml).
 

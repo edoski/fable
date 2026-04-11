@@ -9,7 +9,6 @@ import polars as pl
 
 from ..core.config import ChainConfig, ModelConfig, SplitConfig, TrainingConfig
 from ..core.console import Reporter
-from ..core.constants import EVALUATION_END_TS, EVALUATION_START_TS
 from ..data.datasets import (
     DatasetGeometry,
     DatasetSplitIndices,
@@ -20,7 +19,7 @@ from ..data.datasets import (
     derive_dataset_geometry,
     filter_sample_indices_by_anchor_window,
     history_context_slice,
-    trim_history_for_target,
+    trim_history_for_anchor_count,
 )
 from ..data.features import build_feature_table
 from ..data.io import load_enriched_block_frame
@@ -33,6 +32,7 @@ from .training import EpochMetrics, TrainingResult, evaluate_model, train_model
 @dataclass(slots=True)
 class TrainingSpec:
     chain: ChainConfig
+    dataset_id: str
     model: ModelConfig
     max_delay_seconds: int
     lookback_seconds: int
@@ -100,9 +100,9 @@ def prepare_training_dataset(
     )
     trimmed_blocks = _slice_frame(
         blocks.sort("block_number"),
-        trim_history_for_target(
+        trim_history_for_anchor_count(
             blocks.height,
-            target_anchor_count=spec.target_anchor_count,
+            anchor_count=spec.target_anchor_count,
             geometry=geometry,
         ),
     )
@@ -145,6 +145,8 @@ def prepare_inference_dataset(
     *,
     geometry: DatasetGeometry,
     scaler: ScalerStats,
+    evaluation_start_timestamp: int,
+    evaluation_end_timestamp: int,
 ) -> PreparedInferenceDataset:
     context_blocks = _slice_frame(
         history_blocks.sort("block_number"),
@@ -159,8 +161,8 @@ def prepare_inference_dataset(
     )
     sample_indices = filter_sample_indices_by_anchor_window(
         store,
-        start_timestamp=EVALUATION_START_TS,
-        end_timestamp=EVALUATION_END_TS,
+        start_timestamp=evaluation_start_timestamp,
+        end_timestamp=evaluation_end_timestamp,
     )
     if sample_indices.size == 0:
         raise ValueError("Evaluation dataset produced no valid inference examples")

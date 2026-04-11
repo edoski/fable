@@ -1,4 +1,4 @@
-enabled: true
+apply_best_params: false
 study_name: spice-study
 direction: maximize
 n_trials: 20
@@ -11,4 +11,3 @@ search_space:
   training.weight_decay: [0.0, 0.01, 0.05]
   model.hidden_size: [64, 128, 256]
   model.dropout: [0.0, 0.1, 0.2]
-

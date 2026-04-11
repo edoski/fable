@@ -27,6 +27,7 @@ class ArtifactModel(BaseModel):
 class TrainingArtifactManifest(ArtifactModel):
     kind: Literal["training_artifact"] = "training_artifact"
     chain: ChainConfig
+    dataset_id: str
     max_delay_seconds: int
     lookback_seconds: int
     target_anchor_count: int
@@ -52,6 +53,7 @@ def build_training_artifact_manifest(
 ) -> TrainingArtifactManifest:
     return TrainingArtifactManifest(
         chain=spec.chain,
+        dataset_id=spec.dataset_id,
         max_delay_seconds=spec.max_delay_seconds,
         lookback_seconds=spec.lookback_seconds,
         target_anchor_count=spec.target_anchor_count,

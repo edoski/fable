@@ -13,7 +13,6 @@ from pathlib import Path
 
 from ..core.config import ChainConfig, ProviderConfig, PullConfig
 from ..core.console import NullReporter, Reporter
-from ..core.constants import EVALUATION_END_TS, EVALUATION_START_TS
 from .provider import redact_sensitive_text
 
 CRYO_PROGRESS_POLL_INTERVAL_SECONDS = 0.5
@@ -35,13 +34,25 @@ class CryoRunResult:
     expected_chunks: int | None
 
 
-def history_range_for_chain(chain: ChainConfig) -> TimestampRange:
-    span = chain.history_days * 24 * 60 * 60
-    return TimestampRange(start=EVALUATION_START_TS - span, end=EVALUATION_START_TS)
+def history_range_for_required_blocks(
+    chain: ChainConfig,
+    pull: PullConfig,
+    *,
+    required_history_blocks: int,
+    evaluation_start_timestamp: int,
+) -> TimestampRange:
+    if required_history_blocks <= 0:
+        raise ValueError("required_history_blocks must be positive")
+    block_count = required_history_blocks + pull.chunk_size
+    span_seconds = math.ceil(block_count * chain.block_time_seconds)
+    return TimestampRange(
+        start=evaluation_start_timestamp - span_seconds,
+        end=evaluation_start_timestamp,
+    )
 
 
-def evaluation_range() -> TimestampRange:
-    return TimestampRange(start=EVALUATION_START_TS, end=EVALUATION_END_TS)
+def evaluation_range(start_timestamp: int, end_timestamp: int) -> TimestampRange:
+    return TimestampRange(start=start_timestamp, end=end_timestamp)
 
 
 def _existing_parquet_count(path: Path) -> int:

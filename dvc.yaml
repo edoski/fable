@@ -11,6 +11,17 @@ stages:
       max_delay_seconds=${run.max_delay_seconds}
       lookback_seconds=${run.lookback_seconds}
       target_anchor_count=${run.target_anchor_count}
+      dataset.id=${dataset.id}
+      dataset.evaluation_start_timestamp=${dataset.evaluation_start_timestamp}
+      dataset.evaluation_end_timestamp=${dataset.evaluation_end_timestamp}
+      dataset.min_history_anchor_count=${dataset.min_history_anchor_count}
+      pull.requests_per_second=${pull.requests_per_second}
+      pull.max_concurrent_requests=${pull.max_concurrent_requests}
+      pull.max_concurrent_chunks=${pull.max_concurrent_chunks}
+      pull.chunk_size=${pull.chunk_size}
+      pull.overwrite=${pull.overwrite}
+      pull.enrich_batch_size=${pull.enrich_batch_size}
+      pull.max_methods_per_second=${pull.max_methods_per_second}
     deps:
       - pyproject.toml
       - src/spice
@@ -22,57 +33,111 @@ stages:
           - run.max_delay_seconds
           - run.lookback_seconds
           - run.target_anchor_count
+          - dataset.id
+          - dataset.evaluation_start_timestamp
+          - dataset.evaluation_end_timestamp
+          - dataset.min_history_anchor_count
+          - pull.requests_per_second
+          - pull.max_concurrent_requests
+          - pull.max_concurrent_chunks
+          - pull.chunk_size
+          - pull.overwrite
+          - pull.enrich_batch_size
+          - pull.max_methods_per_second
     outs:
-      - ${run.output_root}/datasets/${run.chain}/raw
-      - ${run.output_root}/datasets/${run.chain}/enriched
-      - ${run.output_root}/datasets/${run.chain}/.spice
+      - ${run.output_root}/datasets/${run.chain}/${dataset.id}/raw
+      - ${run.output_root}/datasets/${run.chain}/${dataset.id}/enriched
+      - ${run.output_root}/datasets/${run.chain}/${dataset.id}/.spice
+
+  tune:
+    cmd: >-
+      .venv/bin/spice-tune
+      chain=${run.chain}
+      model=${run.model}
+      runtime.output_root=${run.output_root}
+      max_delay_seconds=${run.max_delay_seconds}
+      lookback_seconds=${run.lookback_seconds}
+      target_anchor_count=${run.target_anchor_count}
+      dataset.id=${dataset.id}
+      training.device=${training.device}
+      training.max_epochs=${training.max_epochs}
+      training.effective_batch_size=${training.effective_batch_size}
+      training.early_stopping_patience=${training.early_stopping_patience}
+      tuning.n_trials=${tuning.n_trials}
+      tuning.prune=${tuning.prune}
+    deps:
+      - pyproject.toml
+      - src/spice
+      - ${run.output_root}/datasets/${run.chain}/${dataset.id}/enriched/history
+    params:
+      - params.yaml:
+          - run.chain
+          - run.model
+          - run.output_root
+          - run.max_delay_seconds
+          - run.lookback_seconds
+          - run.target_anchor_count
+          - dataset.id
+          - training.device
+          - training.max_epochs
+          - training.effective_batch_size
+          - training.early_stopping_patience
+          - tuning.n_trials
+          - tuning.prune
+    outs:
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/tuning/study.json
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/tuning/trials.json
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/tuning/best_params.json
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/tuning/trials
 
   train:
     cmd: >-
       .venv/bin/spice-train
       chain=${run.chain}
       model=${run.model}
-      provider=${run.provider}
       runtime.output_root=${run.output_root}
       max_delay_seconds=${run.max_delay_seconds}
       lookback_seconds=${run.lookback_seconds}
       target_anchor_count=${run.target_anchor_count}
+      dataset.id=${dataset.id}
       training.device=${training.device}
       training.max_epochs=${training.max_epochs}
       training.effective_batch_size=${training.effective_batch_size}
       training.early_stopping_patience=${training.early_stopping_patience}
+      tuning.apply_best_params=true
     deps:
       - pyproject.toml
       - src/spice
-      - ${run.output_root}/datasets/${run.chain}/enriched/history
+      - ${run.output_root}/datasets/${run.chain}/${dataset.id}/enriched/history
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/tuning/best_params.json
     params:
       - params.yaml:
           - run.chain
           - run.model
-          - run.provider
           - run.output_root
           - run.max_delay_seconds
           - run.lookback_seconds
           - run.target_anchor_count
+          - dataset.id
           - training.device
           - training.max_epochs
           - training.effective_batch_size
           - training.early_stopping_patience
     outs:
-      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/artifact.json
-      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/model.pt
-      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/train_report.json
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/artifact.json
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/model.pt
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/train_report.json
 
   simulate:
     cmd: >-
       .venv/bin/spice-simulate
       chain=${run.chain}
       model=${run.model}
-      provider=${run.provider}
       runtime.output_root=${run.output_root}
       max_delay_seconds=${run.max_delay_seconds}
-      lookback_seconds=${run.lookback_seconds}
-      target_anchor_count=${run.target_anchor_count}
+      dataset.id=${dataset.id}
+      dataset.evaluation_start_timestamp=${dataset.evaluation_start_timestamp}
+      dataset.evaluation_end_timestamp=${dataset.evaluation_end_timestamp}
       training.device=${training.device}
       training.effective_batch_size=${training.effective_batch_size}
       simulation.window_seconds=${simulation.window_seconds}
@@ -81,59 +146,23 @@ stages:
     deps:
       - pyproject.toml
       - src/spice
-      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/artifact.json
-      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/model.pt
-      - ${run.output_root}/datasets/${run.chain}/enriched/history
-      - ${run.output_root}/datasets/${run.chain}/enriched/evaluation
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/artifact.json
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/model.pt
+      - ${run.output_root}/datasets/${run.chain}/${dataset.id}/enriched/history
+      - ${run.output_root}/datasets/${run.chain}/${dataset.id}/enriched/evaluation
     params:
       - params.yaml:
           - run.chain
           - run.model
-          - run.provider
           - run.output_root
           - run.max_delay_seconds
-          - run.lookback_seconds
-          - run.target_anchor_count
+          - dataset.id
+          - dataset.evaluation_start_timestamp
+          - dataset.evaluation_end_timestamp
           - training.device
           - training.effective_batch_size
           - simulation.window_seconds
           - simulation.arrival_rate_per_second
           - simulation.repetitions
     outs:
-      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/simulation_report.json
-
-  tune:
-    cmd: >-
-      .venv/bin/spice-tune
-      chain=${run.chain}
-      model=${run.model}
-      provider=${run.provider}
-      runtime.output_root=${run.output_root}
-      max_delay_seconds=${run.max_delay_seconds}
-      lookback_seconds=${run.lookback_seconds}
-      target_anchor_count=${run.target_anchor_count}
-      training.device=${training.device}
-      training.max_epochs=${training.max_epochs}
-      training.effective_batch_size=${training.effective_batch_size}
-      tuning.n_trials=${tuning.n_trials}
-      tuning.prune=${tuning.prune}
-    deps:
-      - pyproject.toml
-      - src/spice
-      - ${run.output_root}/datasets/${run.chain}/enriched/history
-    params:
-      - params.yaml:
-          - run.chain
-          - run.model
-          - run.provider
-          - run.output_root
-          - run.max_delay_seconds
-          - run.lookback_seconds
-          - run.target_anchor_count
-          - training.device
-          - training.max_epochs
-          - training.effective_batch_size
-          - tuning.n_trials
-          - tuning.prune
-    outs:
-      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/tuning
+      - ${run.output_root}/models/${run.chain}/${dataset.id}/${run.model}/${run.max_delay_seconds}s/simulation_report.json
