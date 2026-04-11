@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any, cast
 
 from web3.middleware import ExtraDataToPOAMiddleware
@@ -36,13 +35,35 @@ def test_redact_sensitive_text_masks_endpoint() -> None:
 
 
 def test_web3_block_client_reads_gas_limits(monkeypatch) -> None:
+    class FakeBatch:
+        def __init__(self) -> None:
+            self.blocks: list[dict[str, int]] = []
+
+        def __enter__(self) -> FakeBatch:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def add(self, block: dict[str, int]) -> None:
+            self.blocks.append(block)
+
+        def execute(self) -> list[dict[str, int]]:
+            return self.blocks
+
     class FakeEth:
         def get_block(self, block_number: int) -> dict[str, int]:
             return {"gasLimit": 30_000_000 + block_number}
 
+    class FakeWeb3:
+        eth = FakeEth()
+
+        def batch_requests(self) -> FakeBatch:
+            return FakeBatch()
+
     monkeypatch.setattr(
         "spice.acquisition.rpc.build_web3",
-        lambda _provider, _chain: SimpleNamespace(eth=FakeEth()),
+        lambda _provider, _chain: FakeWeb3(),
     )
 
     client = Web3BlockClient(make_provider_config(), make_chain_config())

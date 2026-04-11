@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+from ..core.console import NullReporter, Reporter
 from ..data.datasets import TemporalDatasetStore
 
 IntVector = NDArray[np.int64]
@@ -113,7 +114,9 @@ def run_temporal_simulation(
     arrival_rate_per_second: float,
     repetitions: int,
     seed: int,
+    reporter: Reporter | None = None,
 ) -> SimulationSummary:
+    reporter = reporter or NullReporter()
     if len(predicted_offsets) != int(sample_indices.shape[0]):
         raise ValueError("predicted_offsets must align with sample_indices")
     if repetitions <= 0:
@@ -132,7 +135,12 @@ def run_temporal_simulation(
 
     rng = np.random.default_rng(seed)
     runs: list[SimulationRunSummary] = []
-    for _ in range(repetitions):
+    task_id = reporter.start_task(
+        "simulate repetitions",
+        total=repetitions,
+        unit="repetitions",
+    )
+    for repetition in range(repetitions):
         window_start = float(rng.uniform(first_timestamp, latest_start))
         window_end = window_start + window_seconds
         arrivals = sample_poisson_arrivals(
@@ -143,17 +151,26 @@ def run_temporal_simulation(
         )
         selected_positions = select_sample_positions_for_arrivals(anchor_timestamps, arrivals)
         if selected_positions.size == 0:
-            continue
-        runs.append(
-            summarize_realized_costs(
-                store,
-                predicted_offsets,
-                sample_indices,
-                selected_positions,
-                window_start_timestamp=window_start,
-                window_end_timestamp=window_end,
-                n_arrivals=int(arrivals.shape[0]),
+            reporter.update_task(
+                task_id,
+                completed=repetition + 1,
+                message="no valid arrivals",
             )
+            continue
+        summary = summarize_realized_costs(
+            store,
+            predicted_offsets,
+            sample_indices,
+            selected_positions,
+            window_start_timestamp=window_start,
+            window_end_timestamp=window_end,
+            n_arrivals=int(arrivals.shape[0]),
+        )
+        runs.append(summary)
+        reporter.update_task(
+            task_id,
+            completed=repetition + 1,
+            message=f"events={summary.n_events}",
         )
 
     if not runs:
@@ -162,7 +179,7 @@ def run_temporal_simulation(
     profits = [run.profit_over_baseline for run in runs]
     model_costs = [run.cost_over_optimum for run in runs]
     baseline_costs = [run.baseline_cost_over_optimum for run in runs]
-    return SimulationSummary(
+    summary = SimulationSummary(
         mean_profit_over_baseline=statistics.fmean(profits),
         std_profit_over_baseline=statistics.pstdev(profits),
         mean_cost_over_optimum=statistics.fmean(model_costs),
@@ -172,3 +189,5 @@ def run_temporal_simulation(
         total_events=sum(run.n_events for run in runs),
         runs=runs,
     )
+    reporter.finish_task(task_id, message=f"total_events={summary.total_events}")
+    return summary

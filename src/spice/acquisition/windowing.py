@@ -54,7 +54,7 @@ def expanded_history_range(
         )
     else:
         seconds_per_block = config.chain.block_time_seconds
-    additional_blocks = missing_blocks + config.acquisition.chunk_size
+    additional_blocks = missing_blocks + config.acquisition.raw.chunk_size
     return TimestampRange(
         start=current.start - ceil(additional_blocks * seconds_per_block),
         end=current.end,

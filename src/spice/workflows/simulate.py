@@ -5,11 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import hydra
-import mlflow
 from omegaconf import DictConfig
 
 from ..core.config import ExperimentConfig, coerce_config
-from ..core.console import Reporter, RichReporter
+from ..core.console import Reporter
 from ..core.tracking import log_artifacts
 from ..data.datasets import derive_dataset_geometry
 from ..data.io import load_enriched_block_frame
@@ -32,11 +31,16 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             f"-{config.dataset.temporal.max_delay_seconds}s"
         ),
         reporter=reporter,
-        default_reporter_factory=RichReporter,
     ) as session:
+        load_task = session.reporter.start_task("load inference inputs")
         loaded_artifact = load_training_artifact(artifact_dir)
         history_blocks = load_enriched_block_frame(history_block_path)
         evaluation_blocks = load_enriched_block_frame(evaluation_block_path)
+        session.reporter.finish_task(
+            load_task,
+            message=f"artifact={artifact_dir} evaluation={evaluation_block_path}",
+        )
+        prepare_task = session.reporter.start_task("prepare inference dataset")
         prepared = prepare_inference_dataset(
             history_blocks,
             evaluation_blocks,
@@ -49,6 +53,10 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             window_start_timestamp=config.dataset.window.start_timestamp,
             window_end_timestamp=config.dataset.window.end_timestamp,
         )
+        session.reporter.finish_task(
+            prepare_task,
+            message=f"examples={prepared.n_examples_total}",
+        )
         predictions = predict_class_offsets(
             loaded_artifact.model,
             store=prepared.store,
@@ -56,6 +64,7 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             lookback_steps=prepared.geometry.lookback_steps,
             batch_size=config.training.batch_size,
             device=config.training.device,
+            reporter=session.reporter,
         )
         simulation = run_temporal_simulation(
             prepared.store,
@@ -65,6 +74,7 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             arrival_rate_per_second=config.simulation.arrival_rate_per_second,
             repetitions=config.simulation.repetitions,
             seed=config.simulation.seed,
+            reporter=session.reporter,
         )
         report = build_simulation_report(
             loaded_artifact,
@@ -78,10 +88,14 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             repetitions=config.simulation.repetitions,
         )
         report_path = Path(config.paths.simulation_report_path)
+        report_task = session.reporter.start_task("write simulation report")
         write_json_report(report_path, report)
+        session.reporter.finish_task(report_task, message=str(report_path))
         session.reporter.log(f"simulation finished: {report_path}")
 
         if session.tracking_enabled:
+            import mlflow
+
             mlflow.log_metrics(
                 {
                     "simulation_profit_over_baseline_mean": report.profit_over_baseline.mean,

@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
-
-import mlflow
-from mlflow.tracking import MlflowClient
 
 from .config import ExperimentConfig, config_to_dict
 
@@ -20,6 +18,11 @@ def resolve_tracking_uri(config: ExperimentConfig) -> str:
 
 
 def configure_mlflow(config: ExperimentConfig) -> None:
+    import mlflow
+    from mlflow.tracking import MlflowClient
+
+    logging.getLogger("mlflow").setLevel(logging.WARNING)
+    logging.getLogger("mlflow.store.db.utils").setLevel(logging.WARNING)
     tracking_root = Path(config.paths.mlruns_dir).resolve()
     tracking_root.mkdir(parents=True, exist_ok=True)
     tracking_uri = resolve_tracking_uri(config)
@@ -54,6 +57,8 @@ def _flatten_dict(payload: dict[str, Any], *, prefix: str = "") -> dict[str, str
 
 
 def log_config(config: ExperimentConfig) -> None:
+    import mlflow
+
     flattened = _flatten_dict(config_to_dict(config))
     for key, value in flattened.items():
         mlflow.log_param(key, value)
@@ -64,12 +69,16 @@ def log_epoch_history(
     prefix: str,
     metrics_history: Iterable[dict[str, float]],
 ) -> None:
+    import mlflow
+
     for step, metrics in enumerate(metrics_history, start=1):
         for metric_name, value in metrics.items():
             mlflow.log_metric(f"{prefix}.{metric_name}", value, step=step)
 
 
 def log_artifacts(paths: Iterable[Path]) -> None:
+    import mlflow
+
     for path in paths:
         if path.is_file():
             mlflow.log_artifact(str(path), artifact_path=path.parent.name)

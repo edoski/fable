@@ -39,6 +39,8 @@ def test_direct_provider_reads_env_interpolation(tmp_path, monkeypatch) -> None:
 
     assert config.provider.endpoint_for(config.chain.name) == "https://eth.example.test"
     assert config.provider.reference_for(config.chain.name) == "$ETHEREUM_RPC_URL"
+    assert config.acquisition.raw.requests_per_second == 10
+    assert config.acquisition.enrich.batch_size == 1000
 
 
 def test_train_config_does_not_require_direct_provider_endpoint(tmp_path, monkeypatch) -> None:
@@ -68,6 +70,50 @@ def test_avalanche_config_enables_poa_extra_data_middleware(tmp_path) -> None:
     )
 
     assert config.chain.uses_poa_extra_data
+
+
+def test_polygon_config_enables_poa_extra_data_middleware(tmp_path) -> None:
+    config = compose_experiment(
+        "acquire",
+        overrides=base_overrides(tmp_path) + ["chain=polygon"],
+    )
+
+    assert config.chain.uses_poa_extra_data
+
+
+def test_publicnode_profiles_apply_per_chain_tuning(tmp_path) -> None:
+    ethereum = compose_experiment(
+        "acquire",
+        overrides=[
+            f"runtime.output_root={tmp_path / 'artifacts'}",
+            "tracking.enabled=false",
+        ],
+    )
+    polygon = compose_experiment(
+        "acquire",
+        overrides=[
+            f"runtime.output_root={tmp_path / 'artifacts'}",
+            "tracking.enabled=false",
+            "chain=polygon",
+        ],
+    )
+    avalanche = compose_experiment(
+        "acquire",
+        overrides=[
+            f"runtime.output_root={tmp_path / 'artifacts'}",
+            "tracking.enabled=false",
+            "chain=avalanche",
+        ],
+    )
+
+    assert ethereum.acquisition.raw.requests_per_second == 640
+    assert ethereum.acquisition.raw.max_concurrent_requests == 64
+    assert ethereum.acquisition.enrich.max_methods_per_second == 200.0
+    assert polygon.acquisition.raw.requests_per_second == 11
+    assert polygon.acquisition.raw.max_concurrent_requests == 2
+    assert polygon.acquisition.enrich.max_methods_per_second == 120.0
+    assert avalanche.acquisition.raw.requests_per_second == 640
+    assert avalanche.acquisition.enrich.max_methods_per_second == 500.0
 
 
 def test_invalid_transformer_config_fails_early(tmp_path) -> None:

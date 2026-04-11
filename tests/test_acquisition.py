@@ -62,16 +62,37 @@ def test_enrich_frame_with_gas_limit_fills_missing_blocks() -> None:
 def test_run_cryo_polls_progress_before_stdout_lines(tmp_path, monkeypatch) -> None:
     class RecordingReporter(NullReporter):
         def __init__(self) -> None:
-            self.pull_updates: list[tuple[int, int | None, str | None]] = []
+            self.events: list[tuple[str, int | str | None]] = []
 
-        def update_pull(
+        def start_task(
             self,
+            name: str,
             *,
-            completed_chunks: int,
-            total_chunks: int | None,
-            latest_output: str | None = None,
+            total: int | None = None,
+            unit: str | None = None,
+        ) -> int:
+            self.events.append(("start", total))
+            return 1
+
+        def update_task(
+            self,
+            task_id: int,
+            *,
+            completed: int | None = None,
+            advance: int | None = None,
+            message: str | None = None,
         ) -> None:
-            self.pull_updates.append((completed_chunks, total_chunks, latest_output))
+            self.events.append(("update", completed))
+
+        def throttled_log(
+            self,
+            key: str,
+            message: str,
+            *,
+            interval_seconds: float = 10.0,
+            level: str = "info",
+        ) -> None:
+            self.events.append(("log", message))
 
     output_dir = tmp_path / "raw"
     reporter = RecordingReporter()
@@ -112,9 +133,9 @@ def test_run_cryo_polls_progress_before_stdout_lines(tmp_path, monkeypatch) -> N
     )
 
     assert result.completed_chunks == 1
-    assert reporter.pull_updates
-    assert reporter.pull_updates[0][0] == 1
-    assert any(update[2] == "done" for update in reporter.pull_updates)
+    assert reporter.events
+    assert ("update", 1) in reporter.events
+    assert ("log", "done") in reporter.events
 
 
 class _FakeBlockClient:
@@ -411,7 +432,7 @@ def test_acquire_expands_short_history_window_backward(tmp_path, monkeypatch) ->
         + [
             "provider=publicnode",
             "acquisition.dry_run=false",
-            "acquisition.chunk_size=5",
+            "acquisition.raw.chunk_size=5",
             "dataset.sampling.anchor_count=20",
             "dataset.sampling.history_anchor_count=20",
         ],

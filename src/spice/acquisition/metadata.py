@@ -63,7 +63,7 @@ class DatasetTemporalSettings(MetadataModel):
 
 
 class DatasetAcquisitionSettings(MetadataModel):
-    chunk_size: int
+    raw_chunk_size: int
     enrich_batch_size: int
     max_methods_per_second: float
 
@@ -269,9 +269,9 @@ def build_dataset_metadata(
                 max_delay_seconds=config.dataset.temporal.max_delay_seconds,
             ),
             acquisition=DatasetAcquisitionSettings(
-                chunk_size=config.acquisition.chunk_size,
-                enrich_batch_size=config.acquisition.enrich_batch_size,
-                max_methods_per_second=config.acquisition.max_methods_per_second,
+                raw_chunk_size=config.acquisition.raw.chunk_size,
+                enrich_batch_size=config.acquisition.enrich.batch_size,
+                max_methods_per_second=config.acquisition.enrich.max_methods_per_second,
             ),
         ),
         validation=DatasetValidationMetadata(

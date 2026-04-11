@@ -10,10 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import mlflow
-
 from ..core.config import ExperimentConfig, revalidate_config
-from ..core.console import NullReporter, Reporter
+from ..core.console import Reporter, create_reporter
 from ..core.tracking import configure_mlflow, log_config
 from ..modeling.evaluation import EpochMetrics
 from ..modeling.pipeline import TrainingSpec
@@ -53,13 +51,15 @@ def managed_workflow(
     *,
     run_name: str,
     reporter: Reporter | None = None,
-    default_reporter_factory: Callable[[], Reporter] = NullReporter,
+    default_reporter_factory: Callable[[], Reporter] = create_reporter,
     nested: bool = False,
 ) -> Iterator[WorkflowSession]:
     active_reporter = reporter or default_reporter_factory()
     owns_reporter = reporter is None
     try:
         if config.tracking.enabled:
+            import mlflow
+
             configure_mlflow(config)
             with mlflow.start_run(run_name=run_name, nested=nested):
                 log_config(config)

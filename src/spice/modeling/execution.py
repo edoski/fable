@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..core.console import Reporter
+from ..core.console import NullReporter, Reporter
 from ..core.constants import ARTIFACT_MANIFEST_FILENAME, MODEL_STATE_FILENAME
 from .artifacts import (
     TrainingArtifactManifest,
@@ -36,6 +36,7 @@ def run_persisted_training(
     report_path: Path,
     reporter: Reporter | None = None,
 ) -> PersistedTrainingRun:
+    reporter = reporter or NullReporter()
     training_run = run_training(
         history_block_path,
         spec=spec,
@@ -43,11 +44,13 @@ def run_persisted_training(
         reporter=reporter,
     )
     manifest = build_training_artifact_manifest(training_run.prepared, spec=spec)
+    artifact_task = reporter.start_task("write training artifact")
     write_training_artifact(
         artifact_dir,
         manifest=manifest,
         model=training_run.model,
     )
+    reporter.finish_task(artifact_task, message=str(artifact_dir))
     report = build_training_run_report(
         training_run,
         anchor_count=spec.anchor_count,
@@ -63,7 +66,9 @@ def run_persisted_training(
         history_block_path=history_block_path,
         device_requested=spec.training.device,
     )
+    report_task = reporter.start_task("write training report")
     write_json_report(report_path, report)
+    reporter.finish_task(report_task, message=str(report_path))
 
     validation_history = training_run.training_result.validation_history
     if not validation_history:

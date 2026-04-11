@@ -43,7 +43,7 @@ def history_range_for_required_blocks(
 ) -> TimestampRange:
     if required_history_blocks <= 0:
         raise ValueError("required_history_blocks must be positive")
-    block_count = required_history_blocks + acquisition.chunk_size
+    block_count = required_history_blocks + acquisition.raw.chunk_size
     span_seconds = math.ceil(block_count * chain.block_time_seconds)
     return TimestampRange(
         start=window_start_timestamp - span_seconds,
@@ -68,7 +68,7 @@ def _expected_chunk_count(
 ) -> int:
     span_seconds = max(1, timestamps.end - timestamps.start)
     approx_blocks = math.ceil(span_seconds / chain.block_time_seconds)
-    return max(1, math.ceil(approx_blocks / acquisition.chunk_size))
+    return max(1, math.ceil(approx_blocks / acquisition.raw.chunk_size))
 
 
 def _build_cryo_tokens(
@@ -94,13 +94,13 @@ def _build_cryo_tokens(
         "--output-dir",
         str(output_dir),
         "--requests-per-second",
-        str(acquisition.requests_per_second),
+        str(acquisition.raw.requests_per_second),
         "--max-concurrent-requests",
-        str(acquisition.max_concurrent_requests),
+        str(acquisition.raw.max_concurrent_requests),
         "--max-concurrent-chunks",
-        str(acquisition.max_concurrent_chunks),
+        str(acquisition.raw.max_concurrent_chunks),
         "--chunk-size",
-        str(acquisition.chunk_size),
+        str(acquisition.raw.chunk_size),
     ]
     if overwrite:
         tokens.append("--overwrite")
@@ -149,6 +149,7 @@ def build_cryo_command(
 def _refresh_pull_progress(
     reporter: Reporter,
     *,
+    task_id: int,
     output_dir: Path,
     baseline_chunk_count: int,
     completed_chunks: int,
@@ -157,10 +158,12 @@ def _refresh_pull_progress(
 ) -> int:
     current_completed_chunks = max(0, _existing_parquet_count(output_dir) - baseline_chunk_count)
     if latest_output is not None or current_completed_chunks != completed_chunks:
-        reporter.update_pull(
-            completed_chunks=current_completed_chunks,
-            total_chunks=total_chunks,
-            latest_output=latest_output,
+        reporter.update_task(task_id, completed=current_completed_chunks)
+    if latest_output is not None:
+        reporter.throttled_log(
+            f"cryo-output:{output_dir}",
+            latest_output,
+            interval_seconds=10.0,
         )
     return current_completed_chunks
 
@@ -180,6 +183,7 @@ def _stream_pull_progress(
     process: subprocess.Popen[str],
     reporter: Reporter,
     *,
+    task_id: int,
     output_dir: Path,
     baseline_chunk_count: int,
     total_chunks: int | None,
@@ -198,6 +202,7 @@ def _stream_pull_progress(
     while True:
         completed_chunks = _refresh_pull_progress(
             reporter,
+            task_id=task_id,
             output_dir=output_dir,
             baseline_chunk_count=baseline_chunk_count,
             completed_chunks=completed_chunks,
@@ -213,6 +218,7 @@ def _stream_pull_progress(
                 continue
             completed_chunks = _refresh_pull_progress(
                 reporter,
+                task_id=task_id,
                 output_dir=output_dir,
                 baseline_chunk_count=baseline_chunk_count,
                 completed_chunks=completed_chunks,
@@ -226,6 +232,7 @@ def _stream_pull_progress(
     output_reader.join()
     return _refresh_pull_progress(
         reporter,
+        task_id=task_id,
         output_dir=output_dir,
         baseline_chunk_count=baseline_chunk_count,
         completed_chunks=completed_chunks,
@@ -269,9 +276,10 @@ def run_cryo(
         return CryoRunResult(command=command, completed_chunks=0, expected_chunks=expected_chunks)
 
     baseline_chunk_count = _existing_parquet_count(output_dir)
-    reporter.start_pull(
-        label=f"pull {chain.name.value}:{output_dir.name} (approx chunks)",
-        total_chunks=expected_chunks,
+    task_id = reporter.start_task(
+        f"pull {chain.name.value}:{output_dir.name}",
+        total=expected_chunks,
+        unit="chunks",
     )
     process = subprocess.Popen(
         args,
@@ -283,6 +291,7 @@ def run_cryo(
     latest_completed_chunks = _stream_pull_progress(
         process,
         reporter,
+        task_id=task_id,
         output_dir=output_dir,
         baseline_chunk_count=baseline_chunk_count,
         total_chunks=expected_chunks,
@@ -291,7 +300,7 @@ def run_cryo(
     return_code = process.wait()
     if return_code != 0:
         raise subprocess.CalledProcessError(return_code, args)
-    reporter.finish_pull(output_dir=output_dir)
+    reporter.finish_task(task_id, message=str(output_dir))
     return CryoRunResult(
         command=command,
         completed_chunks=latest_completed_chunks,

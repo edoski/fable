@@ -4,6 +4,7 @@ defaults:
   - model: lstm
   - provider: publicnode
   - acquisition: default
+  - optional rpc_profile: ${provider}/${chain}
   - split: default
   - training: default
   - simulation: default

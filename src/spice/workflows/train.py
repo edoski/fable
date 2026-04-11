@@ -6,11 +6,10 @@ import shutil
 from pathlib import Path
 
 import hydra
-import mlflow
 from omegaconf import DictConfig
 
 from ..core.config import ExperimentConfig, coerce_config
-from ..core.console import Reporter, RichReporter
+from ..core.console import Reporter
 from ..core.constants import ARTIFACT_MANIFEST_FILENAME, MODEL_STATE_FILENAME
 from ..core.tracking import log_artifacts, log_epoch_history
 from ..modeling.execution import run_persisted_training
@@ -51,7 +50,6 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             f"{config.dataset.temporal.max_delay_seconds}s"
         ),
         reporter=reporter,
-        default_reporter_factory=RichReporter,
     ) as session:
         _clean_training_outputs(config)
         persisted = run_persisted_training(
@@ -62,6 +60,8 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             reporter=session.reporter,
         )
         if session.tracking_enabled:
+            import mlflow
+
             mlflow.log_metrics(
                 {
                     "test_loss": persisted.report.test_metrics.total_loss,

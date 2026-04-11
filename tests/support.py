@@ -8,6 +8,8 @@ from hydra import compose, initialize_config_dir
 
 from spice.core.config import (
     AcquisitionConfig,
+    AcquisitionEnrichConfig,
+    AcquisitionRawConfig,
     ChainConfig,
     ChainName,
     ExperimentConfig,
@@ -42,8 +44,8 @@ def base_overrides(tmp_path: Path) -> list[str]:
         "simulation.window_seconds=600",
         "simulation.arrival_rate_per_second=0.02",
         "simulation.repetitions=3",
-        "acquisition.enrich_batch_size=1000",
-        "acquisition.max_methods_per_second=1000000",
+        "acquisition.enrich.batch_size=1000",
+        "acquisition.enrich.max_methods_per_second=1000000",
         "dataset.temporal.lookback_seconds=120",
         "dataset.sampling.anchor_count=48",
     ]
@@ -76,14 +78,18 @@ def make_provider_config(
 
 def make_acquisition_config(*, chunk_size: int = 1) -> AcquisitionConfig:
     return AcquisitionConfig(
-        requests_per_second=10,
-        max_concurrent_requests=2,
-        max_concurrent_chunks=1,
-        chunk_size=chunk_size,
         dry_run=False,
         overwrite=False,
-        enrich_batch_size=100,
-        max_methods_per_second=20.0,
+        raw=AcquisitionRawConfig(
+            requests_per_second=10,
+            max_concurrent_requests=2,
+            max_concurrent_chunks=1,
+            chunk_size=chunk_size,
+        ),
+        enrich=AcquisitionEnrichConfig(
+            batch_size=100,
+            max_methods_per_second=20.0,
+        ),
     )
 
 

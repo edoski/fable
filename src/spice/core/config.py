@@ -133,15 +133,23 @@ class TrainingConfig(ConfigModel):
     log_every_n_steps: int = Field(gt=0)
 
 
-class AcquisitionConfig(ConfigModel):
+class AcquisitionRawConfig(ConfigModel):
     requests_per_second: int = Field(gt=0)
     max_concurrent_requests: int = Field(gt=0)
     max_concurrent_chunks: int = Field(gt=0)
     chunk_size: int = Field(gt=0)
+
+
+class AcquisitionEnrichConfig(ConfigModel):
+    batch_size: int = Field(gt=0)
+    max_methods_per_second: float = Field(gt=0.0)
+
+
+class AcquisitionConfig(ConfigModel):
     dry_run: bool
     overwrite: bool
-    enrich_batch_size: int = Field(gt=0)
-    max_methods_per_second: float = Field(gt=0.0)
+    raw: AcquisitionRawConfig
+    enrich: AcquisitionEnrichConfig
 
 
 class SimulationConfig(ConfigModel):

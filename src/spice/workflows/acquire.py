@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import hydra
-import mlflow
 from omegaconf import DictConfig
 
 from ..acquisition.cryo import evaluation_range
@@ -27,7 +26,7 @@ from ..acquisition.windowing import (
     required_history_block_count,
 )
 from ..core.config import ExperimentConfig, coerce_config
-from ..core.console import Reporter, RichReporter
+from ..core.console import Reporter
 from ..core.json import write_json
 from ..core.tracking import log_artifacts
 from ._shared import managed_workflow
@@ -62,7 +61,6 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
         config,
         run_name=f"acquire-{config.chain.name.value}-{config.provider.name.value}",
         reporter=reporter,
-        default_reporter_factory=RichReporter,
     ) as session:
         if config.acquisition.dry_run:
             history_result = run_raw_pull(
@@ -123,8 +121,8 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             expected_end_timestamp=history_window.end,
             overwrite=config.acquisition.overwrite or history_result is not None,
             fetch_gas_limits=block_client.get_block_gas_limits,
-            batch_size=config.acquisition.enrich_batch_size,
-            max_methods_per_second=config.acquisition.max_methods_per_second,
+            batch_size=config.acquisition.enrich.batch_size,
+            max_methods_per_second=config.acquisition.enrich.max_methods_per_second,
             reporter=session.reporter,
         )
         evaluation_enriched = ensure_enriched_dataset(
@@ -135,8 +133,8 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             expected_end_timestamp=evaluation_window.end,
             overwrite=config.acquisition.overwrite or evaluation_result is not None,
             fetch_gas_limits=block_client.get_block_gas_limits,
-            batch_size=config.acquisition.enrich_batch_size,
-            max_methods_per_second=config.acquisition.max_methods_per_second,
+            batch_size=config.acquisition.enrich.batch_size,
+            max_methods_per_second=config.acquisition.enrich.max_methods_per_second,
             reporter=session.reporter,
         )
         metadata = build_dataset_metadata(
@@ -154,7 +152,9 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             history_enriched=history_enriched,
             evaluation_enriched=evaluation_enriched,
         )
+        metadata_task = session.reporter.start_task("write dataset metadata")
         write_json(metadata_path, metadata)
+        session.reporter.finish_task(metadata_task, message=str(metadata_path))
         session.reporter.log(
             json.dumps(
                 {
@@ -174,6 +174,8 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             )
         )
         if session.tracking_enabled:
+            import mlflow
+
             mlflow.log_metrics(
                 {
                     "history_completed_chunks": float(

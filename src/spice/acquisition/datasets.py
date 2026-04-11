@@ -79,6 +79,7 @@ def ensure_canonical_raw_dataset(
     reporter: Reporter,
 ) -> tuple[CryoRunResult | None, RawPullValidationReport]:
     if not overwrite and has_block_files(output_dir):
+        validate_existing_task = reporter.start_task(f"validate raw dataset {output_dir.name}")
         validation = validate_raw_pull(
             output_dir,
             expected_chain_name=chain_name,
@@ -86,6 +87,10 @@ def ensure_canonical_raw_dataset(
             expected_start_timestamp=expected_start_timestamp,
             expected_end_timestamp=expected_end_timestamp,
             expected_chunk_size=chunk_size,
+        )
+        reporter.finish_task(
+            validate_existing_task,
+            message=f"{output_dir} ({validation.status})",
         )
         if validation.status == "clean":
             reporter.log(f"reusing canonical raw dataset: {output_dir}")
@@ -98,6 +103,7 @@ def ensure_canonical_raw_dataset(
     with TemporaryDirectory(prefix=f"spice-{chain_name}-{output_dir.name}-raw-") as scratch_root:
         scratch_dir = Path(scratch_root) / output_dir.name
         pull_result = run_pull(scratch_dir)
+        normalize_task = reporter.start_task(f"normalize raw dataset {output_dir.name}")
         normalize_raw_dataset(
             scratch_dir,
             output_dir,
@@ -107,7 +113,9 @@ def ensure_canonical_raw_dataset(
             expected_end_timestamp=expected_end_timestamp,
             chunk_size=chunk_size,
         )
+        reporter.finish_task(normalize_task, message=str(output_dir))
 
+    validate_final_task = reporter.start_task(f"validate raw dataset {output_dir.name}")
     validation = validate_raw_pull(
         output_dir,
         expected_chain_name=chain_name,
@@ -116,6 +124,7 @@ def ensure_canonical_raw_dataset(
         expected_end_timestamp=expected_end_timestamp,
         expected_chunk_size=chunk_size,
     )
+    reporter.finish_task(validate_final_task, message=f"{output_dir} ({validation.status})")
     if validation.status != "clean":
         raise ValueError(f"Canonical raw dataset validation failed for {output_dir}: {validation}")
     return pull_result, validation
@@ -135,11 +144,18 @@ def ensure_enriched_dataset(
     reporter: Reporter,
 ) -> BlockDatasetValidationReport:
     if not overwrite and has_block_files(output_dir):
+        validate_existing_task = reporter.start_task(
+            f"validate enriched dataset {output_dir.name}"
+        )
         validation = validate_enriched_dataset(
             output_dir,
             expected_chain_id=expected_chain_id,
             expected_start_timestamp=expected_start_timestamp,
             expected_end_timestamp=expected_end_timestamp,
+        )
+        reporter.finish_task(
+            validate_existing_task,
+            message=f"{output_dir} ({validation.status})",
         )
         if validation.status == "clean":
             reporter.log(f"reusing canonical enriched dataset: {output_dir}")
@@ -159,12 +175,14 @@ def ensure_enriched_dataset(
         max_methods_per_second=max_methods_per_second,
         reporter=reporter,
     )
+    validate_final_task = reporter.start_task(f"validate enriched dataset {output_dir.name}")
     validation = validate_enriched_dataset(
         output_dir,
         expected_chain_id=expected_chain_id,
         expected_start_timestamp=expected_start_timestamp,
         expected_end_timestamp=expected_end_timestamp,
     )
+    reporter.finish_task(validate_final_task, message=f"{output_dir} ({validation.status})")
     if validation.status != "clean":
         raise ValueError(
             f"Canonical enriched dataset validation failed for {output_dir}: {validation}"
@@ -186,7 +204,7 @@ def ensure_history_raw_dataset(
         output_dir=output_dir,
         expected_start_timestamp=history_window.start,
         expected_end_timestamp=history_window.end,
-        chunk_size=config.acquisition.chunk_size,
+        chunk_size=config.acquisition.raw.chunk_size,
         overwrite=config.acquisition.overwrite,
         run_pull=lambda scratch_dir: run_raw_pull(
             config,
@@ -219,7 +237,7 @@ def ensure_history_raw_dataset(
         output_dir=output_dir,
         expected_start_timestamp=expanded_window.start,
         expected_end_timestamp=expanded_window.end,
-        chunk_size=config.acquisition.chunk_size,
+        chunk_size=config.acquisition.raw.chunk_size,
         overwrite=True,
         run_pull=lambda scratch_dir: run_raw_pull(
             config,
@@ -253,7 +271,7 @@ def ensure_evaluation_raw_dataset(
         output_dir=output_dir,
         expected_start_timestamp=evaluation_window.start,
         expected_end_timestamp=evaluation_window.end,
-        chunk_size=config.acquisition.chunk_size,
+        chunk_size=config.acquisition.raw.chunk_size,
         overwrite=config.acquisition.overwrite,
         run_pull=lambda scratch_dir: run_raw_pull(
             config,

@@ -1,0 +1,10 @@
+# @package acquisition
+
+raw:
+  requests_per_second: 640
+  max_concurrent_requests: 64
+  max_concurrent_chunks: 4
+  chunk_size: 500
+enrich:
+  batch_size: 500
+  max_methods_per_second: 200.0

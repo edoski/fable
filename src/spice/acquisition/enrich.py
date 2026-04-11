@@ -41,10 +41,8 @@ def enrich_frame_with_gas_limit(
     batch_size: int = 100,
     max_methods_per_second: float = 20.0,
     reporter: Reporter | None = None,
-    completed_files: int = 0,
-    total_files: int = 1,
+    block_task_id: int = 0,
     completed_blocks: int = 0,
-    total_blocks: int = 0,
 ) -> tuple[pl.DataFrame, int]:
     reporter = reporter or NullReporter()
     if batch_size <= 0:
@@ -64,12 +62,7 @@ def enrich_frame_with_gas_limit(
         started_at = time.monotonic()
         lookup.update(fetch_gas_limits(batch))
         fetched_count += len(batch)
-        reporter.update_enrich(
-            completed_files=completed_files,
-            completed_blocks=completed_blocks + fetched_count,
-            total_files=total_files,
-            total_blocks=total_blocks,
-        )
+        reporter.update_task(block_task_id, completed=completed_blocks + fetched_count)
         elapsed = time.monotonic() - started_at
         target_elapsed = len(batch) / max_methods_per_second
         if elapsed < target_elapsed:
@@ -114,7 +107,11 @@ def enrich_path(
     reporter = reporter or NullReporter()
     files = iter_block_files(input_path)
     total_files, total_blocks = count_missing_gas_limits(input_path)
-    reporter.start_enrich(total_files=total_files, total_blocks=total_blocks)
+    files_task_id = reporter.start_task("enrich files", total=total_files, unit="files")
+    blocks_task_id = reporter.start_task("enrich blocks", total=total_blocks, unit="blocks")
+    reporter.log(
+        f"enrichment started: total_files={total_files} total_missing_blocks={total_blocks}"
+    )
 
     written_files: list[Path] = []
     completed_files = 0
@@ -127,19 +124,14 @@ def enrich_path(
             batch_size=batch_size,
             max_methods_per_second=max_methods_per_second,
             reporter=reporter,
-            completed_files=0,
-            total_files=1,
+            block_task_id=blocks_task_id,
             completed_blocks=0,
-            total_blocks=total_blocks,
         )
         write_block_file(output_path, enriched)
-        reporter.update_enrich(
-            completed_files=1,
-            completed_blocks=fetched_blocks,
-            total_files=1,
-            total_blocks=total_blocks,
-        )
-        reporter.finish_enrich(output_dir=output_path.parent)
+        reporter.update_task(files_task_id, completed=1)
+        reporter.update_task(blocks_task_id, completed=fetched_blocks)
+        reporter.finish_task(files_task_id, message=str(output_path.parent))
+        reporter.finish_task(blocks_task_id, message=str(output_path.parent))
         return [output_path]
 
     for file_path in files:
@@ -152,21 +144,16 @@ def enrich_path(
             batch_size=batch_size,
             max_methods_per_second=max_methods_per_second,
             reporter=reporter,
-            completed_files=completed_files,
-            total_files=total_files,
+            block_task_id=blocks_task_id,
             completed_blocks=completed_blocks,
-            total_blocks=total_blocks,
         )
         write_block_file(destination, enriched)
         completed_files += 1
         completed_blocks += fetched_blocks
-        reporter.update_enrich(
-            completed_files=completed_files,
-            completed_blocks=completed_blocks,
-            total_files=total_files,
-            total_blocks=total_blocks,
-        )
+        reporter.update_task(files_task_id, completed=completed_files)
+        reporter.update_task(blocks_task_id, completed=completed_blocks)
         written_files.append(destination)
 
-    reporter.finish_enrich(output_dir=output_path)
+    reporter.finish_task(files_task_id, message=str(output_path))
+    reporter.finish_task(blocks_task_id, message=str(output_path))
     return written_files

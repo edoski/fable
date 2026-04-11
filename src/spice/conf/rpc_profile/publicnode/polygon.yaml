@@ -1,10 +1,10 @@
-dry_run: false
-overwrite: false
+# @package acquisition
+
 raw:
-  requests_per_second: 10
+  requests_per_second: 11
   max_concurrent_requests: 2
   max_concurrent_chunks: 1
   chunk_size: 500
 enrich:
   batch_size: 500
-  max_methods_per_second: 100.0
+  max_methods_per_second: 120.0

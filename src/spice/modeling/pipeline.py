@@ -8,7 +8,7 @@ from pathlib import Path
 import polars as pl
 
 from ..core.config import ChainConfig, ModelConfig, SplitConfig, TrainingConfig
-from ..core.console import Reporter
+from ..core.console import NullReporter, Reporter
 from ..data.datasets import (
     DatasetGeometry,
     DatasetSplitIndices,
@@ -189,9 +189,21 @@ def run_training(
     artifact_dir: Path,
     reporter: Reporter | None = None,
 ) -> TrainingRunResult:
+    reporter = reporter or NullReporter()
+    load_task = reporter.start_task("load history dataset")
     blocks = load_enriched_block_frame(history_block_path)
+    reporter.finish_task(load_task, message=str(history_block_path))
+    prepare_task = reporter.start_task("prepare training dataset")
     prepared = prepare_training_dataset(blocks, spec=spec)
+    reporter.finish_task(
+        prepare_task,
+        message=(
+            f"blocks={prepared.n_blocks_used} examples={prepared.n_examples_total}"
+        ),
+    )
+    build_task = reporter.start_task("build model")
     model = build_model(prepared.n_features, prepared.action_count, spec.model)
+    reporter.finish_task(build_task, message=spec.model.family.value)
     training_result = train_model(
         model,
         store=prepared.store,
@@ -214,6 +226,7 @@ def run_training(
         lookback_steps=prepared.geometry.lookback_steps,
         training_config=spec.training,
         class_weights=class_weights,
+        reporter=reporter,
     )
     return TrainingRunResult(
         model=model,

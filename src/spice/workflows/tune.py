@@ -7,13 +7,12 @@ from pathlib import Path
 from typing import Any
 
 import hydra
-import mlflow
 import optuna
 from omegaconf import DictConfig
 from optuna.trial import FrozenTrial, TrialState
 
 from ..core.config import ExperimentConfig, coerce_config, revalidate_config
-from ..core.console import NullReporter
+from ..core.console import Reporter
 from ..core.json import write_json
 from ..core.tracking import log_artifacts
 from ..modeling.execution import run_persisted_training
@@ -123,7 +122,22 @@ def _best_params_summary(config: ExperimentConfig, study: optuna.Study) -> dict[
     }
 
 
-def _objective(base_config, trial: optuna.Trial) -> float:
+def _trial_status_message(trial: FrozenTrial) -> str:
+    if trial.state == TrialState.COMPLETE:
+        assert trial.value is not None
+        return f"trial {trial.number + 1} complete: value={trial.value:.4f}"
+    if trial.state == TrialState.PRUNED:
+        return f"trial {trial.number + 1} pruned"
+    return f"trial {trial.number + 1} failed"
+
+
+def _objective(
+    base_config: ExperimentConfig,
+    trial: optuna.Trial,
+    *,
+    reporter: Reporter,
+    total_trials: int,
+) -> float:
     config = clone_config(base_config)
     for path, candidates in config.tuning.search_space.items():
         first = candidates[0]
@@ -135,6 +149,9 @@ def _objective(base_config, trial: optuna.Trial) -> float:
             value = trial.suggest_categorical(path, list(candidates))
         set_nested_attr(config, path, value)
     config = revalidate_config(config)
+    reporter.log(
+        f"trial {trial.number + 1}/{total_trials} started: {dict(trial.params)}"
+    )
 
     spec = build_training_spec(config)
     artifact_dir = trial_artifact_dir(config, trial.number)
@@ -142,10 +159,12 @@ def _objective(base_config, trial: optuna.Trial) -> float:
     with managed_workflow(
         config,
         run_name=f"trial-{trial.number:03d}",
-        default_reporter_factory=NullReporter,
+        reporter=reporter,
         nested=True,
     ) as session:
         if session.tracking_enabled:
+            import mlflow
+
             mlflow.log_params({f"trial.{key}": str(value) for key, value in trial.params.items()})
 
         persisted = run_persisted_training(
@@ -164,12 +183,17 @@ def _objective(base_config, trial: optuna.Trial) -> float:
             if trial.should_prune():
                 raise optuna.TrialPruned()
         if session.tracking_enabled:
+            import mlflow
+
             mlflow.log_metrics({f"trial.{key}": value for key, value in metric_map.items()})
             log_artifacts(persisted.artifact_paths)
         return metric_value
 
 
-def run(config: ExperimentConfig) -> None:
+def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
+    optuna.logging.disable_default_handler()
+    optuna.logging.disable_propagation()
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
     with managed_workflow(
         config,
         run_name=(
@@ -177,11 +201,24 @@ def run(config: ExperimentConfig) -> None:
             f"{config.chain.name.value}-{config.model.family.value}-"
             f"{config.dataset.temporal.max_delay_seconds}s"
         ),
-        default_reporter_factory=NullReporter,
+        reporter=reporter,
     ) as session:
         tuning_root = Path(config.paths.tuning_root)
         if tuning_root.exists():
             shutil.rmtree(tuning_root)
+        study_task = session.reporter.start_task(
+            "tune study",
+            total=config.tuning.trial_count,
+            unit="trials",
+        )
+
+        def on_trial_complete(study: optuna.Study, frozen_trial: FrozenTrial) -> None:
+            session.reporter.update_task(
+                study_task,
+                completed=frozen_trial.number + 1,
+                message=_trial_status_message(frozen_trial),
+            )
+
         study = optuna.create_study(
             study_name=config.tuning.study_name,
             direction=config.tuning.direction,
@@ -193,21 +230,35 @@ def run(config: ExperimentConfig) -> None:
             sampler=optuna.samplers.TPESampler(seed=config.tuning.sampler_seed),
         )
         study.optimize(
-            lambda trial: _objective(config, trial),
+            lambda trial: _objective(
+                config,
+                trial,
+                reporter=session.reporter,
+                total_trials=config.tuning.trial_count,
+            ),
             n_trials=config.tuning.trial_count,
             timeout=config.tuning.timeout_seconds,
+            callbacks=[on_trial_complete],
         )
         study_path = tuning_root / "study.json"
         trials_path = tuning_root / "trials.json"
         best_params_path = Path(config.paths.tuning_best_params_path)
+        write_task = session.reporter.start_task("write tuning summary")
         write_json(study_path, _study_summary(config, study))
         write_json(trials_path, [_trial_record(trial) for trial in study.trials])
         write_json(best_params_path, _best_params_summary(config, study))
+        session.reporter.finish_task(write_task, message=str(best_params_path))
+        completed_trials = [
+            trial for trial in study.trials if trial.state == TrialState.COMPLETE
+        ]
+        if completed_trials:
+            session.reporter.finish_task(study_task, message=f"best_value={study.best_value:.4f}")
+        else:
+            session.reporter.finish_task(study_task, message="no successful trials")
         if session.tracking_enabled:
+            import mlflow
+
             metrics = {"study.trial_count": float(len(study.trials))}
-            completed_trials = [
-                trial for trial in study.trials if trial.state == TrialState.COMPLETE
-            ]
             if completed_trials:
                 metrics["study.best_value"] = study.best_value
                 mlflow.log_params(
