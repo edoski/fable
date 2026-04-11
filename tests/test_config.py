@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from spice.core.constants import DEFAULT_WINDOW_END_TIMESTAMP, DEFAULT_WINDOW_START_TIMESTAMP
@@ -148,28 +146,3 @@ def test_dvc_runner_loads_generated_params_and_forces_stage_task() -> None:
     assert config.task == "train"
     assert config.tuning.apply_best_params is True
     assert config.paths.artifact_root.endswith("/models/ethereum/icdcs_2025_11_09/lstm/36s")
-
-
-def test_dvc_runner_wraps_stage_execution_with_keep_system_awake(monkeypatch, tmp_path) -> None:
-    calls: list[str | tuple[str, object]] = []
-    config = object()
-
-    class _KeepAwake:
-        def __enter__(self) -> None:
-            calls.append("enter")
-
-        def __exit__(self, exc_type, exc, tb) -> None:
-            calls.append("exit")
-
-    monkeypatch.setattr("spice.workflows.dvc.keep_system_awake", lambda: _KeepAwake())
-    monkeypatch.setattr("spice.workflows.dvc.load_stage_config", lambda stage, params: config)
-    monkeypatch.setattr(
-        "spice.workflows.dvc.import_module",
-        lambda name: SimpleNamespace(run=lambda run_config: calls.append(("run", run_config))),
-    )
-
-    from spice.workflows.dvc import main
-
-    main(["train", "--params", str(tmp_path / "params.yaml")])
-
-    assert calls == ["enter", ("run", config), "exit"]

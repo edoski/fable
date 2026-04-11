@@ -90,7 +90,7 @@ Hydra defaults live under [src/spice/conf](/Users/edo/Documents/Obsidian/the-vau
 
 DVC stages call `spice-dvc`, a thin runner that loads `params.yaml`, pins the requested stage task, and dispatches the same workflow `run(...)` functions used by the direct entrypoints. Direct `spice-train` keeps `tuning.apply_best_params=false`; the DVC `train` stage applies the tuned best params because it depends on the model-local `best_params.json`.
 
-On macOS, `spice-dvc` also attaches `caffeinate` automatically when it is available, so long `dvc repro ...` runs do not idle-sleep the machine mid-stage.
+On macOS, DVC stage commands run through `./bin/spice-awake`, which attaches `caffeinate` automatically when it is available so long `dvc repro ...` runs do not idle-sleep the machine mid-stage. Direct `spice-*` entrypoints do not use that wrapper automatically.
 
 You can also run the workflow entrypoints directly:
 

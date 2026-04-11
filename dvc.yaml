@@ -3,7 +3,7 @@ vars:
 
 stages:
   acquire:
-    cmd: .venv/bin/spice-dvc acquire
+    cmd: ./bin/spice-awake .venv/bin/spice-dvc acquire
     deps:
       - pyproject.toml
       - src/spice
@@ -15,7 +15,7 @@ stages:
       - ${paths.metadata_root}
 
   tune:
-    cmd: .venv/bin/spice-dvc tune
+    cmd: ./bin/spice-awake .venv/bin/spice-dvc tune
     deps:
       - pyproject.toml
       - src/spice
@@ -29,7 +29,7 @@ stages:
       - ${paths.tuning_root}/trials
 
   train:
-    cmd: .venv/bin/spice-dvc train
+    cmd: ./bin/spice-awake .venv/bin/spice-dvc train
     deps:
       - pyproject.toml
       - src/spice
@@ -43,7 +43,7 @@ stages:
       - ${paths.train_report_path}
 
   simulate:
-    cmd: .venv/bin/spice-dvc simulate
+    cmd: ./bin/spice-awake .venv/bin/spice-dvc simulate
     deps:
       - pyproject.toml
       - src/spice

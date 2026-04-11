@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$(uname -s)" = "Darwin" ] && command -v caffeinate >/dev/null 2>&1; then
+    exec caffeinate -i "$@"
+fi
+
+exec "$@"
