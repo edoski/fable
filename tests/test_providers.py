@@ -6,7 +6,7 @@ import pytest
 from web3.exceptions import BlockNotFound
 from web3.middleware import ExtraDataToPOAMiddleware
 
-from spice.acquisition.provider import build_web3, redact_sensitive_text
+from spice.acquisition.provider import build_web3
 from spice.acquisition.rpc import BlockPullPlan, BlockRange, TimestampRange, Web3BlockClient
 from tests.support import make_chain_config, make_provider_config
 
@@ -45,13 +45,6 @@ def test_build_web3_injects_poa_middleware_for_poa_extra_data_chains() -> None:
     )
 
     assert ExtraDataToPOAMiddleware in web3.middleware_onion
-
-
-def test_redact_sensitive_text_masks_endpoint() -> None:
-    text = "rpc=https://rpc.example.test"
-
-    assert redact_sensitive_text(text, make_provider_config()) == "rpc=***"
-
 
 def test_web3_block_client_reads_canonical_block_rows(monkeypatch) -> None:
     class FakeBatch:

@@ -114,5 +114,5 @@ paths:
   simulation_report_path: artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/simulation_report.json
   tuning_root: artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/tuning
   tuning_best_params_path: artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/tuning/best_params.json
-  mlruns_dir: artifacts/mlruns
+  mlruns_dir: artifacts/../.mlflow
 task: train

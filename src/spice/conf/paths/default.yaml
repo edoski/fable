@@ -10,4 +10,4 @@ train_report_path: ${paths.artifact_root}/train_report.json
 simulation_report_path: ${paths.artifact_root}/simulation_report.json
 tuning_root: ${paths.artifact_root}/tuning
 tuning_best_params_path: ${paths.tuning_root}/best_params.json
-mlruns_dir: ${paths.output_root}/mlruns
+mlruns_dir: ${paths.output_root}/../.mlflow

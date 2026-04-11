@@ -3,17 +3,17 @@ import pytest
 from pandera.errors import SchemaError, SchemaErrors
 
 from spice.core.config import SplitConfig
-from spice.core.constants import DEFAULT_WINDOW_START_TIMESTAMP
 from spice.data.block_contract import BLOCK_SCHEMA
 from spice.data.datasets import derive_dataset_geometry
-from spice.data.io import iter_block_files, load_block_frame
-from spice.data.validation import validate_exact_window_dataset
+from spice.data.io import iter_block_files, load_block_frame, read_block_dataset
+from spice.data.validation import validate_exact_window_frame
 from spice.modeling.pipeline import (
     TrainingSpec,
     prepare_inference_dataset,
     prepare_training_dataset,
 )
 from tests.support import (
+    TEST_WINDOW_START_TIMESTAMP,
     make_chain_config,
     make_evaluation_rows,
     make_history_rows,
@@ -78,9 +78,11 @@ def test_validate_exact_window_dataset_passes_on_canonical_dataset(tmp_path) -> 
     dataset_dir = tmp_path / "dataset"
     rows = make_history_rows(8)
     write_dataset_dir(dataset_dir, rows)
+    frame = load_block_frame(dataset_dir)
 
-    report = validate_exact_window_dataset(
-        dataset_dir,
+    report = validate_exact_window_frame(
+        frame,
+        dataset_path=dataset_dir,
         expected_chain_id=1,
         expected_start_timestamp=_timestamp(rows[0]),
         expected_end_timestamp=_timestamp(rows[-1]) + 12,
@@ -124,9 +126,11 @@ def test_validate_exact_window_dataset_rejects_invalid_inputs(
     dataset_dir = tmp_path / "dataset"
     rows = make_history_rows(4)
     write_dataset_dir(dataset_dir, mutate_rows(rows))
+    frame = read_block_dataset(dataset_dir)
 
-    report = validate_exact_window_dataset(
-        dataset_dir,
+    report = validate_exact_window_frame(
+        frame,
+        dataset_path=dataset_dir,
         expected_chain_id=1,
         expected_start_timestamp=_timestamp(rows[0]),
         expected_end_timestamp=_timestamp(rows[-1]) + 12,
@@ -167,8 +171,8 @@ def test_prepare_training_and_inference_datasets(tmp_path) -> None:
             block_time_seconds=12.0,
         ),
         scaler=prepared.scaler,
-        window_start_timestamp=DEFAULT_WINDOW_START_TIMESTAMP,
-        window_end_timestamp=DEFAULT_WINDOW_START_TIMESTAMP + 180 * 12,
+        window_start_timestamp=TEST_WINDOW_START_TIMESTAMP,
+        window_end_timestamp=TEST_WINDOW_START_TIMESTAMP + 180 * 12,
     )
 
     assert prepared.n_examples_total == 48

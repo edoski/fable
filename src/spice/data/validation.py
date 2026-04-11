@@ -8,7 +8,6 @@ from pathlib import Path
 import polars as pl
 from pydantic import Field
 
-from .io import read_block_dataset
 from .validation_base import ValidationModel, ValidationStatus, finalize_validation_status
 
 EXACT_WINDOW_COLUMNS = ("block_number", "timestamp", "chain_id")
@@ -108,21 +107,6 @@ def summarize_exact_window_frame(
         above_end_count=above_end_count,
     )
 
-
-def summarize_exact_window_dataset(
-    dataset_path: Path,
-    *,
-    expected_start_timestamp: int,
-    expected_end_timestamp: int,
-) -> ExactWindowSummary:
-    frame = read_block_dataset(dataset_path, columns=EXACT_WINDOW_COLUMNS)
-    return summarize_exact_window_frame(
-        frame,
-        expected_start_timestamp=expected_start_timestamp,
-        expected_end_timestamp=expected_end_timestamp,
-    )
-
-
 def assess_exact_window_summary(
     summary: ExactWindowSummary,
     *,
@@ -193,38 +177,6 @@ def validate_exact_window_frame(
     try:
         summary = summarize_exact_window_frame(
             frame,
-            expected_start_timestamp=expected_start_timestamp,
-            expected_end_timestamp=expected_end_timestamp,
-        )
-    except Exception as exc:
-        report.errors.append(str(exc))
-        finalize_validation_status(report)
-        return report
-
-    _apply_exact_window_summary(
-        report,
-        summary,
-        expected_chain_id=expected_chain_id,
-    )
-    finalize_validation_status(report)
-    return report
-
-
-def validate_exact_window_dataset(
-    dataset_path: Path,
-    *,
-    expected_chain_id: int,
-    expected_start_timestamp: int,
-    expected_end_timestamp: int,
-) -> BlockDatasetValidationReport:
-    report = BlockDatasetValidationReport(
-        dataset_path=dataset_path,
-        expected_start_timestamp=expected_start_timestamp,
-        expected_end_timestamp=expected_end_timestamp,
-    )
-    try:
-        summary = summarize_exact_window_dataset(
-            dataset_path,
             expected_start_timestamp=expected_start_timestamp,
             expected_end_timestamp=expected_end_timestamp,
         )

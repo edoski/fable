@@ -13,6 +13,7 @@ coverage.xml
 build/
 dist/
 artifacts/
+.mlflow/
 /data/
 reports/
 checkpoints/

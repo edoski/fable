@@ -49,10 +49,3 @@ def build_web3(provider: ProviderConfig, chain: ChainConfig) -> Web3:
     if chain.uses_poa_extra_data:
         web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     return web3
-
-
-def redact_sensitive_text(text: str, provider: ProviderConfig) -> str:
-    redacted = text
-    for sensitive_value in provider.sensitive_values():
-        redacted = redacted.replace(sensitive_value, "***")
-    return redacted

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -64,14 +63,6 @@ _NATIVE_NOISE_PATTERNS = (
 
 class Reporter(Protocol):
     def log(self, message: str, *, level: str = "info") -> None: ...
-    def throttled_log(
-        self,
-        key: str,
-        message: str,
-        *,
-        interval_seconds: float = 10.0,
-        level: str = "info",
-    ) -> None: ...
     def start_task(
         self,
         name: str,
@@ -95,16 +86,6 @@ class NullReporter:
     """Silent reporter used by library entrypoints and tests."""
 
     def log(self, message: str, *, level: str = "info") -> None:
-        return None
-
-    def throttled_log(
-        self,
-        key: str,
-        message: str,
-        *,
-        interval_seconds: float = 10.0,
-        level: str = "info",
-    ) -> None:
         return None
 
     def start_task(
@@ -136,22 +117,6 @@ class NullReporter:
 class _BaseConsoleReporter(NullReporter):
     def __init__(self, console: Console | None = None) -> None:
         self.console = console or Console()
-        self._throttle_times: dict[str, float] = {}
-
-    def throttled_log(
-        self,
-        key: str,
-        message: str,
-        *,
-        interval_seconds: float = 10.0,
-        level: str = "info",
-    ) -> None:
-        now = time.monotonic()
-        last = self._throttle_times.get(key)
-        if last is not None and now - last < interval_seconds:
-            return
-        self._throttle_times[key] = now
-        self.log(message, level=level)
 
     def log(self, message: str, *, level: str = "info") -> None:
         style = None

@@ -56,7 +56,7 @@ Key runtime paths:
 - model artifacts: `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/...`
 - simulation reports: `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/simulation_report.json`
 - tuning outputs: `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/tuning/...`
-- MLflow store: `artifacts/mlruns/`
+- MLflow store: `.mlflow/`
 
 ## Setup
 

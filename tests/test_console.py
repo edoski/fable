@@ -16,23 +16,6 @@ from spice.core.console import (
 )
 
 
-def test_plain_reporter_throttles_logs(monkeypatch) -> None:
-    stream = StringIO()
-    reporter = PlainReporter(console=Console(file=stream, force_terminal=False, width=120))
-    times = iter([10.0, 15.0, 25.0])
-    monkeypatch.setattr("spice.core.console.time.monotonic", lambda: next(times))
-
-    reporter.throttled_log("key", "first line")
-    reporter.throttled_log("key", "second line")
-    reporter.throttled_log("key", "third line")
-    reporter.close()
-    output = stream.getvalue()
-
-    assert "first line" in output
-    assert "second line" not in output
-    assert "third line" in output
-
-
 def test_create_reporter_uses_plain_for_non_terminal_console() -> None:
     reporter = create_reporter(Console(file=StringIO(), force_terminal=False, width=120))
     assert isinstance(reporter, PlainReporter)

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import math
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
 import polars as pl
 from hydra import compose, initialize_config_dir
 
 from spice.core.config import (
-    AcquisitionConfig,
     ChainConfig,
     ChainName,
     ExperimentConfig,
@@ -18,10 +18,17 @@ from spice.core.config import (
     TrainingConfig,
     coerce_config,
 )
-from spice.core.constants import DEFAULT_WINDOW_START_TIMESTAMP
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONF_DIR = REPO_ROOT / "src" / "spice" / "conf"
+TEST_WINDOW_START_DATE = date(2025, 11, 9)
+TEST_WINDOW_END_DATE = date(2025, 11, 9)
+TEST_WINDOW_START_TIMESTAMP = int(
+    datetime.combine(TEST_WINDOW_START_DATE, time.min, tzinfo=UTC).timestamp()
+)
+TEST_WINDOW_END_TIMESTAMP = int(
+    datetime.combine(TEST_WINDOW_END_DATE + timedelta(days=1), time.min, tzinfo=UTC).timestamp()
+)
 
 
 def compose_experiment(config_name: str, *, overrides: list[str] | None = None) -> ExperimentConfig:
@@ -71,16 +78,6 @@ def make_provider_config(
         retry_count=5,
         backoff_factor=0.125,
     )
-
-
-def make_acquisition_config(*, chunk_size: int = 1) -> AcquisitionConfig:
-    return AcquisitionConfig(
-        dry_run=False,
-        overwrite=False,
-        chunk_size=chunk_size,
-        rpc_batch_size=32,
-    )
-
 
 def make_model_config(*, family: ModelFamily = ModelFamily.LSTM) -> ModelConfig:
     return ModelConfig(
@@ -152,7 +149,7 @@ def make_history_rows(count: int = 320) -> list[dict[str, int | None]]:
     return make_block_rows(
         count,
         start_block=1,
-        start_timestamp=DEFAULT_WINDOW_START_TIMESTAMP - count * 12,
+        start_timestamp=TEST_WINDOW_START_TIMESTAMP - count * 12,
         include_gas_limit=True,
     )
 
@@ -165,7 +162,7 @@ def make_evaluation_rows(
     return make_block_rows(
         count,
         start_block=start_block,
-        start_timestamp=DEFAULT_WINDOW_START_TIMESTAMP,
+        start_timestamp=TEST_WINDOW_START_TIMESTAMP,
         include_gas_limit=True,
     )
 

@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from spice.core.constants import DEFAULT_WINDOW_END_TIMESTAMP, DEFAULT_WINDOW_START_TIMESTAMP
 from spice.workflows.dvc import load_stage_config
-from tests.support import REPO_ROOT, base_overrides, compose_experiment
+from tests.support import (
+    REPO_ROOT,
+    TEST_WINDOW_END_TIMESTAMP,
+    TEST_WINDOW_START_TIMESTAMP,
+    base_overrides,
+    compose_experiment,
+)
 
 
 def test_hydra_train_config_composes_and_resolves_paths(tmp_path) -> None:
@@ -61,55 +66,34 @@ def test_acquire_config_requires_direct_provider_endpoint(tmp_path, monkeypatch)
         )
 
 
-def test_avalanche_config_enables_poa_extra_data_middleware(tmp_path) -> None:
-    config = compose_experiment(
-        "acquire",
-        overrides=base_overrides(tmp_path) + ["chain=avalanche"],
-    )
+@pytest.mark.parametrize(
+    ("chain_name", "uses_poa_extra_data", "rpc_batch_size", "chunk_size"),
+    [
+        ("ethereum", False, 128, 500),
+        ("polygon", True, 32, 500),
+        ("avalanche", True, 128, 500),
+    ],
+)
+def test_publicnode_chain_matrix_applies_expected_chain_settings(
+    tmp_path,
+    chain_name: str,
+    uses_poa_extra_data: bool,
+    rpc_batch_size: int,
+    chunk_size: int,
+) -> None:
+    overrides = [
+        f"runtime.output_root={tmp_path / 'artifacts'}",
+        "tracking.enabled=false",
+    ]
+    if chain_name != "ethereum":
+        overrides.append(f"chain={chain_name}")
 
-    assert config.chain.uses_poa_extra_data
+    config = compose_experiment("acquire", overrides=overrides)
 
-
-def test_polygon_config_enables_poa_extra_data_middleware(tmp_path) -> None:
-    config = compose_experiment(
-        "acquire",
-        overrides=base_overrides(tmp_path) + ["chain=polygon"],
-    )
-
-    assert config.chain.uses_poa_extra_data
-
-
-def test_publicnode_profiles_apply_per_chain_tuning(tmp_path) -> None:
-    ethereum = compose_experiment(
-        "acquire",
-        overrides=[
-            f"runtime.output_root={tmp_path / 'artifacts'}",
-            "tracking.enabled=false",
-        ],
-    )
-    polygon = compose_experiment(
-        "acquire",
-        overrides=[
-            f"runtime.output_root={tmp_path / 'artifacts'}",
-            "tracking.enabled=false",
-            "chain=polygon",
-        ],
-    )
-    avalanche = compose_experiment(
-        "acquire",
-        overrides=[
-            f"runtime.output_root={tmp_path / 'artifacts'}",
-            "tracking.enabled=false",
-            "chain=avalanche",
-        ],
-    )
-
-    assert ethereum.acquisition.rpc_batch_size == 128
-    assert ethereum.acquisition.chunk_size == 500
-    assert polygon.acquisition.rpc_batch_size == 32
-    assert polygon.acquisition.chunk_size == 500
-    assert avalanche.acquisition.rpc_batch_size == 128
-    assert avalanche.acquisition.chunk_size == 500
+    assert config.chain.name.value == chain_name
+    assert config.chain.uses_poa_extra_data is uses_poa_extra_data
+    assert config.acquisition.rpc_batch_size == rpc_batch_size
+    assert config.acquisition.chunk_size == chunk_size
 
 
 def test_invalid_transformer_config_fails_early(tmp_path) -> None:
@@ -124,8 +108,8 @@ def test_invalid_transformer_config_fails_early(tmp_path) -> None:
 def test_date_window_resolves_to_half_open_utc_timestamps(tmp_path) -> None:
     config = compose_experiment("simulate", overrides=base_overrides(tmp_path))
 
-    assert config.dataset.window.start_timestamp == DEFAULT_WINDOW_START_TIMESTAMP
-    assert config.dataset.window.end_timestamp == DEFAULT_WINDOW_END_TIMESTAMP
+    assert config.dataset.window.start_timestamp == TEST_WINDOW_START_TIMESTAMP
+    assert config.dataset.window.end_timestamp == TEST_WINDOW_END_TIMESTAMP
 
 
 def test_history_anchor_count_cannot_be_smaller_than_anchor_count(tmp_path) -> None:

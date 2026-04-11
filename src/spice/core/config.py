@@ -231,9 +231,6 @@ class ProviderConfig(ConfigModel):
             return reference
         return self.endpoint_for(key)
 
-    def sensitive_values(self) -> tuple[str, ...]:
-        return tuple(value for value in self.endpoints.values() if value)
-
 
 class ExperimentConfig(ConfigModel):
     task: str
