@@ -46,7 +46,7 @@ def start_run_if_enabled(
 
 
 def trial_artifact_dir(config: ExperimentConfig, trial_number: int) -> Path:
-    return Path(config.paths.tuning_root) / f"trial-{trial_number:03d}"
+    return Path(config.paths.tuning_root) / "trials" / f"trial-{trial_number:03d}"
 
 
 def clone_config(config: ExperimentConfig) -> ExperimentConfig:

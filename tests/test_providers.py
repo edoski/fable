@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
+
+from web3.middleware import ExtraDataToPOAMiddleware
 
 from spice.acquisition.provider import build_web3, redact_sensitive_text
 from spice.acquisition.rpc import Web3BlockClient
-from spice.core.config import ChainName, ProviderConfig, RpcProviderName
+from spice.core.config import ChainConfig, ChainName, ProviderConfig, RpcProviderName
 
 
 def _provider(endpoint: str = "https://rpc.example.test") -> ProviderConfig:
@@ -16,10 +19,22 @@ def _provider(endpoint: str = "https://rpc.example.test") -> ProviderConfig:
 
 
 def test_build_web3_uses_configured_endpoint() -> None:
-    web3 = build_web3(_provider(), ChainName.ETHEREUM)
+    web3 = build_web3(
+        _provider(),
+        ChainConfig(name=ChainName.ETHEREUM, chain_id=1),
+    )
 
     assert web3.provider is not None
-    assert web3.provider.endpoint_uri == "https://rpc.example.test"
+    assert cast(Any, web3.provider).endpoint_uri == "https://rpc.example.test"
+
+
+def test_build_web3_injects_poa_middleware_for_poa_extra_data_chains() -> None:
+    web3 = build_web3(
+        _provider(),
+        ChainConfig(name=ChainName.ETHEREUM, chain_id=1, uses_poa_extra_data=True),
+    )
+
+    assert ExtraDataToPOAMiddleware in web3.middleware_onion
 
 
 def test_redact_sensitive_text_masks_endpoint() -> None:
@@ -35,9 +50,9 @@ def test_web3_block_client_reads_gas_limits(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "spice.acquisition.rpc.build_web3",
-        lambda _provider, _chain_name: SimpleNamespace(eth=FakeEth()),
+        lambda _provider, _chain: SimpleNamespace(eth=FakeEth()),
     )
 
-    client = Web3BlockClient(_provider(), ChainName.ETHEREUM)
+    client = Web3BlockClient(_provider(), ChainConfig(name=ChainName.ETHEREUM, chain_id=1))
 
     assert client.get_block_gas_limits([1, 2]) == {1: 30_000_001, 2: 30_000_002}

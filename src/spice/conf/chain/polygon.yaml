@@ -2,4 +2,4 @@ name: polygon
 chain_id: 137
 block_time_seconds: 2.0
 history_days: 10
-
+uses_poa_extra_data: false

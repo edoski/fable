@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, cast
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -33,6 +33,7 @@ class ChainConfig:
     chain_id: int = 1
     block_time_seconds: float = 12.0
     history_days: int = 60
+    uses_poa_extra_data: bool = False
 
 
 @dataclass(slots=True)
@@ -131,26 +132,21 @@ class RuntimeConfig:
 class PathsConfig:
     output_root: str = "${runtime.output_root}"
     dataset_root: str = "${paths.output_root}/datasets/${chain.name}"
+    metadata_root: str = "${paths.dataset_root}/.spice"
     raw_root: str = "${paths.dataset_root}/raw"
     raw_history_dir: str = "${paths.raw_root}/history"
     raw_evaluation_dir: str = "${paths.raw_root}/evaluation"
     enriched_root: str = "${paths.dataset_root}/enriched"
     enriched_history_dir: str = "${paths.enriched_root}/history"
     enriched_evaluation_dir: str = "${paths.enriched_root}/evaluation"
-    validation_root: str = "${paths.output_root}/validation/${chain.name}"
-    validation_report_dir: str = "${paths.validation_root}"
+    dataset_metadata_path: str = "${paths.metadata_root}/metadata.json"
     artifact_root: str = (
         "${paths.output_root}/models/${chain.name}/${model.family}/${max_delay_seconds}s"
     )
     checkpoint_dir: str = "${paths.artifact_root}/checkpoints"
     train_report_path: str = "${paths.artifact_root}/train_report.json"
-    simulation_root: str = (
-        "${paths.output_root}/simulations/${chain.name}/${model.family}/${max_delay_seconds}s"
-    )
-    simulation_report_path: str = "${paths.simulation_root}/simulation_report.json"
-    tuning_root: str = (
-        "${paths.output_root}/tuning/${chain.name}/${model.family}/${max_delay_seconds}s"
-    )
+    simulation_report_path: str = "${paths.artifact_root}/simulation_report.json"
+    tuning_root: str = "${paths.artifact_root}/tuning"
     mlruns_dir: str = "${paths.output_root}/mlruns"
 
 
@@ -204,7 +200,7 @@ def coerce_config(cfg: DictConfig, *, task: str) -> ExperimentConfig:
     payload = OmegaConf.to_container(merged, resolve=True, enum_to_str=True)
     if not isinstance(payload, dict):
         raise TypeError("Hydra configuration did not produce a mapping payload")
-    config = _instantiate_experiment(payload, task=task)
+    config = _instantiate_experiment(cast(dict[str, Any], payload), task=task)
     validate_config(config)
     return config
 
@@ -236,6 +232,7 @@ def _instantiate_experiment(payload: dict[str, Any], *, task: str) -> Experiment
             chain_id=int(chain["chain_id"]),
             block_time_seconds=float(chain["block_time_seconds"]),
             history_days=int(chain["history_days"]),
+            uses_poa_extra_data=bool(chain["uses_poa_extra_data"]),
         ),
         model=ModelConfig(
             family=ModelFamily(model["family"]),
@@ -316,18 +313,17 @@ def _instantiate_experiment(payload: dict[str, Any], *, task: str) -> Experiment
         paths=PathsConfig(
             output_root=str(paths["output_root"]),
             dataset_root=str(paths["dataset_root"]),
+            metadata_root=str(paths["metadata_root"]),
             raw_root=str(paths["raw_root"]),
             raw_history_dir=str(paths["raw_history_dir"]),
             raw_evaluation_dir=str(paths["raw_evaluation_dir"]),
             enriched_root=str(paths["enriched_root"]),
             enriched_history_dir=str(paths["enriched_history_dir"]),
             enriched_evaluation_dir=str(paths["enriched_evaluation_dir"]),
-            validation_root=str(paths["validation_root"]),
-            validation_report_dir=str(paths["validation_report_dir"]),
+            dataset_metadata_path=str(paths["dataset_metadata_path"]),
             artifact_root=str(paths["artifact_root"]),
             checkpoint_dir=str(paths["checkpoint_dir"]),
             train_report_path=str(paths["train_report_path"]),
-            simulation_root=str(paths["simulation_root"]),
             simulation_report_path=str(paths["simulation_report_path"]),
             tuning_root=str(paths["tuning_root"]),
             mlruns_dir=str(paths["mlruns_dir"]),

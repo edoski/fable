@@ -25,6 +25,7 @@ from ._runtime import (
 )
 from .evaluation import compute_batch_metrics
 from .lightning_module import EpochMetrics, TemporalLightningModule, mean_metrics
+from .models import TemporalModel
 from .torch_datasets import build_class_weights
 
 IntVector = NDArray[np.int64]
@@ -59,7 +60,7 @@ def _best_epoch(validation_history: list[EpochMetrics]) -> int:
 
 
 def train_model(
-    model: torch.nn.Module,
+    model: TemporalModel,
     *,
     store: TemporalDatasetStore,
     train_sample_indices: IntVector,

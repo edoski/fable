@@ -26,8 +26,8 @@ It does not implement the broader SPICE spatial/oracle/reputation system.
 - `NumPy` + `PyTorch` for dataset math, modeling, inference, and simulation
 
 There is no legacy compatibility layer. The repository does not expose `spice.api`,
-the old `spice` Typer CLI, snapshot registries, provenance manifests, or the old
-custom YAML/settings loader.
+the old `spice` Typer CLI, snapshot registries, or the old custom YAML/settings
+loader.
 
 ## Layout
 
@@ -48,10 +48,10 @@ Key runtime paths:
 
 - raw datasets: `artifacts/datasets/<chain>/raw/...`
 - enriched datasets: `artifacts/datasets/<chain>/enriched/...`
-- validation reports: `artifacts/validation/<chain>/...`
+- chain dataset metadata: `artifacts/datasets/<chain>/.spice/metadata.json`
 - model artifacts: `artifacts/models/<chain>/<family>/<delay>s/...`
-- simulation reports: `artifacts/simulations/<chain>/<family>/<delay>s/...`
-- tuning outputs: `artifacts/tuning/<chain>/<family>/<delay>s/...`
+- simulation reports: `artifacts/models/<chain>/<family>/<delay>s/simulation_report.json`
+- tuning outputs: `artifacts/models/<chain>/<family>/<delay>s/tuning/...`
 - MLflow store: `artifacts/mlruns/`
 
 ## Setup

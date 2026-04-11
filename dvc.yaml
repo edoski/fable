@@ -22,14 +22,10 @@ stages:
           - run.max_delay_seconds
           - run.lookback_seconds
           - run.target_anchor_count
-      - src/spice/conf/acquire.yaml
-      - src/spice/conf/chain/${run.chain}.yaml
-      - src/spice/conf/provider/${run.provider}.yaml
-      - src/spice/conf/runtime/local.yaml
     outs:
       - ${run.output_root}/datasets/${run.chain}/raw
       - ${run.output_root}/datasets/${run.chain}/enriched
-      - ${run.output_root}/validation/${run.chain}
+      - ${run.output_root}/datasets/${run.chain}/.spice
 
   train:
     cmd: >-
@@ -62,14 +58,10 @@ stages:
           - training.max_epochs
           - training.effective_batch_size
           - training.early_stopping_patience
-      - src/spice/conf/train.yaml
-      - src/spice/conf/chain/${run.chain}.yaml
-      - src/spice/conf/model/${run.model}.yaml
-      - src/spice/conf/provider/${run.provider}.yaml
-      - src/spice/conf/training/default.yaml
-      - src/spice/conf/runtime/local.yaml
     outs:
-      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s
+      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/artifact.json
+      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/model.pt
+      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/train_report.json
 
   simulate:
     cmd: >-
@@ -89,7 +81,8 @@ stages:
     deps:
       - pyproject.toml
       - src/spice
-      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s
+      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/artifact.json
+      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/model.pt
       - ${run.output_root}/datasets/${run.chain}/enriched/history
       - ${run.output_root}/datasets/${run.chain}/enriched/evaluation
     params:
@@ -106,14 +99,8 @@ stages:
           - simulation.window_seconds
           - simulation.arrival_rate_per_second
           - simulation.repetitions
-      - src/spice/conf/simulate.yaml
-      - src/spice/conf/chain/${run.chain}.yaml
-      - src/spice/conf/model/${run.model}.yaml
-      - src/spice/conf/provider/${run.provider}.yaml
-      - src/spice/conf/simulation/default.yaml
-      - src/spice/conf/runtime/local.yaml
     outs:
-      - ${run.output_root}/simulations/${run.chain}/${run.model}/${run.max_delay_seconds}s
+      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/simulation_report.json
 
   tune:
     cmd: >-
@@ -148,11 +135,5 @@ stages:
           - training.effective_batch_size
           - tuning.n_trials
           - tuning.prune
-      - src/spice/conf/tune.yaml
-      - src/spice/conf/chain/${run.chain}.yaml
-      - src/spice/conf/model/${run.model}.yaml
-      - src/spice/conf/provider/${run.provider}.yaml
-      - src/spice/conf/tuning/default.yaml
-      - src/spice/conf/runtime/local.yaml
     outs:
-      - ${run.output_root}/tuning/${run.chain}/${run.model}/${run.max_delay_seconds}s
+      - ${run.output_root}/models/${run.chain}/${run.model}/${run.max_delay_seconds}s/tuning

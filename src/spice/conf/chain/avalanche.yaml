@@ -2,4 +2,4 @@ name: avalanche
 chain_id: 43114
 block_time_seconds: 1.6
 history_days: 10
-
+uses_poa_extra_data: true

@@ -14,6 +14,7 @@ from spice.core.config import (
 from spice.data.block_schema import ENRICHED_BLOCK_SCHEMA
 from spice.data.datasets import derive_dataset_geometry
 from spice.data.io import iter_block_files, load_enriched_block_frame
+from spice.data.validation import validate_exact_window_dataset
 from spice.modeling.pipeline import (
     TrainingSpec,
     prepare_inference_dataset,
@@ -27,10 +28,20 @@ from tests.support import (
 )
 
 
+def _timestamp(row: dict[str, int | None]) -> int:
+    value = row["timestamp"]
+    assert value is not None
+    return int(value)
+
+
+def _set_timestamp(row: dict[str, int | None], value: int) -> None:
+    row["timestamp"] = value
+
+
 def test_iter_block_files_ignores_hidden_metadata(tmp_path) -> None:
     dataset_dir = tmp_path / "dataset"
     write_dataset_dir(dataset_dir, make_history_rows(32))
-    hidden_manifest = dataset_dir / ".spice" / "source.json"
+    hidden_manifest = dataset_dir / ".spice" / "metadata.json"
     hidden_manifest.parent.mkdir(parents=True)
     hidden_manifest.write_text("{}", encoding="utf-8")
 
@@ -98,6 +109,93 @@ def test_validate_raw_pull_detects_file_range_gaps(tmp_path) -> None:
 
     assert report.status == "error"
     assert report.gap_count >= 1
+
+
+def test_validate_exact_window_dataset_passes_on_canonical_dataset(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    rows = make_history_rows(8)
+    write_dataset_dir(dataset_dir, rows)
+
+    report = validate_exact_window_dataset(
+        dataset_dir,
+        expected_chain_id=1,
+        expected_start_timestamp=_timestamp(rows[0]),
+        expected_end_timestamp=_timestamp(rows[-1]) + 12,
+    )
+
+    assert report.status == "clean"
+    assert report.row_count == 8
+    assert report.duplicate_count == 0
+    assert report.gap_count == 0
+
+
+def test_validate_exact_window_dataset_rejects_duplicate_blocks(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    rows = make_history_rows(4)
+    write_dataset_dir(dataset_dir, rows[:3] + [rows[2]])
+
+    report = validate_exact_window_dataset(
+        dataset_dir,
+        expected_chain_id=1,
+        expected_start_timestamp=_timestamp(rows[0]),
+        expected_end_timestamp=_timestamp(rows[-1]) + 12,
+    )
+
+    assert report.status == "error"
+    assert report.duplicate_count == 1
+
+
+def test_validate_exact_window_dataset_rejects_gaps(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    rows = make_history_rows(4)
+    write_dataset_dir(dataset_dir, [rows[0], rows[1], rows[3]])
+
+    report = validate_exact_window_dataset(
+        dataset_dir,
+        expected_chain_id=1,
+        expected_start_timestamp=_timestamp(rows[0]),
+        expected_end_timestamp=_timestamp(rows[-1]) + 12,
+    )
+
+    assert report.status == "error"
+    assert report.gap_count == 1
+
+
+def test_validate_exact_window_dataset_rejects_out_of_range_timestamps(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    rows = make_history_rows(4)
+    shifted = [dict(row) for row in rows]
+    _set_timestamp(shifted[0], _timestamp(shifted[0]) - 12)
+    write_dataset_dir(dataset_dir, shifted)
+
+    report = validate_exact_window_dataset(
+        dataset_dir,
+        expected_chain_id=1,
+        expected_start_timestamp=_timestamp(rows[0]),
+        expected_end_timestamp=_timestamp(rows[-1]) + 12,
+    )
+
+    assert report.status == "error"
+    assert report.below_start_count == 1
+
+
+def test_validate_exact_window_dataset_rejects_chain_mismatch(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    rows = make_history_rows(4)
+    shifted = [dict(row) for row in rows]
+    for row in shifted:
+        row["chain_id"] = 137
+    write_dataset_dir(dataset_dir, shifted)
+
+    report = validate_exact_window_dataset(
+        dataset_dir,
+        expected_chain_id=1,
+        expected_start_timestamp=_timestamp(rows[0]),
+        expected_end_timestamp=_timestamp(rows[-1]) + 12,
+    )
+
+    assert report.status == "error"
+    assert report.chain_id == 137
 
 
 def test_prepare_training_and_inference_datasets(tmp_path) -> None:

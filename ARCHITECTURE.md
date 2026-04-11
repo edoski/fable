@@ -49,7 +49,7 @@ params.yaml
 - [enrich.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/enrich.py): canonical enrichment
 - [raw_validation.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/raw_validation.py): raw parquet pull validation, including Pandera-validated cross-file summary checks
 
-This layer no longer contains snapshot registries, provenance manifests, or a custom JSON-RPC transport.
+This layer no longer contains snapshot registries or a custom JSON-RPC transport.
 
 ### `data`
 
@@ -63,7 +63,7 @@ This layer no longer contains snapshot registries, provenance manifests, or a cu
 repo’s dataset-path contract:
 
 - only parquet inputs are accepted
-- hidden metadata paths are ignored
+- the single hidden metadata namespace is `.spice/metadata.json`
 - dataset roots may be a file or directory
 - enriched loads always pass through canonical validation
 
@@ -107,9 +107,15 @@ Each workflow exposes:
 DVC is the primary orchestration surface:
 
 1. `acquire`
-2. `train`
-3. `simulate`
-4. `tune`
+2. `tune`
+3. `train`
+4. `simulate`
+
+`tune` is a first-class temporal workflow, but `train` does not implicitly consume
+the last Optuna result. Hyperparameters selected from tuning should be pinned in
+config before running the final training/simulation path. Tuning summaries live
+under the relevant model artifact directory:
+`artifacts/models/<chain>/<family>/<delay>s/tuning/`.
 
 Stage definitions live in [dvc.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/dvc.yaml), and DVC-facing run variables live in [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml).
 

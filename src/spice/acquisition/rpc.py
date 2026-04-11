@@ -6,18 +6,18 @@ from dataclasses import dataclass, field
 
 from web3 import Web3
 
-from ..core.config import ChainName, ProviderConfig
+from ..core.config import ChainConfig, ProviderConfig
 from .provider import build_web3
 
 
 @dataclass(slots=True)
 class Web3BlockClient:
     provider: ProviderConfig
-    chain_name: ChainName
+    chain: ChainConfig
     _web3: Web3 = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self._web3 = build_web3(self.provider, self.chain_name)
+        self._web3 = build_web3(self.provider, self.chain)
 
     def get_block_gas_limits(self, block_numbers: list[int]) -> dict[int, int]:
         gas_limits: dict[int, int] = {}

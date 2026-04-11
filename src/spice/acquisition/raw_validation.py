@@ -12,12 +12,12 @@ import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..data.io import iter_block_files
+from ..data.validation import validate_exact_window_dataset
 
 RAW_BLOCK_FILENAME_RE = re.compile(
     r"^(?P<chain>[a-z0-9_]+)__blocks__(?P<start>\d+)_to_(?P<end>\d+)$"
 )
 CRYO_DEFAULT_CHUNK_SIZE = 1_000
-EDGE_TIMESTAMP_TOLERANCE_ROWS = 1
 ValidationStatus = Literal["clean", "warning", "error"]
 
 
@@ -338,31 +338,11 @@ def _merge_summary_into_report(report: RawPullValidationReport, summary: RawFile
     report.row_count += summary.row_count
     report.chain_id_mismatch_count += summary.chain_id_mismatch_count
     report.duplicate_count += summary.duplicate_count
-    report.below_start_count += summary.below_start_count
-    report.above_end_count += summary.above_end_count
     if report.first_block_number is None:
         report.first_block_number = summary.first_block_number
         report.first_timestamp = summary.first_timestamp
     report.last_block_number = summary.last_block_number
     report.last_timestamp = summary.last_timestamp
-
-
-def _finalize_timestamp_drift(report: RawPullValidationReport) -> None:
-    if not (report.below_start_count or report.above_end_count):
-        return
-    if (
-        report.below_start_count <= EDGE_TIMESTAMP_TOLERANCE_ROWS
-        and report.above_end_count <= EDGE_TIMESTAMP_TOLERANCE_ROWS
-        and not report.errors
-    ):
-        report.warnings.append(
-            "Observed only tiny edge timestamp drift consistent with cryo boundary resolution"
-        )
-        return
-    report.errors.append(
-        f"Detected out-of-range timestamps: below_start={report.below_start_count}, "
-        f"above_end={report.above_end_count}"
-    )
 
 
 def _finalize_status(report: RawPullValidationReport) -> None:
@@ -442,6 +422,26 @@ def validate_raw_pull(
                 f"from {expected_chain_id}"
             )
 
-    _finalize_timestamp_drift(report)
+    dataset_report = validate_exact_window_dataset(
+        dataset_path,
+        expected_chain_id=expected_chain_id,
+        expected_start_timestamp=expected_start_timestamp,
+        expected_end_timestamp=expected_end_timestamp,
+    )
+    report.row_count = dataset_report.row_count
+    report.first_block_number = dataset_report.first_block_number
+    report.last_block_number = dataset_report.last_block_number
+    report.first_timestamp = dataset_report.first_timestamp
+    report.last_timestamp = dataset_report.last_timestamp
+    report.duplicate_count = max(report.duplicate_count, dataset_report.duplicate_count)
+    report.gap_count = max(report.gap_count, dataset_report.gap_count)
+    report.below_start_count = dataset_report.below_start_count
+    report.above_end_count = dataset_report.above_end_count
+    for error in dataset_report.errors:
+        if error not in report.errors:
+            report.errors.append(error)
+    for warning in dataset_report.warnings:
+        if warning not in report.warnings:
+            report.warnings.append(warning)
     _finalize_status(report)
     return report

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import hydra
 import mlflow
 import optuna
 from omegaconf import DictConfig
+from optuna.trial import FrozenTrial, TrialState
 
 from ..core.config import ExperimentConfig, coerce_config, validate_config
 from ..core.constants import ARTIFACT_MANIFEST_FILENAME, MODEL_STATE_FILENAME
@@ -23,6 +26,78 @@ from ._shared import (
     start_run_if_enabled,
     trial_artifact_dir,
 )
+
+
+def _write_json(path: Path, payload: dict[str, Any] | list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _trial_record(trial: FrozenTrial) -> dict[str, Any]:
+    return {
+        "number": trial.number,
+        "state": trial.state.name,
+        "value": trial.value,
+        "params": dict(trial.params),
+        "best_epoch": trial.user_attrs.get("best_epoch"),
+        "artifact_dir": trial.user_attrs.get("artifact_dir"),
+        "started_at": (
+            trial.datetime_start.isoformat()
+            if trial.datetime_start is not None
+            else None
+        ),
+        "completed_at": (
+            trial.datetime_complete.isoformat()
+            if trial.datetime_complete is not None
+            else None
+        ),
+    }
+
+
+def _study_summary(config: ExperimentConfig, study: optuna.Study) -> dict[str, Any]:
+    completed_trials = [
+        trial for trial in study.trials if trial.state == TrialState.COMPLETE
+    ]
+    pruned_trials = [
+        trial for trial in study.trials if trial.state == TrialState.PRUNED
+    ]
+    failed_trials = [trial for trial in study.trials if trial.state == TrialState.FAIL]
+    best_trial = study.best_trial if completed_trials else None
+
+    return {
+        "kind": "tuning_study",
+        "study_name": config.tuning.study_name,
+        "chain": config.chain.name.value,
+        "family": config.model.family.value,
+        "max_delay_seconds": config.max_delay_seconds,
+        "lookback_seconds": config.lookback_seconds,
+        "target_anchor_count": config.target_anchor_count,
+        "metric_name": config.tuning.metric_name,
+        "direction": config.tuning.direction,
+        "n_trials_requested": config.tuning.n_trials,
+        "timeout_seconds": config.tuning.timeout_seconds,
+        "sampler": "TPESampler",
+        "sampler_seed": config.tuning.sampler_seed,
+        "pruner": "MedianPruner" if config.tuning.prune else "NopPruner",
+        "search_space": config.tuning.search_space,
+        "trial_counts": {
+            "total": len(study.trials),
+            "complete": len(completed_trials),
+            "pruned": len(pruned_trials),
+            "failed": len(failed_trials),
+        },
+        "best_trial": (
+            None
+            if best_trial is None
+            else {
+                "number": best_trial.number,
+                "value": best_trial.value,
+                "params": dict(best_trial.params),
+                "best_epoch": best_trial.user_attrs.get("best_epoch"),
+                "artifact_dir": best_trial.user_attrs.get("artifact_dir"),
+            }
+        ),
+    }
 
 
 def _objective(base_config, trial: optuna.Trial) -> float:
@@ -131,26 +206,26 @@ def run(config: ExperimentConfig) -> None:
             n_trials=config.tuning.n_trials,
             timeout=config.tuning.timeout_seconds,
         )
-        summary_path = Path(config.paths.tuning_root) / "best_params.json"
-        summary_path.parent.mkdir(parents=True, exist_ok=True)
-        summary_path.write_text(
-            study.trials_dataframe().to_json(orient="records", indent=2),
-            encoding="utf-8",
-        )
+        tuning_root = Path(config.paths.tuning_root)
+        study_path = tuning_root / "study.json"
+        trials_path = tuning_root / "trials.json"
+        _write_json(study_path, _study_summary(config, study))
+        _write_json(trials_path, [_trial_record(trial) for trial in study.trials])
         if config.tracking.enabled:
-            mlflow.log_metrics(
-                {
-                    "study.best_value": study.best_value,
-                    "study.n_trials": float(len(study.trials)),
-                }
-            )
-            mlflow.log_params(
-                {
-                    f"study.best_param.{key}": str(value)
-                    for key, value in study.best_params.items()
-                }
-            )
-            log_artifacts([summary_path])
+            metrics = {"study.n_trials": float(len(study.trials))}
+            completed_trials = [
+                trial for trial in study.trials if trial.state == TrialState.COMPLETE
+            ]
+            if completed_trials:
+                metrics["study.best_value"] = study.best_value
+                mlflow.log_params(
+                    {
+                        f"study.best_param.{key}": str(value)
+                        for key, value in study.best_params.items()
+                    }
+                )
+            mlflow.log_metrics(metrics)
+            log_artifacts([study_path, trials_path])
     finally:
         if run_context is not None:
             run_context.__exit__(None, None, None)

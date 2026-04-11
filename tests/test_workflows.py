@@ -39,7 +39,7 @@ def test_train_and_simulate_workflows_write_reports(tmp_path) -> None:
     simulation_report = (
         tmp_path
         / "artifacts"
-        / "simulations"
+        / "models"
         / "ethereum"
         / "lstm"
         / "36s"
@@ -81,15 +81,23 @@ def test_tune_workflow_writes_optuna_summary(tmp_path) -> None:
 
     run_tune(config)
 
-    summary_path = (
+    tuning_root = (
         tmp_path
         / "artifacts"
-        / "tuning"
+        / "models"
         / "ethereum"
         / "lstm"
         / "36s"
-        / "best_params.json"
+        / "tuning"
     )
-    assert summary_path.is_file()
-    payload = json.loads(summary_path.read_text(encoding="utf-8"))
-    assert len(payload) == 2
+    study_path = tuning_root / "study.json"
+    trials_path = tuning_root / "trials.json"
+    assert study_path.is_file()
+    assert trials_path.is_file()
+    assert (tuning_root / "trials" / "trial-000" / "train_report.json").is_file()
+
+    study_payload = json.loads(study_path.read_text(encoding="utf-8"))
+    trials_payload = json.loads(trials_path.read_text(encoding="utf-8"))
+    assert study_payload["kind"] == "tuning_study"
+    assert study_payload["trial_counts"]["total"] == 2
+    assert len(trials_payload) == 2
