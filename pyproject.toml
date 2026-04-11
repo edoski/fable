@@ -21,7 +21,6 @@ dependencies = [
   "scikit-learn>=1.8",
   "hydra-core>=1.3",
   "lightning>=2.6",
-  "torchmetrics>=1.9",
   "optuna>=4.8",
   "web3>=7.15",
   "pandera>=0.30",
@@ -41,6 +40,7 @@ spice-acquire = "spice.workflows.acquire:main"
 spice-train = "spice.workflows.train:main"
 spice-simulate = "spice.workflows.simulate:main"
 spice-tune = "spice.workflows.tune:main"
+spice-dvc = "spice.workflows.dvc:main"
 
 [tool.hatch.build]
 include = ["src/spice/conf/**/*.yaml"]

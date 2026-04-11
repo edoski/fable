@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import torch
+import torch.nn.functional as F
+
+from ..core.config import TrainingConfig
+from .models import ModelOutputs
 
 
 @dataclass(slots=True)
@@ -15,6 +19,85 @@ class BatchMetrics:
     realized_fee_sum: float
     baseline_fee_sum: float
     optimal_fee_sum: float
+
+
+@dataclass(slots=True)
+class EpochMetrics:
+    total_loss: float
+    accuracy: float
+    mean_cost_over_optimum: float
+    mean_profit_over_baseline: float
+
+
+@dataclass(slots=True)
+class TemporalLosses:
+    action_loss: torch.Tensor
+    fee_loss: torch.Tensor
+    total_loss: torch.Tensor
+
+
+def mean_metrics(metrics: list[BatchMetrics]) -> EpochMetrics:
+    if not metrics:
+        raise ValueError("Cannot summarize an empty metric list")
+    denominator = sum(item.count for item in metrics)
+    total_loss_sum = sum(item.total_loss_sum for item in metrics)
+    correct_count = sum(item.correct_count for item in metrics)
+    realized_fee_sum = sum(item.realized_fee_sum for item in metrics)
+    baseline_fee_sum = sum(item.baseline_fee_sum for item in metrics)
+    optimal_fee_sum = sum(item.optimal_fee_sum for item in metrics)
+    return EpochMetrics(
+        total_loss=total_loss_sum / denominator,
+        accuracy=correct_count / denominator,
+        mean_cost_over_optimum=(realized_fee_sum - optimal_fee_sum) / optimal_fee_sum,
+        mean_profit_over_baseline=(baseline_fee_sum - realized_fee_sum) / baseline_fee_sum,
+    )
+
+
+def compute_temporal_losses(
+    outputs: ModelOutputs,
+    batch: dict[str, torch.Tensor],
+    *,
+    class_weights: torch.Tensor,
+    training_config: TrainingConfig,
+) -> TemporalLosses:
+    action_loss = F.cross_entropy(
+        outputs.logits,
+        batch["class_label"],
+        weight=class_weights,
+    )
+    fee_loss = F.smooth_l1_loss(outputs.fee_hat, batch["target_log_fee"])
+    total_loss = (
+        training_config.action_loss_weight * action_loss
+        + training_config.fee_loss_weight * fee_loss
+    )
+    return TemporalLosses(
+        action_loss=action_loss,
+        fee_loss=fee_loss,
+        total_loss=total_loss,
+    )
+
+
+def compute_temporal_batch_metrics(
+    outputs: ModelOutputs,
+    batch: dict[str, torch.Tensor],
+    *,
+    class_weights: torch.Tensor,
+    training_config: TrainingConfig,
+) -> tuple[torch.Tensor, BatchMetrics]:
+    losses = compute_temporal_losses(
+        outputs,
+        batch,
+        class_weights=class_weights,
+        training_config=training_config,
+    )
+    return losses.total_loss, compute_batch_metrics(
+        logits=outputs.logits.detach(),
+        total_loss=losses.total_loss.detach(),
+        class_labels=batch["class_label"].detach(),
+        action_log_fees=batch["action_log_fees"].detach(),
+        next_block_log_fee=batch["next_block_log_fee"].detach(),
+        optimal_log_fee=batch["optimal_log_fee"].detach(),
+    )
 
 
 def realized_log_fees_from_logits(

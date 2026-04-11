@@ -13,14 +13,10 @@ from spice.acquisition.cryo import (
     run_cryo,
 )
 from spice.acquisition.enrich import enrich_frame_with_gas_limit
+from spice.acquisition.metadata import load_dataset_metadata
 from spice.acquisition.raw_normalization import normalize_raw_dataset
-from spice.core.config import (
-    AcquisitionConfig,
-    ChainConfig,
-    ChainName,
-    ProviderConfig,
-    RpcProviderName,
-)
+from spice.acquisition.windowing import history_range_from_metadata
+from spice.core.config import RpcProviderName
 from spice.core.console import NullReporter
 from spice.data.block_schema import ENRICHED_BLOCK_SCHEMA
 from spice.data.io import load_enriched_block_frame, read_block_dataset
@@ -28,7 +24,10 @@ from spice.workflows.acquire import run as run_acquire
 from tests.support import (
     base_overrides,
     compose_experiment,
+    make_acquisition_config,
     make_block_rows,
+    make_chain_config,
+    make_provider_config,
     write_dataset_dir,
     write_raw_chunk,
 )
@@ -76,10 +75,9 @@ def test_run_cryo_polls_progress_before_stdout_lines(tmp_path, monkeypatch) -> N
 
     output_dir = tmp_path / "raw"
     reporter = RecordingReporter()
-    provider = ProviderConfig(
+    provider = make_provider_config(
         name=RpcProviderName.PUBLICNODE,
-        endpoints={"ethereum": "https://rpc.example.test"},
-        references={"ethereum": "https://rpc.example.test"},
+        endpoint="https://rpc.example.test",
     )
     script = "\n".join(
         [
@@ -105,8 +103,8 @@ def test_run_cryo_polls_progress_before_stdout_lines(tmp_path, monkeypatch) -> N
     )
 
     result = run_cryo(
-        ChainConfig(name=ChainName.ETHEREUM, chain_id=1, block_time_seconds=12.0),
-        AcquisitionConfig(chunk_size=1),
+        make_chain_config(),
+        make_acquisition_config(),
         output_dir,
         TimestampRange(start=1, end=13),
         provider=provider,
@@ -125,6 +123,25 @@ class _FakeBlockClient:
 
     def get_block_gas_limits(self, block_numbers: list[int]) -> dict[int, int]:
         return {block_number: 30_000_000 for block_number in block_numbers}
+
+
+def _install_clean_acquire_fakes(monkeypatch) -> None:
+    def fake_run_cryo(chain, _pull, output_dir, timestamps, **_kwargs):
+        segment = output_dir.name
+        block_time_seconds = int(chain.block_time_seconds)
+        row_count = max(1, (timestamps.end - timestamps.start) // block_time_seconds) + 2
+        rows = make_block_rows(
+            row_count,
+            start_block=1 if segment == "history" else 10_001,
+            start_timestamp=timestamps.start - block_time_seconds,
+            block_time_seconds=block_time_seconds,
+            include_gas_limit=False,
+        )
+        write_raw_chunk(output_dir, chain_name=chain.name.value, rows=rows)
+        return CryoRunResult(command=f"cryo {segment}", completed_chunks=1, expected_chunks=1)
+
+    monkeypatch.setattr("spice.acquisition.datasets.run_cryo", fake_run_cryo)
+    monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", _FakeBlockClient)
 
 
 def test_normalize_raw_dataset_trims_edge_rows_and_rechunks(tmp_path) -> None:
@@ -287,23 +304,7 @@ def test_acquire_workflow_writes_validation_reports(tmp_path, monkeypatch) -> No
         "acquire",
         overrides=base_overrides(tmp_path) + ["provider=publicnode", "acquisition.dry_run=false"],
     )
-
-    def fake_run_cryo(chain, _pull, output_dir, timestamps, **_kwargs):
-        segment = output_dir.name
-        block_time_seconds = int(chain.block_time_seconds)
-        row_count = max(1, (timestamps.end - timestamps.start) // block_time_seconds) + 2
-        rows = make_block_rows(
-            row_count,
-            start_block=1 if segment == "history" else 10_001,
-            start_timestamp=timestamps.start - block_time_seconds,
-            block_time_seconds=block_time_seconds,
-            include_gas_limit=False,
-        )
-        write_raw_chunk(output_dir, chain_name=chain.name.value, rows=rows)
-        return CryoRunResult(command=f"cryo {segment}", completed_chunks=1, expected_chunks=1)
-
-    monkeypatch.setattr("spice.acquisition.datasets.run_cryo", fake_run_cryo)
-    monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", _FakeBlockClient)
+    _install_clean_acquire_fakes(monkeypatch)
 
     run_acquire(config, reporter=NullReporter())
 
@@ -318,7 +319,11 @@ def test_acquire_workflow_writes_validation_reports(tmp_path, monkeypatch) -> No
     metadata_path = metadata_dir / "metadata.json"
     assert metadata_path.is_file()
     payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata = load_dataset_metadata(metadata_path)
+    assert metadata is not None
+    history_window = history_range_from_metadata(metadata)
     assert payload["dataset"]["id"] == "icdcs_2025_11_09"
+    assert metadata.dataset.id == "icdcs_2025_11_09"
     assert payload["validation"]["raw"]["history"]["status"] == "clean"
     assert payload["validation"]["enriched"]["evaluation"]["status"] == "clean"
     assert "issues" not in payload["validation"]["raw"]["history"]
@@ -334,6 +339,7 @@ def test_acquire_workflow_writes_validation_reports(tmp_path, monkeypatch) -> No
     history_frame = load_enriched_block_frame(history_dir)
     assert history_frame.height > 0
     assert int(history_frame["timestamp"][0]) == payload["windows"]["history"]["start_timestamp"]
+    assert int(history_frame["timestamp"][0]) == history_window.start
 
 
 def test_acquire_reuses_larger_valid_dataset_for_lower_target(tmp_path, monkeypatch) -> None:
@@ -341,25 +347,7 @@ def test_acquire_reuses_larger_valid_dataset_for_lower_target(tmp_path, monkeypa
         "acquire",
         overrides=base_overrides(tmp_path) + ["provider=publicnode", "acquisition.dry_run=false"],
     )
-
-    def fake_run_cryo(chain, _pull, output_dir, timestamps, **_kwargs):
-        block_time_seconds = int(chain.block_time_seconds)
-        rows = make_block_rows(
-            max(1, (timestamps.end - timestamps.start) // block_time_seconds) + 2,
-            start_block=1 if output_dir.name == "history" else 10_001,
-            start_timestamp=timestamps.start - block_time_seconds,
-            block_time_seconds=block_time_seconds,
-            include_gas_limit=False,
-        )
-        write_raw_chunk(output_dir, chain_name=chain.name.value, rows=rows)
-        return CryoRunResult(
-            command=f"cryo {output_dir.name}",
-            completed_chunks=1,
-            expected_chunks=1,
-        )
-
-    monkeypatch.setattr("spice.acquisition.datasets.run_cryo", fake_run_cryo)
-    monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", _FakeBlockClient)
+    _install_clean_acquire_fakes(monkeypatch)
     run_acquire(config, reporter=NullReporter())
 
     lower_config = compose_experiment(
@@ -391,7 +379,7 @@ def test_acquire_reuses_larger_valid_dataset_for_lower_target(tmp_path, monkeypa
     assert payload["validation"]["raw"]["history"]["rows"] > 8
 
 
-def test_acquire_rejects_dataset_id_metadata_mismatch_without_overwrite(tmp_path) -> None:
+def test_acquire_rejects_metadata_mismatch_without_overwrite(tmp_path, monkeypatch) -> None:
     config = compose_experiment(
         "acquire",
         overrides=base_overrides(tmp_path) + ["provider=publicnode", "acquisition.dry_run=false"],
@@ -405,27 +393,12 @@ def test_acquire_rejects_dataset_id_metadata_mismatch_without_overwrite(tmp_path
         / ".spice"
         / "metadata.json"
     )
-    metadata_path.parent.mkdir(parents=True, exist_ok=True)
-    metadata_path.write_text(
-        json.dumps(
-            {
-                "dataset": {"id": "icdcs_2025_11_09"},
-                "chain": {"name": "ethereum", "chain_id": 1},
-                "provider": {
-                    "name": "publicnode",
-                    "reference": "https://ethereum-rpc.publicnode.com",
-                    "endpoint_fingerprint": "mismatch",
-                },
-                "windows": {
-                    "evaluation": {
-                        "start_timestamp": config.dataset.window.start_timestamp,
-                        "end_timestamp": config.dataset.window.end_timestamp,
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    _install_clean_acquire_fakes(monkeypatch)
+    run_acquire(config, reporter=NullReporter())
+
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    payload["windows"]["evaluation"]["start_timestamp"] += 1
+    metadata_path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ValueError, match="metadata does not match"):
         run_acquire(config, reporter=NullReporter())

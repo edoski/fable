@@ -18,7 +18,7 @@ It does not implement the broader SPICE spatial/oracle/reputation system.
 - `Hydra` for runtime configuration and composition
 - `DVC` for reproducible stages, artifact tracking, and future remote execution
 - `MLflow` for run tracking, params, metrics, and artifacts
-- `Lightning` + `TorchMetrics` for training orchestration
+- `Lightning` for training orchestration
 - `Optuna` for hyperparameter optimization
 - `web3.py` for RPC transport
 - `Pandera` + `Polars` for dataset validation and parquet/table work
@@ -26,8 +26,7 @@ It does not implement the broader SPICE spatial/oracle/reputation system.
 - `NumPy` + `PyTorch` for dataset math, modeling, inference, and simulation
 
 There is no legacy compatibility layer. The repository does not expose `spice.api`,
-the old `spice` Typer CLI, snapshot registries, or the old custom YAML/settings
-loader.
+the old `spice` Typer CLI, snapshot registries, or the old custom config loader.
 
 ## Layout
 
@@ -88,7 +87,9 @@ Use DVC as the primary surface:
 .venv/bin/dvc repro
 ```
 
-The baseline DVC variables live in [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml). Hydra defaults live under [src/spice/conf](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/conf).
+Hydra defaults live under [src/spice/conf](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/conf). DVC Hydra composition is enabled, and [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml) is the composed baseline consumed by the DVC stages.
+
+DVC stages call `spice-dvc`, a thin runner that loads `params.yaml`, pins the requested stage task, and dispatches the same workflow `run(...)` functions used by the direct entrypoints. Direct `spice-train` keeps `tuning.apply_best_params=false`; the DVC `train` stage applies the tuned best params because it depends on the model-local `best_params.json`.
 
 You can also run the workflow entrypoints directly:
 
@@ -125,6 +126,7 @@ Hydra config groups live under [src/spice/conf](/Users/edo/Documents/Obsidian/th
 - `dataset/`
 - `model/`
 - `provider/`
+- `paths/`
 - `runtime/`
 - `simulation/`
 - `split/`
@@ -132,11 +134,12 @@ Hydra config groups live under [src/spice/conf](/Users/edo/Documents/Obsidian/th
 - `training/`
 - `tuning/`
 
-Runtime validation happens in [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py). That layer enforces the repo’s structural invariants, including transformer head divisibility and provider endpoint availability.
+Runtime validation happens in [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py). Hydra YAML owns defaults; Pydantic models enforce structural invariants, including transformer head divisibility and provider endpoint availability.
 
 ## Verification
 
 ```bash
 .venv/bin/ruff check src/spice tests
+.venv/bin/pyright
 .venv/bin/pytest -q
 ```

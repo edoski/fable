@@ -3,7 +3,8 @@ from __future__ import annotations
 import pytest
 
 from spice.core.constants import DEFAULT_WINDOW_END_TIMESTAMP, DEFAULT_WINDOW_START_TIMESTAMP
-from tests.support import base_overrides, compose_experiment
+from spice.workflows.dvc import load_stage_config
+from tests.support import REPO_ROOT, base_overrides, compose_experiment
 
 
 def test_hydra_train_config_composes_and_resolves_paths(tmp_path) -> None:
@@ -95,3 +96,11 @@ def test_history_anchor_count_cannot_be_smaller_than_anchor_count(tmp_path) -> N
             overrides=base_overrides(tmp_path)
             + ["dataset.sampling.history_anchor_count=32"],
         )
+
+
+def test_dvc_runner_loads_generated_params_and_forces_stage_task() -> None:
+    config = load_stage_config("train", REPO_ROOT / "params.yaml")
+
+    assert config.task == "train"
+    assert config.tuning.apply_best_params is True
+    assert config.paths.artifact_root.endswith("/models/ethereum/icdcs_2025_11_09/lstm/36s")

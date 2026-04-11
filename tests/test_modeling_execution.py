@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import torch
+import torch.nn.functional as F
+
 from spice.core.constants import ARTIFACT_MANIFEST_FILENAME, MODEL_STATE_FILENAME
 from spice.modeling.artifacts import load_training_artifact
+from spice.modeling.evaluation import compute_temporal_batch_metrics
 from spice.modeling.execution import run_persisted_training
+from spice.modeling.models import ModelOutputs
 from spice.modeling.pipeline import TrainingSpec
 from spice.modeling.reporting import TrainingRunReport
 from tests.support import base_overrides, compose_experiment, make_history_rows, write_dataset_dir
@@ -46,3 +51,37 @@ def test_run_persisted_training_writes_canonical_training_outputs(tmp_path) -> N
     assert report.dataset_id == config.dataset.id
     assert report.artifact_dir == str(artifact_dir)
     assert report.best_epoch == persisted.training_run.training_result.best_epoch
+
+
+def test_temporal_batch_metrics_use_shared_loss_path(tmp_path) -> None:
+    config = compose_experiment("train", overrides=base_overrides(tmp_path))
+    outputs = ModelOutputs(
+        logits=torch.tensor([[2.0, 0.0], [0.0, 2.0]], dtype=torch.float32),
+        fee_hat=torch.tensor([1.0, 3.0], dtype=torch.float32),
+    )
+    batch = {
+        "class_label": torch.tensor([0, 1], dtype=torch.long),
+        "target_log_fee": torch.tensor([1.5, 2.0], dtype=torch.float32),
+        "action_log_fees": torch.tensor([[1.0, 4.0], [5.0, 3.0]], dtype=torch.float32),
+        "next_block_log_fee": torch.tensor([1.0, 5.0], dtype=torch.float32),
+        "optimal_log_fee": torch.tensor([1.0, 3.0], dtype=torch.float32),
+    }
+    class_weights = torch.ones(2, dtype=torch.float32)
+
+    total_loss, metrics = compute_temporal_batch_metrics(
+        outputs,
+        batch,
+        class_weights=class_weights,
+        training_config=config.training,
+    )
+    expected_loss = config.training.action_loss_weight * F.cross_entropy(
+        outputs.logits,
+        batch["class_label"],
+        weight=class_weights,
+    ) + config.training.fee_loss_weight * F.smooth_l1_loss(
+        outputs.fee_hat,
+        batch["target_log_fee"],
+    )
+
+    assert torch.isclose(total_loss, expected_loss)
+    assert metrics.correct_count == 2

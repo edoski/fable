@@ -24,9 +24,10 @@ from ..data.datasets import (
 from ..data.features import build_feature_table
 from ..data.io import load_enriched_block_frame
 from ..data.normalization import ScalerStats, fit_standard_scaler, transform_feature_matrix
+from .evaluation import EpochMetrics
 from .models import TemporalModel, build_model
 from .torch_datasets import build_class_weights
-from .training import EpochMetrics, TrainingResult, evaluate_model, train_model
+from .training import TrainingResult, evaluate_model, train_model
 
 
 @dataclass(slots=True)

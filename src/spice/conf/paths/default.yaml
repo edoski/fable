@@ -1,0 +1,17 @@
+output_root: ${runtime.output_root}
+dataset_root: ${paths.output_root}/datasets/${chain.name}/${dataset.id}
+metadata_root: ${paths.dataset_root}/.spice
+raw_root: ${paths.dataset_root}/raw
+raw_history_dir: ${paths.raw_root}/history
+raw_evaluation_dir: ${paths.raw_root}/evaluation
+enriched_root: ${paths.dataset_root}/enriched
+enriched_history_dir: ${paths.enriched_root}/history
+enriched_evaluation_dir: ${paths.enriched_root}/evaluation
+dataset_metadata_path: ${paths.metadata_root}/metadata.json
+artifact_root: ${paths.output_root}/models/${chain.name}/${dataset.id}/${model.family}/${dataset.temporal.max_delay_seconds}s
+checkpoint_dir: ${paths.artifact_root}/checkpoints
+train_report_path: ${paths.artifact_root}/train_report.json
+simulation_report_path: ${paths.artifact_root}/simulation_report.json
+tuning_root: ${paths.artifact_root}/tuning
+tuning_best_params_path: ${paths.tuning_root}/best_params.json
+mlruns_dir: ${paths.output_root}/mlruns

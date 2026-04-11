@@ -14,6 +14,7 @@ from ..core.constants import (
     ARTIFACT_MANIFEST_FILENAME,
     MODEL_STATE_FILENAME,
 )
+from ..core.json import write_json
 from ..data.features import FEATURE_NAMES
 from ..data.normalization import ScalerStats
 from .models import TemporalModel, build_model
@@ -74,10 +75,7 @@ def write_training_artifact(
     model: TemporalModel,
 ) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ARTIFACT_MANIFEST_FILENAME).write_text(
-        manifest.model_dump_json(indent=2),
-        encoding="utf-8",
-    )
+    write_json(artifact_dir / ARTIFACT_MANIFEST_FILENAME, manifest)
     cpu_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
     torch.save(cpu_state, artifact_dir / MODEL_STATE_FILENAME)
 

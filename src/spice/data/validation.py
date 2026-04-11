@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 import polars as pl
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from .io import read_block_dataset
+from .validation_base import ValidationModel, ValidationStatus, finalize_validation_status
 
-ValidationStatus = Literal["clean", "error"]
 EXACT_WINDOW_COLUMNS = ("block_number", "timestamp", "chain_id")
 
 
@@ -35,10 +34,6 @@ class ExactWindowAssessment:
     errors: tuple[str, ...]
 
 
-class ValidationModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
 class BlockDatasetValidationReport(ValidationModel):
     dataset_path: Path
     expected_start_timestamp: int
@@ -55,13 +50,6 @@ class BlockDatasetValidationReport(ValidationModel):
     above_end_count: int = 0
     status: ValidationStatus = "clean"
     errors: list[str] = Field(default_factory=list)
-
-
-def _finalize_status(report: BlockDatasetValidationReport) -> None:
-    if report.errors:
-        report.status = "error"
-    else:
-        report.status = "clean"
 
 
 def _coerce_exact_window_frame(frame: pl.DataFrame) -> pl.DataFrame:
@@ -210,7 +198,7 @@ def validate_exact_window_frame(
         )
     except Exception as exc:
         report.errors.append(str(exc))
-        _finalize_status(report)
+        finalize_validation_status(report)
         return report
 
     _apply_exact_window_summary(
@@ -218,7 +206,7 @@ def validate_exact_window_frame(
         summary,
         expected_chain_id=expected_chain_id,
     )
-    _finalize_status(report)
+    finalize_validation_status(report)
     return report
 
 
@@ -242,7 +230,7 @@ def validate_exact_window_dataset(
         )
     except Exception as exc:
         report.errors.append(str(exc))
-        _finalize_status(report)
+        finalize_validation_status(report)
         return report
 
     _apply_exact_window_summary(
@@ -250,5 +238,5 @@ def validate_exact_window_dataset(
         summary,
         expected_chain_id=expected_chain_id,
     )
-    _finalize_status(report)
+    finalize_validation_status(report)
     return report

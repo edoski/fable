@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from math import ceil
 
 from ..core.config import ExperimentConfig
 from ..data.datasets import derive_dataset_geometry
 from .cryo import TimestampRange, history_range_for_required_blocks
+from .metadata import DatasetMetadata
 from .raw_validation import RawPullValidationReport
 
 
@@ -61,11 +61,9 @@ def expanded_history_range(
     )
 
 
-def history_range_from_metadata(metadata: Mapping[str, object]) -> TimestampRange:
-    history = metadata.get("windows", {}).get("history")
-    if not isinstance(history, Mapping):
-        raise ValueError("Dataset metadata is missing windows.history")
+def history_range_from_metadata(metadata: DatasetMetadata) -> TimestampRange:
+    history = metadata.windows.history
     return TimestampRange(
-        start=int(history["start_timestamp"]),
-        end=int(history["end_timestamp"]),
+        start=history.start_timestamp,
+        end=history.end_timestamp,
     )

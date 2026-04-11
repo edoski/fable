@@ -95,15 +95,7 @@ class TransformerBaseline(TemporalModel):
         super().__init__()
         self.input_projection = nn.Linear(n_features, config.d_model)
         self.position_encoding = SinusoidalPositionalEncoding(config.d_model)
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=config.d_model,
-            nhead=config.nhead,
-            dim_feedforward=config.feedforward_dim,
-            dropout=config.dropout,
-            activation="gelu",
-            batch_first=True,
-        )
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=config.transformer_layers)
+        self.encoder = build_transformer_encoder(config)
         self.output_head = TemporalOutputHead(
             config.d_model,
             action_count,
@@ -122,15 +114,7 @@ class TransformerLSTMBaseline(TemporalModel):
         super().__init__()
         self.input_projection = nn.Linear(n_features, config.d_model)
         self.position_encoding = SinusoidalPositionalEncoding(config.d_model)
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=config.d_model,
-            nhead=config.nhead,
-            dim_feedforward=config.feedforward_dim,
-            dropout=config.dropout,
-            activation="gelu",
-            batch_first=True,
-        )
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=config.transformer_layers)
+        self.encoder = build_transformer_encoder(config)
         self.lstm = nn.LSTM(
             input_size=config.d_model,
             hidden_size=config.hidden_size,
@@ -160,3 +144,15 @@ def build_model(n_features: int, action_count: int, config: ModelConfig) -> Temp
     if config.family is ModelFamily.TRANSFORMER_LSTM:
         return TransformerLSTMBaseline(n_features, action_count, config)
     raise ValueError(f"Unsupported model family: {config.family}")
+
+
+def build_transformer_encoder(config: ModelConfig) -> nn.TransformerEncoder:
+    encoder_layer = nn.TransformerEncoderLayer(
+        d_model=config.d_model,
+        nhead=config.nhead,
+        dim_feedforward=config.feedforward_dim,
+        dropout=config.dropout,
+        activation="gelu",
+        batch_first=True,
+    )
+    return nn.TransformerEncoder(encoder_layer, num_layers=config.transformer_layers)

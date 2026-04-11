@@ -23,8 +23,9 @@ from ._runtime import (
     resolve_device,
     set_global_seed,
 )
-from .evaluation import compute_batch_metrics
-from .lightning_module import EpochMetrics, TemporalLightningModule, mean_metrics
+from .datamodule import TemporalDataModule
+from .evaluation import EpochMetrics, compute_temporal_batch_metrics, mean_metrics
+from .lightning_module import TemporalLightningModule
 from .models import TemporalModel
 from .torch_datasets import build_class_weights
 
@@ -83,21 +84,10 @@ def train_model(
         microbatch_size,
     )
 
-    class_weights = build_class_weights(
-        store.class_labels,
-        train_sample_indices,
-        store.action_count,
-    )
-    train_loader = build_sequence_loader(
-        store,
-        train_sample_indices,
-        lookback_steps=lookback_steps,
-        batch_size=training_config.batch_size,
-        device=device,
-    )
-    validation_loader = build_sequence_loader(
-        store,
-        validation_sample_indices,
+    data_module = TemporalDataModule(
+        store=store,
+        train_sample_indices=train_sample_indices,
+        validation_sample_indices=validation_sample_indices,
         lookback_steps=lookback_steps,
         batch_size=training_config.batch_size,
         device=device,
@@ -105,7 +95,7 @@ def train_model(
 
     module = TemporalLightningModule(
         model,
-        class_weights=class_weights,
+        class_weights=data_module.class_weights,
         action_count=store.action_count,
         training_config=training_config,
     )
@@ -143,7 +133,7 @@ def train_model(
         "training started "
         f"(accelerator={accelerator}, devices={devices}, microbatch={microbatch_size})"
     )
-    trainer.fit(module, train_dataloaders=train_loader, val_dataloaders=validation_loader)
+    trainer.fit(module, datamodule=data_module)
 
     if checkpoint_callback.best_model_path:
         state = torch.load(checkpoint_callback.best_model_path, map_location="cpu")
@@ -178,8 +168,6 @@ def evaluate_model(
     if class_weights is None:
         class_weights = build_class_weights(store.class_labels, sample_indices, store.action_count)
     class_weights = class_weights.to(device)
-    ce_loss = torch.nn.CrossEntropyLoss(weight=class_weights)
-    smooth_l1 = torch.nn.SmoothL1Loss()
     loader = build_sequence_loader(
         store,
         sample_indices,
@@ -190,24 +178,13 @@ def evaluate_model(
     metrics = []
     with torch.no_grad():
         for batch in loader:
-            inputs = batch["inputs"].to(device)
-            class_labels = batch["class_label"].to(device)
-            target_log_fee = batch["target_log_fee"].to(device)
-            outputs = model(inputs)
-            block_loss = ce_loss(outputs.logits, class_labels)
-            fee_loss = smooth_l1(outputs.fee_hat, target_log_fee)
-            total_loss = (
-                training_config.action_loss_weight * block_loss
-                + training_config.fee_loss_weight * fee_loss
+            device_batch = {key: value.to(device) for key, value in batch.items()}
+            outputs = model(device_batch["inputs"])
+            _, batch_metrics = compute_temporal_batch_metrics(
+                outputs,
+                device_batch,
+                class_weights=class_weights,
+                training_config=training_config,
             )
-            metrics.append(
-                compute_batch_metrics(
-                    logits=outputs.logits.detach(),
-                    total_loss=total_loss.detach(),
-                    class_labels=class_labels.detach(),
-                    action_log_fees=batch["action_log_fees"].to(device).detach(),
-                    next_block_log_fee=batch["next_block_log_fee"].to(device).detach(),
-                    optimal_log_fee=batch["optimal_log_fee"].to(device).detach(),
-                )
-            )
+            metrics.append(batch_metrics)
     return mean_metrics(metrics)

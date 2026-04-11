@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from ..core.json import write_json
 from .artifacts import LoadedTrainingArtifact, TrainingArtifactManifest
 from .pipeline import (
     PreparedInferenceDataset,
@@ -210,5 +211,4 @@ def build_simulation_report(
 
 
 def write_json_report(path: Path, report: TrainingRunReport | SimulationReport) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    write_json(path, report)

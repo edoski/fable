@@ -10,7 +10,10 @@ defaults:
   - tracking: mlflow
   - tuning: default
   - runtime: local
+  - paths: default
   - _self_
+
+task: train
 
 hydra:
   job:

@@ -12,7 +12,7 @@ from .artifacts import (
     build_training_artifact_manifest,
     write_training_artifact,
 )
-from .lightning_module import EpochMetrics
+from .evaluation import EpochMetrics
 from .pipeline import TrainingRunResult, TrainingSpec, run_training
 from .reporting import TrainingRunReport, build_training_run_report, write_json_report
 

@@ -28,8 +28,9 @@ from ..acquisition.windowing import (
 )
 from ..core.config import ExperimentConfig, coerce_config
 from ..core.console import Reporter, RichReporter
+from ..core.json import write_json
 from ..core.tracking import log_artifacts
-from ._shared import managed_workflow, write_json
+from ._shared import managed_workflow
 
 
 def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:

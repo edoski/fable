@@ -36,9 +36,10 @@ params.yaml
 
 ### `core`
 
-- [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py): structured runtime config dataclasses plus Hydra/OmegaConf coercion and validation
+- [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py): Pydantic runtime config schema plus Hydra/OmegaConf coercion
 - [constants.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/constants.py): shared filenames and evaluation timestamps
 - [console.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/console.py): Rich-backed workflow reporting
+- [json.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/json.py): shared JSON artifact serialization
 - [tracking.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/tracking.py): MLflow setup and structured logging helpers
 
 ### `acquisition`
@@ -61,6 +62,7 @@ This layer no longer contains snapshot registries or a custom JSON-RPC transport
 - [features.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/features.py): feature engineering
 - [datasets.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/datasets.py): temporal geometry and store construction
 - [normalization.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/normalization.py): scaler fitting and transformation
+- [validation_base.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/validation_base.py): shared validation report primitives
 
 `io.py` stays custom because it is not just a parquet wrapper. It centralizes the
 repo’s dataset-path contract:
@@ -76,6 +78,7 @@ adapter would not reduce real complexity.
 ### `modeling`
 
 - [models.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/models.py): custom model definitions using mature `torch.nn` layers
+- [datamodule.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/datamodule.py): Lightning dataloaders and class-weight plumbing
 - [lightning_module.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/lightning_module.py): Lightning training harness
 - [training.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/training.py): trainer assembly and evaluation helpers
 - [pipeline.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/pipeline.py): dataset preparation for training and inference
@@ -97,6 +100,7 @@ What stays custom here:
 ### `workflows`
 
 - [acquire.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/acquire.py)
+- [dvc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/dvc.py): DVC params loader and stage dispatcher
 - [train.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/train.py)
 - [simulate.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/simulate.py)
 - [tune.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/tune.py)
@@ -110,6 +114,7 @@ Each workflow exposes:
 The workflow layer is intentionally thin:
 
 - `workflows/_shared.py` owns reporter lifecycle, MLflow setup, config logging, and nested run handling
+- `workflows/dvc.py` owns the DVC-only `params.yaml` loading path and then dispatches the same workflow functions
 - `acquire.py` orchestrates stage order only and delegates pull/window/metadata policy to `acquisition/*`
 - `train.py` and `tune.py` both route persisted model/report generation through `modeling/execution.py`
 
@@ -138,20 +143,20 @@ Model storage is keyed by the training dataset window:
 configuration.
 
 In the DVC thesis path, `train` explicitly depends on the tuned model-local
-`best_params.json` artifact and runs with `tuning.apply_best_params=true`, so
-the best Optuna result is consumed intentionally rather than implicitly. Direct
-`spice-train` usage still defaults to `tuning.apply_best_params=false`.
+`best_params.json` artifact. The `spice-dvc train` runner applies that artifact
+intentionally. Direct `spice-train` usage still defaults to
+`tuning.apply_best_params=false`.
 
-Stage definitions live in [dvc.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/dvc.yaml), and DVC-facing run variables live in [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml).
+DVC Hydra composition is enabled in [.dvc/config](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/.dvc/config). Stage definitions live in [dvc.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/dvc.yaml), and the composed baseline consumed by the stages lives in [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml).
 
 ## Why These Package Choices
 
 Selected:
 
-- `Hydra`: replaces the custom YAML/settings loader with structured composition
+- `Hydra`: owns runtime defaults through structured composition
 - `DVC`: replaces snapshot/provenance orchestration with stage-based reproducibility
 - `MLflow`: replaces ad hoc run bookkeeping
-- `Lightning` + `TorchMetrics`: replaces the handwritten training loop and standard metric plumbing
+- `Lightning`: replaces the handwritten training loop and dataloader plumbing
 - `Optuna`: provides a first-class HPO path
 - `web3.py`: replaces the custom RPC transport layer
 - `Pandera`: replaces bespoke dataframe validation while still allowing custom table derivation logic

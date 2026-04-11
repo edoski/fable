@@ -12,8 +12,9 @@ import optuna
 from omegaconf import DictConfig
 from optuna.trial import FrozenTrial, TrialState
 
-from ..core.config import ExperimentConfig, coerce_config, validate_config
+from ..core.config import ExperimentConfig, coerce_config, revalidate_config
 from ..core.console import NullReporter
+from ..core.json import write_json
 from ..core.tracking import log_artifacts
 from ..modeling.execution import run_persisted_training
 from ._shared import (
@@ -23,7 +24,6 @@ from ._shared import (
     managed_workflow,
     set_nested_attr,
     trial_artifact_dir,
-    write_json,
 )
 
 
@@ -134,7 +134,7 @@ def _objective(base_config, trial: optuna.Trial) -> float:
         else:
             value = trial.suggest_categorical(path, list(candidates))
         set_nested_attr(config, path, value)
-    validate_config(config)
+    config = revalidate_config(config)
 
     spec = build_training_spec(config)
     artifact_dir = trial_artifact_dir(config, trial.number)

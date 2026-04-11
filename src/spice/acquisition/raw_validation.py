@@ -2,27 +2,20 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
-from typing import Literal
 
 import pandera.polars as pa
 import polars as pl
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from ..data.io import iter_block_files
 from ..data.validation import assess_exact_window_summary, summarize_exact_window_dataset
+from ..data.validation_base import ValidationModel, ValidationStatus, finalize_validation_status
 
 RAW_BLOCK_FILENAME_RE = re.compile(
     r"^(?P<chain>[a-z0-9_]+)__blocks__(?P<start>\d+)_to_(?P<end>\d+)$"
 )
-CRYO_DEFAULT_CHUNK_SIZE = 1_000
-ValidationStatus = Literal["clean", "error"]
-
-
-class ValidationModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
 
 
 class RawFileSummary(ValidationModel):
@@ -61,66 +54,6 @@ class RawPullValidationReport(ValidationModel):
     above_end_count: int = 0
     status: ValidationStatus = "clean"
     errors: list[str] = Field(default_factory=list)
-
-
-class CryoReportSummary(ValidationModel):
-    path: Path
-    output_dir: str
-    network_name: str
-    chunk_size: int
-
-
-def _normalized_path_strings(path: Path) -> set[str]:
-    candidates = {path.as_posix()}
-    try:
-        candidates.add(path.resolve().as_posix())
-    except OSError:
-        pass
-    return candidates
-
-
-def _load_cryo_report_summary(path: Path) -> CryoReportSummary | None:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-
-    args = raw.get("args")
-    if isinstance(args, str):
-        try:
-            args = json.loads(args)
-        except json.JSONDecodeError:
-            return None
-    if not isinstance(args, dict):
-        return None
-    try:
-        return CryoReportSummary(
-            path=path,
-            output_dir=str(args["output_dir"]),
-            network_name=str(args["network_name"]),
-            chunk_size=int(args["chunk_size"]),
-        )
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-def _read_expected_chunk_size(dataset_path: Path, expected_chain_name: str) -> int:
-    reports_dir = dataset_path / ".cryo" / "reports"
-    if not reports_dir.is_dir():
-        return CRYO_DEFAULT_CHUNK_SIZE
-    dataset_path_strings = _normalized_path_strings(dataset_path)
-    matches: list[CryoReportSummary] = []
-    for path in reports_dir.glob("*.json"):
-        report = _load_cryo_report_summary(path)
-        if report is None or report.network_name != expected_chain_name:
-            continue
-        if not (_normalized_path_strings(Path(report.output_dir)) & dataset_path_strings):
-            continue
-        matches.append(report)
-    if not matches:
-        return CRYO_DEFAULT_CHUNK_SIZE
-    newest = max(matches, key=lambda item: (item.path.stat().st_mtime_ns, item.path.name))
-    return newest.chunk_size
 
 
 def _read_lightweight_columns(path: Path) -> tuple[list[int], list[int], list[int]]:
@@ -371,13 +304,6 @@ def _apply_exact_window_summary(
             report.errors.append(error)
 
 
-def _finalize_status(report: RawPullValidationReport) -> None:
-    if report.errors:
-        report.status = "error"
-    else:
-        report.status = "clean"
-
-
 def validate_raw_pull(
     dataset_path: Path,
     *,
@@ -385,20 +311,19 @@ def validate_raw_pull(
     expected_chain_id: int,
     expected_start_timestamp: int,
     expected_end_timestamp: int,
-    expected_chunk_size: int | None = None,
+    expected_chunk_size: int,
 ) -> RawPullValidationReport:
     report = RawPullValidationReport(
         dataset_path=dataset_path,
         expected_start_timestamp=expected_start_timestamp,
         expected_end_timestamp=expected_end_timestamp,
     )
-    chunk_size = expected_chunk_size or _read_expected_chunk_size(dataset_path, expected_chain_name)
     summaries: list[RawFileSummary] = []
     try:
         paths = iter_block_files(dataset_path)
     except ValueError as exc:
         report.errors.append(str(exc))
-        _finalize_status(report)
+        finalize_validation_status(report)
         return report
 
     for path in paths:
@@ -420,7 +345,7 @@ def validate_raw_pull(
     summary_frame = _summary_frame(summaries)
     if summary_frame.height:
         try:
-            _build_summary_schema(chunk_size).validate(summary_frame)
+            _build_summary_schema(expected_chunk_size).validate(summary_frame)
         except Exception as exc:
             report.errors.append(str(exc))
 
@@ -454,5 +379,5 @@ def validate_raw_pull(
         )
     except Exception as exc:
         report.errors.append(str(exc))
-    _finalize_status(report)
+    finalize_validation_status(report)
     return report

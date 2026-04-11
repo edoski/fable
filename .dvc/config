@@ -1,0 +1,4 @@
+[hydra]
+    enabled = true
+    config_dir = src/spice/conf
+    config_name = base

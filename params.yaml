@@ -1,10 +1,8 @@
-chain: ethereum
-model: lstm
-provider: publicnode
-
-runtime:
-  output_root: artifacts
-
+chain:
+  name: ethereum
+  chain_id: 1
+  block_time_seconds: 12.0
+  uses_poa_extra_data: false
 dataset:
   id: icdcs_2025_11_09
   window:
@@ -16,28 +14,113 @@ dataset:
   sampling:
     anchor_count: 400000
     history_anchor_count: null
-
+model:
+  family: lstm
+  input_projection_dim: 128
+  hidden_size: 128
+  num_layers: 2
+  dropout: 0.1
+  d_model: 128
+  nhead: 4
+  transformer_layers: 2
+  feedforward_dim: 512
+  head_hidden_dim: 64
+provider:
+  timeout_seconds: 30.0
+  retry_count: 5
+  backoff_factor: 0.125
+  name: publicnode
+  endpoints:
+    ethereum: https://ethereum-rpc.publicnode.com
+    polygon: https://polygon-bor-rpc.publicnode.com
+    avalanche: https://avalanche-c-chain-rpc.publicnode.com
+  references:
+    ethereum: https://ethereum-rpc.publicnode.com
+    polygon: https://polygon-bor-rpc.publicnode.com
+    avalanche: https://avalanche-c-chain-rpc.publicnode.com
 acquisition:
   requests_per_second: 25
   max_concurrent_requests: 2
   max_concurrent_chunks: 1
   chunk_size: 1000
+  dry_run: false
   overwrite: false
   enrich_batch_size: 100
   max_methods_per_second: 20.0
-
+split:
+  train_fraction: 0.8
+  validation_fraction: 0.1
 training:
-  device: auto
-  max_epochs: 50
+  learning_rate: 0.0003
+  weight_decay: 0.01
   batch_size: 64
+  max_epochs: 50
   early_stopping:
     patience: 8
-
+    min_delta: 0.0001
+  gradient_clip_norm: 1.0
+  action_loss_weight: 1.0
+  fee_loss_weight: 0.25
+  device: auto
+  seed: 2026
+  deterministic: true
+  log_every_n_steps: 10
 simulation:
   window_seconds: 7200
   arrival_rate_per_second: 0.05
   repetitions: 50
-
+  seed: 2026
+tracking:
+  enabled: true
+  experiment_name: spice
+  tracking_uri: ""
+  tags: {}
 tuning:
+  apply_best_params: false
+  study_name: spice-study
+  direction: maximize
   trial_count: 20
+  timeout_seconds: null
+  objective_metric: validation_profit_over_baseline
+  sampler_seed: 2026
   enable_pruning: true
+  search_space:
+    training.learning_rate:
+      - 0.0001
+      - 0.0003
+      - 0.001
+    training.weight_decay:
+      - 0.0
+      - 0.01
+      - 0.05
+    model.hidden_size:
+      - 64
+      - 128
+      - 256
+    model.dropout:
+      - 0.0
+      - 0.1
+      - 0.2
+runtime:
+  output_root: artifacts
+  hydra_run_dir: .hydra/runs/train
+  hydra_sweep_dir: .hydra/sweeps/train
+paths:
+  output_root: artifacts
+  dataset_root: artifacts/datasets/ethereum/icdcs_2025_11_09
+  metadata_root: artifacts/datasets/ethereum/icdcs_2025_11_09/.spice
+  raw_root: artifacts/datasets/ethereum/icdcs_2025_11_09/raw
+  raw_history_dir: artifacts/datasets/ethereum/icdcs_2025_11_09/raw/history
+  raw_evaluation_dir: artifacts/datasets/ethereum/icdcs_2025_11_09/raw/evaluation
+  enriched_root: artifacts/datasets/ethereum/icdcs_2025_11_09/enriched
+  enriched_history_dir: artifacts/datasets/ethereum/icdcs_2025_11_09/enriched/history
+  enriched_evaluation_dir: artifacts/datasets/ethereum/icdcs_2025_11_09/enriched/evaluation
+  dataset_metadata_path: artifacts/datasets/ethereum/icdcs_2025_11_09/.spice/metadata.json
+  artifact_root: artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s
+  checkpoint_dir: artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/checkpoints
+  train_report_path: artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/train_report.json
+  simulation_report_path: artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/simulation_report.json
+  tuning_root: artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/tuning
+  tuning_best_params_path: artifacts/models/ethereum/icdcs_2025_11_09/lstm/36s/tuning/best_params.json
+  mlruns_dir: artifacts/mlruns
+task: train

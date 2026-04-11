@@ -6,7 +6,18 @@ from pathlib import Path
 import polars as pl
 from hydra import compose, initialize_config_dir
 
-from spice.core.config import ExperimentConfig, coerce_config
+from spice.core.config import (
+    AcquisitionConfig,
+    ChainConfig,
+    ChainName,
+    ExperimentConfig,
+    ModelConfig,
+    ModelFamily,
+    ProviderConfig,
+    RpcProviderName,
+    TrainingConfig,
+    coerce_config,
+)
 from spice.core.constants import DEFAULT_WINDOW_START_TIMESTAMP
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +47,76 @@ def base_overrides(tmp_path: Path) -> list[str]:
         "dataset.temporal.lookback_seconds=120",
         "dataset.sampling.anchor_count=48",
     ]
+
+
+def make_chain_config(*, uses_poa_extra_data: bool = False) -> ChainConfig:
+    return ChainConfig(
+        name=ChainName.ETHEREUM,
+        chain_id=1,
+        block_time_seconds=12.0,
+        uses_poa_extra_data=uses_poa_extra_data,
+    )
+
+
+def make_provider_config(
+    endpoint: str = "https://rpc.example.test",
+    *,
+    name: RpcProviderName = RpcProviderName.DIRECT,
+) -> ProviderConfig:
+    reference = "$ETHEREUM_RPC_URL" if name is RpcProviderName.DIRECT else endpoint
+    return ProviderConfig(
+        name=name,
+        endpoints={"ethereum": endpoint},
+        references={"ethereum": reference},
+        timeout_seconds=30.0,
+        retry_count=5,
+        backoff_factor=0.125,
+    )
+
+
+def make_acquisition_config(*, chunk_size: int = 1) -> AcquisitionConfig:
+    return AcquisitionConfig(
+        requests_per_second=10,
+        max_concurrent_requests=2,
+        max_concurrent_chunks=1,
+        chunk_size=chunk_size,
+        dry_run=False,
+        overwrite=False,
+        enrich_batch_size=100,
+        max_methods_per_second=20.0,
+    )
+
+
+def make_model_config(*, family: ModelFamily = ModelFamily.LSTM) -> ModelConfig:
+    return ModelConfig(
+        family=family,
+        input_projection_dim=128,
+        hidden_size=128,
+        num_layers=2,
+        dropout=0.1,
+        d_model=128,
+        nhead=4,
+        transformer_layers=2,
+        feedforward_dim=512,
+        head_hidden_dim=64,
+    )
+
+
+def make_training_config() -> TrainingConfig:
+    return TrainingConfig(
+        learning_rate=3e-4,
+        weight_decay=1e-2,
+        batch_size=8,
+        max_epochs=1,
+        early_stopping={"patience": 8, "min_delta": 1e-4},
+        gradient_clip_norm=1.0,
+        action_loss_weight=1.0,
+        fee_loss_weight=0.25,
+        device="cpu",
+        seed=2026,
+        deterministic=True,
+        log_every_n_steps=10,
+    )
 
 
 def make_block_rows(

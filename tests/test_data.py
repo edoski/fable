@@ -3,14 +3,7 @@ import pytest
 from pandera.errors import SchemaError, SchemaErrors
 
 from spice.acquisition.raw_validation import validate_raw_pull
-from spice.core.config import (
-    ChainConfig,
-    ChainName,
-    ModelConfig,
-    ModelFamily,
-    SplitConfig,
-    TrainingConfig,
-)
+from spice.core.config import SplitConfig
 from spice.core.constants import DEFAULT_WINDOW_START_TIMESTAMP
 from spice.data.block_schema import ENRICHED_BLOCK_SCHEMA
 from spice.data.datasets import derive_dataset_geometry
@@ -22,8 +15,11 @@ from spice.modeling.pipeline import (
     prepare_training_dataset,
 )
 from tests.support import (
+    make_chain_config,
     make_evaluation_rows,
     make_history_rows,
+    make_model_config,
+    make_training_config,
     write_dataset_dir,
     write_raw_chunk,
 )
@@ -106,6 +102,17 @@ def test_validate_raw_pull_detects_file_range_gaps(tmp_path) -> None:
 
     assert report.status == "error"
     assert report.gap_count >= 1
+
+
+def test_validate_raw_pull_requires_explicit_chunk_size(tmp_path) -> None:
+    with pytest.raises(TypeError, match="expected_chunk_size"):
+        validate_raw_pull(
+            tmp_path / "raw",
+            expected_chain_name="ethereum",
+            expected_chain_id=1,
+            expected_start_timestamp=0,
+            expected_end_timestamp=2_000_000_000,
+        )
 
 
 def test_validate_raw_pull_reports_shared_window_and_raw_file_issues(tmp_path) -> None:
@@ -228,18 +235,14 @@ def test_prepare_training_and_inference_datasets(tmp_path) -> None:
     assert history_blocks.schema == ENRICHED_BLOCK_SCHEMA
     assert evaluation_blocks.schema == ENRICHED_BLOCK_SCHEMA
     spec = TrainingSpec(
-        chain=ChainConfig(
-            name=ChainName.ETHEREUM,
-            chain_id=1,
-            block_time_seconds=12.0,
-        ),
+        chain=make_chain_config(),
         dataset_id="icdcs_2025_11_09",
-        model=ModelConfig(family=ModelFamily.LSTM),
+        model=make_model_config(),
         max_delay_seconds=36,
         lookback_seconds=120,
         anchor_count=48,
         split=SplitConfig(train_fraction=0.7, validation_fraction=0.15),
-        training=TrainingConfig(max_epochs=1, batch_size=8, device="cpu"),
+        training=make_training_config(),
     )
 
     prepared = prepare_training_dataset(history_blocks, spec=spec)

@@ -12,10 +12,10 @@ from typing import Any
 
 import mlflow
 
-from ..core.config import ExperimentConfig, validate_config
+from ..core.config import ExperimentConfig, revalidate_config
 from ..core.console import NullReporter, Reporter
 from ..core.tracking import configure_mlflow, log_config
-from ..modeling.lightning_module import EpochMetrics
+from ..modeling.evaluation import EpochMetrics
 from ..modeling.pipeline import TrainingSpec
 
 
@@ -78,11 +78,6 @@ def managed_workflow(
             active_reporter.close()
 
 
-def write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
 def trial_artifact_dir(config: ExperimentConfig, trial_number: int) -> Path:
     return Path(config.paths.tuning_root) / "trials" / f"trial-{trial_number:03d}"
 
@@ -105,8 +100,7 @@ def apply_best_tuning_params(config: ExperimentConfig) -> ExperimentConfig:
         if not isinstance(key, str):
             raise ValueError(f"Invalid tuned parameter key in {path}: {key!r}")
         set_nested_attr(tuned_config, key, value)
-    validate_config(tuned_config)
-    return tuned_config
+    return revalidate_config(tuned_config)
 
 
 def clone_config(config: ExperimentConfig) -> ExperimentConfig:

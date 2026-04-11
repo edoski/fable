@@ -7,21 +7,13 @@ from web3.middleware import ExtraDataToPOAMiddleware
 
 from spice.acquisition.provider import build_web3, redact_sensitive_text
 from spice.acquisition.rpc import Web3BlockClient
-from spice.core.config import ChainConfig, ChainName, ProviderConfig, RpcProviderName
-
-
-def _provider(endpoint: str = "https://rpc.example.test") -> ProviderConfig:
-    return ProviderConfig(
-        name=RpcProviderName.DIRECT,
-        endpoints={"ethereum": endpoint},
-        references={"ethereum": "$ETHEREUM_RPC_URL"},
-    )
+from tests.support import make_chain_config, make_provider_config
 
 
 def test_build_web3_uses_configured_endpoint() -> None:
     web3 = build_web3(
-        _provider(),
-        ChainConfig(name=ChainName.ETHEREUM, chain_id=1),
+        make_provider_config(),
+        make_chain_config(),
     )
 
     assert web3.provider is not None
@@ -30,8 +22,8 @@ def test_build_web3_uses_configured_endpoint() -> None:
 
 def test_build_web3_injects_poa_middleware_for_poa_extra_data_chains() -> None:
     web3 = build_web3(
-        _provider(),
-        ChainConfig(name=ChainName.ETHEREUM, chain_id=1, uses_poa_extra_data=True),
+        make_provider_config(),
+        make_chain_config(uses_poa_extra_data=True),
     )
 
     assert ExtraDataToPOAMiddleware in web3.middleware_onion
@@ -40,7 +32,7 @@ def test_build_web3_injects_poa_middleware_for_poa_extra_data_chains() -> None:
 def test_redact_sensitive_text_masks_endpoint() -> None:
     text = "rpc=https://rpc.example.test"
 
-    assert redact_sensitive_text(text, _provider()) == "rpc=***"
+    assert redact_sensitive_text(text, make_provider_config()) == "rpc=***"
 
 
 def test_web3_block_client_reads_gas_limits(monkeypatch) -> None:
@@ -53,6 +45,6 @@ def test_web3_block_client_reads_gas_limits(monkeypatch) -> None:
         lambda _provider, _chain: SimpleNamespace(eth=FakeEth()),
     )
 
-    client = Web3BlockClient(_provider(), ChainConfig(name=ChainName.ETHEREUM, chain_id=1))
+    client = Web3BlockClient(make_provider_config(), make_chain_config())
 
     assert client.get_block_gas_limits([1, 2]) == {1: 30_000_001, 2: 30_000_002}

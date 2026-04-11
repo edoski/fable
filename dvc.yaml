@@ -3,113 +3,55 @@ vars:
 
 stages:
   acquire:
-    cmd: >-
-      .venv/bin/spice-acquire
-      chain=${chain}
-      provider=${provider}
-      runtime.output_root=${runtime.output_root}
-      dataset.id=${dataset.id}
-      dataset.window.start_date="${dataset.window.start_date}"
-      dataset.window.end_date="${dataset.window.end_date}"
-      dataset.temporal.max_delay_seconds=${dataset.temporal.max_delay_seconds}
-      dataset.temporal.lookback_seconds=${dataset.temporal.lookback_seconds}
-      dataset.sampling.anchor_count=${dataset.sampling.anchor_count}
-      dataset.sampling.history_anchor_count=${dataset.sampling.history_anchor_count}
-      acquisition.requests_per_second=${acquisition.requests_per_second}
-      acquisition.max_concurrent_requests=${acquisition.max_concurrent_requests}
-      acquisition.max_concurrent_chunks=${acquisition.max_concurrent_chunks}
-      acquisition.chunk_size=${acquisition.chunk_size}
-      acquisition.overwrite=${acquisition.overwrite}
-      acquisition.enrich_batch_size=${acquisition.enrich_batch_size}
-      acquisition.max_methods_per_second=${acquisition.max_methods_per_second}
+    cmd: .venv/bin/spice-dvc acquire
     deps:
       - pyproject.toml
       - src/spice
     params:
       - params.yaml
     outs:
-      - ${runtime.output_root}/datasets/${chain}/${dataset.id}/raw
-      - ${runtime.output_root}/datasets/${chain}/${dataset.id}/enriched
-      - ${runtime.output_root}/datasets/${chain}/${dataset.id}/.spice
+      - ${paths.raw_root}
+      - ${paths.enriched_root}
+      - ${paths.metadata_root}
 
   tune:
-    cmd: >-
-      .venv/bin/spice-tune
-      chain=${chain}
-      model=${model}
-      runtime.output_root=${runtime.output_root}
-      dataset.id=${dataset.id}
-      dataset.temporal.max_delay_seconds=${dataset.temporal.max_delay_seconds}
-      dataset.temporal.lookback_seconds=${dataset.temporal.lookback_seconds}
-      dataset.sampling.anchor_count=${dataset.sampling.anchor_count}
-      training.device=${training.device}
-      training.max_epochs=${training.max_epochs}
-      training.batch_size=${training.batch_size}
-      training.early_stopping.patience=${training.early_stopping.patience}
-      tuning.trial_count=${tuning.trial_count}
-      tuning.enable_pruning=${tuning.enable_pruning}
+    cmd: .venv/bin/spice-dvc tune
     deps:
       - pyproject.toml
       - src/spice
-      - ${runtime.output_root}/datasets/${chain}/${dataset.id}/enriched/history
+      - ${paths.enriched_history_dir}
     params:
       - params.yaml
     outs:
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/tuning/study.json
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/tuning/trials.json
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/tuning/best_params.json
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/tuning/trials
+      - ${paths.tuning_root}/study.json
+      - ${paths.tuning_root}/trials.json
+      - ${paths.tuning_best_params_path}
+      - ${paths.tuning_root}/trials
 
   train:
-    cmd: >-
-      .venv/bin/spice-train
-      chain=${chain}
-      model=${model}
-      runtime.output_root=${runtime.output_root}
-      dataset.id=${dataset.id}
-      dataset.temporal.max_delay_seconds=${dataset.temporal.max_delay_seconds}
-      dataset.temporal.lookback_seconds=${dataset.temporal.lookback_seconds}
-      dataset.sampling.anchor_count=${dataset.sampling.anchor_count}
-      training.device=${training.device}
-      training.max_epochs=${training.max_epochs}
-      training.batch_size=${training.batch_size}
-      training.early_stopping.patience=${training.early_stopping.patience}
-      tuning.apply_best_params=true
+    cmd: .venv/bin/spice-dvc train
     deps:
       - pyproject.toml
       - src/spice
-      - ${runtime.output_root}/datasets/${chain}/${dataset.id}/enriched/history
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/tuning/best_params.json
+      - ${paths.enriched_history_dir}
+      - ${paths.tuning_best_params_path}
     params:
       - params.yaml
     outs:
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/artifact.json
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/model.pt
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/train_report.json
+      - ${paths.artifact_root}/artifact.json
+      - ${paths.artifact_root}/model.pt
+      - ${paths.train_report_path}
 
   simulate:
-    cmd: >-
-      .venv/bin/spice-simulate
-      chain=${chain}
-      model=${model}
-      runtime.output_root=${runtime.output_root}
-      dataset.id=${dataset.id}
-      dataset.temporal.max_delay_seconds=${dataset.temporal.max_delay_seconds}
-      dataset.window.start_date="${dataset.window.start_date}"
-      dataset.window.end_date="${dataset.window.end_date}"
-      training.device=${training.device}
-      training.batch_size=${training.batch_size}
-      simulation.window_seconds=${simulation.window_seconds}
-      simulation.arrival_rate_per_second=${simulation.arrival_rate_per_second}
-      simulation.repetitions=${simulation.repetitions}
+    cmd: .venv/bin/spice-dvc simulate
     deps:
       - pyproject.toml
       - src/spice
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/artifact.json
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/model.pt
-      - ${runtime.output_root}/datasets/${chain}/${dataset.id}/enriched/history
-      - ${runtime.output_root}/datasets/${chain}/${dataset.id}/enriched/evaluation
+      - ${paths.artifact_root}/artifact.json
+      - ${paths.artifact_root}/model.pt
+      - ${paths.enriched_history_dir}
+      - ${paths.enriched_evaluation_dir}
     params:
       - params.yaml
     outs:
-      - ${runtime.output_root}/models/${chain}/${dataset.id}/${model}/${dataset.temporal.max_delay_seconds}s/simulation_report.json
+      - ${paths.simulation_report_path}
