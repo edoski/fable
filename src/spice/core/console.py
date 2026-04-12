@@ -781,7 +781,7 @@ class RichReporter(_BaseWorkflowReporter):
             box=None,
             pad_edge=False,
             padding=(0, 1),
-            collapse_padding=True,
+            collapse_padding=False,
         )
         table.add_column(
             "stage",
