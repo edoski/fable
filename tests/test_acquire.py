@@ -21,7 +21,7 @@ def test_acquire_workflow_writes_canonical_dataset_and_metadata(
 ) -> None:
     config = load_test_acquire_config(tmp_path, override=acquire_override())
     required_blocks = required_history_blocks(config)
-    block_time_seconds = int(round(config.chain.block_time_seconds))
+    block_time_seconds = int(round(config.chain.runtime.block_time_seconds))
     history_plan = BlockPullPlan(
         window=TimestampRange(
             start=config.evaluation_window_start_timestamp - required_blocks * block_time_seconds,
@@ -91,7 +91,7 @@ def test_acquire_workflow_writes_canonical_dataset_and_metadata(
                 plan.expected_rows,
                 start_block=plan.block_range.start,
                 start_timestamp=plan.window.start,
-                chain_id=config.chain.chain_id,
+                chain_id=config.chain.runtime.chain_id,
                 block_time_seconds=block_time_seconds,
             )
             write_dataset_dir(output_dir, rows)

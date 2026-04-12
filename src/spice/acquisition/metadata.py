@@ -62,13 +62,17 @@ class DatasetTemporalSettings(MetadataModel):
     max_delay_seconds: int
 
 
-class DatasetAcquisitionSettings(MetadataModel):
-    history_sample_budget: int
-    chunk_size: int
+class DatasetAcquisitionRpcSettings(MetadataModel):
     rpc_batch_size: int
     rpc_concurrency: int
     rpc_min_batch_size: int
     rpc_concurrency_rungs: list[int]
+
+
+class DatasetAcquisitionSettings(MetadataModel):
+    history_sample_budget: int
+    chunk_size: int
+    rpc: DatasetAcquisitionRpcSettings
 
 
 class DatasetSettingsMetadata(MetadataModel):
@@ -150,7 +154,7 @@ def load_dataset_metadata(path: Path) -> DatasetMetadata | None:
 def provider_metadata(config: AcquireConfig) -> ProviderMetadata:
     endpoint = config.provider.endpoint_for(config.chain.name)
     return ProviderMetadata(
-        name=config.provider.name.value,
+        name=config.provider.name,
         reference=config.provider.reference_for(config.chain.name),
         endpoint_fingerprint=sha256(endpoint.encode("utf-8")).hexdigest()[:16],
     )
@@ -225,8 +229,8 @@ def build_dataset_metadata(
     return DatasetMetadata(
         dataset=DatasetIdentity(id=config.dataset.id),
         chain=ChainMetadata(
-            name=config.chain.name.value,
-            chain_id=config.chain.chain_id,
+            name=config.chain.name,
+            chain_id=config.chain.runtime.chain_id,
         ),
         providers=list(providers),
         paths=DatasetPathsMetadata(
@@ -260,10 +264,12 @@ def build_dataset_metadata(
             acquisition=DatasetAcquisitionSettings(
                 history_sample_budget=config.effective_history_sample_budget,
                 chunk_size=config.acquisition.chunk_size,
-                rpc_batch_size=config.acquisition.rpc_batch_size,
-                rpc_concurrency=config.acquisition.rpc_concurrency,
-                rpc_min_batch_size=config.acquisition.rpc_min_batch_size,
-                rpc_concurrency_rungs=list(config.acquisition.rpc_concurrency_rungs),
+                rpc=DatasetAcquisitionRpcSettings(
+                    rpc_batch_size=config.acquisition.rpc.batch_size,
+                    rpc_concurrency=config.acquisition.rpc.concurrency,
+                    rpc_min_batch_size=config.acquisition.rpc.min_batch_size,
+                    rpc_concurrency_rungs=list(config.acquisition.rpc.concurrency_rungs),
+                ),
             ),
         ),
         validation=DatasetValidationMetadata(

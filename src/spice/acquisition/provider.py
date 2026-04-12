@@ -29,8 +29,8 @@ def _ipc_path_from_endpoint(endpoint: str) -> str | None:
 def _retry_configuration(provider: ProviderSpec) -> ExceptionRetryConfiguration:
     return ExceptionRetryConfiguration(
         errors=[aiohttp.ClientError, OSError, TimeoutError],
-        retries=provider.retry_count,
-        backoff_factor=provider.backoff_factor,
+        retries=provider.rpc.retry_count,
+        backoff_factor=provider.rpc.backoff_factor,
     )
 
 
@@ -41,7 +41,7 @@ def build_async_web3(provider: ProviderSpec, chain: ChainSpec) -> AsyncWeb3:
         web3 = AsyncWeb3(
             AsyncHTTPProvider(
                 endpoint,
-                request_kwargs={"timeout": provider.timeout_seconds},
+                request_kwargs={"timeout": provider.rpc.timeout_seconds},
                 exception_retry_configuration=_retry_configuration(provider),
             )
         )
@@ -52,11 +52,11 @@ def build_async_web3(provider: ProviderSpec, chain: ChainSpec) -> AsyncWeb3:
         web3 = AsyncWeb3(
             AsyncIPCProvider(
                 ipc_path,
-                request_timeout=provider.timeout_seconds,
-                max_connection_retries=provider.retry_count,
+                request_timeout=provider.rpc.timeout_seconds,
+                max_connection_retries=provider.rpc.retry_count,
             )
         )
 
-    if chain.uses_poa_extra_data:
+    if chain.runtime.uses_poa_extra_data:
         web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     return web3

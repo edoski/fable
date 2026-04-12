@@ -133,10 +133,12 @@ def acquire_override(
         "acquisition": {
             "history_sample_budget": sample_count,
             "chunk_size": 64,
-            "rpc_batch_size": 16,
-            "rpc_concurrency": 8,
-            "rpc_min_batch_size": 8,
-            "rpc_concurrency_rungs": [8],
+            "rpc": {
+                "batch_size": 16,
+                "concurrency": 8,
+                "min_batch_size": 8,
+                "concurrency_rungs": [8],
+            },
         },
     }
 
@@ -217,7 +219,7 @@ def required_history_blocks(config: AcquireConfig) -> int:
     geometry = derive_dataset_geometry(
         lookback_seconds=config.dataset.temporal.lookback_seconds,
         max_delay_seconds=config.dataset.temporal.max_delay_seconds,
-        block_time_seconds=config.chain.block_time_seconds,
+        block_time_seconds=config.chain.runtime.block_time_seconds,
         history_context_blocks=config.dataset.history_context_blocks,
     )
     return geometry.required_block_count(config.effective_history_sample_budget)
@@ -227,7 +229,7 @@ def required_dataset_blocks(config: TrainConfig | TuneConfig | SimulateConfig) -
     geometry = derive_dataset_geometry(
         lookback_seconds=config.dataset.temporal.lookback_seconds,
         max_delay_seconds=config.dataset.temporal.max_delay_seconds,
-        block_time_seconds=config.chain.block_time_seconds,
+        block_time_seconds=config.chain.runtime.block_time_seconds,
         history_context_blocks=config.dataset.history_context_blocks,
     )
     return geometry.required_block_count(config.dataset.sampling.sample_count)
@@ -265,13 +267,13 @@ def make_block_rows(
 
 
 def make_history_rows(config: TrainConfig | TuneConfig | SimulateConfig) -> list[dict[str, int]]:
-    block_time_seconds = int(round(config.chain.block_time_seconds))
+    block_time_seconds = int(round(config.chain.runtime.block_time_seconds))
     count = required_dataset_blocks(config)
     return make_block_rows(
         count,
         start_block=1,
         start_timestamp=config.evaluation_window_start_timestamp - count * block_time_seconds,
-        chain_id=config.chain.chain_id,
+        chain_id=config.chain.runtime.chain_id,
         block_time_seconds=block_time_seconds,
     )
 
@@ -286,8 +288,8 @@ def make_evaluation_rows(
         count,
         start_block=start_block,
         start_timestamp=config.evaluation_window_start_timestamp,
-        chain_id=config.chain.chain_id,
-        block_time_seconds=int(round(config.chain.block_time_seconds)),
+        chain_id=config.chain.runtime.chain_id,
+        block_time_seconds=int(round(config.chain.runtime.block_time_seconds)),
     )
 
 

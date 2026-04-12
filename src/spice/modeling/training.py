@@ -13,7 +13,7 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from numpy.typing import NDArray
 
 from ..config import ModelConfig, TrainingConfig
-from ..core.console import ConsoleRuntime, NullReporter, Reporter
+from ..core.console import NullReporter, Reporter
 from ..data.datasets import TemporalDatasetStore
 from ._runtime import (
     build_sequence_loader,
@@ -165,7 +165,6 @@ def train_model(
     training_config: TrainingConfig,
     artifact_dir: Path,
     reporter: Reporter | None = None,
-    runtime: ConsoleRuntime | None = None,
 ) -> TrainingResult:
     reporter = reporter or NullReporter()
     if train_sample_indices.size == 0 or validation_sample_indices.size == 0:
@@ -237,11 +236,6 @@ def train_model(
         num_sanity_val_steps=0,
         default_root_dir=str(artifact_dir),
         precision=cast(Any, precision),
-    )
-    reporter.log(
-        "training runtime "
-        f"(accelerator={accelerator}, devices={devices}, precision={precision}, "
-        f"compile={'on' if compile_enabled else 'off'})"
     )
     trainer.fit(module, datamodule=data_module)
 

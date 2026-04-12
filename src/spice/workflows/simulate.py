@@ -16,8 +16,16 @@ from ..planning.geometry import derive_dataset_geometry, minimum_history_context
 from ._shared import abort_cleanup, managed_workflow
 
 
-def _chain_label(chain_name: str) -> str:
-    return chain_name.replace("_", " ").title()
+def _workflow_facts(config: SimulateConfig) -> list[tuple[str, str]]:
+    facts = [
+        ("dataset", config.dataset.id),
+        ("chain", config.chain.name),
+        ("model", config.model.id),
+        ("variant", config.artifact.variant.value),
+    ]
+    if config.artifact.variant.value == "tuned":
+        facts.append(("study", config.study.id))
+    return facts
 
 
 def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
@@ -30,18 +38,27 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
     with managed_workflow(
         config,
         run_name=(
-            f"simulate-{config.chain.name.value}-{config.model.id}"
+            f"simulate-{config.chain.name}-{config.model.id}"
             f"-{config.dataset.temporal.max_delay_seconds}s"
         ),
         reporter=reporter,
     ) as session:
-        session.reporter.log(f"variant: {config.artifact.variant.value}")
+        session.runtime.configure_workflow("simulate", _workflow_facts(config))
+        load_reporter = session.runtime.stage_reporter("load", label="load")
+        prepare_reporter = session.runtime.stage_reporter("prepare", label="prepare")
+        predict_reporter = session.runtime.stage_reporter("predict", label="predict")
+        simulation_reporter = session.runtime.stage_reporter("simulate", label="simulate")
+        write_reporter = session.runtime.stage_reporter(
+            "write",
+            label="write",
+            running_status="writing",
+        )
         with abort_cleanup(
             session.reporter,
             label="simulate",
             cleanup=lambda: remove_path(report_path),
         ):
-            load_task = session.reporter.start_task("load inference inputs")
+            load_task = load_reporter.start_task("load inference inputs")
             loaded_artifact = load_training_artifact(artifact_dir)
             selection = validate_artifact_feature_graph(
                 loaded_artifact.manifest,
@@ -49,14 +66,14 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
             )
             history_blocks = load_block_frame(history_block_path)
             evaluation_blocks = load_block_frame(evaluation_block_path)
-            session.reporter.finish_task(
+            load_reporter.finish_task(
                 load_task,
                 message=f"artifact={artifact_dir} evaluation={evaluation_block_path}",
             )
-            prepare_task = session.reporter.start_task("prepare inference dataset")
+            prepare_task = prepare_reporter.start_task("prepare inference dataset")
             minimum_context = minimum_history_context_blocks(
                 lookback_seconds=loaded_artifact.manifest.lookback_seconds,
-                block_time_seconds=loaded_artifact.manifest.chain.block_time_seconds,
+                block_time_seconds=loaded_artifact.manifest.chain.runtime.block_time_seconds,
                 feature_warmup_blocks=feature_warmup_blocks(selection.feature_names),
             )
             if minimum_context > config.dataset.history_context_blocks:
@@ -72,14 +89,14 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 geometry=derive_dataset_geometry(
                     lookback_seconds=loaded_artifact.manifest.lookback_seconds,
                     max_delay_seconds=loaded_artifact.manifest.max_delay_seconds,
-                    block_time_seconds=loaded_artifact.manifest.chain.block_time_seconds,
+                    block_time_seconds=loaded_artifact.manifest.chain.runtime.block_time_seconds,
                     history_context_blocks=minimum_context,
                 ),
                 scaler=loaded_artifact.manifest.scaler,
                 window_start_timestamp=config.evaluation_window_start_timestamp,
                 window_end_timestamp=config.evaluation_window_end_timestamp,
             )
-            session.reporter.finish_task(
+            prepare_reporter.finish_task(
                 prepare_task,
                 message=f"samples={prepared.sample_count}",
             )
@@ -90,7 +107,7 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 lookback_steps=prepared.geometry.lookback_steps,
                 batch_size=config.training.batch_size,
                 device=config.training.device,
-                reporter=session.reporter,
+                reporter=predict_reporter,
             )
             simulation = run_temporal_simulation(
                 prepared.store,
@@ -100,7 +117,7 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 arrival_rate_per_second=config.simulation.arrival_rate_per_second,
                 repetitions=config.simulation.repetitions,
                 seed=config.simulation.seed,
-                reporter=session.reporter,
+                reporter=simulation_reporter,
             )
             report = build_simulation_report(
                 loaded_artifact,
@@ -113,9 +130,9 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 arrival_rate_per_second=config.simulation.arrival_rate_per_second,
                 repetitions=config.simulation.repetitions,
             )
-            report_task = session.reporter.start_task("write simulation report")
+            report_task = write_reporter.start_task("write simulation report")
             write_json_report(report_path, report)
-            session.reporter.finish_task(report_task, message=str(report_path), silent=True)
+            write_reporter.finish_task(report_task, message=str(report_path), silent=True)
         session.runtime.log_sectioned_summary(
             "simulation summary",
             [
@@ -123,7 +140,7 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                     "dataset",
                     [
                         ("id", report.dataset_id),
-                        ("chain", _chain_label(report.chain)),
+                        ("chain", report.chain),
                         ("model", report.model_id),
                         ("delay", f"{report.max_delay_seconds}s"),
                     ],

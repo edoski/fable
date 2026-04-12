@@ -7,33 +7,29 @@ from typing import Annotated
 
 import typer
 
-from .config import (
-    load_acquire_config,
-    load_simulate_config,
-    load_train_config,
-    load_tune_config,
-)
-from .workflows import acquire, simulate, train, tune
-
 app = typer.Typer(
     name="spice",
     help="SPICE workflow CLI.",
+    epilog="Example:\n  spice acquire --preset icdcs_2026",
     no_args_is_help=True,
     add_completion=True,
 )
 
-@app.command("acquire")
-def acquire_command(
-    preset: Annotated[str | None, typer.Option("--preset")] = None,
-    config: Annotated[Path | None, typer.Option("--config")] = None,
-    dataset: Annotated[str | None, typer.Option("--dataset")] = None,
-    chain: Annotated[str | None, typer.Option("--chain")] = None,
-    provider: Annotated[str | None, typer.Option("--provider")] = None,
-    acquisition_profile: Annotated[str | None, typer.Option("--acquisition")] = None,
-    storage_root: Annotated[Path | None, typer.Option("--storage-root")] = None,
-    dry_run: Annotated[bool | None, typer.Option("--dry-run/--no-dry-run")] = None,
+
+def _run_acquire(
+    *,
+    preset: str | None,
+    config: Path | None,
+    dataset: str | None,
+    chain: str | None,
+    provider: str | None,
+    acquisition_profile: str | None,
+    storage_root: Path | None,
+    dry_run: bool | None,
 ) -> None:
-    """Acquire canonical history and evaluation block datasets."""
+    from .config import load_acquire_config
+    from .workflows import acquire
+
     acquire.run(
         load_acquire_config(
             preset=preset,
@@ -48,21 +44,23 @@ def acquire_command(
     )
 
 
-@app.command("train")
-def train_command(
-    preset: Annotated[str | None, typer.Option("--preset")] = None,
-    config: Annotated[Path | None, typer.Option("--config")] = None,
-    dataset: Annotated[str | None, typer.Option("--dataset")] = None,
-    chain: Annotated[str | None, typer.Option("--chain")] = None,
-    model: Annotated[str | None, typer.Option("--model")] = None,
-    feature_set: Annotated[str | None, typer.Option("--feature-set")] = None,
-    training_profile: Annotated[str | None, typer.Option("--training")] = None,
-    split: Annotated[str | None, typer.Option("--split")] = None,
-    storage_root: Annotated[Path | None, typer.Option("--storage-root")] = None,
-    variant: Annotated[str | None, typer.Option("--variant")] = None,
-    study: Annotated[str | None, typer.Option("--study")] = None,
+def _run_train(
+    *,
+    preset: str | None,
+    config: Path | None,
+    dataset: str | None,
+    chain: str | None,
+    model: str | None,
+    feature_set: str | None,
+    training_profile: str | None,
+    split: str | None,
+    storage_root: Path | None,
+    variant: str | None,
+    study: str | None,
 ) -> None:
-    """Train a model artifact."""
+    from .config import load_train_config
+    from .workflows import train
+
     train.run(
         load_train_config(
             preset=preset,
@@ -80,23 +78,25 @@ def train_command(
     )
 
 
-@app.command("tune")
-def tune_command(
-    preset: Annotated[str | None, typer.Option("--preset")] = None,
-    config: Annotated[Path | None, typer.Option("--config")] = None,
-    dataset: Annotated[str | None, typer.Option("--dataset")] = None,
-    chain: Annotated[str | None, typer.Option("--chain")] = None,
-    model: Annotated[str | None, typer.Option("--model")] = None,
-    feature_set: Annotated[str | None, typer.Option("--feature-set")] = None,
-    training_profile: Annotated[str | None, typer.Option("--training")] = None,
-    split: Annotated[str | None, typer.Option("--split")] = None,
-    tuning_profile: Annotated[str | None, typer.Option("--tuning")] = None,
-    tuning_space: Annotated[str | None, typer.Option("--tuning-space")] = None,
-    storage_root: Annotated[Path | None, typer.Option("--storage-root")] = None,
-    study: Annotated[str | None, typer.Option("--study")] = None,
-    trial_count: Annotated[int | None, typer.Option("--trial-count")] = None,
+def _run_tune(
+    *,
+    preset: str | None,
+    config: Path | None,
+    dataset: str | None,
+    chain: str | None,
+    model: str | None,
+    feature_set: str | None,
+    training_profile: str | None,
+    split: str | None,
+    tuning_profile: str | None,
+    tuning_space: str | None,
+    storage_root: Path | None,
+    study: str | None,
+    trial_count: int | None,
 ) -> None:
-    """Tune model hyperparameters."""
+    from .config import load_tune_config
+    from .workflows import tune
+
     tune.run(
         load_tune_config(
             preset=preset,
@@ -116,21 +116,23 @@ def tune_command(
     )
 
 
-@app.command("simulate")
-def simulate_command(
-    preset: Annotated[str | None, typer.Option("--preset")] = None,
-    config: Annotated[Path | None, typer.Option("--config")] = None,
-    dataset: Annotated[str | None, typer.Option("--dataset")] = None,
-    chain: Annotated[str | None, typer.Option("--chain")] = None,
-    model: Annotated[str | None, typer.Option("--model")] = None,
-    feature_set: Annotated[str | None, typer.Option("--feature-set")] = None,
-    training_profile: Annotated[str | None, typer.Option("--training")] = None,
-    simulation_profile: Annotated[str | None, typer.Option("--simulation")] = None,
-    storage_root: Annotated[Path | None, typer.Option("--storage-root")] = None,
-    variant: Annotated[str | None, typer.Option("--variant")] = None,
-    study: Annotated[str | None, typer.Option("--study")] = None,
+def _run_simulate(
+    *,
+    preset: str | None,
+    config: Path | None,
+    dataset: str | None,
+    chain: str | None,
+    model: str | None,
+    feature_set: str | None,
+    training_profile: str | None,
+    simulation_profile: str | None,
+    storage_root: Path | None,
+    variant: str | None,
+    study: str | None,
 ) -> None:
-    """Run evaluation-day simulation from a trained artifact."""
+    from .config import load_simulate_config
+    from .workflows import simulate
+
     simulate.run(
         load_simulate_config(
             preset=preset,
@@ -145,6 +147,487 @@ def simulate_command(
             variant=variant,
             study=study,
         )
+    )
+
+
+@app.command(
+    "acquire",
+    short_help="Acquire canonical datasets.",
+    help="Acquire canonical history and evaluation block datasets.",
+    epilog=(
+        "Example:\n"
+        "  spice acquire --preset icdcs_2026 --chain avalanche --provider publicnode"
+    ),
+)
+def acquire_command(
+    preset: Annotated[
+        str | None,
+        typer.Option(
+            "--preset",
+            metavar="PRESET",
+            help="Apply a named preset before config-file and CLI overrides.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            metavar="PATH",
+            help="Overlay a YAML config file on top of the selected preset.",
+            rich_help_panel="Overrides",
+        ),
+    ] = None,
+    dataset: Annotated[
+        str | None,
+        typer.Option(
+            "--dataset",
+            metavar="DATASET",
+            help="Use a named dataset spec.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    chain: Annotated[
+        str | None,
+        typer.Option(
+            "--chain",
+            metavar="CHAIN",
+            help="Override the target chain.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            metavar="PROVIDER",
+            help="Override the RPC provider.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    acquisition_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--acquisition",
+            metavar="PROFILE",
+            help="Use a named acquisition profile.",
+            rich_help_panel="Profiles",
+        ),
+    ] = None,
+    storage_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--storage-root",
+            metavar="PATH",
+            help="Write datasets under a non-default output root.",
+            rich_help_panel="Outputs",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool | None,
+        typer.Option(
+            "--dry-run/--no-dry-run",
+            help="Plan the acquisition and print windows without writing outputs.",
+            rich_help_panel="Execution",
+        ),
+    ] = None,
+) -> None:
+    _run_acquire(
+        preset=preset,
+        config=config,
+        dataset=dataset,
+        chain=chain,
+        provider=provider,
+        acquisition_profile=acquisition_profile,
+        storage_root=storage_root,
+        dry_run=dry_run,
+    )
+
+
+@app.command(
+    "train",
+    short_help="Train a model artifact.",
+    help="Train a model artifact from a canonical history dataset.",
+    epilog="Example:\n  spice train --preset icdcs_2026 --variant tuned",
+)
+def train_command(
+    preset: Annotated[
+        str | None,
+        typer.Option(
+            "--preset",
+            metavar="PRESET",
+            help="Apply a named preset before config-file and CLI overrides.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            metavar="PATH",
+            help="Overlay a YAML config file on top of the selected preset.",
+            rich_help_panel="Overrides",
+        ),
+    ] = None,
+    dataset: Annotated[
+        str | None,
+        typer.Option(
+            "--dataset",
+            metavar="DATASET",
+            help="Use a named dataset spec.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    chain: Annotated[
+        str | None,
+        typer.Option(
+            "--chain",
+            metavar="CHAIN",
+            help="Override the target chain.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            metavar="MODEL",
+            help="Use a named model spec.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    feature_set: Annotated[
+        str | None,
+        typer.Option(
+            "--feature-set",
+            metavar="FEATURE_SET",
+            help="Use a named feature-set spec.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    training_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--training",
+            metavar="PROFILE",
+            help="Use a named training profile.",
+            rich_help_panel="Profiles",
+        ),
+    ] = None,
+    split: Annotated[
+        str | None,
+        typer.Option(
+            "--split",
+            metavar="SPLIT",
+            help="Use a named train/validation/test split profile.",
+            rich_help_panel="Profiles",
+        ),
+    ] = None,
+    storage_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--storage-root",
+            metavar="PATH",
+            help="Write artifacts under a non-default output root.",
+            rich_help_panel="Outputs",
+        ),
+    ] = None,
+    variant: Annotated[
+        str | None,
+        typer.Option(
+            "--variant",
+            metavar="VARIANT",
+            help="Select the artifact variant, such as baseline or tuned.",
+            rich_help_panel="Execution",
+        ),
+    ] = None,
+    study: Annotated[
+        str | None,
+        typer.Option(
+            "--study",
+            metavar="STUDY",
+            help="Override the study id used for tuned artifacts.",
+            rich_help_panel="Execution",
+        ),
+    ] = None,
+) -> None:
+    _run_train(
+        preset=preset,
+        config=config,
+        dataset=dataset,
+        chain=chain,
+        model=model,
+        feature_set=feature_set,
+        training_profile=training_profile,
+        split=split,
+        storage_root=storage_root,
+        variant=variant,
+        study=study,
+    )
+
+
+@app.command(
+    "tune",
+    short_help="Tune model hyperparameters.",
+    help="Run Optuna tuning for a model and write the best parameter set.",
+    epilog="Example:\n  spice tune --preset icdcs_2026 --trial-count 20",
+)
+def tune_command(
+    preset: Annotated[
+        str | None,
+        typer.Option(
+            "--preset",
+            metavar="PRESET",
+            help="Apply a named preset before config-file and CLI overrides.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            metavar="PATH",
+            help="Overlay a YAML config file on top of the selected preset.",
+            rich_help_panel="Overrides",
+        ),
+    ] = None,
+    dataset: Annotated[
+        str | None,
+        typer.Option(
+            "--dataset",
+            metavar="DATASET",
+            help="Use a named dataset spec.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    chain: Annotated[
+        str | None,
+        typer.Option(
+            "--chain",
+            metavar="CHAIN",
+            help="Override the target chain.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            metavar="MODEL",
+            help="Use a named model spec.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    feature_set: Annotated[
+        str | None,
+        typer.Option(
+            "--feature-set",
+            metavar="FEATURE_SET",
+            help="Use a named feature-set spec.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    training_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--training",
+            metavar="PROFILE",
+            help="Use a named training profile.",
+            rich_help_panel="Profiles",
+        ),
+    ] = None,
+    split: Annotated[
+        str | None,
+        typer.Option(
+            "--split",
+            metavar="SPLIT",
+            help="Use a named train/validation/test split profile.",
+            rich_help_panel="Profiles",
+        ),
+    ] = None,
+    tuning_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--tuning",
+            metavar="PROFILE",
+            help="Use a named tuning profile.",
+            rich_help_panel="Profiles",
+        ),
+    ] = None,
+    tuning_space: Annotated[
+        str | None,
+        typer.Option(
+            "--tuning-space",
+            metavar="SPACE",
+            help="Use a named tuning search space.",
+            rich_help_panel="Profiles",
+        ),
+    ] = None,
+    storage_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--storage-root",
+            metavar="PATH",
+            help="Write tuning outputs under a non-default output root.",
+            rich_help_panel="Outputs",
+        ),
+    ] = None,
+    study: Annotated[
+        str | None,
+        typer.Option(
+            "--study",
+            metavar="STUDY",
+            help="Override the study id.",
+            rich_help_panel="Execution",
+        ),
+    ] = None,
+    trial_count: Annotated[
+        int | None,
+        typer.Option(
+            "--trial-count",
+            metavar="COUNT",
+            min=1,
+            help="Override the number of Optuna trials.",
+            rich_help_panel="Execution",
+        ),
+    ] = None,
+) -> None:
+    _run_tune(
+        preset=preset,
+        config=config,
+        dataset=dataset,
+        chain=chain,
+        model=model,
+        feature_set=feature_set,
+        training_profile=training_profile,
+        split=split,
+        tuning_profile=tuning_profile,
+        tuning_space=tuning_space,
+        storage_root=storage_root,
+        study=study,
+        trial_count=trial_count,
+    )
+
+
+@app.command(
+    "simulate",
+    short_help="Run evaluation-day simulation.",
+    help="Run evaluation-day simulation from a trained artifact.",
+    epilog="Example:\n  spice simulate --preset icdcs_2026 --variant tuned",
+)
+def simulate_command(
+    preset: Annotated[
+        str | None,
+        typer.Option(
+            "--preset",
+            metavar="PRESET",
+            help="Apply a named preset before config-file and CLI overrides.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            metavar="PATH",
+            help="Overlay a YAML config file on top of the selected preset.",
+            rich_help_panel="Overrides",
+        ),
+    ] = None,
+    dataset: Annotated[
+        str | None,
+        typer.Option(
+            "--dataset",
+            metavar="DATASET",
+            help="Use a named dataset spec.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    chain: Annotated[
+        str | None,
+        typer.Option(
+            "--chain",
+            metavar="CHAIN",
+            help="Override the target chain.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            metavar="MODEL",
+            help="Use a named model spec.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    feature_set: Annotated[
+        str | None,
+        typer.Option(
+            "--feature-set",
+            metavar="FEATURE_SET",
+            help="Use a named feature-set spec.",
+            rich_help_panel="Selection",
+        ),
+    ] = None,
+    training_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--training",
+            metavar="PROFILE",
+            help="Use a named training profile.",
+            rich_help_panel="Profiles",
+        ),
+    ] = None,
+    simulation_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--simulation",
+            metavar="PROFILE",
+            help="Use a named simulation profile.",
+            rich_help_panel="Profiles",
+        ),
+    ] = None,
+    storage_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--storage-root",
+            metavar="PATH",
+            help="Write reports under a non-default output root.",
+            rich_help_panel="Outputs",
+        ),
+    ] = None,
+    variant: Annotated[
+        str | None,
+        typer.Option(
+            "--variant",
+            metavar="VARIANT",
+            help="Select the artifact variant, such as baseline or tuned.",
+            rich_help_panel="Execution",
+        ),
+    ] = None,
+    study: Annotated[
+        str | None,
+        typer.Option(
+            "--study",
+            metavar="STUDY",
+            help="Override the study id used for tuned artifacts.",
+            rich_help_panel="Execution",
+        ),
+    ] = None,
+) -> None:
+    _run_simulate(
+        preset=preset,
+        config=config,
+        dataset=dataset,
+        chain=chain,
+        model=model,
+        feature_set=feature_set,
+        training_profile=training_profile,
+        simulation_profile=simulation_profile,
+        storage_root=storage_root,
+        variant=variant,
+        study=study,
     )
 
 

@@ -28,10 +28,6 @@ from ..planning.geometry import derive_dataset_geometry
 from ._shared import managed_workflow
 
 
-def _chain_label(chain_name: str) -> str:
-    return chain_name.replace("_", " ").title()
-
-
 def _format_timestamp(value: int) -> str:
     return datetime.fromtimestamp(value, tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
 
@@ -95,6 +91,14 @@ def _final_window_rows(
     ]
 
 
+def _workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:
+    return [
+        ("dataset", config.dataset.id),
+        ("chain", config.chain.name),
+        ("provider", config.provider.name),
+    ]
+
+
 def run(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
     asyncio.run(_run_async(config, reporter=reporter))
 
@@ -108,7 +112,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
     geometry = derive_dataset_geometry(
         lookback_seconds=config.dataset.temporal.lookback_seconds,
         max_delay_seconds=config.dataset.temporal.max_delay_seconds,
-        block_time_seconds=config.chain.block_time_seconds,
+        block_time_seconds=config.chain.runtime.block_time_seconds,
         history_context_blocks=config.dataset.history_context_blocks,
     )
     required_history_blocks = geometry.required_block_count(config.effective_history_sample_budget)
@@ -116,13 +120,32 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
         config.evaluation_window_start_timestamp,
         config.evaluation_window_end_timestamp,
     )
-    chain_label = _chain_label(config.chain.name.value)
+    chain_label = config.chain.name
 
     with managed_workflow(
         config,
-        run_name=f"acquire-{config.chain.name.value}-{config.provider.name.value}",
+        run_name=f"acquire-{config.chain.name}-{config.provider.name}",
         reporter=reporter,
     ) as session:
+        session.runtime.configure_workflow("acquire", _workflow_facts(config))
+        history_reporter = session.runtime.stage_reporter(
+            "history",
+            label="history",
+            status="pending",
+            running_status="pulling",
+        )
+        evaluation_reporter = session.runtime.stage_reporter(
+            "evaluation",
+            label="evaluation",
+            status="pending",
+            running_status="pulling",
+        )
+        metadata_reporter = session.runtime.stage_reporter(
+            "metadata",
+            label="metadata",
+            status="pending",
+            running_status="writing",
+        )
         block_client = Web3BlockClient(config.provider, config.chain)
         try:
             evaluation_plan = await block_client.plan_window(
@@ -133,6 +156,20 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                 config=config,
                 block_client=block_client,
                 required_history_blocks=required_history_blocks,
+            )
+            session.runtime.set_stage_state(
+                "history",
+                total=history_plan.expected_rows,
+                completed=0,
+                unit="blocks",
+                message="waiting",
+            )
+            session.runtime.set_stage_state(
+                "evaluation",
+                total=evaluation_plan.expected_rows,
+                completed=0,
+                unit="blocks",
+                message="waiting for history",
             )
 
             if config.acquisition.dry_run:
@@ -189,7 +226,15 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                         history_plan=history_plan,
                         required_history_blocks=required_history_blocks,
                         rpc_controller=rpc_controller,
-                        reporter=session.reporter,
+                        reporter=history_reporter,
+                    )
+                    session.runtime.set_stage_state(
+                        "history",
+                        status=history_result.outcome.value,
+                        total=history_result.validation.row_count,
+                        completed=history_result.validation.row_count,
+                        unit="blocks",
+                        message=f"{history_result.file_count:,} files",
                     )
                     evaluation_result = await ensure_evaluation_dataset(
                         config=config,
@@ -198,7 +243,15 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                         working_dir=temp_root,
                         evaluation_plan=evaluation_plan,
                         rpc_controller=rpc_controller,
-                        reporter=session.reporter,
+                        reporter=evaluation_reporter,
+                    )
+                    session.runtime.set_stage_state(
+                        "evaluation",
+                        status=evaluation_result.outcome.value,
+                        total=evaluation_result.validation.row_count,
+                        completed=evaluation_result.validation.row_count,
+                        unit="blocks",
+                        message=f"{evaluation_result.file_count:,} files",
                     )
                     providers = list(existing_metadata.providers) if existing_metadata else []
                     current_provider = provider_metadata(config)
@@ -222,7 +275,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                         acquisition_runtime=rpc_controller.snapshot(),
                     )
                     metadata_path.parent.mkdir(parents=True, exist_ok=True)
-                    metadata_task = session.reporter.start_task("write dataset metadata")
+                    metadata_task = metadata_reporter.start_task("write dataset metadata")
                     metadata_tmp_path = temp_root / ".spice" / "metadata.json"
                     write_json(metadata_tmp_path, metadata)
                     promotions: list[tuple[Path, Path]] = []
@@ -232,7 +285,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                         promotions.append((evaluation_dir, evaluation_result.promote_dir))
                     promotions.append((metadata_path, metadata_tmp_path))
                     promote_paths_atomic(promotions)
-                    session.reporter.finish_task(
+                    metadata_reporter.finish_task(
                         metadata_task,
                         message=str(metadata_path),
                         silent=True,

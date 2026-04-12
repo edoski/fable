@@ -1,4 +1,5 @@
 name: polygon
-chain_id: 137
-block_time_seconds: 2.0
-uses_poa_extra_data: true
+runtime:
+  chain_id: 137
+  block_time_seconds: 2.0
+  uses_poa_extra_data: true

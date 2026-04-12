@@ -14,7 +14,6 @@ from optuna.trial import FrozenTrial, TrialState
 from pydantic import BaseModel, ConfigDict
 
 from ..config import (
-    ChainName,
     StudyConfig,
     StudyDirection,
     TuneConfig,
@@ -80,7 +79,7 @@ class TuningTrialRecord(TuningModel):
 class TuningStudyReport(TuningModel):
     kind: Literal["tuning_study"] = "tuning_study"
     study: StudyConfig
-    chain: ChainName
+    chain: str
     dataset_id: str
     model_id: str
     max_delay_seconds: int
@@ -100,7 +99,7 @@ class TuningStudyReport(TuningModel):
 class TuningBestParamsReport(TuningModel):
     kind: Literal["tuning_best_params"] = "tuning_best_params"
     study: StudyConfig
-    chain: ChainName
+    chain: str
     dataset_id: str
     model_id: str
     max_delay_seconds: int

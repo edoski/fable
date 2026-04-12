@@ -260,7 +260,7 @@ async def ensure_history_dataset(
     reporter: Reporter,
 ) -> DatasetBuildResult:
     chunk_size = config.acquisition.chunk_size
-    existing = _load_existing_dataset(output_dir, expected_chain_id=config.chain.chain_id)
+    existing = _load_existing_dataset(output_dir, expected_chain_id=config.chain.runtime.chain_id)
     if existing is not None and existing.validation.status == "clean":
         if existing.frame is None:
             raise RuntimeError("clean history validation requires an in-memory frame")
@@ -304,11 +304,11 @@ async def ensure_history_dataset(
                 working_dir / "history",
                 frame=history_frame,
                 chunk_size=chunk_size,
-                chain_name=config.chain.name.value,
+                chain_name=config.chain.name,
             )
             validation = validate_block_dataset(
                 working_dir / "history",
-                expected_chain_id=config.chain.chain_id,
+                expected_chain_id=config.chain.runtime.chain_id,
             )
             _validate_history_result(
                 validation,
@@ -334,7 +334,7 @@ async def ensure_history_dataset(
     )
     validation = validate_block_dataset(
         working_dir / "history",
-        expected_chain_id=config.chain.chain_id,
+        expected_chain_id=config.chain.runtime.chain_id,
     )
     _validate_history_result(
         validation,
@@ -366,7 +366,7 @@ async def ensure_evaluation_dataset(
     reporter: Reporter,
 ) -> DatasetBuildResult:
     chunk_size = config.acquisition.chunk_size
-    existing = _load_existing_dataset(output_dir, expected_chain_id=config.chain.chain_id)
+    existing = _load_existing_dataset(output_dir, expected_chain_id=config.chain.runtime.chain_id)
     target_start = evaluation_plan.block_range.start
     target_end = evaluation_plan.block_range.end
 
@@ -381,7 +381,7 @@ async def ensure_evaluation_dataset(
                 validation,
                 evaluation_dir=output_dir,
                 evaluation_plan=evaluation_plan,
-                expected_chain_id=config.chain.chain_id,
+                expected_chain_id=config.chain.runtime.chain_id,
             )
             return DatasetBuildResult(
                 path=output_dir,
@@ -450,17 +450,17 @@ async def ensure_evaluation_dataset(
                 working_dir / "evaluation",
                 frame=evaluation_frame,
                 chunk_size=chunk_size,
-                chain_name=config.chain.name.value,
+                chain_name=config.chain.name,
             )
             validation = validate_block_dataset(
                 working_dir / "evaluation",
-                expected_chain_id=config.chain.chain_id,
+                expected_chain_id=config.chain.runtime.chain_id,
             )
             _validate_evaluation_result(
                 validation,
                 evaluation_dir=working_dir / "evaluation",
                 evaluation_plan=evaluation_plan,
-                expected_chain_id=config.chain.chain_id,
+                expected_chain_id=config.chain.runtime.chain_id,
             )
             return DatasetBuildResult(
                 path=working_dir / "evaluation",
@@ -481,13 +481,13 @@ async def ensure_evaluation_dataset(
     )
     validation = validate_block_dataset(
         working_dir / "evaluation",
-        expected_chain_id=config.chain.chain_id,
+        expected_chain_id=config.chain.runtime.chain_id,
     )
     _validate_evaluation_result(
         validation,
         evaluation_dir=working_dir / "evaluation",
         evaluation_plan=evaluation_plan,
-        expected_chain_id=config.chain.chain_id,
+        expected_chain_id=config.chain.runtime.chain_id,
     )
     return DatasetBuildResult(
         path=working_dir / "evaluation",

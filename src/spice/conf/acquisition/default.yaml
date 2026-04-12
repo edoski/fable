@@ -1,12 +1,13 @@
 dry_run: false
 history_sample_budget: null
 chunk_size: 8192
-rpc_batch_size: 256
-rpc_concurrency: 48
-rpc_min_batch_size: 64
-rpc_concurrency_rungs:
-  - 8
-  - 16
-  - 24
-  - 32
-  - 48
+rpc:
+  batch_size: 256
+  concurrency: 48
+  min_batch_size: 64
+  concurrency_rungs:
+    - 8
+    - 16
+    - 24
+    - 32
+    - 48

@@ -1,1 +1,1 @@
-"""Hydra workflow entrypoints for SPICE."""
+"""Workflow entrypoints for SPICE."""

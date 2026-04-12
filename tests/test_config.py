@@ -3,7 +3,6 @@ from __future__ import annotations
 from typer.testing import CliRunner
 
 from spice.cli import app
-from spice.config import ChainName, RpcProviderName
 from tests.support import write_override
 
 runner = CliRunner()
@@ -26,10 +25,21 @@ def test_acquire_cli_loads_specs_and_applies_override_precedence(
     monkeypatch.setenv("AVALANCHE_RPC_URL", "https://avax.example.test")
     captured: dict[str, object] = {}
 
-    def _capture(config) -> None:
-        captured["config"] = config
+    def _capture(**kwargs) -> None:
+        from spice.config import load_acquire_config
 
-    monkeypatch.setattr("spice.cli.acquire.run", _capture)
+        captured["config"] = load_acquire_config(
+            preset=kwargs["preset"],
+            config_path=kwargs["config"],
+            dataset=kwargs["dataset"],
+            chain=kwargs["chain"],
+            provider=kwargs["provider"],
+            acquisition=kwargs["acquisition_profile"],
+            storage_root=kwargs["storage_root"],
+            dry_run=kwargs["dry_run"],
+        )
+
+    monkeypatch.setattr("spice.cli._run_acquire", _capture)
 
     result = runner.invoke(
         app,
@@ -48,9 +58,12 @@ def test_acquire_cli_loads_specs_and_applies_override_precedence(
 
     assert result.exit_code == 0, result.stdout
     config = captured["config"]
-    assert config.chain.name is ChainName.AVALANCHE
-    assert config.provider.name is RpcProviderName.DIRECT
+    assert config.chain.name == "avalanche"
+    assert config.chain.runtime.chain_id == 43114
+    assert config.provider.name == "direct"
+    assert config.provider.rpc.timeout_seconds == 30.0
     assert config.provider.endpoint_for(config.chain.name) == "https://avax.example.test"
+    assert config.acquisition.rpc.batch_size == 256
     assert config.dataset.id == "icdcs_2026"
     assert config.dataset.history_context_blocks == 640
     assert config.paths.output_root == tmp_path / "outputs"

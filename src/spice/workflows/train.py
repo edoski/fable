@@ -7,16 +7,13 @@ from ..core.console import Reporter
 from ..core.constants import ARTIFACT_MANIFEST_FILENAME, MODEL_STATE_FILENAME
 from ..core.files import remove_path
 from ..modeling.execution import run_persisted_training
+from ..modeling.pipeline import TrainingStageReporters
 from ._shared import (
     abort_cleanup,
     apply_study_best_params,
     build_training_spec,
     managed_workflow,
 )
-
-
-def _chain_label(chain_name: str) -> str:
-    return chain_name.replace("_", " ").title()
 
 
 def _format_train_summary_sections(
@@ -31,7 +28,7 @@ def _format_train_summary_sections(
             "dataset",
             [
                 ("id", report.dataset_id),
-                ("chain", _chain_label(report.chain)),
+                ("chain", report.chain),
                 ("model", report.model_id),
                 ("delay", f"{report.max_delay_seconds}s"),
             ],
@@ -103,26 +100,54 @@ def _clean_training_outputs(config: TrainConfig, *, prune_empty_root: bool) -> N
             artifact_root.rmdir()
 
 
+def _workflow_facts(config: TrainConfig) -> list[tuple[str, str]]:
+    facts = [
+        ("dataset", config.dataset.id),
+        ("chain", config.chain.name),
+        ("model", config.model.id),
+        ("variant", config.artifact.variant.value),
+    ]
+    if config.artifact.variant is ArtifactVariant.TUNED:
+        facts.append(("study", config.study.id))
+    return facts
+
+
 def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
     with managed_workflow(
         config,
         run_name=(
             "train-"
-            f"{config.chain.name.value}-{config.model.id}-"
+            f"{config.chain.name}-{config.model.id}-"
             f"{config.dataset.temporal.max_delay_seconds}s"
         ),
         reporter=reporter,
     ) as session:
-        session.reporter.log(f"variant: {config.artifact.variant.value}")
         active_config = config
         if config.artifact.variant is ArtifactVariant.TUNED:
             active_config = apply_study_best_params(config)
+        session.runtime.configure_workflow("train", _workflow_facts(active_config))
         spec = build_training_spec(active_config)
         artifact_dir = active_config.paths.artifact_root
         report_path = active_config.paths.train_report_path
         history_block_path = active_config.paths.history_dir
         if artifact_dir is None or report_path is None:
             raise ValueError("training workflow requires artifact output paths")
+        stage_reporters = TrainingStageReporters(
+            load=session.runtime.stage_reporter("load", label="load"),
+            prepare=session.runtime.stage_reporter("prepare", label="prepare"),
+            build=session.runtime.stage_reporter("build", label="build"),
+            fit=session.runtime.stage_reporter(
+                "fit",
+                label="fit",
+                running_status="running",
+            ),
+            evaluate=session.runtime.stage_reporter("evaluate", label="evaluate"),
+        )
+        write_reporter = session.runtime.stage_reporter(
+            "write",
+            label="write",
+            running_status="writing",
+        )
         with abort_cleanup(
             session.reporter,
             label="train",
@@ -134,8 +159,9 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
                 spec=spec,
                 artifact_dir=artifact_dir,
                 report_path=report_path,
+                stage_reporters=stage_reporters,
+                write_reporter=write_reporter,
                 reporter=session.reporter,
-                runtime=session.runtime,
             )
         session.runtime.log_sectioned_summary(
             "training summary",

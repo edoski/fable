@@ -16,7 +16,7 @@ from ..config import (
     StudyConfig,
     TrainingConfig,
 )
-from ..core.console import ConsoleRuntime, NullReporter, Reporter
+from ..core.console import NullReporter, Reporter
 from ..data.datasets import (
     DatasetGeometry,
     DatasetSplitIndices,
@@ -102,6 +102,25 @@ class TrainingRunResult:
     test_metrics: EpochMetrics
 
 
+@dataclass(slots=True)
+class TrainingStageReporters:
+    load: Reporter
+    prepare: Reporter
+    build: Reporter
+    fit: Reporter
+    evaluate: Reporter
+
+    @classmethod
+    def shared(cls, reporter: Reporter) -> TrainingStageReporters:
+        return cls(
+            load=reporter,
+            prepare=reporter,
+            build=reporter,
+            fit=reporter,
+            evaluate=reporter,
+        )
+
+
 def _slice_frame(frame: pl.DataFrame, selection: slice) -> pl.DataFrame:
     start = 0 if selection.start is None else selection.start
     stop = frame.height if selection.stop is None else selection.stop
@@ -119,7 +138,7 @@ def prepare_training_dataset(
     )
     minimum_context = minimum_history_context_blocks(
         lookback_seconds=spec.lookback_seconds,
-        block_time_seconds=spec.chain.block_time_seconds,
+        block_time_seconds=spec.chain.runtime.block_time_seconds,
         feature_warmup_blocks=feature_warmup_blocks(selection.feature_names),
     )
     if minimum_context > spec.history_context_blocks:
@@ -130,7 +149,7 @@ def prepare_training_dataset(
     geometry = derive_dataset_geometry(
         lookback_seconds=spec.lookback_seconds,
         max_delay_seconds=spec.max_delay_seconds,
-        block_time_seconds=spec.chain.block_time_seconds,
+        block_time_seconds=spec.chain.runtime.block_time_seconds,
         history_context_blocks=minimum_context,
     )
     trimmed_blocks = _slice_frame(
@@ -228,22 +247,23 @@ def run_training(
     *,
     spec: TrainingSpec,
     artifact_dir: Path,
+    stage_reporters: TrainingStageReporters | None = None,
     reporter: Reporter | None = None,
-    runtime: ConsoleRuntime | None = None,
 ) -> TrainingRunResult:
     reporter = reporter or NullReporter()
-    load_task = reporter.start_task("load history dataset")
+    active_reporters = stage_reporters or TrainingStageReporters.shared(reporter)
+    load_task = active_reporters.load.start_task("load history dataset")
     blocks = load_block_frame(history_block_path)
-    reporter.finish_task(load_task, message=str(history_block_path))
-    prepare_task = reporter.start_task("prepare training dataset")
+    active_reporters.load.finish_task(load_task, message=str(history_block_path))
+    prepare_task = active_reporters.prepare.start_task("prepare training dataset")
     prepared = prepare_training_dataset(blocks, spec=spec)
-    reporter.finish_task(
+    active_reporters.prepare.finish_task(
         prepare_task,
         message=f"blocks={prepared.n_blocks_used} samples={prepared.sample_count}",
     )
-    build_task = reporter.start_task("build model")
+    build_task = active_reporters.build.start_task("build model")
     model = build_model(prepared.n_features, prepared.action_count, spec.model)
-    reporter.finish_task(build_task, message=spec.model.id)
+    active_reporters.build.finish_task(build_task, message=spec.model.id)
     training_result = train_model(
         model,
         model_config=spec.model,
@@ -253,8 +273,7 @@ def run_training(
         lookback_steps=prepared.geometry.lookback_steps,
         training_config=spec.training,
         artifact_dir=artifact_dir,
-        reporter=reporter,
-        runtime=runtime,
+        reporter=active_reporters.fit,
     )
     class_weights = build_class_weights(
         prepared.store.class_labels,
@@ -268,7 +287,7 @@ def run_training(
         lookback_steps=prepared.geometry.lookback_steps,
         training_config=spec.training,
         class_weights=class_weights,
-        reporter=reporter,
+        reporter=active_reporters.evaluate,
     )
     return TrainingRunResult(
         model=model,

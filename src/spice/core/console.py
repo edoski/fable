@@ -1,42 +1,23 @@
-"""Console runtime, stage reporting, and native tool log bridging."""
+"""Workflow-scoped console presentation and native log bridging."""
 
 from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterator
+import time
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import StringIO
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
-import optuna
-from lightning.pytorch.callbacks import RichProgressBar
-from lightning.pytorch.callbacks.progress.rich_progress import (
-    BatchesProcessedColumn,
-    CustomBarColumn,
-    CustomProgress,
-    CustomTimeColumn,
-    MetricsTextColumn,
-    ProcessingSpeedColumn,
-)
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
 from rich.logging import RichHandler
 from rich.panel import Panel
-from rich.progress import (
-    BarColumn,
-    Progress,
-    ProgressColumn,
-    TaskID,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
+from rich.progress_bar import ProgressBar
 from rich.table import Table
-
-if TYPE_CHECKING:
-    import lightning.pytorch as pl
+from rich.text import Text
 
 ReporterTask = int
 
@@ -60,10 +41,26 @@ _NATIVE_NOISE_PATTERNS = (
     re.compile(r"The 'train_dataloader' does not have many workers"),
     re.compile(r"The 'val_dataloader' does not have many workers"),
 )
+_FINAL_STAGE_STATUSES = frozenset(
+    {"done", "failed", "reused", "extended", "rebuilt", "created"}
+)
+_STAGE_STATUS_STYLES = {
+    "pending": "dim",
+    "running": "cyan",
+    "pulling": "cyan",
+    "writing": "cyan",
+    "done": "green",
+    "reused": "green",
+    "created": "green",
+    "extended": "yellow",
+    "rebuilt": "yellow",
+    "failed": "bold red",
+}
 
 
 class Reporter(Protocol):
     def log(self, message: str, *, level: str = "info") -> None: ...
+
     def start_task(
         self,
         name: str,
@@ -71,6 +68,7 @@ class Reporter(Protocol):
         total: int | None = None,
         unit: str | None = None,
     ) -> ReporterTask: ...
+
     def update_task(
         self,
         task_id: ReporterTask,
@@ -79,6 +77,7 @@ class Reporter(Protocol):
         advance: int | None = None,
         message: str | None = None,
     ) -> None: ...
+
     def finish_task(
         self,
         task_id: ReporterTask,
@@ -86,7 +85,63 @@ class Reporter(Protocol):
         message: str | None = None,
         silent: bool = False,
     ) -> None: ...
+
+    def configure_workflow(
+        self,
+        *,
+        title: str,
+        facts: Iterable[tuple[str, str]] = (),
+    ) -> None: ...
+
+    def stage_reporter(
+        self,
+        key: str,
+        *,
+        label: str,
+        total: int | None = None,
+        unit: str | None = None,
+        status: str = "pending",
+        running_status: str = "running",
+        done_status: str = "done",
+    ) -> Reporter: ...
+
+    def set_stage_state(
+        self,
+        key: str,
+        *,
+        label: str | None = None,
+        status: str | None = None,
+        total: int | None = None,
+        unit: str | None = None,
+        completed: int | None = None,
+        message: str | None = None,
+    ) -> None: ...
+
     def close(self) -> None: ...
+
+
+@dataclass(slots=True)
+class _TaskBinding:
+    stage_key: str
+    task_name: str
+    done_status: str
+
+
+@dataclass(slots=True)
+class _StageState:
+    key: str
+    label: str
+    status: str = "pending"
+    total: int | None = None
+    unit: str | None = None
+    completed: int = 0
+    detail: str | None = None
+    started_at: float | None = None
+    finished_at: float | None = None
+    last_emitted_status: str | None = None
+    last_emitted_detail: str | None = None
+    last_emitted_completed: int | None = None
+    last_emitted_bucket: int | None = None
 
 
 class NullReporter:
@@ -102,6 +157,7 @@ class NullReporter:
         total: int | None = None,
         unit: str | None = None,
     ) -> ReporterTask:
+        del name, total, unit
         return 0
 
     def update_task(
@@ -112,6 +168,7 @@ class NullReporter:
         advance: int | None = None,
         message: str | None = None,
     ) -> None:
+        del task_id, completed, advance, message
         return None
 
     def finish_task(
@@ -124,13 +181,173 @@ class NullReporter:
         del task_id, message, silent
         return None
 
+    def configure_workflow(
+        self,
+        *,
+        title: str,
+        facts: Iterable[tuple[str, str]] = (),
+    ) -> None:
+        del title, facts
+        return None
+
+    def stage_reporter(
+        self,
+        key: str,
+        *,
+        label: str,
+        total: int | None = None,
+        unit: str | None = None,
+        status: str = "pending",
+        running_status: str = "running",
+        done_status: str = "done",
+    ) -> Reporter:
+        del key, label, total, unit, status, running_status, done_status
+        return self
+
+    def set_stage_state(
+        self,
+        key: str,
+        *,
+        label: str | None = None,
+        status: str | None = None,
+        total: int | None = None,
+        unit: str | None = None,
+        completed: int | None = None,
+        message: str | None = None,
+    ) -> None:
+        del key, label, status, total, unit, completed, message
+        return None
+
     def close(self) -> None:
         return None
 
 
-class _BaseConsoleReporter(NullReporter):
+class _BoundStageReporter(NullReporter):
+    def __init__(
+        self,
+        owner: _BaseWorkflowReporter,
+        *,
+        key: str,
+        label: str,
+        running_status: str,
+        done_status: str,
+    ) -> None:
+        self._owner = owner
+        self._key = key
+        self._label = label
+        self._running_status = running_status
+        self._done_status = done_status
+
+    @property
+    def console(self) -> Console:
+        return self._owner.console
+
+    def log(self, message: str, *, level: str = "info") -> None:
+        self._owner.log(message, level=level)
+
+    def start_task(
+        self,
+        name: str,
+        *,
+        total: int | None = None,
+        unit: str | None = None,
+    ) -> ReporterTask:
+        return self._owner._start_bound_task(
+            self._key,
+            label=self._label,
+            task_name=name,
+            total=total,
+            unit=unit,
+            running_status=self._running_status,
+            done_status=self._done_status,
+        )
+
+    def update_task(
+        self,
+        task_id: ReporterTask,
+        *,
+        completed: int | None = None,
+        advance: int | None = None,
+        message: str | None = None,
+    ) -> None:
+        self._owner.update_task(
+            task_id,
+            completed=completed,
+            advance=advance,
+            message=message,
+        )
+
+    def finish_task(
+        self,
+        task_id: ReporterTask,
+        *,
+        message: str | None = None,
+        silent: bool = False,
+    ) -> None:
+        self._owner.finish_task(task_id, message=message, silent=silent)
+
+    def configure_workflow(
+        self,
+        *,
+        title: str,
+        facts: Iterable[tuple[str, str]] = (),
+    ) -> None:
+        self._owner.configure_workflow(title=title, facts=facts)
+
+    def stage_reporter(
+        self,
+        key: str,
+        *,
+        label: str,
+        total: int | None = None,
+        unit: str | None = None,
+        status: str = "pending",
+        running_status: str = "running",
+        done_status: str = "done",
+    ) -> Reporter:
+        return self._owner.stage_reporter(
+            key,
+            label=label,
+            total=total,
+            unit=unit,
+            status=status,
+            running_status=running_status,
+            done_status=done_status,
+        )
+
+    def set_stage_state(
+        self,
+        key: str,
+        *,
+        label: str | None = None,
+        status: str | None = None,
+        total: int | None = None,
+        unit: str | None = None,
+        completed: int | None = None,
+        message: str | None = None,
+    ) -> None:
+        self._owner.set_stage_state(
+            key,
+            label=label,
+            status=status,
+            total=total,
+            unit=unit,
+            completed=completed,
+            message=message,
+        )
+
+    def close(self) -> None:
+        return None
+
+
+class _BaseWorkflowReporter(NullReporter):
     def __init__(self, console: Console | None = None) -> None:
         self.console = console or Console()
+        self._workflow_title: str | None = None
+        self._workflow_facts: list[tuple[str, str]] = []
+        self._stages: dict[str, _StageState] = {}
+        self._next_task_id = 1
+        self._task_bindings: dict[ReporterTask, _TaskBinding] = {}
 
     def log(self, message: str, *, level: str = "info") -> None:
         style = None
@@ -141,208 +358,336 @@ class _BaseConsoleReporter(NullReporter):
         elif level == "error":
             style = "bold red"
             prefix = "error: "
-        self.console.print(f"{prefix}{message}", style=style)
+        self.console.print(f"{prefix}{message}", style=style, markup=False)
+
+    def start_task(
+        self,
+        name: str,
+        *,
+        total: int | None = None,
+        unit: str | None = None,
+    ) -> ReporterTask:
+        return self._start_bound_task(
+            f"task-{self._next_task_id}",
+            label=name,
+            task_name=name,
+            total=total,
+            unit=unit,
+            running_status="running",
+            done_status="done",
+        )
+
+    def update_task(
+        self,
+        task_id: ReporterTask,
+        *,
+        completed: int | None = None,
+        advance: int | None = None,
+        message: str | None = None,
+    ) -> None:
+        binding = self._task_bindings.get(task_id)
+        if binding is None:
+            return
+        stage = self._stages.get(binding.stage_key)
+        if stage is None:
+            return
+        if stage.started_at is None:
+            stage.started_at = time.monotonic()
+        stage.finished_at = None
+        if completed is not None:
+            stage.completed = max(0, completed)
+        if advance is not None:
+            stage.completed = max(0, stage.completed + advance)
+        stage.detail = _format_stage_detail(stage.label, binding.task_name, message)
+        self._on_stage_change(stage)
+
+    def finish_task(
+        self,
+        task_id: ReporterTask,
+        *,
+        message: str | None = None,
+        silent: bool = False,
+    ) -> None:
+        del silent
+        binding = self._task_bindings.pop(task_id, None)
+        if binding is None:
+            return
+        stage = self._stages.get(binding.stage_key)
+        if stage is None:
+            return
+        if stage.started_at is None:
+            stage.started_at = time.monotonic()
+        stage.finished_at = time.monotonic()
+        if stage.total is not None:
+            stage.completed = max(stage.completed, stage.total)
+        stage.status = binding.done_status
+        stage.detail = _format_stage_detail(stage.label, binding.task_name, message)
+        self._on_stage_change(stage)
+
+    def configure_workflow(
+        self,
+        *,
+        title: str,
+        facts: Iterable[tuple[str, str]] = (),
+    ) -> None:
+        self._workflow_title = title
+        self._workflow_facts = list(facts)
+        self._on_workflow_configured()
+
+    def stage_reporter(
+        self,
+        key: str,
+        *,
+        label: str,
+        total: int | None = None,
+        unit: str | None = None,
+        status: str = "pending",
+        running_status: str = "running",
+        done_status: str = "done",
+    ) -> Reporter:
+        self._ensure_stage(key, label=label, status=status, total=total, unit=unit)
+        return _BoundStageReporter(
+            self,
+            key=key,
+            label=label,
+            running_status=running_status,
+            done_status=done_status,
+        )
+
+    def set_stage_state(
+        self,
+        key: str,
+        *,
+        label: str | None = None,
+        status: str | None = None,
+        total: int | None = None,
+        unit: str | None = None,
+        completed: int | None = None,
+        message: str | None = None,
+    ) -> None:
+        stage = self._ensure_stage(key, label=label or key)
+        if label is not None:
+            stage.label = label
+        if total is not None:
+            stage.total = total
+        if unit is not None:
+            stage.unit = unit
+        if completed is not None:
+            stage.completed = max(0, completed)
+        if message is not None:
+            stage.detail = message
+        if status is not None:
+            if status in _FINAL_STAGE_STATUSES and stage.finished_at is None:
+                stage.finished_at = time.monotonic()
+            if status not in _FINAL_STAGE_STATUSES and stage.started_at is None:
+                stage.started_at = time.monotonic()
+            stage.status = status
+        self._on_stage_change(stage)
+
+    def close(self) -> None:
+        return None
+
+    def _start_bound_task(
+        self,
+        stage_key: str,
+        *,
+        label: str,
+        task_name: str,
+        total: int | None,
+        unit: str | None,
+        running_status: str,
+        done_status: str,
+    ) -> ReporterTask:
+        stage = self._ensure_stage(stage_key, label=label, total=total, unit=unit)
+        stage.status = running_status
+        stage.started_at = time.monotonic()
+        stage.finished_at = None
+        stage.total = total
+        stage.unit = unit
+        stage.completed = 0
+        stage.detail = _format_stage_detail(stage.label, task_name, None)
+        task_id = self._next_task_id
+        self._next_task_id += 1
+        self._task_bindings[task_id] = _TaskBinding(
+            stage_key=stage_key,
+            task_name=task_name,
+            done_status=done_status,
+        )
+        self._on_stage_change(stage)
+        return task_id
+
+    def _ensure_stage(
+        self,
+        key: str,
+        *,
+        label: str,
+        status: str | None = None,
+        total: int | None = None,
+        unit: str | None = None,
+    ) -> _StageState:
+        stage = self._stages.get(key)
+        if stage is None:
+            stage = _StageState(
+                key=key,
+                label=label,
+                status=status or "pending",
+                total=total,
+                unit=unit,
+            )
+            self._stages[key] = stage
+            return stage
+        stage.label = label
+        if status is not None:
+            stage.status = status
+        if total is not None:
+            stage.total = total
+        if unit is not None:
+            stage.unit = unit
+        return stage
+
+    def _on_workflow_configured(self) -> None:
+        raise NotImplementedError
+
+    def _on_stage_change(self, stage: _StageState) -> None:
+        raise NotImplementedError
 
 
-@dataclass(slots=True)
-class _PlainTaskState:
-    name: str
-    total: int | None
-    unit: str | None
-    completed: int
-    message: str | None
-    last_emitted_completed: int | None = None
-    last_emitted_message: str | None = None
-    last_emitted_bucket: int | None = None
-
-
-class PlainReporter(_BaseConsoleReporter):
+class PlainReporter(_BaseWorkflowReporter):
     """Line-oriented reporter for non-interactive output."""
 
     def __init__(self, console: Console | None = None) -> None:
         super().__init__(console=console)
-        self._next_task_id = 1
-        self._tasks: dict[ReporterTask, _PlainTaskState] = {}
+        self._workflow_announced = False
 
-    def start_task(
-        self,
-        name: str,
-        *,
-        total: int | None = None,
-        unit: str | None = None,
-    ) -> ReporterTask:
-        task_id = self._next_task_id
-        self._next_task_id += 1
-        self._tasks[task_id] = _PlainTaskState(
-            name=name,
-            total=total,
-            unit=unit,
-            completed=0,
-            message=None,
+    def _on_workflow_configured(self) -> None:
+        if self._workflow_title is None:
+            return
+        self.console.print(self._workflow_title, markup=False)
+        for label, value in self._workflow_facts:
+            self.console.print(f"{label}: {value}", markup=False)
+        self._workflow_announced = True
+
+    def _on_stage_change(self, stage: _StageState) -> None:
+        if not self._should_emit(stage):
+            return
+        self.console.print(self._format_stage_line(stage), markup=False)
+        stage.last_emitted_status = stage.status
+        stage.last_emitted_detail = stage.detail
+        stage.last_emitted_completed = stage.completed
+        stage.last_emitted_bucket = _progress_bucket(stage)
+
+    def _should_emit(self, stage: _StageState) -> bool:
+        if stage.status != stage.last_emitted_status:
+            return True
+        if stage.detail != stage.last_emitted_detail:
+            return True
+        if stage.total is None:
+            return stage.completed != stage.last_emitted_completed
+        return (
+            _progress_bucket(stage) != stage.last_emitted_bucket
+            or stage.completed >= stage.total
         )
-        self.log(self._format_start(name, total=total, unit=unit))
-        return task_id
 
-    def update_task(
-        self,
-        task_id: ReporterTask,
-        *,
-        completed: int | None = None,
-        advance: int | None = None,
-        message: str | None = None,
-    ) -> None:
-        state = self._tasks.get(task_id)
-        if state is None:
-            return
-        if completed is not None:
-            state.completed = max(0, completed)
-        if advance is not None:
-            state.completed = max(0, state.completed + advance)
-        if message is not None:
-            state.message = message
-        if not self._should_emit(state):
-            return
-        self.log(self._format_progress(state))
-        state.last_emitted_completed = state.completed
-        state.last_emitted_message = state.message
-        state.last_emitted_bucket = self._progress_bucket(state)
-
-    def finish_task(
-        self,
-        task_id: ReporterTask,
-        *,
-        message: str | None = None,
-        silent: bool = False,
-    ) -> None:
-        state = self._tasks.pop(task_id, None)
-        if state is None:
-            return
-        if message is not None:
-            state.message = message
-        if silent:
-            return
-        self.log(self._format_finish(state))
-
-    def _should_emit(self, state: _PlainTaskState) -> bool:
-        if state.total is None:
-            return (
-                state.completed != state.last_emitted_completed
-                or state.message != state.last_emitted_message
-            )
-        if state.total <= 10:
-            return (
-                state.completed != state.last_emitted_completed
-                or state.message != state.last_emitted_message
-            )
-        bucket = self._progress_bucket(state)
-        return bucket != state.last_emitted_bucket or state.completed >= state.total
-
-    def _progress_bucket(self, state: _PlainTaskState) -> int:
-        assert state.total is not None
-        if state.total <= 0:
-            return 10
-        bucket_count = min(10, state.total)
-        return min(bucket_count, (state.completed * bucket_count) // state.total)
-
-    def _format_start(self, name: str, *, total: int | None, unit: str | None) -> str:
-        if total is None:
-            return f"{name} started"
-        suffix = "" if unit is None else f" {unit}"
-        return f"{name} started ({total}{suffix})"
-
-    def _format_progress(self, state: _PlainTaskState) -> str:
-        if state.total is None:
-            detail = state.message
-            if detail is None and state.completed:
-                detail = str(state.completed)
-            return state.name if detail is None else f"{state.name}: {detail}"
-        suffix = "" if state.unit is None else f" {state.unit}"
-        percent = 100 if state.total == 0 else int((state.completed * 100) / state.total)
-        progress = f"{state.name}: {state.completed}/{state.total}{suffix} ({percent}%)"
-        return progress if state.message is None else f"{progress} - {state.message}"
-
-    def _format_finish(self, state: _PlainTaskState) -> str:
-        if state.message is None:
-            return f"{state.name} finished"
-        return f"{state.name} finished: {state.message}"
+    def _format_stage_line(self, stage: _StageState) -> str:
+        status = stage.status
+        pieces = [f"{stage.label} [{status}]"]
+        if stage.total is not None:
+            suffix = "" if stage.unit is None else f" {stage.unit}"
+            pieces.append(f"{stage.completed:,}/{stage.total:,}{suffix}")
+        elif stage.completed > 0:
+            suffix = "" if stage.unit is None else f" {stage.unit}"
+            pieces.append(f"{stage.completed:,}{suffix}")
+        if stage.detail:
+            pieces.append(stage.detail)
+        return " - ".join(pieces)
 
 
-class RichReporter(_BaseConsoleReporter):
-    """Interactive reporter with task-local Rich progress."""
+class RichReporter(_BaseWorkflowReporter):
+    """Interactive reporter with shared workflow staging."""
 
     def __init__(self, console: Console | None = None) -> None:
         super().__init__(console=console)
-        self._progress: Progress | None = None
-        self._task_names: dict[ReporterTask, str] = {}
-
-    def start_task(
-        self,
-        name: str,
-        *,
-        total: int | None = None,
-        unit: str | None = None,
-    ) -> ReporterTask:
-        progress = self._ensure_progress()
-        task_id = progress.add_task(name, total=total, status="")
-        self._task_names[task_id] = name
-        return task_id
-
-    def update_task(
-        self,
-        task_id: ReporterTask,
-        *,
-        completed: int | None = None,
-        advance: int | None = None,
-        message: str | None = None,
-    ) -> None:
-        name = self._task_names.get(task_id)
-        if name is None or self._progress is None:
-            return
-        self._progress.update(
-            TaskID(task_id),
-            completed=completed,
-            advance=advance,
-            description=name,
-            status="" if message is None else message,
-        )
-
-    def finish_task(
-        self,
-        task_id: ReporterTask,
-        *,
-        message: str | None = None,
-        silent: bool = False,
-    ) -> None:
-        name = self._task_names.pop(task_id, None)
-        if name is None or self._progress is None:
-            return
-        self._progress.remove_task(TaskID(task_id))
-        if not self._task_names:
-            self._progress.stop()
-            self._progress = None
-        if silent:
-            return
-        self.log(f"{name} finished" if message is None else f"{name} finished: {message}")
+        self._live: Live | None = None
 
     def close(self) -> None:
-        if self._progress is not None:
-            self._progress.stop()
-            self._progress = None
+        if self._live is not None:
+            self._live.stop()
+            self._live = None
 
-    def _ensure_progress(self) -> Progress:
-        if self._progress is None:
-            self._progress = Progress(
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                TimeElapsedColumn(),
-                TimeRemainingColumn(),
-                TextColumn("[dim]{task.fields[status]}[/dim]"),
+    def _on_workflow_configured(self) -> None:
+        self._refresh_live()
+
+    def _on_stage_change(self, stage: _StageState) -> None:
+        del stage
+        self._refresh_live()
+
+    def _refresh_live(self) -> None:
+        if self._live is None:
+            self._live = Live(
+                self._render_workflow(),
                 console=self.console,
+                refresh_per_second=8,
                 transient=False,
             )
-            self._progress.start()
-        return self._progress
+            self._live.start()
+            return
+        self._live.update(self._render_workflow(), refresh=True)
+
+    def _render_workflow(self):
+        elements: list[object] = []
+        if self._workflow_title is not None:
+            elements.append(Text(self._workflow_title, style="bold cyan"))
+        if self._workflow_facts:
+            facts = Table.grid(padding=(0, 2))
+            facts.add_column(style="bold cyan", no_wrap=True)
+            facts.add_column()
+            for label, value in self._workflow_facts:
+                facts.add_row(label, value)
+            elements.append(facts)
+        if self._stages:
+            elements.append(self._render_stage_table())
+        if not elements:
+            elements.append(Text(""))
+        return Group(*elements)
+
+    def _render_stage_table(self) -> Table:
+        table = Table(
+            show_header=True,
+            header_style="bold",
+            expand=True,
+            box=None,
+            pad_edge=False,
+        )
+        table.add_column("stage", no_wrap=True, style="bold")
+        table.add_column("status", no_wrap=True)
+        table.add_column("progress", ratio=2)
+        table.add_column("time", no_wrap=True)
+        table.add_column("detail", ratio=3)
+        for stage in self._stages.values():
+            table.add_row(
+                stage.label,
+                Text(stage.status, style=_STAGE_STATUS_STYLES.get(stage.status, "")),
+                self._render_progress(stage),
+                _format_elapsed(stage),
+                stage.detail or "",
+            )
+        return table
+
+    def _render_progress(self, stage: _StageState):
+        if stage.total is None:
+            return Text("--" if stage.status == "pending" else f"{stage.completed:,}", style="dim")
+        progress = Table.grid(padding=(0, 1))
+        progress.add_column(width=24)
+        progress.add_column(no_wrap=True)
+        progress.add_row(
+            ProgressBar(
+                total=max(float(stage.total), 1.0),
+                completed=float(min(stage.completed, stage.total)),
+                width=24,
+            ),
+            _format_progress_count(stage),
+        )
+        return progress
 
 
 @dataclass(slots=True)
@@ -356,53 +701,6 @@ class _NativeLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         message = record.getMessage()
         return not any(pattern.search(message) for pattern in _NATIVE_NOISE_PATTERNS)
-
-
-class SharedConsoleRichProgressBar(RichProgressBar):
-    """Lightning Rich progress bar bound to the workflow console."""
-
-    def __init__(self, console: Console) -> None:
-        super().__init__()
-        self._shared_console = console
-
-    def _init_progress(self, trainer: pl.Trainer) -> None:
-        if not self.is_enabled or (self.progress is not None and not self._progress_stopped):
-            return
-        self._reset_progress_bar_ids()
-        self._console = self._shared_console
-        if hasattr(self._console, "_live_stack") and len(self._console._live_stack) > 0:
-            self._console.clear_live()
-        elif getattr(self._console, "_live", None) is not None:
-            self._console.clear_live()
-        self._metric_component = MetricsTextColumn(
-            trainer,
-            self.theme.metrics,
-            self.theme.metrics_text_delimiter,
-            self.theme.metrics_format,
-        )
-        self.progress = CustomProgress(
-            *self.configure_columns(trainer),
-            self._metric_component,
-            auto_refresh=True,
-            refresh_per_second=self.refresh_rate if self.is_enabled else 1,
-            disable=self.is_disabled,
-            console=self._console,
-        )
-        self.progress.start()
-        self._progress_stopped = False
-
-    def configure_columns(self, trainer: pl.Trainer) -> list[str | ProgressColumn]:
-        return [
-            TextColumn("[progress.description]{task.description}"),
-            CustomBarColumn(
-                complete_style=self.theme.progress_bar,
-                finished_style=self.theme.progress_bar_finished,
-                pulse_style=self.theme.progress_bar_pulse,
-            ),
-            BatchesProcessedColumn(style=self.theme.batch_progress),
-            CustomTimeColumn(style=self.theme.time),
-            ProcessingSpeedColumn(style=self.theme.processing_speed),
-        ]
 
 
 class ConsoleRuntime:
@@ -439,6 +737,8 @@ class ConsoleRuntime:
 
     @contextmanager
     def optuna_logging(self) -> Iterator[None]:
+        import optuna
+
         optuna.logging.get_verbosity()
         logger = logging.getLogger("optuna")
         state = _LoggerState(list(logger.handlers), logger.level, logger.propagate)
@@ -454,10 +754,50 @@ class ConsoleRuntime:
             logger.setLevel(state.level)
             logger.propagate = state.propagate
 
-    def lightning_progress_bar(self) -> SharedConsoleRichProgressBar | None:
-        if not self.console.is_terminal:
-            return None
-        return SharedConsoleRichProgressBar(self.console)
+    def configure_workflow(self, title: str, facts: Iterable[tuple[str, str]]) -> None:
+        self.reporter.configure_workflow(title=title, facts=facts)
+
+    def stage_reporter(
+        self,
+        key: str,
+        *,
+        label: str,
+        total: int | None = None,
+        unit: str | None = None,
+        status: str = "pending",
+        running_status: str = "running",
+        done_status: str = "done",
+    ) -> Reporter:
+        return self.reporter.stage_reporter(
+            key,
+            label=label,
+            total=total,
+            unit=unit,
+            status=status,
+            running_status=running_status,
+            done_status=done_status,
+        )
+
+    def set_stage_state(
+        self,
+        key: str,
+        *,
+        label: str | None = None,
+        status: str | None = None,
+        total: int | None = None,
+        unit: str | None = None,
+        completed: int | None = None,
+        message: str | None = None,
+    ) -> None:
+        self.reporter.set_stage_state(
+            key,
+            label=label,
+            status=status,
+            total=total,
+            unit=unit,
+            completed=completed,
+            message=message,
+        )
 
     def log_summary(self, title: str, rows: list[tuple[str, str]]) -> None:
         if self.console.is_terminal:
@@ -601,3 +941,42 @@ def _console_from_reporter(reporter: Reporter | None) -> Console | None:
     if isinstance(candidate, Console):
         return candidate
     return Console(file=StringIO(), force_terminal=False, width=120)
+
+
+def _format_stage_detail(label: str, task_name: str, message: str | None) -> str | None:
+    prefix = None if task_name == label else task_name
+    if message is None:
+        return prefix
+    if prefix is None:
+        return message
+    return f"{prefix}: {message}"
+
+
+def _progress_bucket(stage: _StageState) -> int | None:
+    if stage.total is None:
+        return None
+    if stage.total <= 0:
+        return 10
+    bucket_count = min(10, stage.total)
+    return min(bucket_count, (stage.completed * bucket_count) // stage.total)
+
+
+def _format_progress_count(stage: _StageState) -> str:
+    suffix = "" if stage.unit is None else f" {stage.unit}"
+    if stage.total is None:
+        return f"{stage.completed:,}{suffix}" if stage.completed else "--"
+    return f"{stage.completed:,}/{stage.total:,}{suffix}"
+
+
+def _format_elapsed(stage: _StageState) -> str:
+    if stage.started_at is None:
+        return "--"
+    end = stage.finished_at if stage.finished_at is not None else time.monotonic()
+    elapsed = max(0.0, end - stage.started_at)
+    if elapsed < 60:
+        return f"{elapsed:.1f}s"
+    minutes, seconds = divmod(int(elapsed), 60)
+    if minutes < 60:
+        return f"{minutes}m {seconds:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m"

@@ -133,15 +133,15 @@ class RpcController:
 
     def __post_init__(self) -> None:
         if self.min_batch_size > self.configured_batch_size:
-            raise ValueError("rpc_min_batch_size must be less than or equal to rpc_batch_size")
+            raise ValueError("acquisition.rpc.min_batch_size must be <= batch_size")
         if not self.concurrency_rungs:
-            raise ValueError("rpc_concurrency_rungs must not be empty")
+            raise ValueError("acquisition.rpc.concurrency_rungs must not be empty")
         if tuple(sorted(self.concurrency_rungs)) != self.concurrency_rungs:
-            raise ValueError("rpc_concurrency_rungs must be sorted in ascending order")
+            raise ValueError("acquisition.rpc.concurrency_rungs must be sorted ascending")
         if len(set(self.concurrency_rungs)) != len(self.concurrency_rungs):
-            raise ValueError("rpc_concurrency_rungs must not contain duplicates")
+            raise ValueError("acquisition.rpc.concurrency_rungs must not contain duplicates")
         if self.configured_concurrency not in self.concurrency_rungs:
-            raise ValueError("rpc_concurrency must be present in rpc_concurrency_rungs")
+            raise ValueError("acquisition.rpc.concurrency must be present in concurrency_rungs")
 
         self.current_batch_size = self.configured_batch_size
         self._configured_concurrency_index = self.concurrency_rungs.index(
@@ -153,10 +153,10 @@ class RpcController:
     @classmethod
     def from_config(cls, config: AcquisitionConfig) -> RpcController:
         return cls(
-            configured_batch_size=config.rpc_batch_size,
-            min_batch_size=config.rpc_min_batch_size,
-            concurrency_rungs=tuple(config.rpc_concurrency_rungs),
-            configured_concurrency=config.rpc_concurrency,
+            configured_batch_size=config.rpc.batch_size,
+            min_batch_size=config.rpc.min_batch_size,
+            concurrency_rungs=tuple(config.rpc.concurrency_rungs),
+            configured_concurrency=config.rpc.concurrency,
         )
 
     @property
@@ -378,7 +378,7 @@ class Web3BlockClient:
             )
 
         task_id = reporter.start_task(
-            f"pull {self.chain.name.value.replace('_', ' ').title()} blocks",
+            f"pull {self.chain.name} blocks",
             total=plan.expected_rows,
             unit="blocks",
         )
@@ -636,7 +636,7 @@ class Web3BlockClient:
         end_block = int(frame["block_number"][-1])
         destination = (
             output_dir
-            / f"{self.chain.name.value}__blocks__{start_block}_to_{end_block}.parquet"
+            / f"{self.chain.name}__blocks__{start_block}_to_{end_block}.parquet"
         )
         write_block_file(destination, frame)
         return destination

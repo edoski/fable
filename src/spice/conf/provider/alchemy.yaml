@@ -1,4 +1,16 @@
 name: alchemy
-timeout_seconds: 30.0
-retry_count: 5
-backoff_factor: 0.125
+rpc:
+  timeout_seconds: 30.0
+  retry_count: 5
+  backoff_factor: 0.125
+  api_key_envvar: ALCHEMY_API_KEY
+chains:
+  ethereum:
+    endpoint:
+      url_template: https://eth-mainnet.g.alchemy.com/v2/{key}
+  polygon:
+    endpoint:
+      url_template: https://polygon-mainnet.g.alchemy.com/v2/{key}
+  avalanche:
+    endpoint:
+      url_template: https://avax-mainnet.g.alchemy.com/v2/{key}

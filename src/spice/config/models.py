@@ -21,18 +21,6 @@ from pydantic import (
 from ..features import validate_feature_selection
 
 
-class ChainName(StrEnum):
-    ETHEREUM = "ethereum"
-    POLYGON = "polygon"
-    AVALANCHE = "avalanche"
-
-
-class RpcProviderName(StrEnum):
-    DIRECT = "direct"
-    ALCHEMY = "alchemy"
-    PUBLICNODE = "publicnode"
-
-
 class WorkflowTask(StrEnum):
     ACQUIRE = "acquire"
     TUNE = "tune"
@@ -88,11 +76,20 @@ def _utc_midnight_timestamp(value: date) -> int:
     return int(datetime.combine(value, time.min, tzinfo=UTC).timestamp())
 
 
-class ChainSpec(ConfigModel):
-    name: ChainName
+class ChainRuntimeSpec(ConfigModel):
     chain_id: int = Field(gt=0)
     block_time_seconds: float = Field(gt=0)
     uses_poa_extra_data: bool
+
+
+class ChainSpec(ConfigModel):
+    name: str
+    runtime: ChainRuntimeSpec
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _validate_path_segment(value, label="chain.name")
 
 
 class DatasetTemporalSpec(ConfigModel):
@@ -154,28 +151,32 @@ class TrainingConfig(ConfigModel):
     compile: CompileMode
 
 
+class AcquisitionRpcConfig(ConfigModel):
+    batch_size: int = Field(gt=0)
+    concurrency: int = Field(gt=0)
+    min_batch_size: int = Field(gt=0)
+    concurrency_rungs: list[int] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_runtime(self) -> Self:
+        if self.min_batch_size > self.batch_size:
+            raise ValueError("acquisition.rpc.min_batch_size must be <= batch_size")
+        if sorted(self.concurrency_rungs) != self.concurrency_rungs:
+            raise ValueError("acquisition.rpc.concurrency_rungs must be sorted ascending")
+        if len(set(self.concurrency_rungs)) != len(self.concurrency_rungs):
+            raise ValueError("acquisition.rpc.concurrency_rungs must not contain duplicates")
+        if any(value <= 0 for value in self.concurrency_rungs):
+            raise ValueError("acquisition.rpc.concurrency_rungs values must be positive")
+        if self.concurrency not in self.concurrency_rungs:
+            raise ValueError("acquisition.rpc.concurrency must be present in concurrency_rungs")
+        return self
+
+
 class AcquisitionConfig(ConfigModel):
     dry_run: bool = False
     history_sample_budget: int | None = Field(default=None, gt=0)
     chunk_size: int = Field(gt=0)
-    rpc_batch_size: int = Field(gt=0)
-    rpc_concurrency: int = Field(gt=0)
-    rpc_min_batch_size: int = Field(gt=0)
-    rpc_concurrency_rungs: list[int] = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def validate_rpc_runtime(self) -> Self:
-        if self.rpc_min_batch_size > self.rpc_batch_size:
-            raise ValueError("rpc_min_batch_size must be less than or equal to rpc_batch_size")
-        if sorted(self.rpc_concurrency_rungs) != self.rpc_concurrency_rungs:
-            raise ValueError("rpc_concurrency_rungs must be sorted in ascending order")
-        if len(set(self.rpc_concurrency_rungs)) != len(self.rpc_concurrency_rungs):
-            raise ValueError("rpc_concurrency_rungs must not contain duplicates")
-        if any(value <= 0 for value in self.rpc_concurrency_rungs):
-            raise ValueError("rpc_concurrency_rungs values must be positive")
-        if self.rpc_concurrency not in self.rpc_concurrency_rungs:
-            raise ValueError("rpc_concurrency must be present in rpc_concurrency_rungs")
-        return self
+    rpc: AcquisitionRpcConfig
 
 
 class SimulationConfig(ConfigModel):
@@ -314,17 +315,146 @@ class TuningConfig(ConfigModel):
     enable_pruning: bool
 
 
-class ProviderSpec(ConfigModel):
-    name: RpcProviderName
+class ProviderEndpointSpec(ConfigModel):
+    url: str | None = None
+    url_template: str | None = None
+    env_var: str | None = None
+    reference: str | None = None
+    reference_template: str | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> Self:
+        source_count = sum(
+            value is not None for value in (self.url, self.url_template, self.env_var)
+        )
+        if source_count != 1:
+            raise ValueError(
+                "provider endpoint spec must declare exactly one of url, url_template, env_var"
+            )
+        if self.reference is not None and self.reference_template is not None:
+            raise ValueError(
+                "provider endpoint spec cannot declare both reference and "
+                "reference_template"
+            )
+        return self
+
+    def resolve(self, *, api_key_envvar: str | None = None) -> tuple[str, str]:
+        if self.env_var is not None:
+            value = os.getenv(self.env_var, "")
+            if not value:
+                raise ValueError(f"Missing RPC endpoint env var: {self.env_var}")
+            return value, f"${self.env_var}"
+
+        if self.url is not None:
+            return self.url, self.reference or self.url
+
+        assert self.url_template is not None
+        if not api_key_envvar:
+            raise ValueError("Provider endpoint template requires api_key_envvar")
+        api_key = os.getenv(api_key_envvar, "")
+        if not api_key:
+            raise ValueError(f"Missing RPC API key env var: {api_key_envvar}")
+        endpoint = self.url_template.format(key=api_key)
+        reference_template = self.reference_template or self.url_template
+        return endpoint, reference_template.format(key=f"${api_key_envvar}")
+
+
+class ProviderRpcConfig(ConfigModel):
     timeout_seconds: float = Field(gt=0.0)
     retry_count: int = Field(ge=0)
     backoff_factor: float = Field(ge=0.0)
+    api_key_envvar: str | None = None
 
-    def endpoint_for(self, chain_name: ChainName) -> str:
-        return resolve_provider_endpoint(self.name, chain_name)
 
-    def reference_for(self, chain_name: ChainName) -> str:
-        return resolve_provider_reference(self.name, chain_name)
+class ProviderChainSpec(ConfigModel):
+    endpoint: ProviderEndpointSpec
+
+
+class ProviderAcquisitionRpcOverrides(ConfigModel):
+    batch_size: int | None = Field(default=None, gt=0)
+    concurrency: int | None = Field(default=None, gt=0)
+    min_batch_size: int | None = Field(default=None, gt=0)
+    concurrency_rungs: list[int] | None = None
+
+    @model_validator(mode="after")
+    def validate_runtime(self) -> Self:
+        if self.min_batch_size is not None and self.batch_size is not None:
+            if self.min_batch_size > self.batch_size:
+                raise ValueError(
+                    "provider acquisition rpc override min_batch_size must be <= batch_size"
+                )
+        if self.concurrency_rungs is not None:
+            if sorted(self.concurrency_rungs) != self.concurrency_rungs:
+                raise ValueError(
+                    "provider acquisition rpc override concurrency_rungs must be sorted ascending"
+                )
+            if len(set(self.concurrency_rungs)) != len(self.concurrency_rungs):
+                raise ValueError(
+                    "provider acquisition rpc override "
+                    "concurrency_rungs must not contain duplicates"
+                )
+            if any(value <= 0 for value in self.concurrency_rungs):
+                raise ValueError(
+                    "provider acquisition rpc override concurrency_rungs values must be positive"
+                )
+            if (
+                self.concurrency is not None
+                and self.concurrency not in self.concurrency_rungs
+            ):
+                raise ValueError(
+                    "provider acquisition rpc override "
+                    "concurrency must be present in concurrency_rungs"
+                )
+        return self
+
+
+class ProviderAcquisitionOverrides(ConfigModel):
+    chunk_size: int | None = Field(default=None, gt=0)
+    rpc: ProviderAcquisitionRpcOverrides | None = None
+
+
+class ProviderAcquisitionConfig(ConfigModel):
+    overrides: ProviderAcquisitionOverrides
+
+
+class ProviderSpec(ConfigModel):
+    name: str
+    rpc: ProviderRpcConfig
+    chains: dict[str, ProviderChainSpec]
+    acquisition: ProviderAcquisitionConfig | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _validate_path_segment(value, label="provider.name")
+
+    @model_validator(mode="after")
+    def validate_chain_coverage(self) -> Self:
+        if not self.chains:
+            raise ValueError("provider.chains must not be empty")
+        for name in self.chains:
+            _validate_path_segment(name, label="provider.chains key")
+        return self
+
+    def endpoint_spec_for(self, chain_name: str) -> ProviderEndpointSpec:
+        try:
+            return self.chains[chain_name].endpoint
+        except KeyError as exc:
+            raise ValueError(
+                f"provider {self.name} does not define chain endpoint for {chain_name}"
+            ) from exc
+
+    def endpoint_for(self, chain_name: str) -> str:
+        endpoint, _ = self.endpoint_spec_for(chain_name).resolve(
+            api_key_envvar=self.rpc.api_key_envvar
+        )
+        return endpoint
+
+    def reference_for(self, chain_name: str) -> str:
+        _, reference = self.endpoint_spec_for(chain_name).resolve(
+            api_key_envvar=self.rpc.api_key_envvar
+        )
+        return reference
 
 
 @dataclass(frozen=True, slots=True)
@@ -357,7 +487,7 @@ def build_path_layout(
     tuning_mode: bool = False,
 ) -> PathLayout:
     output_root = storage.root
-    dataset_root = output_root / "datasets" / chain.name.value / dataset.id
+    dataset_root = output_root / "datasets" / chain.name / dataset.id
     artifact_root: Path | None = None
     checkpoint_dir: Path | None = None
     train_report_path: Path | None = None
@@ -371,7 +501,7 @@ def build_path_layout(
         artifact_base_root = (
             output_root
             / "models"
-            / chain.name.value
+            / chain.name
             / dataset.id
             / feature_set_id
             / model_id
@@ -402,80 +532,24 @@ def build_path_layout(
     )
 
 
-def _resolve_direct_endpoint(chain_name: ChainName) -> tuple[str, str]:
-    env_var = {
-        ChainName.ETHEREUM: "ETHEREUM_RPC_URL",
-        ChainName.POLYGON: "POLYGON_RPC_URL",
-        ChainName.AVALANCHE: "AVALANCHE_RPC_URL",
-    }[chain_name]
-    value = os.getenv(env_var, "")
-    if not value:
-        raise ValueError(f"Missing RPC endpoint for chain: {chain_name.value}")
-    return value, f"${env_var}"
-
-
-def _resolve_alchemy_endpoint(chain_name: ChainName) -> tuple[str, str]:
-    api_key = os.getenv("ALCHEMY_API_KEY", "")
-    if not api_key:
-        raise ValueError(f"Missing RPC endpoint for chain: {chain_name.value}")
-    host = {
-        ChainName.ETHEREUM: "https://eth-mainnet.g.alchemy.com/v2/{key}",
-        ChainName.POLYGON: "https://polygon-mainnet.g.alchemy.com/v2/{key}",
-        ChainName.AVALANCHE: "https://avax-mainnet.g.alchemy.com/v2/{key}",
-    }[chain_name]
-    return host.format(key=api_key), host.format(key="$ALCHEMY_API_KEY")
-
-
-def _resolve_publicnode_endpoint(chain_name: ChainName) -> tuple[str, str]:
-    endpoint = {
-        ChainName.ETHEREUM: "https://ethereum-rpc.publicnode.com",
-        ChainName.POLYGON: "https://polygon-bor-rpc.publicnode.com",
-        ChainName.AVALANCHE: "https://avalanche-c-chain-rpc.publicnode.com",
-    }[chain_name]
-    return endpoint, endpoint
-
-
-def resolve_provider_endpoint(provider_name: RpcProviderName, chain_name: ChainName) -> str:
-    endpoint, _ = _resolve_provider(provider_name, chain_name)
-    return endpoint
-
-
-def resolve_provider_reference(provider_name: RpcProviderName, chain_name: ChainName) -> str:
-    _, reference = _resolve_provider(provider_name, chain_name)
-    return reference
-
-
-def _resolve_provider(
-    provider_name: RpcProviderName,
-    chain_name: ChainName,
-) -> tuple[str, str]:
-    if provider_name is RpcProviderName.DIRECT:
-        return _resolve_direct_endpoint(chain_name)
-    if provider_name is RpcProviderName.ALCHEMY:
-        return _resolve_alchemy_endpoint(chain_name)
-    if provider_name is RpcProviderName.PUBLICNODE:
-        return _resolve_publicnode_endpoint(chain_name)
-    raise ValueError(f"Unsupported provider: {provider_name}")
-
-
-def apply_rpc_profile(
+def apply_provider_acquisition_overrides(
     *,
-    provider_name: RpcProviderName,
-    chain_name: ChainName,
+    provider: ProviderSpec,
     acquisition: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    del chain_name
-    if provider_name is RpcProviderName.PUBLICNODE:
-        return acquisition.model_copy(
-            update={
-                "chunk_size": 8192,
-                "rpc_batch_size": 256,
-                "rpc_concurrency": 48,
-                "rpc_min_batch_size": 64,
-                "rpc_concurrency_rungs": [8, 16, 24, 32, 48],
-            }
-        )
-    return acquisition
+    if provider.acquisition is None:
+        return acquisition
+    overrides = provider.acquisition.overrides.model_dump(mode="json", exclude_none=True)
+    if not overrides:
+        return acquisition
+    merged = acquisition.model_dump(mode="json")
+    if "rpc" in overrides and isinstance(merged.get("rpc"), dict):
+        merged["rpc"] = {
+            **merged["rpc"],
+            **overrides.pop("rpc"),
+        }
+    merged.update(overrides)
+    return AcquisitionConfig.model_validate(merged)
 
 
 class WorkflowConfig(ConfigModel):
@@ -587,4 +661,3 @@ class PresetSpec(ConfigModel):
     storage: StorageSpec | None = None
     study: StudyConfig | None = None
     artifact: ArtifactConfig | None = None
-

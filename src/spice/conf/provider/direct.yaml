@@ -1,4 +1,15 @@
 name: direct
-timeout_seconds: 30.0
-retry_count: 5
-backoff_factor: 0.125
+rpc:
+  timeout_seconds: 30.0
+  retry_count: 5
+  backoff_factor: 0.125
+chains:
+  ethereum:
+    endpoint:
+      env_var: ETHEREUM_RPC_URL
+  polygon:
+    endpoint:
+      env_var: POLYGON_RPC_URL
+  avalanche:
+    endpoint:
+      env_var: AVALANCHE_RPC_URL

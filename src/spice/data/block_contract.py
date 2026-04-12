@@ -101,7 +101,7 @@ def build_canonical_block_row(block: RpcBlock, chain: ChainSpec) -> CanonicalBlo
                 0 if block.get("baseFeePerGas") is None else _as_int(block["baseFeePerGas"])
             ),
             gas_used=_as_int(block["gasUsed"]),
-            chain_id=chain.chain_id,
+            chain_id=chain.runtime.chain_id,
             gas_limit=_as_int(block["gasLimit"]),
         )
     except KeyError as exc:

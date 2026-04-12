@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from functools import cache
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -30,7 +31,7 @@ from .models import (
     TuneConfig,
     TuningConfig,
     TuningSpaceConfig,
-    apply_rpc_profile,
+    apply_provider_acquisition_overrides,
 )
 
 _MODEL_GROUP = "model"
@@ -67,6 +68,12 @@ def load_named_group(name: str, group: str) -> dict[str, object]:
     if not path.is_file():
         raise FileNotFoundError(f"Unknown {group} spec: {name}")
     return load_yaml_mapping(path)
+
+
+@cache
+def _available_group_names(group: str) -> frozenset[str]:
+    directory = _CONF_ROOT / group
+    return frozenset(path.stem for path in directory.glob("*.yaml"))
 
 
 def load_named_model(name: str) -> ModelConfig:
@@ -177,6 +184,11 @@ def _resolve_provider(payload: dict[str, object], *, chain: ChainSpec) -> Provid
         group="provider",
         model_type=ProviderSpec,
     )
+    unknown_chains = sorted(set(provider.chains) - set(_available_group_names("chain")))
+    if unknown_chains:
+        raise ValueError(
+            f"provider {provider.name} declares unknown chains: {', '.join(unknown_chains)}"
+        )
     provider.endpoint_for(chain.name)
     return provider
 
@@ -213,9 +225,8 @@ def load_acquire_config(
         group="acquisition",
         model_type=AcquisitionConfig,
     )
-    acquisition_spec = apply_rpc_profile(
-        provider_name=provider_spec.name,
-        chain_name=chain_spec.name,
+    acquisition_spec = apply_provider_acquisition_overrides(
+        provider=provider_spec,
         acquisition=acquisition_spec,
     )
     return AcquireConfig(
