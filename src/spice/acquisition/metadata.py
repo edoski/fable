@@ -54,8 +54,7 @@ class DatasetCoverageMetadata(MetadataModel):
 
 
 class DatasetSamplingSettings(MetadataModel):
-    anchor_count: int
-    history_anchor_count: int
+    sample_count: int
 
 
 class DatasetTemporalSettings(MetadataModel):
@@ -64,6 +63,7 @@ class DatasetTemporalSettings(MetadataModel):
 
 
 class DatasetAcquisitionSettings(MetadataModel):
+    history_sample_budget: int
     chunk_size: int
     rpc_batch_size: int
     rpc_concurrency: int
@@ -248,14 +248,14 @@ def build_dataset_metadata(
         ),
         settings=DatasetSettingsMetadata(
             sampling=DatasetSamplingSettings(
-                anchor_count=config.dataset.sampling.anchor_count,
-                history_anchor_count=config.dataset.sampling.effective_history_anchor_count,
+                sample_count=config.dataset.sampling.sample_count,
             ),
             temporal=DatasetTemporalSettings(
                 lookback_seconds=config.dataset.temporal.lookback_seconds,
                 max_delay_seconds=config.dataset.temporal.max_delay_seconds,
             ),
             acquisition=DatasetAcquisitionSettings(
+                history_sample_budget=config.effective_history_sample_budget,
                 chunk_size=config.acquisition.chunk_size,
                 rpc_batch_size=config.acquisition.rpc_batch_size,
                 rpc_concurrency=config.acquisition.rpc_concurrency,

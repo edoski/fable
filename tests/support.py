@@ -11,12 +11,15 @@ from spice.core.config import (
     ChainName,
     CompileMode,
     ExperimentConfig,
+    LstmModelConfig,
     ModelConfig,
     ModelFamily,
     ProviderConfig,
     RpcProviderName,
     TrainingConfig,
     TrainingPrecision,
+    TransformerLstmModelConfig,
+    TransformerModelConfig,
     load_params_config,
 )
 
@@ -57,8 +60,8 @@ def base_overrides(tmp_path: Path) -> list[str]:
         f"dataset.span.end_date={TEST_SPAN_END_DATE}",
         f"evaluation.duration_days={TEST_EVALUATION_DURATION_DAYS}",
         "dataset.temporal.lookback_seconds=120",
-        "dataset.sampling.anchor_count=48",
-        "dataset.sampling.history_anchor_count=48",
+        "dataset.sampling.sample_count=48",
+        "acquisition.history_sample_budget=48",
     ]
 
 
@@ -88,16 +91,33 @@ def make_provider_config(
 
 
 def make_model_config(*, family: ModelFamily = ModelFamily.LSTM) -> ModelConfig:
-    return ModelConfig(
+    if family is ModelFamily.TRANSFORMER:
+        return TransformerModelConfig(
+            family=family,
+            dropout=0.1,
+            d_model=128,
+            nhead=4,
+            transformer_layers=2,
+            feedforward_dim=512,
+            head_hidden_dim=64,
+        )
+    if family is ModelFamily.TRANSFORMER_LSTM:
+        return TransformerLstmModelConfig(
+            family=family,
+            hidden_size=128,
+            num_layers=2,
+            dropout=0.1,
+            d_model=128,
+            nhead=4,
+            transformer_layers=2,
+            head_hidden_dim=64,
+        )
+    return LstmModelConfig(
         family=family,
         input_projection_dim=128,
         hidden_size=128,
         num_layers=2,
         dropout=0.1,
-        d_model=128,
-        nhead=4,
-        transformer_layers=2,
-        feedforward_dim=512,
         head_hidden_dim=64,
     )
 

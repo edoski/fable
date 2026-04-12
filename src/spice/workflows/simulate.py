@@ -62,7 +62,7 @@ def run(config: ExperimentConfig, *, reporter: Reporter | None = None) -> None:
             )
             session.reporter.finish_task(
                 prepare_task,
-                message=f"examples={prepared.n_examples_total}",
+                message=f"samples={prepared.sample_count}",
             )
             predictions = predict_class_offsets(
                 loaded_artifact.model,

@@ -63,9 +63,9 @@ def _format_train_summary_sections(
                 (
                     "split sizes",
                     (
-                        f"train={report.split_sizes.train_examples:,} "
-                        f"validation={report.split_sizes.validation_examples:,} "
-                        f"test={report.split_sizes.test_examples:,}"
+                        f"train={report.split_sizes.train_samples:,} "
+                        f"validation={report.split_sizes.validation_samples:,} "
+                        f"test={report.split_sizes.test_samples:,}"
                     ),
                 ),
                 ("validation loss", f"{best_validation.total_loss:.4f}"),

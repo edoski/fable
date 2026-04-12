@@ -6,5 +6,4 @@ temporal:
   max_delay_seconds: 36
   lookback_seconds: 600
 sampling:
-  anchor_count: 1000000
-  history_anchor_count: 1000000
+  sample_count: 1000000

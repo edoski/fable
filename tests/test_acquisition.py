@@ -109,8 +109,8 @@ def test_ensure_history_dataset_extends_missing_prefix_only(tmp_path) -> None:
             "acquisition.chunk_size=2",
             "dataset.temporal.lookback_seconds=24",
             "dataset.temporal.max_delay_seconds=12",
-            "dataset.sampling.anchor_count=4",
-            "dataset.sampling.history_anchor_count=4",
+            "dataset.sampling.sample_count=4",
+            "acquisition.history_sample_budget=4",
         ],
     )
     output_dir = tmp_path / "history"
@@ -275,19 +275,19 @@ def test_acquire_reuses_valid_canonical_blocks_across_provider_change(
         + [
             "dataset.temporal.lookback_seconds=24",
             "dataset.temporal.max_delay_seconds=12",
-            "dataset.sampling.anchor_count=4",
-            "dataset.sampling.history_anchor_count=4",
+            "dataset.sampling.sample_count=4",
+            "acquisition.history_sample_budget=4",
         ],
     )
     previous_provider_config = compose_experiment(
         "acquire",
         overrides=base_overrides(tmp_path)
         + [
-            "provider=alchemy",
+            "presets.provider=alchemy",
             "dataset.temporal.lookback_seconds=24",
             "dataset.temporal.max_delay_seconds=12",
-            "dataset.sampling.anchor_count=4",
-            "dataset.sampling.history_anchor_count=4",
+            "dataset.sampling.sample_count=4",
+            "acquisition.history_sample_budget=4",
         ],
     )
     required_history_blocks = required_history_block_count(config)
@@ -385,19 +385,19 @@ def test_acquire_extension_appends_new_provider_once(tmp_path, monkeypatch) -> N
         + [
             "dataset.temporal.lookback_seconds=24",
             "dataset.temporal.max_delay_seconds=12",
-            "dataset.sampling.anchor_count=4",
-            "dataset.sampling.history_anchor_count=4",
+            "dataset.sampling.sample_count=4",
+            "acquisition.history_sample_budget=4",
         ],
     )
     previous_provider_config = compose_experiment(
         "acquire",
         overrides=base_overrides(tmp_path)
         + [
-            "provider=alchemy",
+            "presets.provider=alchemy",
             "dataset.temporal.lookback_seconds=24",
             "dataset.temporal.max_delay_seconds=12",
-            "dataset.sampling.anchor_count=4",
-            "dataset.sampling.history_anchor_count=4",
+            "dataset.sampling.sample_count=4",
+            "acquisition.history_sample_budget=4",
         ],
     )
     required_history_blocks = required_history_block_count(config)
@@ -520,8 +520,8 @@ def test_acquire_failure_preserves_last_good_canonical_dataset(tmp_path, monkeyp
         + [
             "dataset.temporal.lookback_seconds=24",
             "dataset.temporal.max_delay_seconds=12",
-            "dataset.sampling.anchor_count=4",
-            "dataset.sampling.history_anchor_count=4",
+            "dataset.sampling.sample_count=4",
+            "acquisition.history_sample_budget=4",
         ],
     )
     required_history_blocks = required_history_block_count(config)

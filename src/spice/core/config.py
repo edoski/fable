@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Self, cast
+from typing import Annotated, Literal, Self, cast
 
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
@@ -97,20 +97,7 @@ class DatasetTemporalConfig(ConfigModel):
 
 
 class DatasetSamplingConfig(ConfigModel):
-    anchor_count: int = Field(gt=0)
-    history_anchor_count: int = Field(gt=0)
-
-    @property
-    def effective_history_anchor_count(self) -> int:
-        return self.history_anchor_count
-
-    @model_validator(mode="after")
-    def validate_history_anchor_count(self) -> Self:
-        if self.effective_history_anchor_count < self.anchor_count:
-            raise ValueError(
-                "history_anchor_count must be at least dataset.sampling.anchor_count"
-            )
-        return self
+    sample_count: int = Field(gt=0)
 
 
 class DatasetConfig(ConfigModel):
@@ -180,6 +167,7 @@ class TrainingConfig(ConfigModel):
 
 class AcquisitionConfig(ConfigModel):
     dry_run: bool
+    history_sample_budget: int | None = Field(default=None, gt=0)
     chunk_size: int = Field(gt=0)
     rpc_batch_size: int = Field(gt=0)
     rpc_concurrency: int = Field(gt=0)
@@ -212,17 +200,25 @@ class EvaluationConfig(ConfigModel):
     duration_days: int = Field(gt=0)
 
 
-class ModelConfig(ConfigModel):
+class BaseModelConfig(ConfigModel):
     family: ModelFamily
+    dropout: float = Field(ge=0.0, lt=1.0)
+    head_hidden_dim: int = Field(gt=0)
+
+
+class LstmModelConfig(BaseModelConfig):
+    family: Literal[ModelFamily.LSTM] = ModelFamily.LSTM
     input_projection_dim: int = Field(gt=0)
     hidden_size: int = Field(gt=0)
     num_layers: int = Field(gt=0)
-    dropout: float = Field(ge=0.0, lt=1.0)
+
+
+class TransformerModelConfig(BaseModelConfig):
+    family: Literal[ModelFamily.TRANSFORMER] = ModelFamily.TRANSFORMER
     d_model: int = Field(gt=0)
     nhead: int = Field(gt=0)
     transformer_layers: int = Field(gt=0)
     feedforward_dim: int = Field(gt=0)
-    head_hidden_dim: int = Field(gt=0)
 
     @model_validator(mode="after")
     def validate_transformer_dimensions(self) -> Self:
@@ -231,6 +227,29 @@ class ModelConfig(ConfigModel):
         if self.d_model % 2 != 0:
             raise ValueError("d_model must be even for sinusoidal positional encodings")
         return self
+
+
+class TransformerLstmModelConfig(BaseModelConfig):
+    family: Literal[ModelFamily.TRANSFORMER_LSTM] = ModelFamily.TRANSFORMER_LSTM
+    d_model: int = Field(gt=0)
+    nhead: int = Field(gt=0)
+    transformer_layers: int = Field(gt=0)
+    hidden_size: int = Field(gt=0)
+    num_layers: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validate_transformer_dimensions(self) -> Self:
+        if self.d_model % self.nhead != 0:
+            raise ValueError("d_model must be divisible by nhead")
+        if self.d_model % 2 != 0:
+            raise ValueError("d_model must be even for sinusoidal positional encodings")
+        return self
+
+
+ModelConfig = Annotated[
+    LstmModelConfig | TransformerModelConfig | TransformerLstmModelConfig,
+    Field(discriminator="family"),
+]
 
 
 class TrackingConfig(ConfigModel):
@@ -438,6 +457,15 @@ class ExperimentConfig(ConfigModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def validate_history_sample_budget(self) -> Self:
+        if self.effective_history_sample_budget < self.dataset.sampling.sample_count:
+            raise ValueError(
+                "acquisition.history_sample_budget must be at least "
+                "dataset.sampling.sample_count"
+            )
+        return self
+
     @property
     def span_start_timestamp(self) -> int:
         return self.dataset.span.start_timestamp
@@ -462,10 +490,76 @@ class ExperimentConfig(ConfigModel):
     def history_window_end_timestamp(self) -> int:
         return self.evaluation_window_start_timestamp
 
+    @property
+    def effective_history_sample_budget(self) -> int:
+        if self.acquisition.history_sample_budget is None:
+            return self.dataset.sampling.sample_count
+        return self.acquisition.history_sample_budget
+
+
+class PresetSelections(ConfigModel):
+    chain: ChainName
+    provider: RpcProviderName
+    model: ModelFamily
+
+
+class PublicDatasetSamplingConfig(ConfigModel):
+    sample_count: int = Field(gt=0)
+
+
+class PublicDatasetConfig(ConfigModel):
+    id: str
+    span: DatasetSpanConfig
+    temporal: DatasetTemporalConfig
+    sampling: PublicDatasetSamplingConfig
+
+
+class PublicAcquisitionConfig(ConfigModel):
+    history_sample_budget: int | None = Field(default=None, gt=0)
+
+
+class PublicTrainingConfig(ConfigModel):
+    learning_rate: float = Field(gt=0.0)
+    weight_decay: float = Field(ge=0.0)
+    batch_size: int = Field(gt=0)
+    max_epochs: int = Field(gt=0)
+    early_stopping: EarlyStoppingConfig
+    gradient_clip_norm: float = Field(gt=0.0)
+    action_loss_weight: float = Field(gt=0.0)
+    fee_loss_weight: float = Field(gt=0.0)
+
+
+class PublicSimulationConfig(ConfigModel):
+    window_seconds: int = Field(gt=0)
+    arrival_rate_per_second: float = Field(gt=0.0)
+    repetitions: int = Field(gt=0)
+
+
+class MainParamsConfig(ConfigModel):
+    presets: PresetSelections
+    dataset: PublicDatasetConfig
+    evaluation: EvaluationConfig
+    acquisition: PublicAcquisitionConfig | None = None
+    split: SplitConfig
+    training: PublicTrainingConfig
+    model: dict[str, object] = Field(min_length=1)
+    simulation: PublicSimulationConfig
+    artifact: ArtifactConfig
+    study: StudyConfig
+
 
 _EXPERIMENT_CONFIG_ADAPTER = TypeAdapter(ExperimentConfig)
+_MAIN_PARAMS_ADAPTER = TypeAdapter(MainParamsConfig)
 _CONF_ROOT = Path(__file__).resolve().parents[1] / "conf"
 _PRESET_GROUPS = frozenset({"chain", "model", "provider"})
+_PRESET_OVERRIDE_KEYS = {f"presets.{group}": group for group in _PRESET_GROUPS}
+_MODEL_OVERRIDE_FIELDS = {
+    ModelFamily.LSTM: frozenset(LstmModelConfig.model_fields) - {"family"},
+    ModelFamily.TRANSFORMER: frozenset(TransformerModelConfig.model_fields) - {"family"},
+    ModelFamily.TRANSFORMER_LSTM: (
+        frozenset(TransformerLstmModelConfig.model_fields) - {"family"}
+    ),
+}
 
 
 def coerce_config(cfg: DictConfig, *, task: WorkflowTask | str) -> ExperimentConfig:
@@ -499,6 +593,17 @@ def _load_mapping_config(path: Path) -> DictConfig:
     return loaded
 
 
+def _mapping_without_defaults(config: DictConfig) -> DictConfig:
+    payload = OmegaConf.to_container(config, resolve=False)
+    if not isinstance(payload, dict):
+        raise TypeError("Configuration must serialize to a mapping payload")
+    payload.pop("defaults", None)
+    stripped = OmegaConf.create(payload)
+    if not isinstance(stripped, DictConfig):
+        raise TypeError("Configuration must remain a mapping after defaults stripping")
+    return stripped
+
+
 def _load_preset(group: str, name: str) -> DictConfig:
     path = _CONF_ROOT / group / f"{name}.yaml"
     if not path.is_file():
@@ -519,10 +624,62 @@ def _load_preset(group: str, name: str) -> DictConfig:
     return stripped
 
 
-def _apply_named_preset(config: DictConfig, *, group: str, name: str) -> None:
-    preset = _load_preset(group, name)
-    payload = OmegaConf.to_container(preset, resolve=False)
-    OmegaConf.update(config, group, payload, merge=False)
+def _compose_named_config(name: str, *, selections: dict[str, str]) -> DictConfig:
+    path = _CONF_ROOT / f"{name}.yaml"
+    if not path.is_file():
+        raise FileNotFoundError(f"Unknown config root: {name}")
+    config = _load_mapping_config(path)
+    defaults = config.get("defaults", [])
+    working = OmegaConf.create({})
+    if not isinstance(working, DictConfig):
+        raise TypeError("Root configuration must remain a mapping")
+    OmegaConf.set_struct(working, False)
+    for entry in defaults:
+        if isinstance(entry, str):
+            if entry == "_self_":
+                continue
+            merged = OmegaConf.merge(working, _compose_named_config(entry, selections=selections))
+            if not isinstance(merged, DictConfig):
+                raise TypeError("Composed root config must remain a mapping")
+            working = merged
+            continue
+
+        payload = OmegaConf.to_container(entry, resolve=False)
+        if not isinstance(payload, dict) or len(payload) != 1:
+            raise TypeError("Defaults entries must contain exactly one mapping pair")
+        raw_group, default_name = next(iter(payload.items()))
+        if not isinstance(raw_group, str) or not isinstance(default_name, str):
+            raise TypeError("Defaults group selectors must be strings")
+        if raw_group.startswith("optional "):
+            raw_group = raw_group.removeprefix("optional ")
+            optional = True
+        else:
+            optional = False
+        group, _, package = raw_group.partition("@")
+        if group == "rpc_profile":
+            continue
+        if group in _PRESET_GROUPS:
+            selected_name = selections.get(group, default_name)
+        else:
+            selected_name = default_name
+        try:
+            preset = _load_preset(group, selected_name)
+        except FileNotFoundError:
+            if optional:
+                continue
+            raise
+        preset_payload = OmegaConf.to_container(preset, resolve=False)
+        OmegaConf.update(
+            working,
+            package or group,
+            preset_payload,
+            merge=False,
+        )
+
+    merged = OmegaConf.merge(working, _mapping_without_defaults(config))
+    if not isinstance(merged, DictConfig):
+        raise TypeError("Composed config must remain a mapping")
+    return merged
 
 
 def _apply_rpc_profile(config: DictConfig) -> None:
@@ -544,6 +701,15 @@ def _apply_rpc_profile(config: DictConfig) -> None:
         ),
         merge=False,
     )
+
+
+def _filter_model_overrides(
+    model_payload: dict[str, object],
+    *,
+    family: str,
+) -> dict[str, object]:
+    allowed_fields = _MODEL_OVERRIDE_FIELDS[ModelFamily(family)]
+    return {key: value for key, value in model_payload.items() if key in allowed_fields}
 
 
 def _refresh_derived_fields(config: DictConfig, *, task: WorkflowTask | str) -> None:
@@ -637,6 +803,8 @@ def _normalize_runtime_fields(config: DictConfig) -> None:
             "on" if compile_value else "off",
             merge=False,
         )
+
+
 def _partition_overrides(
     overrides: Iterable[str] | None,
 ) -> tuple[dict[str, str], list[str]]:
@@ -647,8 +815,9 @@ def _partition_overrides(
         if "=" not in normalized:
             raise ValueError(f"Overrides must use key=value syntax: {raw_override}")
         key, value = normalized.split("=", 1)
-        if key in _PRESET_GROUPS:
-            named[key] = value
+        preset_group = _PRESET_OVERRIDE_KEYS.get(key)
+        if preset_group is not None:
+            named[preset_group] = value
             continue
         dotlist.append(normalized)
     return named, dotlist
@@ -660,17 +829,32 @@ def load_params_config(
     params_path: Path = Path("params.yaml"),
     overrides: Iterable[str] | None = None,
 ) -> ExperimentConfig:
-    created = OmegaConf.create(
-        OmegaConf.to_container(_load_mapping_config(params_path), resolve=False)
-    )
-    if not isinstance(created, DictConfig):
-        raise TypeError(f"Configuration must remain a mapping: {params_path}")
-    working = created
-    OmegaConf.set_struct(working, False)
+    params_payload = OmegaConf.to_container(_load_mapping_config(params_path), resolve=True)
+    main_params = _MAIN_PARAMS_ADAPTER.validate_python(params_payload)
+    main_params_payload = _MAIN_PARAMS_ADAPTER.dump_python(main_params, mode="json")
+    if not isinstance(main_params_payload, dict):
+        raise TypeError("Main params config did not serialize to a mapping payload")
+    preset_payload = main_params_payload.pop("presets", None)
+    if not isinstance(preset_payload, dict):
+        raise TypeError("Main params config must serialize presets as a mapping")
+    selections = {key: str(value) for key, value in preset_payload.items()}
+
     named_overrides, dotlist_overrides = _partition_overrides(overrides)
-    for group, name in named_overrides.items():
-        _apply_named_preset(working, group=group, name=name)
+    selections.update(named_overrides)
+    model_payload = main_params_payload.get("model")
+    if isinstance(model_payload, dict):
+        filtered_model_payload = _filter_model_overrides(model_payload, family=selections["model"])
+        if filtered_model_payload:
+            main_params_payload["model"] = filtered_model_payload
+        else:
+            main_params_payload.pop("model", None)
+
+    working = _compose_named_config(WorkflowTask(task).value, selections=selections)
     _apply_rpc_profile(working)
+    merged = OmegaConf.merge(working, main_params_payload)
+    if not isinstance(merged, DictConfig):
+        raise TypeError("Main params overlay must preserve a mapping configuration")
+    working = merged
     if dotlist_overrides:
         merged = OmegaConf.merge(working, OmegaConf.from_cli(dotlist_overrides))
         if not isinstance(merged, DictConfig):

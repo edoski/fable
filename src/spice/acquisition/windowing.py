@@ -12,4 +12,4 @@ def required_history_block_count(config: ExperimentConfig) -> int:
         max_delay_seconds=config.dataset.temporal.max_delay_seconds,
         block_time_seconds=config.chain.block_time_seconds,
     )
-    return geometry.required_block_count(config.dataset.sampling.effective_history_anchor_count)
+    return geometry.required_block_count(config.effective_history_sample_budget)

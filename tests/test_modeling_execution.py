@@ -39,7 +39,7 @@ def test_run_persisted_training_writes_canonical_training_outputs(tmp_path) -> N
             model=config.model,
             max_delay_seconds=config.dataset.temporal.max_delay_seconds,
             lookback_seconds=config.dataset.temporal.lookback_seconds,
-            anchor_count=config.dataset.sampling.anchor_count,
+            sample_count=config.dataset.sampling.sample_count,
             split=config.split,
             training=config.training,
         ),
@@ -113,7 +113,7 @@ def test_sequence_loader_matches_manual_temporal_batch_construction(tmp_path) ->
             model=config.model,
             max_delay_seconds=config.dataset.temporal.max_delay_seconds,
             lookback_seconds=config.dataset.temporal.lookback_seconds,
-            anchor_count=config.dataset.sampling.anchor_count,
+            sample_count=config.dataset.sampling.sample_count,
             split=config.split,
             training=config.training,
         ),
@@ -136,9 +136,9 @@ def test_sequence_loader_matches_manual_temporal_batch_construction(tmp_path) ->
     ]
     expected_inputs = []
     for sample_index in expected_sample_indices:
-        anchor_row_index = int(store.anchor_row_indices[int(sample_index)])
-        sequence_start = anchor_row_index - lookback_steps + 1
-        expected_inputs.append(store.feature_matrix[sequence_start : anchor_row_index + 1])
+        sample_row_index = int(store.sample_row_indices[int(sample_index)])
+        sequence_start = sample_row_index - lookback_steps + 1
+        expected_inputs.append(store.feature_matrix[sequence_start : sample_row_index + 1])
     expected_inputs_tensor = torch.from_numpy(
         np.stack(expected_inputs).astype(np.float32, copy=False)
     )
@@ -204,12 +204,12 @@ def test_train_runs_with_compile_and_auto_precision_on_mps(tmp_path) -> None:
         "train",
         overrides=base_overrides(tmp_path)
         + [
-                "model=lstm",
-                "training.device=mps",
-                "training.precision=auto",
-                "training.compile=on",
-            ],
-        )
+            "presets.model=lstm",
+            "training.device=mps",
+            "training.precision=auto",
+            "training.compile=on",
+        ],
+    )
     write_dataset_dir(config.paths.history_dir, make_history_rows())
 
     run_train(config)

@@ -3,9 +3,4 @@ input_projection_dim: 128
 hidden_size: 128
 num_layers: 2
 dropout: 0.1
-d_model: 128
-nhead: 4
-transformer_layers: 2
-feedforward_dim: 512
 head_hidden_dim: 64
-

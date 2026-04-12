@@ -154,7 +154,7 @@ def test_train_interrupt_cleans_partial_outputs_but_keeps_tuning_lineage(
                 "family": config.model.family.value,
                 "max_delay_seconds": config.dataset.temporal.max_delay_seconds,
                 "lookback_seconds": config.dataset.temporal.lookback_seconds,
-                "anchor_count": config.dataset.sampling.anchor_count,
+                "sample_count": config.dataset.sampling.sample_count,
                 "objective_metric": config.tuning.objective_metric.value,
                 "direction": config.tuning.direction.value,
                 "trial": {
@@ -278,8 +278,8 @@ def test_acquire_success_output_is_small_summary(tmp_path, monkeypatch) -> None:
         + [
             "dataset.temporal.lookback_seconds=24",
             "dataset.temporal.max_delay_seconds=12",
-            "dataset.sampling.anchor_count=4",
-            "dataset.sampling.history_anchor_count=4",
+            "dataset.sampling.sample_count=4",
+            "acquisition.history_sample_budget=4",
         ],
     )
     required_history_blocks = required_history_block_count(config)

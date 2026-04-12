@@ -34,7 +34,7 @@ class TrainingArtifactManifest(ArtifactModel):
     study: StudyConfig | None = None
     max_delay_seconds: int
     lookback_seconds: int
-    anchor_count: int
+    sample_count: int
     lookback_steps: int
     max_extra_wait_steps: int
     action_count: int
@@ -62,7 +62,7 @@ def build_training_artifact_manifest(
         study=spec.study,
         max_delay_seconds=spec.max_delay_seconds,
         lookback_seconds=spec.lookback_seconds,
-        anchor_count=spec.anchor_count,
+        sample_count=spec.sample_count,
         lookback_steps=prepared.geometry.lookback_steps,
         max_extra_wait_steps=prepared.geometry.max_extra_wait_steps,
         action_count=prepared.geometry.action_count,

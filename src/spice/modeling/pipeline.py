@@ -24,9 +24,9 @@ from ..data.datasets import (
     build_temporal_store,
     chronological_split_indices,
     derive_dataset_geometry,
-    filter_sample_indices_by_anchor_window,
+    filter_sample_indices_by_timestamp_window,
     history_context_slice,
-    trim_history_for_anchor_count,
+    trim_history_for_sample_count,
 )
 from ..data.features import build_feature_table
 from ..data.io import load_block_frame
@@ -44,7 +44,7 @@ class TrainingSpec:
     model: ModelConfig
     max_delay_seconds: int
     lookback_seconds: int
-    anchor_count: int
+    sample_count: int
     split: SplitConfig
     training: TrainingConfig
     variant: ArtifactVariant = ArtifactVariant.BASELINE
@@ -55,7 +55,7 @@ class TrainingSpec:
 class PreparedTrainingDataset:
     n_blocks_available: int
     n_blocks_used: int
-    n_examples_total: int
+    sample_count: int
     store: TemporalDatasetStore
     split_indices: DatasetSplitIndices
     scaler: ScalerStats
@@ -74,7 +74,7 @@ class PreparedTrainingDataset:
 class PreparedInferenceDataset:
     n_history_context_blocks: int
     n_evaluation_blocks: int
-    n_examples_total: int
+    sample_count: int
     store: TemporalDatasetStore
     sample_indices: IntVector
     geometry: DatasetGeometry
@@ -110,9 +110,9 @@ def prepare_training_dataset(
     )
     trimmed_blocks = _slice_frame(
         blocks.sort("block_number"),
-        trim_history_for_anchor_count(
+        trim_history_for_sample_count(
             blocks.height,
-            anchor_count=spec.anchor_count,
+            sample_count=spec.sample_count,
             geometry=geometry,
         ),
     )
@@ -122,15 +122,15 @@ def prepare_training_dataset(
         lookback_steps=geometry.lookback_steps,
         action_count=geometry.action_count,
     )
-    if store.n_samples != spec.anchor_count:
+    if store.n_samples != spec.sample_count:
         raise RuntimeError(
-            "Training dataset preparation produced an unexpected number of anchors; "
-            f"expected {spec.anchor_count}, got {store.n_samples}"
+            "Training dataset preparation produced an unexpected number of samples; "
+            f"expected {spec.sample_count}, got {store.n_samples}"
         )
     split_indices = chronological_split_indices(store.n_samples, spec.split)
     scaler = fit_standard_scaler(
         store.feature_matrix,
-        anchor_row_indices=store.anchor_row_indices,
+        sample_row_indices=store.sample_row_indices,
         sample_indices=split_indices.train,
         lookback_steps=geometry.lookback_steps,
     )
@@ -141,7 +141,7 @@ def prepare_training_dataset(
     return PreparedTrainingDataset(
         n_blocks_available=blocks.height,
         n_blocks_used=trimmed_blocks.height,
-        n_examples_total=store.n_samples,
+        sample_count=store.n_samples,
         store=scaled_store,
         split_indices=split_indices,
         scaler=scaler,
@@ -169,7 +169,7 @@ def prepare_inference_dataset(
         lookback_steps=geometry.lookback_steps,
         action_count=geometry.action_count,
     )
-    sample_indices = filter_sample_indices_by_anchor_window(
+    sample_indices = filter_sample_indices_by_timestamp_window(
         store,
         start_timestamp=window_start_timestamp,
         end_timestamp=window_end_timestamp,
@@ -184,7 +184,7 @@ def prepare_inference_dataset(
     return PreparedInferenceDataset(
         n_history_context_blocks=context_blocks.height,
         n_evaluation_blocks=evaluation_blocks.height,
-        n_examples_total=int(sample_indices.shape[0]),
+        sample_count=int(sample_indices.shape[0]),
         store=scaled_store,
         sample_indices=sample_indices,
         geometry=geometry,
@@ -207,9 +207,7 @@ def run_training(
     prepared = prepare_training_dataset(blocks, spec=spec)
     reporter.finish_task(
         prepare_task,
-        message=(
-            f"blocks={prepared.n_blocks_used} examples={prepared.n_examples_total}"
-        ),
+        message=f"blocks={prepared.n_blocks_used} samples={prepared.sample_count}",
     )
     build_task = reporter.start_task("build model")
     model = build_model(prepared.n_features, prepared.action_count, spec.model)

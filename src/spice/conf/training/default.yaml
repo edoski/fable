@@ -12,3 +12,5 @@ device: auto
 seed: 2026
 deterministic: true
 log_every_n_steps: 10
+precision: auto
+compile: auto

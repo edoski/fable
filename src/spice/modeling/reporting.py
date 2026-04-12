@@ -23,9 +23,9 @@ class ReportModel(BaseModel):
 
 
 class SplitSizes(ReportModel):
-    train_examples: int
-    validation_examples: int
-    test_examples: int
+    train_samples: int
+    validation_samples: int
+    test_samples: int
 
 
 class TestMetricsReport(ReportModel):
@@ -48,10 +48,9 @@ class TrainingRunReport(ReportModel):
     device_requested: str
     lookback_seconds: int
     block_time_seconds: float
-    anchor_count: int
+    sample_count: int
     n_blocks_available: int
     n_blocks_used: int
-    n_examples_total: int
     lookback_steps: int
     max_extra_wait_steps: int
     action_count: int
@@ -97,7 +96,7 @@ class SimulationReport(ReportModel):
     repetitions: int
     n_history_context_blocks: int
     n_evaluation_blocks: int
-    n_examples_total: int
+    sample_count: int
     profit_over_baseline: SimulationAggregateReport
     cost_over_optimum: SimulationAggregateReport
     baseline_cost_over_optimum: SimulationAggregateReport
@@ -108,7 +107,7 @@ class SimulationReport(ReportModel):
 def build_training_run_report(
     result: TrainingRunResult,
     *,
-    anchor_count: int,
+    sample_count: int,
     max_delay_seconds: int,
     lookback_seconds: int,
     chain_name: str,
@@ -134,18 +133,17 @@ def build_training_run_report(
         device_requested=device_requested,
         lookback_seconds=lookback_seconds,
         block_time_seconds=block_time_seconds,
-        anchor_count=anchor_count,
+        sample_count=sample_count,
         n_blocks_available=prepared.n_blocks_available,
         n_blocks_used=prepared.n_blocks_used,
-        n_examples_total=prepared.n_examples_total,
         lookback_steps=manifest.lookback_steps,
         max_extra_wait_steps=manifest.max_extra_wait_steps,
         action_count=manifest.action_count,
         n_features=manifest.n_features,
         split_sizes=SplitSizes(
-            train_examples=int(prepared.split_indices.train.shape[0]),
-            validation_examples=int(prepared.split_indices.validation.shape[0]),
-            test_examples=int(prepared.split_indices.test.shape[0]),
+            train_samples=int(prepared.split_indices.train.shape[0]),
+            validation_samples=int(prepared.split_indices.validation.shape[0]),
+            test_samples=int(prepared.split_indices.test.shape[0]),
         ),
         best_epoch=result.training_result.best_epoch,
         test_metrics=TestMetricsReport(
@@ -190,7 +188,7 @@ def build_simulation_report(
         repetitions=repetitions,
         n_history_context_blocks=prepared.n_history_context_blocks,
         n_evaluation_blocks=prepared.n_evaluation_blocks,
-        n_examples_total=prepared.n_examples_total,
+        sample_count=prepared.sample_count,
         profit_over_baseline=SimulationAggregateReport(
             mean=simulation.mean_profit_over_baseline,
             std=simulation.std_profit_over_baseline,

@@ -156,7 +156,7 @@ def test_prepare_training_and_inference_datasets(tmp_path) -> None:
         model=make_model_config(),
         max_delay_seconds=36,
         lookback_seconds=120,
-        anchor_count=48,
+        sample_count=48,
         split=SplitConfig(train_fraction=0.7, validation_fraction=0.15),
         training=make_training_config(),
     )
@@ -175,8 +175,8 @@ def test_prepare_training_and_inference_datasets(tmp_path) -> None:
         window_end_timestamp=TEST_WINDOW_START_TIMESTAMP + 180 * 12,
     )
 
-    assert prepared.n_examples_total == 48
+    assert prepared.sample_count == 48
     assert prepared.store.n_features > 0
     assert prepared.split_indices.test.size > 0
-    assert inference.n_examples_total > 0
+    assert inference.sample_count > 0
     assert inference.store.n_features == prepared.store.n_features

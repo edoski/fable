@@ -20,7 +20,7 @@ class ScalerStats(BaseModel):
 
 def window_row_multiplicities(
     *,
-    anchor_row_indices: IntVector,
+    sample_row_indices: IntVector,
     sample_indices: IntVector,
     lookback_steps: int,
     n_rows: int,
@@ -33,9 +33,9 @@ def window_row_multiplicities(
         raise ValueError("sample_indices must be non-empty")
 
     counts = np.zeros(n_rows + 1, dtype=np.int64)
-    selected_anchor_rows = anchor_row_indices[sample_indices]
-    starts = selected_anchor_rows - lookback_steps + 1
-    ends = selected_anchor_rows + 1
+    selected_sample_rows = sample_row_indices[sample_indices]
+    starts = selected_sample_rows - lookback_steps + 1
+    ends = selected_sample_rows + 1
     np.add.at(counts, starts, 1)
     np.add.at(counts, ends, -1)
     return np.cumsum(counts[:-1], dtype=np.int64)
@@ -44,14 +44,14 @@ def window_row_multiplicities(
 def fit_standard_scaler(
     feature_matrix: FloatMatrix,
     *,
-    anchor_row_indices: IntVector,
+    sample_row_indices: IntVector,
     sample_indices: IntVector,
     lookback_steps: int,
 ) -> ScalerStats:
     if feature_matrix.size == 0:
         raise ValueError("feature_matrix must be non-empty")
     multiplicities = window_row_multiplicities(
-        anchor_row_indices=anchor_row_indices,
+        sample_row_indices=sample_row_indices,
         sample_indices=sample_indices,
         lookback_steps=lookback_steps,
         n_rows=int(feature_matrix.shape[0]),

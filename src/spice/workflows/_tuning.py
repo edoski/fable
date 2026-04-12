@@ -80,7 +80,7 @@ class TuningStudyReport(TuningModel):
     family: ModelFamily
     max_delay_seconds: int
     lookback_seconds: int
-    anchor_count: int
+    sample_count: int
     objective_metric: TuningObjective
     direction: StudyDirection
     trial_count_requested: int
@@ -101,7 +101,7 @@ class TuningBestParamsReport(TuningModel):
     family: ModelFamily
     max_delay_seconds: int
     lookback_seconds: int
-    anchor_count: int
+    sample_count: int
     objective_metric: TuningObjective
     direction: StudyDirection
     trial: TrialRunMetadata
@@ -258,7 +258,7 @@ def build_study_report(config: ExperimentConfig, study: optuna.Study) -> TuningS
         family=config.model.family,
         max_delay_seconds=config.dataset.temporal.max_delay_seconds,
         lookback_seconds=config.dataset.temporal.lookback_seconds,
-        anchor_count=config.dataset.sampling.anchor_count,
+        sample_count=config.dataset.sampling.sample_count,
         objective_metric=config.tuning.objective_metric,
         direction=config.tuning.direction,
         trial_count_requested=config.tuning.trial_count,
@@ -292,7 +292,7 @@ def build_best_params_report(
         family=config.model.family,
         max_delay_seconds=config.dataset.temporal.max_delay_seconds,
         lookback_seconds=config.dataset.temporal.lookback_seconds,
-        anchor_count=config.dataset.sampling.anchor_count,
+        sample_count=config.dataset.sampling.sample_count,
         objective_metric=config.tuning.objective_metric,
         direction=config.tuning.direction,
         trial=TrialRunMetadata(

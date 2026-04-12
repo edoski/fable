@@ -56,12 +56,12 @@ def sample_poisson_arrivals(
 
 
 def select_sample_positions_for_arrivals(
-    anchor_timestamps: NDArray[np.int64],
+    sample_timestamps: NDArray[np.int64],
     arrivals: NDArray[np.float64],
 ) -> NDArray[np.int64]:
     if arrivals.size == 0:
         return np.empty(0, dtype=np.int64)
-    selected_positions = np.searchsorted(anchor_timestamps, arrivals, side="right") - 1
+    selected_positions = np.searchsorted(sample_timestamps, arrivals, side="right") - 1
     return selected_positions[selected_positions >= 0].astype(np.int64, copy=False)
 
 
@@ -126,9 +126,9 @@ def run_temporal_simulation(
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
 
-    anchor_timestamps = store.timestamps[store.anchor_row_indices[sample_indices]]
-    first_timestamp = int(anchor_timestamps[0])
-    last_timestamp = int(anchor_timestamps[-1])
+    sample_timestamps = store.timestamps[store.sample_row_indices[sample_indices]]
+    first_timestamp = int(sample_timestamps[0])
+    last_timestamp = int(sample_timestamps[-1])
     latest_start = last_timestamp - window_seconds
     if latest_start < first_timestamp:
         raise ValueError("Evaluation examples do not cover the requested simulation window")
@@ -149,7 +149,7 @@ def run_temporal_simulation(
             start_timestamp=window_start,
             end_timestamp=window_end,
         )
-        selected_positions = select_sample_positions_for_arrivals(anchor_timestamps, arrivals)
+        selected_positions = select_sample_positions_for_arrivals(sample_timestamps, arrivals)
         if selected_positions.size == 0:
             reporter.update_task(
                 task_id,

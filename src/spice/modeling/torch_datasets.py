@@ -34,7 +34,7 @@ def build_sequence_batch(
     if sample_indices.size == 0:
         raise ValueError("Sequence batches require at least one sample")
     sample_indices = sample_indices.astype(np.int64, copy=False)
-    sequence_starts = store.anchor_row_indices[sample_indices] - lookback_steps + 1
+    sequence_starts = store.sample_row_indices[sample_indices] - lookback_steps + 1
     return SequenceBatch(
         inputs=torch.from_numpy(np.ascontiguousarray(sequence_view[sequence_starts])),
         class_label=torch.from_numpy(

@@ -23,10 +23,10 @@ class DatasetGeometry:
     action_count: int
     context_block_count: int
 
-    def required_block_count(self, anchor_count: int) -> int:
-        if anchor_count <= 0:
-            raise ValueError("anchor_count must be positive")
-        return self.context_block_count + anchor_count + self.action_count
+    def required_block_count(self, sample_count: int) -> int:
+        if sample_count <= 0:
+            raise ValueError("sample_count must be positive")
+        return self.context_block_count + sample_count + self.action_count
 
 
 @dataclass(slots=True)
@@ -41,7 +41,7 @@ class TemporalDatasetStore:
     feature_matrix: FloatMatrix
     block_numbers: IntVector
     timestamps: IntVector
-    anchor_row_indices: IntVector
+    sample_row_indices: IntVector
     class_labels: IntVector
     action_log_fees: FloatMatrix
     target_log_fee: FloatVector
@@ -58,7 +58,7 @@ class TemporalDatasetStore:
 
     @property
     def n_samples(self) -> int:
-        return int(self.anchor_row_indices.shape[0])
+        return int(self.sample_row_indices.shape[0])
 
     @property
     def action_count(self) -> int:
@@ -99,16 +99,16 @@ def derive_dataset_geometry(
     )
 
 
-def trim_history_for_anchor_count(
+def trim_history_for_sample_count(
     n_blocks: int,
     *,
-    anchor_count: int,
+    sample_count: int,
     geometry: DatasetGeometry,
 ) -> slice:
-    required_blocks = geometry.required_block_count(anchor_count)
+    required_blocks = geometry.required_block_count(sample_count)
     if n_blocks < required_blocks:
         raise ValueError(
-            "History dataset is too short for the requested anchor count; "
+            "History dataset is too short for the requested sample count; "
             f"need at least {required_blocks} blocks, got {n_blocks}"
         )
     return slice(n_blocks - required_blocks, n_blocks)
@@ -134,16 +134,16 @@ def build_temporal_store(
     if action_count <= 0:
         raise ValueError("action_count must be positive")
 
-    max_anchor = len(feature_table.block_numbers) - action_count
-    if max_anchor <= lookback_steps - 1:
+    max_sample_row = len(feature_table.block_numbers) - action_count
+    if max_sample_row <= lookback_steps - 1:
         raise ValueError("Feature table is too short to produce any supervised samples")
 
-    anchor_row_indices = np.arange(lookback_steps - 1, max_anchor, dtype=np.int64)
+    sample_row_indices = np.arange(lookback_steps - 1, max_sample_row, dtype=np.int64)
     future_windows = np.lib.stride_tricks.sliding_window_view(
         feature_table.log_base_fees[1:],
         window_shape=action_count,
     )
-    action_log_fees = future_windows[anchor_row_indices].astype(np.float32, copy=False)
+    action_log_fees = future_windows[sample_row_indices].astype(np.float32, copy=False)
     class_labels = np.argmin(action_log_fees, axis=1).astype(np.int64, copy=False)
     row_selector = np.arange(class_labels.shape[0], dtype=np.int64)
     target_log_fee = action_log_fees[row_selector, class_labels].astype(np.float32, copy=False)
@@ -154,7 +154,7 @@ def build_temporal_store(
         feature_matrix=feature_table.feature_matrix,
         block_numbers=feature_table.block_numbers,
         timestamps=feature_table.timestamps,
-        anchor_row_indices=anchor_row_indices,
+        sample_row_indices=sample_row_indices,
         class_labels=class_labels,
         action_log_fees=action_log_fees,
         target_log_fee=target_log_fee,
@@ -163,14 +163,14 @@ def build_temporal_store(
     )
 
 
-def filter_sample_indices_by_anchor_window(
+def filter_sample_indices_by_timestamp_window(
     store: TemporalDatasetStore,
     *,
     start_timestamp: int,
     end_timestamp: int,
 ) -> IntVector:
-    anchor_timestamps = store.timestamps[store.anchor_row_indices]
-    mask = (anchor_timestamps >= start_timestamp) & (anchor_timestamps < end_timestamp)
+    sample_timestamps = store.timestamps[store.sample_row_indices]
+    mask = (sample_timestamps >= start_timestamp) & (sample_timestamps < end_timestamp)
     return np.flatnonzero(mask).astype(np.int64, copy=False)
 
 

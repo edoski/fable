@@ -18,15 +18,16 @@ def test_params_train_config_resolves_paths_after_overrides(tmp_path) -> None:
     config = compose_experiment(
         "train",
         overrides=base_overrides(tmp_path)
-        + ["dataset.temporal.max_delay_seconds=24", "model=transformer"],
+        + ["dataset.temporal.max_delay_seconds=24", "presets.model=transformer"],
     )
 
     assert config.task is WorkflowTask.TRAIN
     assert config.dataset.temporal.max_delay_seconds == 24
     assert config.model.family.value == "transformer"
     assert config.dataset.id == "icdcs_2025_11_09"
-    assert config.dataset.sampling.history_anchor_count == 48
-    assert config.dataset.sampling.effective_history_anchor_count == 48
+    assert config.dataset.sampling.sample_count == 48
+    assert config.acquisition.history_sample_budget == 48
+    assert config.effective_history_sample_budget == 48
     assert config.artifact.variant is ArtifactVariant.BASELINE
     assert config.paths.artifact_root.as_posix().endswith(
         "/ethereum/icdcs_2025_11_09/transformer/24s/baseline/default"
@@ -64,7 +65,7 @@ def test_direct_provider_reads_env_interpolation(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("ETHEREUM_RPC_URL", "https://eth.example.test")
     config = compose_experiment(
         "acquire",
-        overrides=base_overrides(tmp_path) + ["provider=direct"],
+        overrides=base_overrides(tmp_path) + ["presets.provider=direct"],
     )
 
     assert config.provider.endpoint_for(config.chain.name) == "https://eth.example.test"
@@ -80,7 +81,7 @@ def test_train_config_does_not_require_direct_provider_endpoint(tmp_path, monkey
     monkeypatch.delenv("ETHEREUM_RPC_URL", raising=False)
     config = compose_experiment(
         "train",
-        overrides=base_overrides(tmp_path) + ["provider=direct"],
+        overrides=base_overrides(tmp_path) + ["presets.provider=direct"],
     )
 
     assert config.provider.reference_for(config.chain.name) == "$ETHEREUM_RPC_URL"
@@ -92,7 +93,7 @@ def test_acquire_config_requires_direct_provider_endpoint(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="Missing RPC endpoint for chain: ethereum"):
         compose_experiment(
             "acquire",
-            overrides=base_overrides(tmp_path) + ["provider=direct"],
+            overrides=base_overrides(tmp_path) + ["presets.provider=direct"],
         )
 
 
@@ -116,7 +117,7 @@ def test_publicnode_chain_matrix_applies_expected_chain_settings(
         "tracking.enabled=false",
     ]
     if chain_name != "ethereum":
-        overrides.append(f"chain={chain_name}")
+        overrides.append(f"presets.chain={chain_name}")
 
     config = compose_experiment("acquire", overrides=overrides)
 
@@ -145,7 +146,16 @@ def test_invalid_transformer_config_fails_early(tmp_path) -> None:
         compose_experiment(
             "train",
             overrides=base_overrides(tmp_path)
-            + ["model=transformer", "model.d_model=126", "model.nhead=8"],
+            + ["presets.model=transformer", "model.d_model=126", "model.nhead=8"],
+        )
+
+
+def test_model_schema_rejects_family_irrelevant_fields(tmp_path) -> None:
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        compose_experiment(
+            "train",
+            overrides=base_overrides(tmp_path)
+            + ["presets.model=transformer", "model.hidden_size=128"],
         )
 
 
@@ -162,24 +172,24 @@ def test_dvc_acquire_stage_params_are_scoped_to_acquisition_inputs() -> None:
     stages = payload["stages"]
     acquire_params = stages["acquire"]["params"][0]["params.yaml"]
 
-    assert "training.batch_size" not in acquire_params
-    assert "tracking.enabled" not in acquire_params
-    assert "dataset.sampling.anchor_count" not in acquire_params
-    assert "dataset.sampling.history_anchor_count" in acquire_params
-    assert "dataset.span.start_date" in acquire_params
-    assert "dataset.span.end_date" in acquire_params
+    assert "training" not in acquire_params
+    assert "model" not in acquire_params
+    assert "dataset.span" in acquire_params
+    assert "dataset.temporal" in acquire_params
+    assert "dataset.sampling.sample_count" in acquire_params
+    assert "acquisition.history_sample_budget" in acquire_params
     assert "evaluation.duration_days" in acquire_params
 
 
-def test_history_anchor_count_cannot_be_smaller_than_anchor_count(tmp_path) -> None:
+def test_history_sample_budget_cannot_be_smaller_than_sample_count(tmp_path) -> None:
     with pytest.raises(
         ValueError,
-        match="history_anchor_count must be at least dataset.sampling.anchor_count",
+        match="acquisition.history_sample_budget must be at least dataset.sampling.sample_count",
     ):
         compose_experiment(
             "acquire",
             overrides=base_overrides(tmp_path)
-            + ["dataset.sampling.history_anchor_count=32"],
+            + ["acquisition.history_sample_budget=32"],
         )
 
 
@@ -232,7 +242,7 @@ def test_direct_and_dvc_loaders_share_the_same_baseline_params() -> None:
     direct_config = load_params_config("train", params_path=REPO_ROOT / "params.yaml")
     dvc_config = load_stage_config("train", REPO_ROOT / "params.yaml")
 
-    assert direct_config.dataset.sampling.anchor_count == dvc_config.dataset.sampling.anchor_count
+    assert direct_config.dataset.sampling.sample_count == dvc_config.dataset.sampling.sample_count
     assert (
         direct_config.dataset.temporal.lookback_seconds
         == dvc_config.dataset.temporal.lookback_seconds

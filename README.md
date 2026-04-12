@@ -86,39 +86,40 @@ Use DVC as the primary surface:
 .venv/bin/dvc repro
 ```
 
-[params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml) is the single editable baseline for experiment defaults. Both direct entrypoints and DVC load the same file, pin the requested task, apply any explicit CLI overrides, and validate the result through the same typed config layer. `train` and `simulate` select artifacts through `artifact.variant=baseline|tuned`. Tuned lineage selection uses `study.id`.
+[params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml) is the thin public experiment spec. Both direct entrypoints and DVC load the same file, pin the requested task, apply explicit CLI overrides, and validate the result through the same typed config layer. `train` and `simulate` select artifacts through `artifact.variant=baseline|tuned`. Tuned lineage selection uses `study.id`.
 
 On macOS, DVC stage commands run through `./bin/spice-awake`, which attaches `caffeinate` automatically when it is available so long `dvc repro ...` runs do not idle-sleep the machine mid-stage. Direct `spice-*` entrypoints do not use that wrapper automatically.
 
 You can also run the workflow entrypoints directly:
 
 ```bash
-.venv/bin/spice-acquire chain=ethereum provider=publicnode
-.venv/bin/spice-train model=lstm training.device=cpu
+.venv/bin/spice-acquire presets.chain=ethereum presets.provider=publicnode
+.venv/bin/spice-train presets.model=lstm training.device=cpu
 .venv/bin/spice-train artifact.variant=tuned study.id=fee-sweep-a
-.venv/bin/spice-simulate model=lstm training.device=cpu
-.venv/bin/spice-tune model=lstm tuning.trial_count=20
+.venv/bin/spice-simulate presets.model=lstm training.device=cpu
+.venv/bin/spice-tune presets.model=lstm tuning.trial_count=20
 ```
 
-The default dataset boundary is configured explicitly through `dataset.*` and
-`evaluation.*` in
+The public experiment surface in
 [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml)
-:
+is intentionally thin:
 
+- `presets.chain`
+- `presets.provider`
+- `presets.model`
 - `dataset.id`
 - `dataset.span.start_date`
 - `dataset.span.end_date`
 - `evaluation.duration_days`
 - `dataset.temporal.max_delay_seconds`
 - `dataset.temporal.lookback_seconds`
-- `dataset.sampling.anchor_count`
-- `dataset.sampling.history_anchor_count`
+- `dataset.sampling.sample_count`
+- `acquisition.history_sample_budget` optional
 
-`dataset.sampling.anchor_count` is the training/tuning sample count.
-`dataset.sampling.history_anchor_count` is the acquisition history budget.
-Keep it equal to `anchor_count` when you want a matched baseline, or raise it
-to keep a larger reusable history cache without coupling `acquire` to train-only
-sample-count changes.
+`dataset.sampling.sample_count` is the training and tuning sample count.
+`acquisition.history_sample_budget` is an optional acquisition-only override.
+When it is omitted, acquisition uses the same value as `sample_count`.
+`model:` contains only overrides for the selected `presets.model` family.
 
 Artifact provenance is configured through:
 
@@ -133,14 +134,14 @@ nodes still fit through the same provider endpoint abstraction.
 
 ## Configuration
 
-Optional preset fragments live under [src/spice/conf](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/conf):
+Hydra preset fragments and runtime defaults live under [src/spice/conf](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/conf):
 
 - `chain/`
 - `model/`
 - `provider/`
 - `rpc_profile/`
 
-Use these only as explicit overrides such as `chain=polygon`, `provider=direct`, or `model=transformer`. They are not a second source of baseline defaults. Runtime validation happens in [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py). Pydantic models enforce structural invariants, including transformer head divisibility, closed tuning search-space fields, and acquire-only provider endpoint availability.
+`params.yaml` stores only the selectors and first-order experiment values. Hydra preset files remain the source of truth for resolved chain/provider details, runtime defaults, RPC tuning, and family-specific model defaults. Use selector overrides such as `presets.chain=polygon`, `presets.provider=direct`, or `presets.model=transformer`. Runtime validation happens in [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py). Pydantic models enforce structural invariants, including transformer head divisibility, family-specific model fields, closed tuning search-space fields, and acquire-only provider endpoint availability.
 
 The tuning contract is explicit and closed. `tuning.search_space` is nested by subsystem, not dotted-path keyed:
 

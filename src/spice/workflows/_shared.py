@@ -25,7 +25,7 @@ def build_training_spec(config: ExperimentConfig) -> TrainingSpec:
         study=config.study if variant is ArtifactVariant.TUNED else None,
         max_delay_seconds=config.dataset.temporal.max_delay_seconds,
         lookback_seconds=config.dataset.temporal.lookback_seconds,
-        anchor_count=config.dataset.sampling.anchor_count,
+        sample_count=config.dataset.sampling.sample_count,
         split=config.split,
         training=config.training,
     )

@@ -55,7 +55,7 @@ def run_persisted_training(
     reporter.finish_task(artifact_task, message=str(artifact_dir), silent=True)
     report = build_training_run_report(
         training_run,
-        anchor_count=spec.anchor_count,
+        sample_count=spec.sample_count,
         max_delay_seconds=spec.max_delay_seconds,
         lookback_seconds=spec.lookback_seconds,
         chain_name=spec.chain.name.value,
