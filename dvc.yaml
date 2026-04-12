@@ -13,11 +13,10 @@ stages:
           - presets.chain
           - presets.provider
           - dataset.id
-          - dataset.span
+          - evaluation.date
           - dataset.temporal
           - dataset.sampling.sample_count
           - acquisition.history_sample_budget
-          - evaluation.duration_days
     outs:
       - ${output_root}/datasets/${presets.chain}/${dataset.id}/history:
           persist: true
@@ -86,9 +85,8 @@ stages:
           - presets.chain
           - presets.model
           - dataset.id
-          - dataset.span
+          - evaluation.date
           - dataset.temporal.max_delay_seconds
-          - evaluation.duration_days
           - artifact.variant
           - study.id
           - simulation

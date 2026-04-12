@@ -43,7 +43,6 @@ class DatasetWindowMetadata(MetadataModel):
 
 
 class DatasetRequestMetadata(MetadataModel):
-    span: DatasetWindowMetadata
     history: DatasetWindowMetadata
     evaluation: DatasetWindowMetadata
 
@@ -212,6 +211,10 @@ def build_dataset_metadata(
     config: ExperimentConfig,
     history_dir: Path,
     evaluation_dir: Path,
+    history_request_start_timestamp: int,
+    history_request_end_timestamp: int,
+    evaluation_request_start_timestamp: int,
+    evaluation_request_end_timestamp: int,
     providers: list[ProviderMetadata],
     history_validation: BlockDatasetValidationReport,
     evaluation_validation: BlockDatasetValidationReport,
@@ -229,17 +232,13 @@ def build_dataset_metadata(
             evaluation=evaluation_dir.as_posix(),
         ),
         request=DatasetRequestMetadata(
-            span=DatasetWindowMetadata(
-                start_timestamp=config.span_start_timestamp,
-                end_timestamp=config.span_end_timestamp,
-            ),
             history=DatasetWindowMetadata(
-                start_timestamp=config.history_window_start_timestamp,
-                end_timestamp=config.history_window_end_timestamp,
+                start_timestamp=history_request_start_timestamp,
+                end_timestamp=history_request_end_timestamp,
             ),
             evaluation=DatasetWindowMetadata(
-                start_timestamp=config.evaluation_window_start_timestamp,
-                end_timestamp=config.evaluation_window_end_timestamp,
+                start_timestamp=evaluation_request_start_timestamp,
+                end_timestamp=evaluation_request_end_timestamp,
             ),
         ),
         coverage=DatasetCoverageMetadata(

@@ -1,194 +1,160 @@
 # Architecture Guide
 
-This document describes the current `spice` architecture after the clean-break refactor.
-It is intentionally about the code that exists now.
+## Overview
 
-## Design Goals
-
-- one runtime configuration system: `Hydra`
-- one reproducibility layer: `DVC`
-- one run-tracking layer: `MLflow`
-- one training runtime: `Lightning`
-- one tuning engine: `Optuna`
-- one RPC transport stack: `web3.py`
-- one dataframe validation stack: `Pandera` + `Polars`
-- one ML runtime: `PyTorch`
-
-The codebase stays aggressive about replacing infrastructure code and conservative
-about replacing research-specific logic.
-
-## Top-Level Structure
-
-```text
-src/spice/
-  acquisition/
-  conf/
-  core/
-  data/
-  modeling/
-  workflows/
-tests/
-dvc.yaml
-params.yaml
-```
-
-## Package Breakdown
-
-### `core`
-
-- [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py): Pydantic runtime config schema plus Hydra/OmegaConf coercion
-- [constants.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/constants.py): shared filenames and evaluation timestamps
-- [console.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/console.py): Rich-backed workflow reporting
-- [json.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/json.py): shared JSON artifact serialization
-- [tracking.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/tracking.py): MLflow setup and structured logging helpers
-
-### `acquisition`
-
-- [provider.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/provider.py): thin provider config to `web3.py` bridge
-- [rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/rpc.py): timestamp-window resolution, block-range planning, canonical block-field extraction, and Parquet writing
-- [datasets.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/datasets.py): dataset reuse, validation, rebuilding, and history-window expansion
-- [metadata.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/metadata.py): dataset metadata loading, validation, and serialization
-- [windowing.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/windowing.py): history window sizing, reuse, and backward expansion rules
-
-This layer no longer contains snapshot registries or a custom JSON-RPC transport.
-
-### `data`
-
-- [io.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/io.py): block-dataset discovery and parquet IO contract
-- [block_contract.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/block_contract.py): canonical block-field contract, row mapping, and Pandera dataframe validation
-- [features.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/features.py): feature engineering
-- [datasets.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/datasets.py): temporal geometry and store construction
-- [normalization.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/normalization.py): scaler fitting and transformation
-- [validation_base.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/validation_base.py): shared validation report primitives
-
-`io.py` stays custom because it is not just a parquet wrapper. It centralizes the
-repo’s dataset-path contract:
-
-- only parquet inputs are accepted
-- the single hidden metadata namespace is `.spice/metadata.json`
-- dataset roots may be a file or directory
-- block loads always pass through canonical validation
-
-The actual parquet engine is already delegated to `Polars`. Replacing this small
-adapter would not reduce real complexity.
-
-### `modeling`
-
-- [models.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/models.py): custom model definitions using mature `torch.nn` layers
-- [datamodule.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/datamodule.py): Lightning dataloaders and class-weight plumbing
-- [lightning_module.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/lightning_module.py): Lightning training harness
-- [training.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/training.py): trainer assembly and evaluation helpers
-- [pipeline.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/pipeline.py): dataset preparation for training and inference
-- [execution.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/execution.py): shared persisted training execution used by train and tune
-- [inference.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/inference.py): prediction
-- [simulation.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/simulation.py): temporal-only Poisson simulation
-- [artifacts.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/artifacts.py): model persistence
-- [reporting.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/reporting.py): structured reports
-
-What stays custom here:
-
-- temporal dataset geometry
-- bounded-delay action semantics
-- dual-head model outputs
-- loss semantics
-- economic metrics
-- temporal-only Poisson evaluation logic
-
-### `workflows`
-
-- [acquire.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/acquire.py)
-- [dvc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/dvc.py): DVC params loader and stage dispatcher
-- [train.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/train.py)
-- [simulate.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/simulate.py)
-- [tune.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/tune.py)
-- [_shared.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/_shared.py): workflow session/runtime helpers, MLflow setup, and best-params application
-- [_tuning.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/_tuning.py): typed tuning search-space sampling, tuned-parameter application, and tuning artifact models
-
-Each workflow exposes:
-
-- a callable `run(...)` function for direct execution and tests
-- a Hydra `main(...)` wrapper for installed entrypoints
-
-The workflow layer is intentionally thin:
-
-- `workflows/_shared.py` owns reporter lifecycle, MLflow setup, config logging, and nested run handling
-- `workflows/_tuning.py` owns the typed tuning contract, structured study/trial/best-params artifacts, and explicit application of tuned `training.*` / `model.*` fields
-- `workflows/dvc.py` owns the DVC-only `params.yaml` loading path and then dispatches the same workflow functions
-- `acquire.py` orchestrates stage order only and delegates pull/window/metadata policy to `acquisition/*`
-- `train.py` and `tune.py` both route persisted model/report generation through `modeling/execution.py`
-
-## Workflow Graph
-
-DVC is the primary orchestration surface:
+The codebase has four runtime stages:
 
 1. `acquire`
 2. `tune`
 3. `train`
 4. `simulate`
 
-Dataset storage is keyed by explicit dataset windows:
+The same typed config flow powers direct entrypoints and DVC stages.
+
+## Config Flow
+
+Config loading lives in [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py).
+
+Flow:
+
+1. Load [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml)
+2. Read `presets.chain`, `presets.provider`, and `presets.model`
+3. Compose the task root from [src/spice/conf](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/conf)
+4. Apply chain-specific RPC profile overrides
+5. Overlay the public params payload
+6. Apply CLI overrides
+7. Derive runtime paths
+8. Validate the final config through Pydantic
+
+Public dataset definition:
+
+- `evaluation.date` defines the fixed one-day evaluation window
+- `dataset.sampling.sample_count` defines training and tuning sample count
+- `acquisition.history_sample_budget` optionally increases acquired history beyond `sample_count`
+
+## Package Roles
+
+### `core`
+
+- [config.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/config.py): typed config schema, preset composition, path derivation
+- [console.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/console.py): workflow reporting
+- [tracking.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/tracking.py): MLflow setup and config logging
+- [json.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/json.py): JSON artifact writes
+- [files.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/core/files.py): atomic file and directory promotion helpers
+
+### `acquisition`
+
+- [rpc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/rpc.py): block planning, RPC pulling, adaptive batching, evaluation-window resolution
+- [datasets.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/datasets.py): history/evaluation reuse, prefix extension, rebuilds, and validation
+- [metadata.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/metadata.py): typed dataset metadata
+- [windowing.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/acquisition/windowing.py): exact history block-count requirement
+
+### `data`
+
+- [block_contract.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/block_contract.py): canonical block schema
+- [io.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/io.py): parquet dataset discovery and loading
+- [features.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/features.py): feature table construction
+- [datasets.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/datasets.py): temporal geometry, trimming, split indices, inference filtering
+- [normalization.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/normalization.py): scaler fitting and application
+- [validation.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/data/validation.py): contiguous and exact-window dataset validation
+
+### `modeling`
+
+- [models.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/models.py): model construction by family
+- [pipeline.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/pipeline.py): training and inference dataset preparation
+- [training.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/training.py): trainer execution and metrics
+- [execution.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/execution.py): persisted training flow
+- [artifacts.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/artifacts.py): model + manifest persistence
+- [simulation.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/simulation.py): Poisson arrival simulation over evaluation examples
+- [reporting.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/modeling/reporting.py): structured training and simulation reports
+
+### `workflows`
+
+- [acquire.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/acquire.py): acquisition orchestration
+- [tune.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/tune.py): Optuna orchestration
+- [train.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/train.py): artifact-producing training orchestration
+- [simulate.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/simulate.py): evaluation-day simulation orchestration
+- [_shared.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/_shared.py): runtime session helpers and training spec construction
+- [_tuning.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/_tuning.py): tuning search-space application and typed tuning artifacts
+- [dvc.py](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/src/spice/workflows/dvc.py): DVC stage loader and dispatcher
+
+## Workflow Semantics
+
+### Acquire
+
+Acquire builds two canonical datasets under the dataset root:
+
+- `history`
+- `evaluation`
+
+Semantics:
+
+- evaluation window is exactly one UTC day from `evaluation.date`
+- history requirement is derived from temporal geometry and `effective_history_sample_budget`
+- if an existing history dataset already covers the required window, it is reused
+- if it ends at the correct boundary but starts too late, only the missing prefix is fetched
+- if an existing evaluation dataset overlaps the target window, only missing edges are fetched
+- successful outputs are promoted atomically
+
+### Tune
+
+Tune reads the canonical history dataset, prepares `sample_count` supervised examples, runs Optuna trials, and writes:
+
+- `study.json`
+- `trials.json`
+- `best_params.json`
+
+### Train
+
+Train reads the canonical history dataset, trims it to the exact block count needed for `sample_count`, prepares chronological train/validation/test splits, trains the selected model family, and writes:
+
+- `artifact.json`
+- `model.pt`
+- `train_report.json`
+
+If `artifact.variant=tuned`, train applies parameters from `best_params.json` before building the training spec.
+
+### Simulate
+
+Simulate loads the trained artifact, combines the required trailing history context with the canonical evaluation dataset, runs inference over the evaluation-day examples, and executes repeated Poisson-arrival simulations on those examples.
+
+## Storage Layout
+
+Datasets:
 
 - `artifacts/datasets/<chain>/<dataset_id>/history/...`
 - `artifacts/datasets/<chain>/<dataset_id>/evaluation/...`
 - `artifacts/datasets/<chain>/<dataset_id>/.spice/metadata.json`
 
-Model storage is keyed by the training dataset window:
+Models:
 
-- `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/...`
-- `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/tuning/...`
+- `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/<variant>/<study_id>/artifact.json`
+- `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/<variant>/<study_id>/model.pt`
+- `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/<variant>/<study_id>/train_report.json`
 
-`dataset.id`, `dataset.window.start_date`, `dataset.window.end_date`,
-`dataset.temporal.*`, and `dataset.sampling.*` define the active dataset
-configuration.
+Tuning:
 
-In the DVC thesis path, `train` explicitly depends on the tuned model-local
-`best_params.json` artifact. The `spice-dvc train` runner applies that artifact
-intentionally. Direct `spice-train` usage still defaults to
-`tuning.apply_best_params=false`.
+- `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/tuned/<study_id>/tuning/study.json`
+- `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/tuned/<study_id>/tuning/trials.json`
+- `artifacts/models/<chain>/<dataset_id>/<family>/<delay>s/tuned/<study_id>/tuning/best_params.json`
 
-The tuning schema is intentionally closed:
+## DVC Surface
 
-- `tuning.direction` is `maximize` or `minimize`
-- `tuning.objective_metric` is one of the explicit validation metrics
-- `tuning.search_space` is nested under `training` and `model`, not dotted-path keyed
-- unsupported tunable fields are rejected during config validation
+[dvc.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/dvc.yaml) defines four stages:
 
-The tuning artifacts are structured JSON, not loose dict dumps:
+1. `acquire`
+2. `tune`
+3. `train`
+4. `simulate`
 
-- `study.json` stores the typed study summary and nested search-space payload
-- `trials.json` stores typed per-trial records, including nested tuned params
-- `best_params.json` stores nested `params.training` / `params.model` values and is the only artifact consumed by `train`
-
-DVC Hydra composition is enabled in [.dvc/config](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/.dvc/config). Stage definitions live in [dvc.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/dvc.yaml), and the composed baseline consumed by the stages lives in [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml).
-
-## Why These Package Choices
-
-Selected:
-
-- `Hydra`: owns runtime defaults through structured composition
-- `DVC`: replaces snapshot/provenance orchestration with stage-based reproducibility
-- `MLflow`: replaces ad hoc run bookkeeping
-- `Lightning`: replaces the handwritten training loop and dataloader plumbing
-- `Optuna`: provides a first-class HPO path
-- `web3.py`: replaces the custom RPC transport layer
-- `Pandera`: replaces bespoke dataframe validation while still allowing custom table derivation logic
-
-Rejected:
-
-- `sklearn` as a model replacement
-- forecast-first time-series frameworks
-- `SimPy` for the current temporal-only simulator
-- `Prefect`, `Kedro`, and `Great Expectations`
+Each stage reads [params.yaml](/Users/edo/Documents/Obsidian/the-vault/university/Thesis/spice/params.yaml), scopes its own inputs, and dispatches the same workflow code used by the direct `spice-*` entrypoints.
 
 ## Tests
 
-The test suite now targets the new architecture only:
+The test suite covers:
 
-- Hydra config composition and validation
-- provider construction and RPC adapters
-- Pandera-backed validation behavior
-- data preparation
-- acquisition, training, simulation, and tuning workflow smoke tests
-- MLflow local tracking smoke coverage
-
-There are no transition tests for deleted legacy modules.
+- config composition and validation
+- acquisition planning and reuse behavior
+- data preparation and validation
+- tuning, training, and simulation workflow behavior
+- artifact and metadata persistence

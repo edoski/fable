@@ -159,7 +159,7 @@ def test_model_schema_rejects_family_irrelevant_fields(tmp_path) -> None:
         )
 
 
-def test_span_and_evaluation_duration_resolve_to_derived_windows(tmp_path) -> None:
+def test_evaluation_date_resolves_to_derived_windows(tmp_path) -> None:
     config = compose_experiment("simulate", overrides=base_overrides(tmp_path))
 
     assert config.evaluation_window_start_timestamp == TEST_WINDOW_START_TIMESTAMP
@@ -174,11 +174,10 @@ def test_dvc_acquire_stage_params_are_scoped_to_acquisition_inputs() -> None:
 
     assert "training" not in acquire_params
     assert "model" not in acquire_params
-    assert "dataset.span" in acquire_params
     assert "dataset.temporal" in acquire_params
     assert "dataset.sampling.sample_count" in acquire_params
     assert "acquisition.history_sample_budget" in acquire_params
-    assert "evaluation.duration_days" in acquire_params
+    assert "evaluation.date" in acquire_params
 
 
 def test_history_sample_budget_cannot_be_smaller_than_sample_count(tmp_path) -> None:

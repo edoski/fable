@@ -134,19 +134,15 @@ async def _run_async(config: ExperimentConfig, *, reporter: Reporter | None = No
                         (
                             "dataset",
                             [
-                            ("id", config.dataset.id),
-                            ("chain", chain_label),
-                            (
-                                "required history",
-                                _format_count(required_history_blocks, "block"),
-                            ),
-                            (
-                                "span",
-                                f"{config.dataset.span.start_date} -> "
-                                f"{config.dataset.span.end_date}",
-                            ),
-                        ],
-                    ),
+                                ("id", config.dataset.id),
+                                ("chain", chain_label),
+                                ("evaluation date", str(config.evaluation.date)),
+                                (
+                                    "required history",
+                                    _format_count(required_history_blocks, "block"),
+                                ),
+                            ],
+                        ),
                         (
                             "history",
                             _planned_window_rows(
@@ -208,6 +204,10 @@ async def _run_async(config: ExperimentConfig, *, reporter: Reporter | None = No
                         config=config,
                         history_dir=history_dir,
                         evaluation_dir=evaluation_dir,
+                        history_request_start_timestamp=history_plan.window.start,
+                        history_request_end_timestamp=history_plan.window.end,
+                        evaluation_request_start_timestamp=evaluation_window.start,
+                        evaluation_request_end_timestamp=evaluation_window.end,
                         providers=providers,
                         history_validation=history_result.validation,
                         evaluation_validation=evaluation_result.validation,

@@ -24,14 +24,12 @@ from spice.core.config import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TEST_SPAN_START_DATE = date(2025, 11, 8)
-TEST_SPAN_END_DATE = date(2025, 11, 9)
-TEST_EVALUATION_DURATION_DAYS = 1
+TEST_EVALUATION_DATE = date(2025, 11, 9)
 TEST_WINDOW_START_TIMESTAMP = int(
-    datetime.combine(TEST_SPAN_END_DATE, time.min, tzinfo=UTC).timestamp()
+    datetime.combine(TEST_EVALUATION_DATE, time.min, tzinfo=UTC).timestamp()
 )
 TEST_WINDOW_END_TIMESTAMP = int(
-    datetime.combine(TEST_SPAN_END_DATE + timedelta(days=1), time.min, tzinfo=UTC).timestamp()
+    datetime.combine(TEST_EVALUATION_DATE + timedelta(days=1), time.min, tzinfo=UTC).timestamp()
 )
 
 
@@ -56,9 +54,7 @@ def base_overrides(tmp_path: Path) -> list[str]:
         "simulation.arrival_rate_per_second=0.02",
         "simulation.repetitions=3",
         "acquisition.rpc_batch_size=256",
-        f"dataset.span.start_date={TEST_SPAN_START_DATE}",
-        f"dataset.span.end_date={TEST_SPAN_END_DATE}",
-        f"evaluation.duration_days={TEST_EVALUATION_DURATION_DAYS}",
+        f"evaluation.date={TEST_EVALUATION_DATE}",
         "dataset.temporal.lookback_seconds=120",
         "dataset.sampling.sample_count=48",
         "acquisition.history_sample_budget=48",

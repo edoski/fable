@@ -4,16 +4,13 @@ presets:
   model: lstm
 dataset:
   id: icdcs_2025_11_09
-  span:
-    start_date: '2025-07-05'
-    end_date: '2025-11-09'
   temporal:
     max_delay_seconds: 36
     lookback_seconds: 600
   sampling:
     sample_count: 1000000
 evaluation:
-  duration_days: 1
+  date: '2025-11-09'
 acquisition:
   history_sample_budget:
 study:

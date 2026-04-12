@@ -66,34 +66,10 @@ async def build_history_plan(
     block_client: Web3BlockClient,
     required_history_blocks: int,
 ) -> BlockPullPlan:
-    chunk_size = config.acquisition.chunk_size
-    requested_plan = await block_client.plan_window(
-        TimestampRange(
-            start=config.history_window_start_timestamp,
-            end=config.history_window_end_timestamp,
-        ),
-        chunk_size=chunk_size,
-    )
-    required_plan = await block_client.plan_history_window(
+    return await block_client.plan_history_window(
         end_timestamp=config.history_window_end_timestamp,
         required_history_blocks=required_history_blocks,
-        chunk_size=chunk_size,
-    )
-    history_start_block = min(
-        requested_plan.block_range.start,
-        required_plan.block_range.start,
-    )
-    history_start_timestamp = min(
-        requested_plan.window.start,
-        required_plan.window.start,
-    )
-    return block_client.plan_block_range(
-        BlockRange(start=history_start_block, end=required_plan.block_range.end),
-        window=TimestampRange(
-            start=history_start_timestamp,
-            end=config.history_window_end_timestamp,
-        ),
-        chunk_size=chunk_size,
+        chunk_size=config.acquisition.chunk_size,
     )
 
 

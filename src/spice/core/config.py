@@ -70,27 +70,6 @@ class ChainConfig(ConfigModel):
     uses_poa_extra_data: bool
 
 
-class DatasetSpanConfig(ConfigModel):
-    start_date: date
-    end_date: date
-
-    @property
-    def start_timestamp(self) -> int:
-        return _utc_midnight_timestamp(self.start_date)
-
-    @property
-    def end_timestamp(self) -> int:
-        return _utc_midnight_timestamp(self.end_date + timedelta(days=1))
-
-    @model_validator(mode="after")
-    def validate_span(self) -> Self:
-        if self.start_date > self.end_date:
-            raise ValueError(
-                "dataset.span.start_date must be on or before dataset.span.end_date"
-            )
-        return self
-
-
 class DatasetTemporalConfig(ConfigModel):
     max_delay_seconds: int = Field(gt=0)
     lookback_seconds: int = Field(gt=0)
@@ -102,7 +81,6 @@ class DatasetSamplingConfig(ConfigModel):
 
 class DatasetConfig(ConfigModel):
     id: str
-    span: DatasetSpanConfig
     temporal: DatasetTemporalConfig
     sampling: DatasetSamplingConfig
 
@@ -197,7 +175,7 @@ class SimulationConfig(ConfigModel):
 
 
 class EvaluationConfig(ConfigModel):
-    duration_days: int = Field(gt=0)
+    date: date
 
 
 class BaseModelConfig(ConfigModel):
@@ -448,16 +426,6 @@ class ExperimentConfig(ConfigModel):
         return self
 
     @model_validator(mode="after")
-    def validate_evaluation_window(self) -> Self:
-        evaluation_seconds = self.evaluation.duration_days * 24 * 60 * 60
-        span_seconds = self.dataset.span.end_timestamp - self.dataset.span.start_timestamp
-        if evaluation_seconds >= span_seconds:
-            raise ValueError(
-                "evaluation.duration_days must be shorter than the configured dataset span"
-            )
-        return self
-
-    @model_validator(mode="after")
     def validate_history_sample_budget(self) -> Self:
         if self.effective_history_sample_budget < self.dataset.sampling.sample_count:
             raise ValueError(
@@ -467,24 +435,12 @@ class ExperimentConfig(ConfigModel):
         return self
 
     @property
-    def span_start_timestamp(self) -> int:
-        return self.dataset.span.start_timestamp
-
-    @property
-    def span_end_timestamp(self) -> int:
-        return self.dataset.span.end_timestamp
-
-    @property
     def evaluation_window_start_timestamp(self) -> int:
-        return self.span_end_timestamp - self.evaluation.duration_days * 24 * 60 * 60
+        return _utc_midnight_timestamp(self.evaluation.date)
 
     @property
     def evaluation_window_end_timestamp(self) -> int:
-        return self.span_end_timestamp
-
-    @property
-    def history_window_start_timestamp(self) -> int:
-        return self.span_start_timestamp
+        return _utc_midnight_timestamp(self.evaluation.date + timedelta(days=1))
 
     @property
     def history_window_end_timestamp(self) -> int:
@@ -509,7 +465,6 @@ class PublicDatasetSamplingConfig(ConfigModel):
 
 class PublicDatasetConfig(ConfigModel):
     id: str
-    span: DatasetSpanConfig
     temporal: DatasetTemporalConfig
     sampling: PublicDatasetSamplingConfig
 

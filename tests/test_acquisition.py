@@ -89,10 +89,16 @@ def _write_metadata(config, *, providers) -> None:
         dataset_path=config.paths.evaluation_dir,
         expected_chain_id=config.chain.chain_id,
     )
+    if history_validation.first_timestamp is None:
+        raise ValueError("history validation must provide first_timestamp")
     metadata = build_dataset_metadata(
         config=config,
         history_dir=config.paths.history_dir,
         evaluation_dir=config.paths.evaluation_dir,
+        history_request_start_timestamp=history_validation.first_timestamp,
+        history_request_end_timestamp=config.history_window_end_timestamp,
+        evaluation_request_start_timestamp=config.evaluation_window_start_timestamp,
+        evaluation_request_end_timestamp=config.evaluation_window_end_timestamp,
         providers=list(providers),
         history_validation=history_validation,
         evaluation_validation=evaluation_validation,
