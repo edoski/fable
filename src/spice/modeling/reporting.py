@@ -34,8 +34,8 @@ class TrainingSummary:
     variant: ArtifactVariant
     study: StudyConfig | None
     model_id: str
-    history_context_blocks: int
-    max_delay_seconds: int
+    task_id: str
+    max_supported_delay_seconds: int
     lookback_seconds: int
     sample_count: int
     n_blocks_available: int
@@ -73,8 +73,9 @@ class SimulationSummaryRecord:
     variant: ArtifactVariant
     study: StudyConfig | None
     model_id: str
-    history_context_blocks: int
-    max_delay_seconds: int
+    task_id: str
+    max_supported_delay_seconds: int
+    requested_delay_seconds: int
     lookback_seconds: int
     simulation_window_seconds: int
     arrival_rate_per_second: float
@@ -113,7 +114,6 @@ def iter_epoch_pairs(result: TrainingRunResult) -> Iterator[tuple[int, EpochMetr
 def build_training_summary(
     result: TrainingRunResult,
     *,
-    sample_count: int,
     chain_name: str,
     dataset_id: str,
     model_id: str,
@@ -129,10 +129,10 @@ def build_training_summary(
         variant=manifest.variant,
         study=manifest.study,
         model_id=model_id,
-        history_context_blocks=manifest.history_context_blocks,
-        max_delay_seconds=manifest.max_delay_seconds,
+        task_id=manifest.task_id,
+        max_supported_delay_seconds=manifest.max_supported_delay_seconds,
         lookback_seconds=manifest.lookback_seconds,
-        sample_count=sample_count,
+        sample_count=manifest.sample_count,
         n_blocks_available=prepared.n_blocks_available,
         n_blocks_used=prepared.n_blocks_used,
         split_sizes=SplitSizes(
@@ -154,6 +154,7 @@ def build_simulation_summary_record(
     *,
     prepared: PreparedInferenceDataset,
     simulation: SimulationSummary,
+    requested_delay_seconds: int,
     window_seconds: int,
     arrival_rate_per_second: float,
     repetitions: int,
@@ -165,8 +166,9 @@ def build_simulation_summary_record(
         variant=manifest.variant,
         study=manifest.study,
         model_id=manifest.model.id,
-        history_context_blocks=manifest.history_context_blocks,
-        max_delay_seconds=manifest.max_delay_seconds,
+        task_id=manifest.task_id,
+        max_supported_delay_seconds=manifest.max_supported_delay_seconds,
+        requested_delay_seconds=requested_delay_seconds,
         lookback_seconds=manifest.lookback_seconds,
         simulation_window_seconds=window_seconds,
         arrival_rate_per_second=arrival_rate_per_second,

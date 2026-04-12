@@ -16,6 +16,7 @@ from rich.live import Live
 from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.progress_bar import ProgressBar
+from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
@@ -44,8 +45,10 @@ _NATIVE_NOISE_PATTERNS = (
 _FINAL_STAGE_STATUSES = frozenset(
     {"done", "failed", "reused", "extended", "rebuilt", "created"}
 )
+_ACTIVE_STAGE_STATUSES = frozenset({"planning", "running", "pulling", "writing"})
 _STAGE_STATUS_STYLES = {
     "pending": "dim",
+    "planning": "cyan",
     "running": "cyan",
     "pulling": "cyan",
     "writing": "cyan",
@@ -56,6 +59,22 @@ _STAGE_STATUS_STYLES = {
     "rebuilt": "yellow",
     "failed": "bold red",
 }
+_PROGRESS_BAR_STYLES = {
+    "pending": ("grey23", "grey35", "grey50", "grey50"),
+    "planning": ("grey23", "cyan", "cyan", "cyan"),
+    "running": ("grey23", "cyan", "cyan", "cyan"),
+    "pulling": ("grey23", "cyan", "cyan", "cyan"),
+    "writing": ("grey23", "cyan", "cyan", "cyan"),
+    "done": ("grey23", "green", "green", "green"),
+    "reused": ("grey23", "green", "green", "green"),
+    "created": ("grey23", "green", "green", "green"),
+    "extended": ("grey23", "yellow", "yellow", "yellow"),
+    "rebuilt": ("grey23", "yellow", "yellow", "yellow"),
+    "failed": ("grey23", "red", "red", "red"),
+}
+_DETAIL_VALUE_LABELS = frozenset({"batch", "conc"})
+_RATE_COLUMN_WIDTH = 11
+_TIME_COLUMN_WIDTH = 7
 
 
 class Reporter(Protocol):
@@ -138,10 +157,27 @@ class _StageState:
     detail: str | None = None
     started_at: float | None = None
     finished_at: float | None = None
+    last_progress_at: float | None = None
+    last_progress_completed: int = 0
+    smoothed_rate: float | None = None
     last_emitted_status: str | None = None
     last_emitted_detail: str | None = None
     last_emitted_completed: int | None = None
     last_emitted_bucket: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _StageLayout:
+    stage_width: int
+    status_width: int
+    progress_bar_width: int
+    show_rate: bool
+    show_eta: bool
+    show_detail: bool
+
+    @property
+    def progress_width(self) -> int:
+        return self.progress_bar_width + 5
 
 
 class NullReporter:
@@ -393,11 +429,15 @@ class _BaseWorkflowReporter(NullReporter):
             return
         if stage.started_at is None:
             stage.started_at = time.monotonic()
+            stage.last_progress_at = stage.started_at
+            stage.last_progress_completed = stage.completed
         stage.finished_at = None
+        previous_completed = stage.completed
         if completed is not None:
             stage.completed = max(0, completed)
         if advance is not None:
             stage.completed = max(0, stage.completed + advance)
+        self._update_stage_rate(stage, previous_completed=previous_completed)
         stage.detail = _format_stage_detail(stage.label, binding.task_name, message)
         self._on_stage_change(stage)
 
@@ -408,7 +448,6 @@ class _BaseWorkflowReporter(NullReporter):
         message: str | None = None,
         silent: bool = False,
     ) -> None:
-        del silent
         binding = self._task_bindings.pop(task_id, None)
         if binding is None:
             return
@@ -417,11 +456,16 @@ class _BaseWorkflowReporter(NullReporter):
             return
         if stage.started_at is None:
             stage.started_at = time.monotonic()
+            stage.last_progress_at = stage.started_at
+            stage.last_progress_completed = stage.completed
         stage.finished_at = time.monotonic()
+        previous_completed = stage.completed
         if stage.total is not None:
             stage.completed = max(stage.completed, stage.total)
+        self._update_stage_rate(stage, previous_completed=previous_completed)
         stage.status = binding.done_status
-        stage.detail = _format_stage_detail(stage.label, binding.task_name, message)
+        if not silent:
+            stage.detail = _format_stage_detail(stage.label, binding.task_name, message)
         self._on_stage_change(stage)
 
     def configure_workflow(
@@ -445,7 +489,8 @@ class _BaseWorkflowReporter(NullReporter):
         running_status: str = "running",
         done_status: str = "done",
     ) -> Reporter:
-        self._ensure_stage(key, label=label, status=status, total=total, unit=unit)
+        stage = self._ensure_stage(key, label=label, status=status, total=total, unit=unit)
+        self._on_stage_change(stage)
         return _BoundStageReporter(
             self,
             key=key,
@@ -473,14 +518,25 @@ class _BaseWorkflowReporter(NullReporter):
         if unit is not None:
             stage.unit = unit
         if completed is not None:
+            previous_completed = stage.completed
             stage.completed = max(0, completed)
+            self._update_stage_rate(stage, previous_completed=previous_completed)
         if message is not None:
             stage.detail = message
         if status is not None:
             if status in _FINAL_STAGE_STATUSES and stage.finished_at is None:
                 stage.finished_at = time.monotonic()
-            if status not in _FINAL_STAGE_STATUSES and stage.started_at is None:
-                stage.started_at = time.monotonic()
+            if status == "pending":
+                stage.started_at = None
+                stage.finished_at = None
+                stage.last_progress_at = None
+                stage.last_progress_completed = stage.completed
+                stage.smoothed_rate = None
+            elif status in _ACTIVE_STAGE_STATUSES and stage.started_at is None:
+                started_at = time.monotonic()
+                stage.started_at = started_at
+                stage.last_progress_at = started_at
+                stage.last_progress_completed = stage.completed
             stage.status = status
         self._on_stage_change(stage)
 
@@ -500,11 +556,15 @@ class _BaseWorkflowReporter(NullReporter):
     ) -> ReporterTask:
         stage = self._ensure_stage(stage_key, label=label, total=total, unit=unit)
         stage.status = running_status
-        stage.started_at = time.monotonic()
+        started_at = time.monotonic()
+        stage.started_at = started_at
         stage.finished_at = None
         stage.total = total
         stage.unit = unit
         stage.completed = 0
+        stage.last_progress_at = started_at
+        stage.last_progress_completed = 0
+        stage.smoothed_rate = None
         stage.detail = _format_stage_detail(stage.label, task_name, None)
         task_id = self._next_task_id
         self._next_task_id += 1
@@ -550,6 +610,24 @@ class _BaseWorkflowReporter(NullReporter):
 
     def _on_stage_change(self, stage: _StageState) -> None:
         raise NotImplementedError
+
+    def _update_stage_rate(self, stage: _StageState, *, previous_completed: int) -> None:
+        if stage.started_at is None:
+            return
+        if stage.unit is None:
+            return
+        if stage.completed <= previous_completed:
+            return
+        now = time.monotonic()
+        elapsed = max(0.0, now - stage.started_at)
+        if elapsed <= 0.0:
+            return
+        average_rate = stage.completed / elapsed
+        if average_rate <= 0.0:
+            return
+        stage.smoothed_rate = _smooth_value(stage.smoothed_rate, average_rate, alpha=0.22)
+        stage.last_progress_at = now
+        stage.last_progress_completed = stage.completed
 
 
 class PlainReporter(_BaseWorkflowReporter):
@@ -626,7 +704,7 @@ class RichReporter(_BaseWorkflowReporter):
             self._live = Live(
                 self._render_workflow(),
                 console=self.console,
-                refresh_per_second=8,
+                auto_refresh=False,
                 transient=False,
             )
             self._live.start()
@@ -635,57 +713,99 @@ class RichReporter(_BaseWorkflowReporter):
 
     def _render_workflow(self):
         elements: list[object] = []
-        if self._workflow_title is not None:
-            elements.append(Text(self._workflow_title, style="bold cyan"))
         if self._workflow_facts:
-            facts = Table.grid(padding=(0, 2))
-            facts.add_column(style="bold cyan", no_wrap=True)
-            facts.add_column()
-            for label, value in self._workflow_facts:
-                facts.add_row(label, value)
-            elements.append(facts)
+            elements.append(self._render_fact_grid())
         if self._stages:
+            if elements:
+                elements.append(Rule(style="grey35"))
             elements.append(self._render_stage_table())
-        if not elements:
-            elements.append(Text(""))
-        return Group(*elements)
+        body = Group(*elements) if elements else Text("")
+        return Panel(
+            body,
+            title=Text(self._workflow_title or "", style="bold cyan"),
+            border_style="cyan",
+            padding=(0, 1),
+            expand=True,
+        )
+
+    def _render_fact_grid(self) -> Table:
+        facts = Table.grid(padding=(0, 1), expand=False)
+        facts.add_column(style="bold cyan", no_wrap=True)
+        facts.add_column()
+        for label, value in self._workflow_facts:
+            facts.add_row(label, Text(value))
+        return facts
 
     def _render_stage_table(self) -> Table:
+        has_detail = any(stage.detail for stage in self._stages.values())
+        layout = _stage_layout(_panel_body_width(self.console), has_detail=has_detail)
         table = Table(
             show_header=True,
-            header_style="bold",
-            expand=True,
+            header_style="bold dim",
+            expand=False,
             box=None,
             pad_edge=False,
+            padding=(0, 1),
+            collapse_padding=True,
         )
-        table.add_column("stage", no_wrap=True, style="bold")
-        table.add_column("status", no_wrap=True)
-        table.add_column("progress", ratio=2)
-        table.add_column("time", no_wrap=True)
-        table.add_column("detail", ratio=3)
+        table.add_column(
+            "stage",
+            width=layout.stage_width,
+            no_wrap=True,
+            overflow="ellipsis",
+            style="bold",
+        )
+        table.add_column(
+            "status",
+            width=layout.status_width,
+            no_wrap=True,
+            overflow="ellipsis",
+        )
+        table.add_column("progress", width=layout.progress_width, no_wrap=True)
+        if layout.show_rate:
+            table.add_column("rate", width=_RATE_COLUMN_WIDTH, no_wrap=True, justify="right")
+        table.add_column("elapsed", width=_TIME_COLUMN_WIDTH, no_wrap=True, justify="right")
+        if layout.show_eta:
+            table.add_column("eta", width=_TIME_COLUMN_WIDTH, no_wrap=True, justify="right")
+        if layout.show_detail:
+            table.add_column("detail", ratio=1, no_wrap=True, overflow="ellipsis")
         for stage in self._stages.values():
-            table.add_row(
-                stage.label,
+            row = [
+                Text(stage.label, style="bold"),
                 Text(stage.status, style=_STAGE_STATUS_STYLES.get(stage.status, "")),
-                self._render_progress(stage),
-                _format_elapsed(stage),
-                stage.detail or "",
-            )
+                self._render_progress(stage, bar_width=layout.progress_bar_width),
+                _render_elapsed(stage),
+            ]
+            if layout.show_rate:
+                row.insert(3, _render_rate(stage))
+            if layout.show_eta:
+                row.append(_render_eta(stage))
+            if layout.show_detail:
+                row.append(_render_stage_detail(stage))
+            table.add_row(*row)
         return table
 
-    def _render_progress(self, stage: _StageState):
+    def _render_progress(self, stage: _StageState, *, bar_width: int):
         if stage.total is None:
-            return Text("--" if stage.status == "pending" else f"{stage.completed:,}", style="dim")
+            return Text("--", style="dim")
         progress = Table.grid(padding=(0, 1))
-        progress.add_column(width=24)
-        progress.add_column(no_wrap=True)
+        progress.add_column(width=bar_width)
+        progress.add_column(width=4, no_wrap=True, justify="right")
+        style, complete_style, finished_style, pulse_style = _PROGRESS_BAR_STYLES.get(
+            stage.status,
+            ("grey23", "cyan", "cyan", "cyan"),
+        )
         progress.add_row(
             ProgressBar(
                 total=max(float(stage.total), 1.0),
                 completed=float(min(stage.completed, stage.total)),
-                width=24,
+                width=bar_width,
+                style=style,
+                complete_style=complete_style,
+                finished_style=finished_style,
+                pulse_style=pulse_style,
             ),
-            _format_progress_count(stage),
+            Text(_format_progress_percent(stage), style="dim"),
         )
         return progress
 
@@ -801,6 +921,7 @@ class ConsoleRuntime:
 
     def log_summary(self, title: str, rows: list[tuple[str, str]]) -> None:
         if self.console.is_terminal:
+            self.reporter.close()
             table = Table.grid(padding=(0, 1))
             table.add_column(style="bold cyan", justify="right")
             table.add_column()
@@ -818,6 +939,7 @@ class ConsoleRuntime:
         sections: list[tuple[str, list[tuple[str, str]]]],
     ) -> None:
         if self.console.is_terminal:
+            self.reporter.close()
             body = Table.grid(expand=True)
             body.add_column()
             for index, (section_title, rows) in enumerate(sections):
@@ -944,12 +1066,32 @@ def _console_from_reporter(reporter: Reporter | None) -> Console | None:
 
 
 def _format_stage_detail(label: str, task_name: str, message: str | None) -> str | None:
-    prefix = None if task_name == label else task_name
-    if message is None:
-        return prefix
-    if prefix is None:
-        return message
-    return f"{prefix}: {message}"
+    del label, task_name
+    return message
+
+
+def _panel_body_width(console: Console) -> int:
+    configured_width = getattr(console, "_width", None)
+    if isinstance(configured_width, int) and configured_width > 0:
+        return max(40, configured_width - 4)
+    return max(40, console.size.width - 4)
+
+
+def _stage_layout(available_width: int, *, has_detail: bool) -> _StageLayout:
+    if has_detail:
+        if available_width >= 132:
+            return _StageLayout(10, 8, 18, True, True, True)
+        if available_width >= 112:
+            return _StageLayout(10, 8, 16, True, True, False)
+        if available_width >= 92:
+            return _StageLayout(9, 8, 14, True, False, False)
+        return _StageLayout(8, 7, 12, False, False, False)
+
+    if available_width >= 96:
+        return _StageLayout(10, 8, 20, True, True, False)
+    if available_width >= 78:
+        return _StageLayout(9, 8, 16, True, False, False)
+    return _StageLayout(8, 7, 12, False, False, False)
 
 
 def _progress_bucket(stage: _StageState) -> int | None:
@@ -961,22 +1103,167 @@ def _progress_bucket(stage: _StageState) -> int | None:
     return min(bucket_count, (stage.completed * bucket_count) // stage.total)
 
 
-def _format_progress_count(stage: _StageState) -> str:
-    suffix = "" if stage.unit is None else f" {stage.unit}"
+def _format_progress_count(stage: _StageState, *, include_unit: bool = True) -> str:
+    suffix = ""
+    if include_unit and stage.unit is not None:
+        suffix = f" {stage.unit}"
     if stage.total is None:
         return f"{stage.completed:,}{suffix}" if stage.completed else "--"
     return f"{stage.completed:,}/{stage.total:,}{suffix}"
 
 
-def _format_elapsed(stage: _StageState) -> str:
-    if stage.started_at is None:
+def _format_progress_percent(stage: _StageState) -> str:
+    if stage.total is None or stage.total <= 0:
         return "--"
+    percent = int((min(stage.completed, stage.total) * 100) / stage.total)
+    return f"{percent:>3d}%"
+
+
+def _unit_rate_suffix(unit: str | None) -> str:
+    if unit is None:
+        return "u/s"
+    aliases = {
+        "blocks": "blk/s",
+        "block": "blk/s",
+        "batches": "bat/s",
+        "batch": "bat/s",
+        "repetitions": "rep/s",
+        "repetition": "rep/s",
+        "trials": "trl/s",
+        "trial": "trl/s",
+    }
+    return aliases.get(unit, f"{unit}/s")
+
+
+def _elapsed_seconds(stage: _StageState) -> float | None:
+    if stage.started_at is None:
+        return None
     end = stage.finished_at if stage.finished_at is not None else time.monotonic()
-    elapsed = max(0.0, end - stage.started_at)
-    if elapsed < 60:
-        return f"{elapsed:.1f}s"
-    minutes, seconds = divmod(int(elapsed), 60)
-    if minutes < 60:
-        return f"{minutes}m {seconds:02d}s"
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours}h {minutes:02d}m"
+    return max(0.0, end - stage.started_at)
+
+
+def _remaining_seconds(stage: _StageState) -> float | None:
+    if (
+        stage.total is None
+        or stage.total <= 0
+        or stage.completed <= 0
+        or stage.completed >= stage.total
+    ):
+        return None
+    rate = stage.smoothed_rate
+    if rate is None or rate <= 0:
+        elapsed = _elapsed_seconds(stage)
+        if elapsed is None or elapsed <= 0:
+            return None
+        rate = stage.completed / elapsed
+    if rate <= 0:
+        return None
+    return (stage.total - stage.completed) / rate
+
+
+def _format_clock(seconds: float | None) -> str:
+    if seconds is None:
+        return "--"
+    whole_seconds = max(0, int(seconds))
+    hours, remainder = divmod(whole_seconds, 60 * 60)
+    minutes, secs = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+def _render_elapsed(stage: _StageState) -> Text:
+    elapsed = _elapsed_seconds(stage)
+    if elapsed is None:
+        return Text("--", style="dim")
+    style = "green" if stage.status in _FINAL_STAGE_STATUSES else "cyan"
+    return Text(_format_clock(elapsed), style=style)
+
+
+def _render_eta(stage: _StageState) -> Text:
+    if stage.status in _FINAL_STAGE_STATUSES:
+        return Text("done", style="green")
+    remaining = _remaining_seconds(stage)
+    if remaining is None:
+        return Text("--", style="dim")
+    return Text(_format_clock(remaining), style="magenta")
+
+
+def _render_rate(stage: _StageState) -> Text:
+    if stage.status not in _ACTIVE_STAGE_STATUSES:
+        return Text("--", style="dim")
+    if stage.smoothed_rate is None:
+        return Text("--", style="dim")
+    suffix = _unit_rate_suffix(stage.unit)
+    value = _format_rate_value(stage.smoothed_rate)
+    return Text(f"{value} {suffix}", style="bright_cyan")
+
+
+def _render_stage_detail(stage: _StageState) -> Text:
+    if not stage.detail:
+        return Text("")
+
+    detail = Text()
+    prefix, separator, remainder = stage.detail.partition(": ")
+    if separator:
+        detail.append(prefix, style="white")
+        detail.append(separator, style="dim")
+        _append_detail_parts(detail, remainder)
+        return detail
+
+    _append_detail_parts(detail, stage.detail)
+    return detail
+
+
+def _append_detail_parts(detail: Text, raw_detail: str) -> None:
+    for index, part in enumerate(raw_detail.split(" | ")):
+        if index > 0:
+            detail.append(" | ", style="dim")
+        _append_detail_fragment(detail, part.strip())
+
+
+def _append_detail_fragment(detail: Text, fragment: str) -> None:
+    if fragment.lower().startswith("waiting"):
+        detail.append(fragment, style="yellow")
+        return
+    if fragment.lower().startswith("resolving"):
+        detail.append(fragment, style="cyan")
+        return
+
+    label, _, value = fragment.partition(" ")
+    if label in _DETAIL_VALUE_LABELS and value:
+        detail.append(label, style="dim")
+        detail.append(" ", style="dim")
+        detail.append(value, style="bright_cyan")
+        return
+
+    number_match = re.match(r"^(?P<number>\d[\d,]*) (?P<label>[A-Za-z].+)$", fragment)
+    if number_match is not None:
+        detail.append(number_match.group("number"), style="bright_white")
+        detail.append(" ", style="dim")
+        detail.append(number_match.group("label"), style="dim")
+        return
+
+    detail.append(fragment, style="dim")
+
+
+def _smooth_value(previous: float | None, current: float, *, alpha: float) -> float:
+    if previous is None:
+        return current
+    return previous + alpha * (current - previous)
+
+
+def _format_rate_value(rate: float) -> str:
+    if rate >= 1_000_000:
+        return f"{rate / 1_000_000:.2f}M"
+    if rate >= 100_000:
+        return f"{rate / 1_000:.0f}k"
+    if rate >= 10_000:
+        return f"{rate / 1_000:.1f}k"
+    if rate >= 1_000:
+        return f"{rate / 1_000:.2f}k"
+    if rate >= 10:
+        return f"{rate:.1f}"
+    if rate >= 1:
+        return f"{rate:.2f}"
+    return f"{rate:.3f}"

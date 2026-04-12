@@ -30,4 +30,6 @@ def test_acquire_help_includes_panels_and_example() -> None:
     assert "Execution" in result.stdout
     assert "Example:" in result.stdout
     assert "--preset" in result.stdout
+    assert "--task" in result.stdout
+    assert "--feature-set" in result.stdout
     assert "--provider" in result.stdout

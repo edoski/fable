@@ -11,11 +11,17 @@ from ..config import ArtifactVariant, ModelConfig, StudyConfig
 from ..core.constants import MODEL_STATE_FILENAME
 from ..core.files import write_path_atomic
 from ..data.normalization import ScalerStats
-from ..features import FeatureSelection, feature_graph_fingerprint, validate_feature_selection
+from ..features import (
+    FeatureSelection,
+    feature_graph_fingerprint,
+    feature_warmup_blocks,
+    validate_feature_selection,
+)
 from ..planning.geometry import (
     action_count_for_delay,
     lookback_steps_for_seconds,
     max_extra_wait_steps_for_delay,
+    minimum_history_context_blocks,
 )
 from ..state.artifact import load_artifact_manifest, write_artifact_manifest
 from .models import TemporalModel
@@ -33,11 +39,12 @@ class ArtifactChainMetadata:
 class TrainingArtifactManifest:
     chain: ArtifactChainMetadata
     dataset_id: str
-    history_context_blocks: int
+    task_id: str
     variant: ArtifactVariant
     study: StudyConfig | None
-    max_delay_seconds: int
+    max_supported_delay_seconds: int
     lookback_seconds: int
+    sample_count: int
     feature_set_id: str
     feature_names: list[str]
     feature_graph_fingerprint: str
@@ -58,16 +65,28 @@ class TrainingArtifactManifest:
     @property
     def max_extra_wait_steps(self) -> int:
         return max_extra_wait_steps_for_delay(
-            self.max_delay_seconds,
+            self.max_supported_delay_seconds,
             self.chain.block_time_seconds,
         )
 
     @property
     def action_count(self) -> int:
         return action_count_for_delay(
-            self.max_delay_seconds,
+            self.max_supported_delay_seconds,
             self.chain.block_time_seconds,
         )
+
+    @property
+    def required_history_context_blocks(self) -> int:
+        return minimum_history_context_blocks(
+            lookback_seconds=self.lookback_seconds,
+            block_time_seconds=self.chain.block_time_seconds,
+            feature_warmup_blocks=feature_warmup_blocks(tuple(self.feature_names)),
+        )
+
+    @property
+    def history_context_blocks(self) -> int:
+        return self.required_history_context_blocks
 
 
 @dataclass(slots=True)
@@ -118,11 +137,12 @@ def build_training_artifact_manifest(
             block_time_seconds=spec.chain.runtime.block_time_seconds,
         ),
         dataset_id=spec.dataset_id,
-        history_context_blocks=spec.history_context_blocks,
+        task_id=spec.task.id,
         variant=spec.variant,
         study=spec.study,
-        max_delay_seconds=spec.max_delay_seconds,
-        lookback_seconds=spec.lookback_seconds,
+        max_supported_delay_seconds=spec.task.max_supported_delay_seconds,
+        lookback_seconds=spec.task.lookback_seconds,
+        sample_count=spec.task.sample_count,
         feature_set_id=prepared.feature_set_id,
         feature_names=list(prepared.feature_names),
         feature_graph_fingerprint=prepared.feature_graph_fingerprint,

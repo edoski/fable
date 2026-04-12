@@ -80,8 +80,10 @@ class TuningStudySummary:
     study: StudyConfig
     chain: str
     dataset_id: str
+    task_id: str
+    feature_set_id: str
     model_id: str
-    max_delay_seconds: int
+    max_supported_delay_seconds: int
     lookback_seconds: int
     sample_count: int
     objective_metric: TuningObjective
@@ -99,10 +101,12 @@ def study_context_payload(config: TuneConfig) -> dict[str, object]:
     return {
         "chain": config.chain.name,
         "dataset_id": config.dataset.id,
+        "task_id": config.task.id,
+        "feature_set_id": config.feature_set.id,
         "model_id": config.model.id,
-        "max_delay_seconds": config.dataset.temporal.max_delay_seconds,
-        "lookback_seconds": config.dataset.temporal.lookback_seconds,
-        "sample_count": config.dataset.sampling.sample_count,
+        "max_supported_delay_seconds": config.task.max_supported_delay_seconds,
+        "lookback_seconds": config.task.lookback_seconds,
+        "sample_count": config.task.sample_count,
         "objective_metric": config.tuning.objective_metric.value,
         "direction": config.tuning.direction.value,
         "trial_count_requested": config.tuning.trial_count,
@@ -200,10 +204,12 @@ def build_study_summary(config: TuneConfig, study: optuna.Study) -> TuningStudyS
         study=config.study,
         chain=config.chain.name,
         dataset_id=config.dataset.id,
+        task_id=config.task.id,
+        feature_set_id=config.feature_set.id,
         model_id=config.model.id,
-        max_delay_seconds=config.dataset.temporal.max_delay_seconds,
-        lookback_seconds=config.dataset.temporal.lookback_seconds,
-        sample_count=config.dataset.sampling.sample_count,
+        max_supported_delay_seconds=config.task.max_supported_delay_seconds,
+        lookback_seconds=config.task.lookback_seconds,
+        sample_count=config.task.sample_count,
         objective_metric=config.tuning.objective_metric,
         direction=config.tuning.direction,
         trial_count_requested=config.tuning.trial_count,

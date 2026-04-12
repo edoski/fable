@@ -17,7 +17,7 @@ from spice.config import (
     load_train_config,
     load_tune_config,
 )
-from spice.planning.geometry import derive_dataset_geometry
+from spice.planning.contracts import resolve_task_contract
 
 PRESET = "icdcs_2026"
 TEST_EVALUATION_DATE = date(2025, 11, 9)
@@ -55,20 +55,28 @@ def model_workflow_override(
     *,
     sample_count: int = 24,
     lookback_seconds: int = 120,
-    max_delay_seconds: int = 36,
-    history_context_blocks: int = 220,
+    max_supported_delay_seconds: int = 36,
+    requested_delay_seconds: int | None = None,
 ) -> dict[str, object]:
     return {
+        "chain": "ethereum",
+        "model": "lstm",
         "dataset": {
             "evaluation_date": TEST_EVALUATION_DATE.isoformat(),
-            "temporal": {
-                "lookback_seconds": lookback_seconds,
-                "max_delay_seconds": max_delay_seconds,
-            },
-            "sampling": {
-                "sample_count": sample_count,
-            },
-            "history_context_blocks": history_context_blocks,
+        },
+        "task": {
+            "id": "test_task",
+            "lookback_seconds": lookback_seconds,
+            "sample_count": sample_count,
+            "max_supported_delay_seconds": max_supported_delay_seconds,
+        },
+        "execution": {
+            "id": "test_execution",
+            "requested_delay_seconds": (
+                max_supported_delay_seconds
+                if requested_delay_seconds is None
+                else requested_delay_seconds
+            ),
         },
         "training": {
             "device": "cpu",
@@ -115,23 +123,20 @@ def acquire_override(
     *,
     sample_count: int = 4,
     lookback_seconds: int = 24,
-    max_delay_seconds: int = 12,
-    history_context_blocks: int = 8,
+    max_supported_delay_seconds: int = 12,
 ) -> dict[str, object]:
     return {
+        "chain": "ethereum",
         "dataset": {
             "evaluation_date": TEST_EVALUATION_DATE.isoformat(),
-            "temporal": {
-                "lookback_seconds": lookback_seconds,
-                "max_delay_seconds": max_delay_seconds,
-            },
-            "sampling": {
-                "sample_count": sample_count,
-            },
-            "history_context_blocks": history_context_blocks,
+        },
+        "task": {
+            "id": "acquire_test_task",
+            "lookback_seconds": lookback_seconds,
+            "sample_count": sample_count,
+            "max_supported_delay_seconds": max_supported_delay_seconds,
         },
         "acquisition": {
-            "history_sample_budget": sample_count,
             "chunk_size": 64,
             "rpc": {
                 "batch_size": 16,
@@ -216,23 +221,19 @@ def load_test_simulate_config(
 
 
 def required_history_blocks(config: AcquireConfig) -> int:
-    geometry = derive_dataset_geometry(
-        lookback_seconds=config.dataset.temporal.lookback_seconds,
-        max_delay_seconds=config.dataset.temporal.max_delay_seconds,
-        block_time_seconds=config.chain.runtime.block_time_seconds,
-        history_context_blocks=config.dataset.history_context_blocks,
-    )
-    return geometry.required_block_count(config.effective_history_sample_budget)
+    return resolve_task_contract(
+        chain=config.chain,
+        task=config.task,
+        feature_set=config.feature_set,
+    ).required_history_blocks
 
 
 def required_dataset_blocks(config: TrainConfig | TuneConfig | SimulateConfig) -> int:
-    geometry = derive_dataset_geometry(
-        lookback_seconds=config.dataset.temporal.lookback_seconds,
-        max_delay_seconds=config.dataset.temporal.max_delay_seconds,
-        block_time_seconds=config.chain.runtime.block_time_seconds,
-        history_context_blocks=config.dataset.history_context_blocks,
-    )
-    return geometry.required_block_count(config.dataset.sampling.sample_count)
+    return resolve_task_contract(
+        chain=config.chain,
+        task=config.task,
+        feature_set=config.feature_set,
+    ).required_history_blocks
 
 
 def make_block_rows(

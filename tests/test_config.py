@@ -17,8 +17,8 @@ def test_acquire_cli_loads_specs_and_applies_override_precedence(
         {
             "chain": "polygon",
             "provider": "direct",
-            "dataset": {
-                "history_context_blocks": 640,
+            "task": {
+                "sample_count": 640,
             },
         },
     )
@@ -32,8 +32,10 @@ def test_acquire_cli_loads_specs_and_applies_override_precedence(
             preset=kwargs["preset"],
             config_path=kwargs["config"],
             dataset=kwargs["dataset"],
+            task=kwargs["task"],
             chain=kwargs["chain"],
             provider=kwargs["provider"],
+            feature_set=kwargs["feature_set"],
             acquisition=kwargs["acquisition_profile"],
             storage_root=kwargs["storage_root"],
             dry_run=kwargs["dry_run"],
@@ -65,7 +67,8 @@ def test_acquire_cli_loads_specs_and_applies_override_precedence(
     assert config.provider.endpoint_for(config.chain.name) == "https://avax.example.test"
     assert config.acquisition.rpc.batch_size == 256
     assert config.dataset.id == "icdcs_2026"
-    assert config.dataset.history_context_blocks == 640
+    assert config.task.sample_count == 640
+    assert config.feature_set.id == "icdcs_2026"
     assert config.paths.output_root == tmp_path / "outputs"
     assert config.paths.history_dir == (
         tmp_path / "outputs" / "datasets" / "avalanche" / "icdcs_2026" / "history"

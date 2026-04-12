@@ -1,8 +1,2 @@
 id: icdcs_2026
 evaluation_date: 2025-11-09
-temporal:
-  max_delay_seconds: 36
-  lookback_seconds: 600
-sampling:
-  sample_count: 1000000
-history_context_blocks: 573

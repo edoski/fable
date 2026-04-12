@@ -31,7 +31,7 @@ def _format_train_summary_sections(
                 ("id", summary.dataset_id),
                 ("chain", summary.chain),
                 ("model", summary.model_id),
-                ("delay", f"{summary.max_delay_seconds}s"),
+                ("task", summary.task_id),
             ],
         ),
         (
@@ -40,6 +40,7 @@ def _format_train_summary_sections(
                 ("variant", summary.variant.value),
                 *([] if summary.study is None else [("study", summary.study.id)]),
                 ("artifact", str(persisted.artifact_dir)),
+                ("capability", f"{summary.max_supported_delay_seconds}s"),
             ],
         ),
         (
@@ -119,7 +120,7 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
         run_name=(
             "train-"
             f"{config.chain.name}-{config.model.id}-"
-            f"{config.dataset.temporal.max_delay_seconds}s"
+            f"{config.task.id}"
         ),
         reporter=reporter,
     ) as session:

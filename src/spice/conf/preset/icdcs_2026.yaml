@@ -1,14 +1,13 @@
 dataset: icdcs_2026
-chain: ethereum
+task: icdcs_2026
+execution: icdcs_2026
 provider: publicnode
-model: lstm
 feature_set: icdcs_2026
 acquisition: default
-training: default
+training: icdcs_2026
 split: default
-simulation: default
+simulation: icdcs_2026
 tuning: default
-tuning_space: lstm_default
 study:
   id: default
 artifact:

@@ -52,6 +52,8 @@ def _workflow_facts(config: TuneConfig) -> list[tuple[str, str]]:
     return [
         ("dataset", config.dataset.id),
         ("chain", config.chain.name),
+        ("task", config.task.id),
+        ("feature set", config.feature_set.id),
         ("model", config.model.id),
         ("study", config.study.id),
     ]
@@ -118,7 +120,7 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
         run_name=(
             "study-"
             f"{config.chain.name}-{config.model.id}-"
-            f"{config.dataset.temporal.max_delay_seconds}s"
+            f"{config.task.id}"
         ),
         reporter=reporter,
     ) as session:
@@ -194,6 +196,7 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
                         [
                             ("id", summary.study.id),
                             ("chain", summary.chain),
+                            ("task", summary.task_id),
                             ("model", summary.model_id),
                             ("trials", str(summary.trial_counts.total)),
                             ("state", str(study_state_db)),

@@ -92,21 +92,9 @@ class ChainSpec(ConfigModel):
         return _validate_path_segment(value, label="chain.name")
 
 
-class DatasetTemporalSpec(ConfigModel):
-    max_delay_seconds: int = Field(gt=0)
-    lookback_seconds: int = Field(gt=0)
-
-
-class DatasetSamplingSpec(ConfigModel):
-    sample_count: int = Field(gt=0)
-
-
 class DatasetSpec(ConfigModel):
     id: str
     evaluation_date: date
-    temporal: DatasetTemporalSpec
-    sampling: DatasetSamplingSpec
-    history_context_blocks: int = Field(gt=0)
 
     @field_validator("id")
     @classmethod
@@ -116,6 +104,28 @@ class DatasetSpec(ConfigModel):
 
 class StorageSpec(ConfigModel):
     root: Path = Path("outputs")
+
+
+class TaskSpec(ConfigModel):
+    id: str
+    lookback_seconds: int = Field(gt=0)
+    sample_count: int = Field(gt=0)
+    max_supported_delay_seconds: int = Field(gt=0)
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, value: str) -> str:
+        return _validate_path_segment(value, label="task.id")
+
+
+class ExecutionSpec(ConfigModel):
+    id: str
+    requested_delay_seconds: int = Field(gt=0)
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, value: str) -> str:
+        return _validate_path_segment(value, label="execution.id")
 
 
 class SplitConfig(ConfigModel):
@@ -174,7 +184,6 @@ class AcquisitionRpcConfig(ConfigModel):
 
 class AcquisitionConfig(ConfigModel):
     dry_run: bool = False
-    history_sample_budget: int | None = Field(default=None, gt=0)
     chunk_size: int = Field(gt=0)
     rpc: AcquisitionRpcConfig
 
@@ -478,7 +487,7 @@ def build_path_layout(
     dataset: DatasetSpec,
     feature_set_id: str | None = None,
     model_id: str | None = None,
-    max_delay_seconds: int | None = None,
+    task_id: str | None = None,
     variant: ArtifactVariant = ArtifactVariant.BASELINE,
     study_id: str = "default",
     include_artifacts: bool = False,
@@ -493,8 +502,8 @@ def build_path_layout(
     study_state_db: Path | None = None
 
     if include_artifacts:
-        if feature_set_id is None or model_id is None or max_delay_seconds is None:
-            raise ValueError("artifact paths require feature_set_id, model_id, max_delay_seconds")
+        if feature_set_id is None or model_id is None or task_id is None:
+            raise ValueError("artifact paths require feature_set_id, model_id, task_id")
         artifact_base_root = (
             output_root
             / "models"
@@ -502,7 +511,7 @@ def build_path_layout(
             / dataset.id
             / feature_set_id
             / model_id
-            / f"{max_delay_seconds}s"
+            / task_id
         )
         variant_root = artifact_base_root / variant.value / study_id
         tuned_study_root = artifact_base_root / ArtifactVariant.TUNED.value / study_id
@@ -547,7 +556,7 @@ def apply_provider_acquisition_overrides(
 
 
 class WorkflowConfig(ConfigModel):
-    task: WorkflowTask
+    workflow: WorkflowTask
     chain: ChainSpec
     dataset: DatasetSpec
     storage: StorageSpec
@@ -566,24 +575,16 @@ class WorkflowConfig(ConfigModel):
 
 
 class AcquireConfig(WorkflowConfig):
-    task: WorkflowTask = WorkflowTask.ACQUIRE
+    workflow: WorkflowTask = WorkflowTask.ACQUIRE
+    task: TaskSpec
+    feature_set: FeatureSetConfig
     provider: ProviderSpec
     acquisition: AcquisitionConfig
 
     @model_validator(mode="after")
-    def validate_history_sample_budget(self) -> Self:
-        if self.effective_history_sample_budget < self.dataset.sampling.sample_count:
-            raise ValueError(
-                "acquisition.history_sample_budget must be at least dataset.sampling.sample_count"
-            )
+    def validate_provider(self) -> Self:
         self.provider.endpoint_for(self.chain.name)
         return self
-
-    @property
-    def effective_history_sample_budget(self) -> int:
-        if self.acquisition.history_sample_budget is None:
-            return self.dataset.sampling.sample_count
-        return self.acquisition.history_sample_budget
 
     @property
     def paths(self) -> PathLayout:
@@ -591,6 +592,7 @@ class AcquireConfig(WorkflowConfig):
 
 
 class ModelWorkflowConfig(WorkflowConfig):
+    task: TaskSpec
     model: SerializeAsAny[ModelConfig]
     feature_set: FeatureSetConfig
     study: StudyConfig = StudyConfig()
@@ -604,22 +606,22 @@ class ModelWorkflowConfig(WorkflowConfig):
             dataset=self.dataset,
             feature_set_id=self.feature_set.id,
             model_id=self.model.id,
-            max_delay_seconds=self.dataset.temporal.max_delay_seconds,
+            task_id=self.task.id,
             variant=self.artifact.variant,
             study_id=self.study.id,
             include_artifacts=True,
-            tuning_mode=self.task is WorkflowTask.TUNE,
+            tuning_mode=self.workflow is WorkflowTask.TUNE,
         )
 
 
 class TrainConfig(ModelWorkflowConfig):
-    task: WorkflowTask = WorkflowTask.TRAIN
+    workflow: WorkflowTask = WorkflowTask.TRAIN
     split: SplitConfig
     training: TrainingConfig
 
 
 class TuneConfig(ModelWorkflowConfig):
-    task: WorkflowTask = WorkflowTask.TUNE
+    workflow: WorkflowTask = WorkflowTask.TUNE
     split: SplitConfig
     training: TrainingConfig
     tuning: TuningConfig
@@ -635,13 +637,25 @@ class TuneConfig(ModelWorkflowConfig):
 
 
 class SimulateConfig(ModelWorkflowConfig):
-    task: WorkflowTask = WorkflowTask.SIMULATE
+    workflow: WorkflowTask = WorkflowTask.SIMULATE
     training: TrainingConfig
     simulation: SimulationConfig
+    execution: ExecutionSpec
+
+    @model_validator(mode="after")
+    def validate_execution(self) -> Self:
+        if self.execution.requested_delay_seconds > self.task.max_supported_delay_seconds:
+            raise ValueError(
+                "execution.requested_delay_seconds must be <= "
+                "task.max_supported_delay_seconds"
+            )
+        return self
 
 
 class PresetSpec(ConfigModel):
     dataset: str | None = None
+    task: str | None = None
+    execution: str | None = None
     chain: str | None = None
     provider: str | None = None
     model: str | None = None

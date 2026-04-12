@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+from concurrent.futures.thread import _threads_queues
 from pathlib import Path
 
+from spice.acquisition.provider import ManagedAsyncHTTPProvider
 from spice.acquisition.rpc import BlockPullPlan, BlockRange, TimestampRange
 from spice.core.console import NullReporter
 from spice.state.dataset import list_acquire_runs, load_dataset_summary
+from spice.workflows.acquire import _DaemonThreadPoolExecutor
 from spice.workflows.acquire import run as run_acquire
 from tests.support import (
     acquire_override,
@@ -104,10 +108,54 @@ def test_acquire_workflow_writes_canonical_dataset_and_metadata(
     summary = load_dataset_summary(config.paths.dataset_state_db)
     runs = list_acquire_runs(config.paths.dataset_state_db)
     assert config.paths.dataset_state_db.is_file()
-    assert summary.settings.history_context_blocks == config.dataset.history_context_blocks
     assert summary.validation.history.rows == required_blocks
     assert summary.validation.evaluation.rows == evaluation_plan.expected_rows
     assert summary.provider.name == "publicnode"
     assert len(runs) == 1
+    assert runs[0]["task_id"] == config.task.id
+    assert runs[0]["feature_set_id"] == config.feature_set.id
+    assert runs[0]["required_history_blocks"] == required_blocks
     assert config.paths.history_dir.is_dir()
     assert config.paths.evaluation_dir.is_dir()
+
+
+def test_acquire_run_swallows_keyboard_interrupt(tmp_path, monkeypatch) -> None:
+    config = load_test_acquire_config(tmp_path, override=acquire_override())
+
+    def _raise_keyboard_interrupt(coro) -> None:
+        coro.close()
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(
+        "spice.workflows.acquire._run_async_interruptibly",
+        _raise_keyboard_interrupt,
+    )
+
+    run_acquire(config, reporter=NullReporter())
+
+
+def test_acquire_executor_threads_skip_python_exit_registry() -> None:
+    executor = _DaemonThreadPoolExecutor(max_workers=1, thread_name_prefix="spice-test")
+    try:
+        future = executor.submit(lambda: None)
+        future.result(timeout=1)
+        assert executor._threads
+        assert all(thread not in _threads_queues for thread in executor._threads)
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+def test_managed_async_http_provider_disconnect_closes_managed_session() -> None:
+    provider = ManagedAsyncHTTPProvider("http://localhost:8545")
+
+    async def _exercise() -> tuple[bool, bool]:
+        session = await provider._request_session_manager.async_cache_and_return_session(
+            "http://localhost:8545"
+        )
+        before = session.closed
+        await provider.disconnect()
+        return before, session.closed
+
+    before_closed, after_closed = asyncio.run(_exercise())
+    assert before_closed is False
+    assert after_closed is True

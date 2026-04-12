@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import signal
+import threading
+import weakref
+from collections.abc import Coroutine
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures.thread import _worker
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 from ..acquisition.datasets import (
     DatasetBuildOutcome,
@@ -21,8 +29,8 @@ from ..acquisition.metadata import (
 from ..acquisition.rpc import RpcController, Web3BlockClient, evaluation_range
 from ..config import AcquireConfig
 from ..core.console import Reporter
-from ..core.files import promote_paths_atomic
-from ..planning.geometry import derive_dataset_geometry
+from ..core.files import promote_paths_atomic, prune_empty_directories
+from ..planning.contracts import resolve_task_contract
 from ..state.dataset import write_dataset_state
 from ._shared import managed_workflow
 
@@ -94,12 +102,99 @@ def _workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:
     return [
         ("dataset", config.dataset.id),
         ("chain", config.chain.name),
+        ("task", config.task.id),
+        ("feature set", config.feature_set.id),
         ("provider", config.provider.name),
     ]
 
 
+class _DaemonThreadPoolExecutor(ThreadPoolExecutor):
+    """Default executor variant that doesn't block interpreter shutdown on SIGINT."""
+
+    def _adjust_thread_count(self) -> None:
+        if self._idle_semaphore.acquire(timeout=0):
+            return
+
+        def weakref_cb(_, q=self._work_queue):
+            q.put(None)
+
+        num_threads = len(self._threads)
+        if num_threads >= self._max_workers:
+            return
+        thread_name = f"{self._thread_name_prefix or self}_{num_threads}"
+        thread = threading.Thread(
+            name=thread_name,
+            target=_worker,
+            args=(
+                weakref.ref(self, weakref_cb),
+                self._work_queue,
+                self._initializer,
+                self._initargs,
+            ),
+        )
+        thread.daemon = True
+        thread.start()
+        self._threads.add(thread)
+        # Skip concurrent.futures' global exit registry so a cancelled acquire
+        # doesn't hang in interpreter shutdown waiting for RPC worker threads.
+
+
+def _run_async_interruptibly(coro: Coroutine[Any, Any, None]) -> None:
+    loop = asyncio.new_event_loop()
+    executor = _DaemonThreadPoolExecutor(thread_name_prefix="spice-asyncio")
+    loop.set_default_executor(executor)
+    task = loop.create_task(coro)
+    interrupted = False
+    previous_sigint = None
+
+    def _handle_sigint(signum, frame) -> None:
+        del signum, frame
+        nonlocal interrupted
+        interrupted = True
+        if not task.done():
+            loop.call_soon_threadsafe(task.cancel)
+
+    try:
+        with suppress(ValueError):
+            previous_sigint = signal.getsignal(signal.SIGINT)
+            signal.signal(signal.SIGINT, _handle_sigint)
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(task)
+        except asyncio.CancelledError:
+            interrupted = True
+        except KeyboardInterrupt:
+            interrupted = True
+            if not task.done():
+                task.cancel()
+                with suppress(BaseException):
+                    loop.run_until_complete(task)
+    finally:
+        if previous_sigint is not None:
+            with suppress(ValueError):
+                signal.signal(signal.SIGINT, previous_sigint)
+        pending = [
+            pending_task
+            for pending_task in asyncio.all_tasks(loop)
+            if not pending_task.done()
+        ]
+        for pending_task in pending:
+            pending_task.cancel()
+        if pending and not interrupted:
+            with suppress(BaseException):
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        with suppress(BaseException):
+            loop.run_until_complete(loop.shutdown_asyncgens())
+        executor.shutdown(wait=False, cancel_futures=True)
+        asyncio.set_event_loop(None)
+        loop.close()
+
+
 def run(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
-    asyncio.run(_run_async(config, reporter=reporter))
+    try:
+        _run_async_interruptibly(_run_async(config, reporter=reporter))
+    except KeyboardInterrupt:
+        return None
 
 
 async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
@@ -107,14 +202,12 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
     evaluation_dir = config.paths.evaluation_dir
     state_db_path = config.paths.dataset_state_db
     rpc_controller = RpcController.from_config(config.acquisition)
-
-    geometry = derive_dataset_geometry(
-        lookback_seconds=config.dataset.temporal.lookback_seconds,
-        max_delay_seconds=config.dataset.temporal.max_delay_seconds,
-        block_time_seconds=config.chain.runtime.block_time_seconds,
-        history_context_blocks=config.dataset.history_context_blocks,
+    contract = resolve_task_contract(
+        chain=config.chain,
+        task=config.task,
+        feature_set=config.feature_set,
     )
-    required_history_blocks = geometry.required_block_count(config.effective_history_sample_budget)
+    required_history_blocks = contract.required_history_blocks
     evaluation_window = evaluation_range(
         config.evaluation_window_start_timestamp,
         config.evaluation_window_end_timestamp,
@@ -123,7 +216,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
 
     with managed_workflow(
         config,
-        run_name=f"acquire-{config.chain.name}-{config.provider.name}",
+        run_name=f"acquire-{config.chain.name}-{config.task.id}-{config.provider.name}",
         reporter=reporter,
     ) as session:
         session.runtime.configure_workflow("acquire", _workflow_facts(config))
@@ -138,12 +231,6 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
             label="evaluation",
             status="pending",
             running_status="pulling",
-        )
-        metadata_reporter = session.runtime.stage_reporter(
-            "metadata",
-            label="metadata",
-            status="pending",
-            running_status="writing",
         )
         block_client = Web3BlockClient(config.provider, config.chain)
         try:
@@ -161,14 +248,12 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                 total=history_plan.expected_rows,
                 completed=0,
                 unit="blocks",
-                message="waiting",
             )
             session.runtime.set_stage_state(
                 "evaluation",
                 total=evaluation_plan.expected_rows,
                 completed=0,
                 unit="blocks",
-                message="waiting for history",
             )
 
             if config.acquisition.dry_run:
@@ -180,6 +265,8 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                             [
                                 ("id", config.dataset.id),
                                 ("chain", chain_label),
+                                ("task", config.task.id),
+                                ("feature set", config.feature_set.id),
                                 ("evaluation date", str(config.dataset.evaluation_date)),
                                 (
                                     "required history",
@@ -233,7 +320,6 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                         total=history_result.validation.row_count,
                         completed=history_result.validation.row_count,
                         unit="blocks",
-                        message=f"{history_result.file_count:,} files",
                     )
                     evaluation_result = await ensure_evaluation_dataset(
                         config=config,
@@ -250,7 +336,6 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                         total=evaluation_result.validation.row_count,
                         completed=evaluation_result.validation.row_count,
                         unit="blocks",
-                        message=f"{evaluation_result.file_count:,} files",
                     )
                     summary = build_dataset_summary(
                         config=config,
@@ -265,9 +350,9 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                     acquire_run = build_acquire_run_record(
                         config=config,
                         provider=current_provider,
+                        contract=contract,
                         acquisition_runtime=rpc_controller.snapshot(),
                     )
-                    metadata_task = metadata_reporter.start_task("write dataset state")
                     temp_state_db = temp_root / ".spice" / "state.sqlite"
                     write_dataset_state(
                         temp_state_db,
@@ -281,20 +366,21 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                         promotions.append((evaluation_dir, evaluation_result.promote_dir))
                     promotions.append((state_db_path, temp_state_db))
                     promote_paths_atomic(promotions)
-                    metadata_reporter.finish_task(
-                        metadata_task,
-                        message=str(state_db_path),
-                        silent=True,
-                    )
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                session.reporter.close()
+                prune_empty_directories(
+                    config.paths.dataset_root,
+                    stop_at=config.paths.dataset_root.parent.parent,
+                )
                 session.reporter.log(
-                    "acquire interrupted; temporary outputs removed, canonical dataset preserved",
+                    "acquire cancelled; partial download removed",
                     level="warning",
                 )
                 raise
             except Exception:
+                session.reporter.close()
                 session.reporter.log(
-                    "acquire failed; temporary outputs removed, canonical dataset preserved",
+                    "acquire failed; partial download removed",
                     level="warning",
                 )
                 raise
@@ -306,6 +392,8 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                         [
                             ("id", config.dataset.id),
                             ("chain", chain_label),
+                            ("task", config.task.id),
+                            ("feature set", config.feature_set.id),
                             ("state", str(state_db_path)),
                         ],
                     ),

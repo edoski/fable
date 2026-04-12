@@ -1,0 +1,4 @@
+window_seconds: 7200
+arrival_rate_per_second: 0.05
+repetitions: 50
+seed: 2026

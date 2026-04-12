@@ -10,23 +10,27 @@ from ..config import ArtifactVariant, SimulateConfig, TrainConfig, TuneConfig, W
 from ..core.console import ConsoleRuntime, Reporter, create_console_runtime
 from ..modeling.evaluation import EpochMetrics
 from ..modeling.pipeline import TrainingSpec
+from ..planning.contracts import resolve_task_contract
 from ..state.study import load_best_params
 from ._tuning import apply_tuned_parameters
 
 
 def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
     variant = selected_artifact_variant(config)
+    contract = resolve_task_contract(
+        chain=config.chain,
+        task=config.task,
+        feature_set=config.feature_set,
+    )
     return TrainingSpec(
         chain=config.chain,
         dataset_id=config.dataset.id,
+        task=config.task,
+        contract=contract,
         feature_set=config.feature_set,
         model=config.model,
         variant=variant,
         study=config.study if variant is ArtifactVariant.TUNED else None,
-        max_delay_seconds=config.dataset.temporal.max_delay_seconds,
-        lookback_seconds=config.dataset.temporal.lookback_seconds,
-        history_context_blocks=config.dataset.history_context_blocks,
-        sample_count=config.dataset.sampling.sample_count,
         split=config.split,
         training=config.training,
     )
@@ -48,7 +52,7 @@ class WorkflowSession:
 
 
 def selected_artifact_variant(config: TrainConfig | TuneConfig | SimulateConfig) -> ArtifactVariant:
-    if config.task is WorkflowTask.TUNE:
+    if config.workflow is WorkflowTask.TUNE:
         return ArtifactVariant.TUNED
     return config.artifact.variant
 
@@ -64,6 +68,7 @@ def abort_cleanup(
         yield
     except KeyboardInterrupt:
         cleanup()
+        reporter.close()
         reporter.log(f"{label} interrupted; partial outputs removed", level="warning")
         raise
 

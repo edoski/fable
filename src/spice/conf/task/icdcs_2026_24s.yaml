@@ -1,0 +1,4 @@
+id: icdcs_2026_24s
+lookback_seconds: 600
+sample_count: 400000
+max_supported_delay_seconds: 24

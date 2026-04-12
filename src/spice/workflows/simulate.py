@@ -5,13 +5,12 @@ from __future__ import annotations
 from ..config import SimulateConfig
 from ..core.console import Reporter
 from ..data.io import load_block_frame
-from ..features import feature_warmup_blocks
 from ..modeling.artifacts import load_training_artifact, validate_artifact_feature_graph
 from ..modeling.inference import predict_class_offsets
 from ..modeling.pipeline import prepare_inference_dataset
 from ..modeling.reporting import build_simulation_summary_record
 from ..modeling.simulation import run_temporal_simulation
-from ..planning.geometry import derive_dataset_geometry, minimum_history_context_blocks
+from ..planning.contracts import resolve_feature_contract
 from ..state import ARTIFACT_ROOT_KIND, STUDY_ROOT_KIND
 from ..state.artifact import write_simulation_state
 from ._shared import abort_cleanup, managed_workflow
@@ -21,6 +20,8 @@ def _workflow_facts(config: SimulateConfig) -> list[tuple[str, str]]:
     facts = [
         ("dataset", config.dataset.id),
         ("chain", config.chain.name),
+        ("task", config.task.id),
+        ("execution", config.execution.id),
         ("model", config.model.id),
         ("variant", config.artifact.variant.value),
     ]
@@ -45,7 +46,7 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
         config,
         run_name=(
             f"simulate-{config.chain.name}-{config.model.id}"
-            f"-{config.dataset.temporal.max_delay_seconds}s"
+            f"-{config.task.id}-{config.execution.id}"
         ),
         reporter=reporter,
     ) as session:
@@ -77,27 +78,44 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 message=f"artifact={artifact_dir} evaluation={evaluation_block_path}",
             )
             prepare_task = prepare_reporter.start_task("prepare inference dataset")
-            minimum_context = minimum_history_context_blocks(
-                lookback_seconds=loaded_artifact.manifest.lookback_seconds,
-                block_time_seconds=loaded_artifact.manifest.chain.block_time_seconds,
-                feature_warmup_blocks=feature_warmup_blocks(selection.feature_names),
-            )
-            if minimum_context > config.dataset.history_context_blocks:
+            if loaded_artifact.manifest.task_id != config.task.id:
                 raise ValueError(
-                    "Configured dataset.history_context_blocks "
-                    "is too small for the selected feature set: "
-                    f"need at least {minimum_context}, got {config.dataset.history_context_blocks}"
+                    "Configured task.id does not match the trained artifact: "
+                    f"expected {loaded_artifact.manifest.task_id}, got {config.task.id}"
+                )
+            if (
+                loaded_artifact.manifest.max_supported_delay_seconds
+                != config.task.max_supported_delay_seconds
+            ):
+                raise ValueError(
+                    "Configured task.max_supported_delay_seconds does not match "
+                    "the trained artifact"
+                )
+            if (
+                loaded_artifact.manifest.lookback_seconds != config.task.lookback_seconds
+                or loaded_artifact.manifest.sample_count != config.task.sample_count
+            ):
+                raise ValueError("Configured task does not match the trained artifact contract")
+            contract = resolve_feature_contract(
+                chain=config.chain,
+                task=config.task,
+                feature_set_id=selection.feature_set_id,
+                feature_names=selection.feature_names,
+            )
+            if (
+                config.execution.requested_delay_seconds
+                > loaded_artifact.manifest.max_supported_delay_seconds
+            ):
+                raise ValueError(
+                    "execution.requested_delay_seconds exceeds artifact capability: "
+                    f"{config.execution.requested_delay_seconds} > "
+                    f"{loaded_artifact.manifest.max_supported_delay_seconds}"
                 )
             prepared = prepare_inference_dataset(
                 history_blocks,
                 evaluation_blocks,
                 selection=selection,
-                geometry=derive_dataset_geometry(
-                    lookback_seconds=loaded_artifact.manifest.lookback_seconds,
-                    max_delay_seconds=loaded_artifact.manifest.max_delay_seconds,
-                    block_time_seconds=loaded_artifact.manifest.chain.block_time_seconds,
-                    history_context_blocks=minimum_context,
-                ),
+                geometry=contract.geometry_for_delay(config.execution.requested_delay_seconds),
                 scaler=loaded_artifact.manifest.scaler,
                 window_start_timestamp=config.evaluation_window_start_timestamp,
                 window_end_timestamp=config.evaluation_window_end_timestamp,
@@ -113,6 +131,7 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 lookback_steps=prepared.geometry.lookback_steps,
                 batch_size=config.training.batch_size,
                 device=config.training.device,
+                allowed_action_count=prepared.geometry.action_count,
                 reporter=predict_reporter,
             )
             simulation = run_temporal_simulation(
@@ -129,6 +148,7 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 loaded_artifact,
                 prepared=prepared,
                 simulation=simulation,
+                requested_delay_seconds=config.execution.requested_delay_seconds,
                 window_seconds=config.simulation.window_seconds,
                 arrival_rate_per_second=config.simulation.arrival_rate_per_second,
                 repetitions=config.simulation.repetitions,
@@ -149,7 +169,7 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                         ("id", summary.dataset_id),
                         ("chain", summary.chain),
                         ("model", summary.model_id),
-                        ("delay", f"{summary.max_delay_seconds}s"),
+                        ("task", summary.task_id),
                     ],
                 ),
                 (
@@ -157,6 +177,8 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                     [
                         ("variant", summary.variant.value),
                         *([] if summary.study is None else [("study", summary.study.id)]),
+                        ("capability", f"{summary.max_supported_delay_seconds}s"),
+                        ("requested", f"{summary.requested_delay_seconds}s"),
                         ("state", str(artifact_dir / ".spice" / "state.sqlite")),
                     ],
                 ),

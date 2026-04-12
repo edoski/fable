@@ -35,7 +35,7 @@ def test_train_workflow_smoke(tmp_path) -> None:
     assert load_training_summary(config.paths.artifact_state_db) is not None
 
 
-def test_tune_workflow_smoke(tmp_path) -> None:
+def test_tune_then_train_tuned_smoke(tmp_path) -> None:
     config = load_test_tune_config(
         tmp_path,
         override=deep_merge(model_workflow_override(), tune_override()),
@@ -59,13 +59,15 @@ def test_tune_workflow_smoke(tmp_path) -> None:
         ),
     )
     run_train(tuned_train_config, reporter=NullReporter())
+
     assert tuned_train_config.paths.artifact_state_db.is_file()
     assert (tuned_train_config.paths.artifact_root / "model.pt").is_file()
 
 
 def test_simulate_workflow_smoke(tmp_path) -> None:
-    train_config = load_test_train_config(tmp_path, override=model_workflow_override())
-    simulate_config = load_test_simulate_config(tmp_path, override=model_workflow_override())
+    override = model_workflow_override()
+    train_config = load_test_train_config(tmp_path, override=override)
+    simulate_config = load_test_simulate_config(tmp_path, override=override)
     seed_history_dataset(train_config)
     seed_evaluation_dataset(simulate_config)
     run_train(train_config, reporter=NullReporter())
@@ -76,22 +78,21 @@ def test_simulate_workflow_smoke(tmp_path) -> None:
     assert list_simulation_runs(simulate_config.paths.artifact_state_db)
 
 
-def test_simulate_rejects_dataset_contract_mismatch(tmp_path) -> None:
-    base_override = model_workflow_override()
-    train_config = load_test_train_config(tmp_path, override=base_override)
-    simulate_config = load_test_simulate_config(
-        tmp_path,
-        override=deep_merge(base_override, {"dataset": {"history_context_blocks": 120}}),
+def test_simulate_rejects_execution_request_above_capability(tmp_path) -> None:
+    override = deep_merge(
+        model_workflow_override(max_supported_delay_seconds=24),
+        {
+            "execution": {
+                "id": "too_large",
+                "requested_delay_seconds": 36,
+            }
+        },
     )
-    seed_history_dataset(train_config)
-    seed_evaluation_dataset(simulate_config)
-    run_train(train_config, reporter=NullReporter())
-
     with pytest.raises(
         ValueError,
-        match="Configured dataset.history_context_blocks is too small",
+        match="execution.requested_delay_seconds must be <=",
     ):
-        run_simulate(simulate_config, reporter=NullReporter())
+        load_test_simulate_config(tmp_path, override=override)
 
 
 def test_show_command_smoke(tmp_path) -> None:

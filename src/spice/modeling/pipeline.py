@@ -14,6 +14,7 @@ from ..config import (
     ModelConfig,
     SplitConfig,
     StudyConfig,
+    TaskSpec,
     TrainingConfig,
 )
 from ..core.console import NullReporter, Reporter
@@ -31,7 +32,7 @@ from ..data.datasets import (
 from ..data.io import load_block_frame
 from ..data.normalization import ScalerStats, fit_standard_scaler, transform_feature_matrix
 from ..features import FeatureSelection, build_feature_table, feature_warmup_blocks
-from ..planning.geometry import derive_dataset_geometry, minimum_history_context_blocks
+from ..planning.contracts import ResolvedTaskContract
 from .evaluation import EpochMetrics
 from .models import TemporalModel
 from .registry import build_model
@@ -43,12 +44,10 @@ from .training import TrainingResult, evaluate_model, train_model
 class TrainingSpec:
     chain: ChainSpec
     dataset_id: str
+    task: TaskSpec
+    contract: ResolvedTaskContract
     feature_set: FeatureSetConfig
     model: ModelConfig
-    max_delay_seconds: int
-    lookback_seconds: int
-    history_context_blocks: int
-    sample_count: int
     split: SplitConfig
     training: TrainingConfig
     variant: ArtifactVariant = ArtifactVariant.BASELINE
@@ -136,27 +135,18 @@ def prepare_training_dataset(
         feature_set_id=spec.feature_set.id,
         feature_names=tuple(spec.feature_set.outputs),
     )
-    minimum_context = minimum_history_context_blocks(
-        lookback_seconds=spec.lookback_seconds,
-        block_time_seconds=spec.chain.runtime.block_time_seconds,
-        feature_warmup_blocks=feature_warmup_blocks(selection.feature_names),
-    )
-    if minimum_context > spec.history_context_blocks:
+    expected_warmup = feature_warmup_blocks(selection.feature_names)
+    if expected_warmup != spec.contract.feature_warmup_blocks:
         raise ValueError(
-            "Configured dataset.history_context_blocks is too small for the selected feature set: "
-            f"need at least {minimum_context}, got {spec.history_context_blocks}"
+            "Resolved feature warmup does not match the current feature graph: "
+            f"expected {spec.contract.feature_warmup_blocks}, got {expected_warmup}"
         )
-    geometry = derive_dataset_geometry(
-        lookback_seconds=spec.lookback_seconds,
-        max_delay_seconds=spec.max_delay_seconds,
-        block_time_seconds=spec.chain.runtime.block_time_seconds,
-        history_context_blocks=minimum_context,
-    )
+    geometry = spec.contract.capability_geometry
     trimmed_blocks = _slice_frame(
         blocks.sort("block_number"),
         trim_history_for_sample_count(
             blocks.height,
-            sample_count=spec.sample_count,
+            sample_count=spec.task.sample_count,
             geometry=geometry,
         ),
     )
@@ -166,10 +156,10 @@ def prepare_training_dataset(
         lookback_steps=geometry.lookback_steps,
         action_count=geometry.action_count,
     )
-    if store.n_samples != spec.sample_count:
+    if store.n_samples != spec.task.sample_count:
         raise RuntimeError(
             "Training dataset preparation produced an unexpected number of samples; "
-            f"expected {spec.sample_count}, got {store.n_samples}"
+            f"expected {spec.task.sample_count}, got {store.n_samples}"
         )
     split_indices = chronological_split_indices(store.n_samples, spec.split)
     scaler = fit_standard_scaler(

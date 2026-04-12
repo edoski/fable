@@ -61,7 +61,7 @@ def derive_dataset_geometry(
     minimum_context = lookback_steps - 1
     if history_context_blocks < minimum_context:
         raise ValueError(
-            "dataset.history_context_blocks is too small for the configured lookback; "
+            "history context is too small for the configured lookback; "
             f"need at least {minimum_context}, got {history_context_blocks}"
         )
     return DatasetGeometry(

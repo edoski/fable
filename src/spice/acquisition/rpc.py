@@ -391,11 +391,7 @@ class Web3BlockClient:
         next_write_start = plan.block_range.start
 
         try:
-            reporter.update_task(
-                task_id,
-                completed=0,
-                message=self._live_rpc_status(rpc_controller),
-            )
+            reporter.update_task(task_id, completed=0)
             while next_write_start < plan.block_range.end:
                 while len(in_flight) < rpc_controller.current_concurrency:
                     request = self._next_request(
@@ -438,7 +434,6 @@ class Web3BlockClient:
                             reporter.update_task(
                                 task_id,
                                 completed=completed,
-                                message=self._live_rpc_status(rpc_controller),
                             )
                             for retry_request in self._split_request(
                                 request,
@@ -457,7 +452,6 @@ class Web3BlockClient:
                             reporter.update_task(
                                 task_id,
                                 completed=completed,
-                                message=self._live_rpc_status(rpc_controller),
                             )
                             heappush(pending_requests, request.retry())
                             continue
@@ -481,7 +475,6 @@ class Web3BlockClient:
                     reporter.update_task(
                         task_id,
                         completed=completed,
-                        message=self._live_rpc_status(rpc_controller),
                     )
 
                     while next_write_start in completed_results:
@@ -489,22 +482,19 @@ class Web3BlockClient:
                         pending_rows.extend(finished_batch.rows)
                         next_write_start = finished_batch.end
                         while len(pending_rows) >= chunk_size:
-                            await asyncio.to_thread(
-                                self._write_chunk,
-                                output_dir,
-                                pending_rows[:chunk_size],
-                            )
+                            self._write_chunk(output_dir, pending_rows[:chunk_size])
                             pending_rows = pending_rows[chunk_size:]
 
             if pending_rows:
-                await asyncio.to_thread(self._write_chunk, output_dir, pending_rows)
+                self._write_chunk(output_dir, pending_rows)
 
-            reporter.finish_task(task_id, message=str(output_dir), silent=True)
+            reporter.finish_task(task_id, silent=True)
             return plan
         finally:
             for task in in_flight:
                 task.cancel()
-            if in_flight:
+            current_task = asyncio.current_task()
+            if in_flight and (current_task is None or current_task.cancelling() == 0):
                 await asyncio.gather(*in_flight, return_exceptions=True)
 
     @staticmethod
@@ -538,13 +528,6 @@ class Web3BlockClient:
             )
             for batch_start in range(request.start, request.end, batch_size)
         ]
-
-    @staticmethod
-    def _live_rpc_status(rpc_controller: RpcController) -> str:
-        return (
-            f"batch {rpc_controller.current_batch_size} | "
-            f"conc {rpc_controller.current_concurrency}"
-        )
 
     @staticmethod
     def _as_int(value: object) -> int:

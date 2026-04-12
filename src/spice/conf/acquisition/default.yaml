@@ -1,5 +1,4 @@
 dry_run: false
-history_sample_budget: null
 chunk_size: 8192
 rpc:
   batch_size: 256

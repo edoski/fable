@@ -47,11 +47,12 @@ def write_artifact_manifest(
                 "chain_name": manifest.chain.name,
                 "chain_block_time_seconds": manifest.chain.block_time_seconds,
                 "dataset_id": manifest.dataset_id,
-                "history_context_blocks": manifest.history_context_blocks,
+                "task_id": manifest.task_id,
                 "variant": manifest.variant.value,
                 "study_id": None if manifest.study is None else manifest.study.id,
-                "max_delay_seconds": manifest.max_delay_seconds,
+                "max_supported_delay_seconds": manifest.max_supported_delay_seconds,
                 "lookback_seconds": manifest.lookback_seconds,
+                "sample_count": manifest.sample_count,
                 "feature_set_id": manifest.feature_set_id,
                 "feature_names": list(manifest.feature_names),
                 "feature_graph_fingerprint": manifest.feature_graph_fingerprint,
@@ -85,11 +86,12 @@ def load_artifact_manifest(db_path: Path) -> TrainingArtifactManifest:
                 block_time_seconds=float(row["chain_block_time_seconds"]),
             ),
             dataset_id=str(row["dataset_id"]),
-            history_context_blocks=int(row["history_context_blocks"]),
+            task_id=str(row["task_id"]),
             variant=ArtifactVariant(str(row["variant"])),
             study=_study_config(row["study_id"]),
-            max_delay_seconds=int(row["max_delay_seconds"]),
+            max_supported_delay_seconds=int(row["max_supported_delay_seconds"]),
             lookback_seconds=int(row["lookback_seconds"]),
+            sample_count=int(row["sample_count"]),
             feature_set_id=str(row["feature_set_id"]),
             feature_names=_string_list(row["feature_names"]),
             feature_graph_fingerprint=str(row["feature_graph_fingerprint"]),
@@ -118,8 +120,8 @@ def write_training_state(
                 "variant": summary.variant.value,
                 "study_id": None if summary.study is None else summary.study.id,
                 "model_id": summary.model_id,
-                "history_context_blocks": summary.history_context_blocks,
-                "max_delay_seconds": summary.max_delay_seconds,
+                "task_id": summary.task_id,
+                "max_supported_delay_seconds": summary.max_supported_delay_seconds,
                 "lookback_seconds": summary.lookback_seconds,
                 "sample_count": summary.sample_count,
                 "n_blocks_available": summary.n_blocks_available,
@@ -176,8 +178,8 @@ def load_training_summary(db_path: Path) -> TrainingSummary | None:
             variant=ArtifactVariant(str(row["variant"])),
             study=_study_config(row["study_id"]),
             model_id=str(row["model_id"]),
-            history_context_blocks=int(row["history_context_blocks"]),
-            max_delay_seconds=int(row["max_delay_seconds"]),
+            task_id=str(row["task_id"]),
+            max_supported_delay_seconds=int(row["max_supported_delay_seconds"]),
             lookback_seconds=int(row["lookback_seconds"]),
             sample_count=int(row["sample_count"]),
             n_blocks_available=int(row["n_blocks_available"]),
@@ -229,8 +231,9 @@ def write_simulation_state(
                 "variant": summary.variant.value,
                 "study_id": None if summary.study is None else summary.study.id,
                 "model_id": summary.model_id,
-                "history_context_blocks": summary.history_context_blocks,
-                "max_delay_seconds": summary.max_delay_seconds,
+                "task_id": summary.task_id,
+                "max_supported_delay_seconds": summary.max_supported_delay_seconds,
+                "requested_delay_seconds": summary.requested_delay_seconds,
                 "lookback_seconds": summary.lookback_seconds,
                 "simulation_window_seconds": summary.simulation_window_seconds,
                 "arrival_rate_per_second": summary.arrival_rate_per_second,
@@ -291,8 +294,9 @@ def load_simulation_summary(db_path: Path) -> SimulationSummaryRecord | None:
             variant=ArtifactVariant(str(row["variant"])),
             study=_study_config(row["study_id"]),
             model_id=str(row["model_id"]),
-            history_context_blocks=int(row["history_context_blocks"]),
-            max_delay_seconds=int(row["max_delay_seconds"]),
+            task_id=str(row["task_id"]),
+            max_supported_delay_seconds=int(row["max_supported_delay_seconds"]),
+            requested_delay_seconds=int(row["requested_delay_seconds"]),
             lookback_seconds=int(row["lookback_seconds"]),
             simulation_window_seconds=int(row["simulation_window_seconds"]),
             arrival_rate_per_second=float(row["arrival_rate_per_second"]),
@@ -367,11 +371,11 @@ def _aggregate_from_payload(payload: object):
 
 def _mapping(payload: object) -> dict[str, object]:
     if not isinstance(payload, dict):
-        raise TypeError("State payload must be a mapping")
+        raise TypeError("Expected mapping payload")
     return dict(payload)
 
 
 def _string_list(payload: object) -> list[str]:
     if not isinstance(payload, list):
-        raise TypeError("State payload must be a list")
+        raise TypeError("Expected list payload")
     return [str(value) for value in payload]

@@ -17,6 +17,7 @@ from .models import (
     ChainSpec,
     ConfigModel,
     DatasetSpec,
+    ExecutionSpec,
     FeatureSetConfig,
     ModelConfig,
     PresetSpec,
@@ -26,6 +27,7 @@ from .models import (
     SplitConfig,
     StorageSpec,
     StudyConfig,
+    TaskSpec,
     TrainConfig,
     TrainingConfig,
     TuneConfig,
@@ -39,6 +41,8 @@ _TUNING_SPACE_GROUP = "tuning_space"
 _CONF_ROOT = Path(__file__).resolve().parents[1] / "conf"
 _MERGEABLE_NAMED_GROUPS = {
     "dataset": "dataset",
+    "task": "task",
+    "execution": "execution",
     "chain": "chain",
     "provider": "provider",
     "feature_set": "feature_set",
@@ -198,8 +202,10 @@ def load_acquire_config(
     preset: str | None = None,
     config_path: Path | None = None,
     dataset: str | None = None,
+    task: str | None = None,
     chain: str | None = None,
     provider: str | None = None,
+    feature_set: str | None = None,
     acquisition: str | None = None,
     storage_root: Path | None = None,
     dry_run: bool | None = None,
@@ -210,15 +216,23 @@ def load_acquire_config(
         cli_overrides=compact_mapping(
             {
                 "dataset": dataset,
+                "task": task,
                 "chain": chain,
                 "provider": provider,
+                "feature_set": feature_set,
                 "acquisition": {"dry_run": dry_run} if dry_run is not None else None,
                 "storage": {"root": storage_root} if storage_root is not None else None,
             }
         ),
     )
     dataset_spec, chain_spec, storage_spec = _resolve_common(payload)
+    task_spec = resolve_named_or_inline(payload["task"], group="task", model_type=TaskSpec)
     provider_spec = _resolve_provider(payload, chain=chain_spec)
+    feature_set_spec = resolve_named_or_inline(
+        payload["feature_set"],
+        group="feature_set",
+        model_type=FeatureSetConfig,
+    )
     acquisition_raw = payload.get("acquisition", "default")
     acquisition_spec = resolve_named_or_inline(
         acquisition_raw,
@@ -233,6 +247,8 @@ def load_acquire_config(
         chain=chain_spec,
         dataset=dataset_spec,
         storage=storage_spec,
+        task=task_spec,
+        feature_set=feature_set_spec,
         provider=provider_spec,
         acquisition=acquisition_spec,
     )
@@ -244,12 +260,14 @@ def _resolve_model_workflow(
     DatasetSpec,
     ChainSpec,
     StorageSpec,
+    TaskSpec,
     ModelConfig,
     FeatureSetConfig,
     StudyConfig,
     ArtifactConfig,
 ]:
     dataset, chain, storage = _resolve_common(payload)
+    task = resolve_named_or_inline(payload["task"], group="task", model_type=TaskSpec)
     model_raw = payload["model"]
     if isinstance(model_raw, str):
         model = load_named_model(model_raw)
@@ -273,7 +291,7 @@ def _resolve_model_workflow(
         if isinstance(artifact_raw, Mapping)
         else ArtifactConfig()
     )
-    return dataset, chain, storage, model, feature_set, study, artifact
+    return dataset, chain, storage, task, model, feature_set, study, artifact
 
 
 def load_train_config(
@@ -281,6 +299,7 @@ def load_train_config(
     preset: str | None = None,
     config_path: Path | None = None,
     dataset: str | None = None,
+    task: str | None = None,
     chain: str | None = None,
     model: str | None = None,
     feature_set: str | None = None,
@@ -296,6 +315,7 @@ def load_train_config(
         cli_overrides=compact_mapping(
             {
                 "dataset": dataset,
+                "task": task,
                 "chain": chain,
                 "model": model,
                 "feature_set": feature_set,
@@ -311,6 +331,7 @@ def load_train_config(
         dataset_spec,
         chain_spec,
         storage_spec,
+        task_spec,
         model_spec,
         feature_set_spec,
         study_spec,
@@ -330,6 +351,7 @@ def load_train_config(
         chain=chain_spec,
         dataset=dataset_spec,
         storage=storage_spec,
+        task=task_spec,
         model=model_spec,
         feature_set=feature_set_spec,
         study=study_spec,
@@ -344,6 +366,7 @@ def load_tune_config(
     preset: str | None = None,
     config_path: Path | None = None,
     dataset: str | None = None,
+    task: str | None = None,
     chain: str | None = None,
     model: str | None = None,
     feature_set: str | None = None,
@@ -361,6 +384,7 @@ def load_tune_config(
         cli_overrides=compact_mapping(
             {
                 "dataset": dataset,
+                "task": task,
                 "chain": chain,
                 "model": model,
                 "feature_set": feature_set,
@@ -377,6 +401,7 @@ def load_tune_config(
         dataset_spec,
         chain_spec,
         storage_spec,
+        task_spec,
         model_spec,
         feature_set_spec,
         study_spec,
@@ -415,6 +440,7 @@ def load_tune_config(
         chain=chain_spec,
         dataset=dataset_spec,
         storage=storage_spec,
+        task=task_spec,
         model=model_spec,
         feature_set=feature_set_spec,
         study=study_spec,
@@ -431,11 +457,13 @@ def load_simulate_config(
     preset: str | None = None,
     config_path: Path | None = None,
     dataset: str | None = None,
+    task: str | None = None,
     chain: str | None = None,
     model: str | None = None,
     feature_set: str | None = None,
     training: str | None = None,
     simulation: str | None = None,
+    execution: str | None = None,
     storage_root: Path | None = None,
     variant: str | None = None,
     study: str | None = None,
@@ -446,11 +474,13 @@ def load_simulate_config(
         cli_overrides=compact_mapping(
             {
                 "dataset": dataset,
+                "task": task,
                 "chain": chain,
                 "model": model,
                 "feature_set": feature_set,
                 "training": training,
                 "simulation": simulation,
+                "execution": execution,
                 "study": study,
                 "artifact": {"variant": variant} if variant is not None else None,
                 "storage": {"root": storage_root} if storage_root is not None else None,
@@ -461,6 +491,7 @@ def load_simulate_config(
         dataset_spec,
         chain_spec,
         storage_spec,
+        task_spec,
         model_spec,
         feature_set_spec,
         study_spec,
@@ -476,14 +507,21 @@ def load_simulate_config(
         group="simulation",
         model_type=SimulationConfig,
     )
+    execution_spec = resolve_named_or_inline(
+        payload["execution"],
+        group="execution",
+        model_type=ExecutionSpec,
+    )
     return SimulateConfig(
         chain=chain_spec,
         dataset=dataset_spec,
         storage=storage_spec,
+        task=task_spec,
         model=model_spec,
         feature_set=feature_set_spec,
         study=study_spec,
         artifact=artifact_spec,
         training=training_spec,
         simulation=simulation_spec,
+        execution=execution_spec,
     )

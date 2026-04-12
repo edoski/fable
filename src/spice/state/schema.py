@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import JSON, Boolean, Column, Float, Integer, MetaData, String, Table
 
-STATE_SCHEMA_VERSION = 1
+STATE_SCHEMA_VERSION = 2
 
 metadata = MetaData()
 
@@ -36,10 +36,6 @@ dataset_summary = Table(
     Column("history_coverage_end_timestamp", Integer, nullable=False),
     Column("evaluation_coverage_start_timestamp", Integer, nullable=False),
     Column("evaluation_coverage_end_timestamp", Integer, nullable=False),
-    Column("history_context_blocks", Integer, nullable=False),
-    Column("sample_count", Integer, nullable=False),
-    Column("lookback_seconds", Integer, nullable=False),
-    Column("max_delay_seconds", Integer, nullable=False),
     Column("history_validation", JSON, nullable=False),
     Column("evaluation_validation", JSON, nullable=False),
 )
@@ -52,7 +48,13 @@ acquire_runs = Table(
     Column("provider_name", String, nullable=False),
     Column("provider_reference", String, nullable=False),
     Column("provider_endpoint_fingerprint", String, nullable=False),
-    Column("history_sample_budget", Integer, nullable=False),
+    Column("task_id", String, nullable=False),
+    Column("feature_set_id", String, nullable=False),
+    Column("lookback_seconds", Integer, nullable=False),
+    Column("sample_count", Integer, nullable=False),
+    Column("max_supported_delay_seconds", Integer, nullable=False),
+    Column("required_history_context_blocks", Integer, nullable=False),
+    Column("required_history_blocks", Integer, nullable=False),
     Column("chunk_size", Integer, nullable=False),
     Column("rpc_batch_size", Integer, nullable=False),
     Column("rpc_concurrency", Integer, nullable=False),
@@ -78,11 +80,12 @@ artifact_manifest = Table(
     Column("chain_name", String, nullable=False),
     Column("chain_block_time_seconds", Float, nullable=False),
     Column("dataset_id", String, nullable=False),
-    Column("history_context_blocks", Integer, nullable=False),
+    Column("task_id", String, nullable=False),
     Column("variant", String, nullable=False),
     Column("study_id", String),
-    Column("max_delay_seconds", Integer, nullable=False),
+    Column("max_supported_delay_seconds", Integer, nullable=False),
     Column("lookback_seconds", Integer, nullable=False),
+    Column("sample_count", Integer, nullable=False),
     Column("feature_set_id", String, nullable=False),
     Column("feature_names", JSON, nullable=False),
     Column("feature_graph_fingerprint", String, nullable=False),
@@ -99,8 +102,8 @@ training_summary = Table(
     Column("variant", String, nullable=False),
     Column("study_id", String),
     Column("model_id", String, nullable=False),
-    Column("history_context_blocks", Integer, nullable=False),
-    Column("max_delay_seconds", Integer, nullable=False),
+    Column("task_id", String, nullable=False),
+    Column("max_supported_delay_seconds", Integer, nullable=False),
     Column("lookback_seconds", Integer, nullable=False),
     Column("sample_count", Integer, nullable=False),
     Column("n_blocks_available", Integer, nullable=False),
@@ -133,8 +136,9 @@ simulation_summary = Table(
     Column("variant", String, nullable=False),
     Column("study_id", String),
     Column("model_id", String, nullable=False),
-    Column("history_context_blocks", Integer, nullable=False),
-    Column("max_delay_seconds", Integer, nullable=False),
+    Column("task_id", String, nullable=False),
+    Column("max_supported_delay_seconds", Integer, nullable=False),
+    Column("requested_delay_seconds", Integer, nullable=False),
     Column("lookback_seconds", Integer, nullable=False),
     Column("simulation_window_seconds", Integer, nullable=False),
     Column("arrival_rate_per_second", Float, nullable=False),

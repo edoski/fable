@@ -70,3 +70,35 @@ def remove_path(path: Path) -> None:
         return
     if path.exists():
         path.unlink()
+
+
+def prune_empty_directories(path: Path, *, stop_at: Path | None = None) -> None:
+    current = path
+    boundary = stop_at
+    while True:
+        if boundary is not None and current == boundary:
+            return
+        try:
+            entries = list(current.iterdir())
+        except FileNotFoundError:
+            entries = []
+        except NotADirectoryError:
+            return
+        except OSError:
+            return
+        substantive_entries = [entry for entry in entries if entry.name != ".DS_Store"]
+        if substantive_entries:
+            return
+        for entry in entries:
+            if entry.name == ".DS_Store":
+                entry.unlink(missing_ok=True)
+        try:
+            current.rmdir()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return
+        parent = current.parent
+        if parent == current:
+            return
+        current = parent

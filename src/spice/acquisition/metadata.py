@@ -9,6 +9,7 @@ from pathlib import Path
 from ..config import AcquireConfig
 from ..data.io import iter_block_files
 from ..data.validation import BlockDatasetValidationReport
+from ..planning.contracts import ResolvedTaskContract
 from .rpc import AcquisitionRuntimeSnapshot
 
 
@@ -49,39 +50,6 @@ class DatasetCoverageMetadata:
 
 
 @dataclass(frozen=True, slots=True)
-class DatasetSamplingSettings:
-    sample_count: int
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetTemporalSettings:
-    lookback_seconds: int
-    max_delay_seconds: int
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetAcquisitionRpcSettings:
-    batch_size: int
-    concurrency: int
-    min_batch_size: int
-    concurrency_rungs: list[int]
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetAcquisitionSettings:
-    history_sample_budget: int
-    chunk_size: int
-    rpc: DatasetAcquisitionRpcSettings
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetSettingsMetadata:
-    history_context_blocks: int
-    sampling: DatasetSamplingSettings
-    temporal: DatasetTemporalSettings
-
-
-@dataclass(frozen=True, slots=True)
 class BlockRangeMetadata:
     first: int | None
     last: int | None
@@ -115,8 +83,27 @@ class DatasetSummary:
     provider: ProviderMetadata
     request: DatasetRequestMetadata
     coverage: DatasetCoverageMetadata
-    settings: DatasetSettingsMetadata
     validation: DatasetValidationMetadata
+
+
+@dataclass(frozen=True, slots=True)
+class AcquisitionConfigSnapshot:
+    chunk_size: int
+    rpc_batch_size: int
+    rpc_concurrency: int
+    rpc_min_batch_size: int
+    rpc_concurrency_rungs: list[int]
+
+
+@dataclass(frozen=True, slots=True)
+class TaskContractSnapshot:
+    task_id: str
+    feature_set_id: str
+    lookback_seconds: int
+    sample_count: int
+    max_supported_delay_seconds: int
+    required_history_context_blocks: int
+    required_history_blocks: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,7 +124,8 @@ class DatasetAcquisitionRuntimeMetadata:
 @dataclass(frozen=True, slots=True)
 class AcquireRunRecord:
     provider: ProviderMetadata
-    settings: DatasetAcquisitionSettings
+    task: TaskContractSnapshot
+    settings: AcquisitionConfigSnapshot
     runtime: DatasetAcquisitionRuntimeMetadata
 
 
@@ -199,16 +187,13 @@ def _coverage_window(report: BlockDatasetValidationReport) -> DatasetWindowMetad
     )
 
 
-def acquisition_settings(config: AcquireConfig) -> DatasetAcquisitionSettings:
-    return DatasetAcquisitionSettings(
-        history_sample_budget=config.effective_history_sample_budget,
+def acquisition_settings(config: AcquireConfig) -> AcquisitionConfigSnapshot:
+    return AcquisitionConfigSnapshot(
         chunk_size=config.acquisition.chunk_size,
-        rpc=DatasetAcquisitionRpcSettings(
-            batch_size=config.acquisition.rpc.batch_size,
-            concurrency=config.acquisition.rpc.concurrency,
-            min_batch_size=config.acquisition.rpc.min_batch_size,
-            concurrency_rungs=list(config.acquisition.rpc.concurrency_rungs),
-        ),
+        rpc_batch_size=config.acquisition.rpc.batch_size,
+        rpc_concurrency=config.acquisition.rpc.concurrency,
+        rpc_min_batch_size=config.acquisition.rpc.min_batch_size,
+        rpc_concurrency_rungs=list(config.acquisition.rpc.concurrency_rungs),
     )
 
 
@@ -262,16 +247,6 @@ def build_dataset_summary(
             history=_coverage_window(history_validation),
             evaluation=_coverage_window(evaluation_validation),
         ),
-        settings=DatasetSettingsMetadata(
-            history_context_blocks=config.dataset.history_context_blocks,
-            sampling=DatasetSamplingSettings(
-                sample_count=config.dataset.sampling.sample_count,
-            ),
-            temporal=DatasetTemporalSettings(
-                lookback_seconds=config.dataset.temporal.lookback_seconds,
-                max_delay_seconds=config.dataset.temporal.max_delay_seconds,
-            ),
-        ),
         validation=DatasetValidationMetadata(
             history=compact_validation_report(history_validation),
             evaluation=compact_validation_report(evaluation_validation),
@@ -283,10 +258,20 @@ def build_acquire_run_record(
     *,
     config: AcquireConfig,
     provider: ProviderMetadata,
+    contract: ResolvedTaskContract,
     acquisition_runtime: AcquisitionRuntimeSnapshot,
 ) -> AcquireRunRecord:
     return AcquireRunRecord(
         provider=provider,
+        task=TaskContractSnapshot(
+            task_id=config.task.id,
+            feature_set_id=config.feature_set.id,
+            lookback_seconds=contract.lookback_seconds,
+            sample_count=contract.sample_count,
+            max_supported_delay_seconds=contract.max_supported_delay_seconds,
+            required_history_context_blocks=contract.required_history_context_blocks,
+            required_history_blocks=contract.required_history_blocks,
+        ),
         settings=acquisition_settings(config),
         runtime=acquisition_runtime_metadata(acquisition_runtime),
     )

@@ -54,9 +54,11 @@ class ReporterProgressCallback(L.Callback):
         self._task_id: int | None = None
         self._total_batches = 0
         self._train_batches_per_epoch = 0
+        self._smoothed_loss: float | None = None
 
     def on_train_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         del pl_module
+        self._smoothed_loss = None
         train_batches = trainer.num_training_batches
         if not isinstance(train_batches, int) or train_batches <= 0:
             self._task_id = self._reporter.start_task("train epochs")
@@ -86,7 +88,8 @@ class ReporterProgressCallback(L.Callback):
             f"train={batch_idx + 1}/{max(1, self._train_batches_per_epoch)}"
         )
         if loss_value is not None:
-            message = f"{message} loss={loss_value:.4f}"
+            self._smoothed_loss = _smooth_value(self._smoothed_loss, loss_value, alpha=0.12)
+            message = f"{message} loss={self._smoothed_loss:.4f}"
         self._reporter.update_task(self._task_id, advance=1, message=message)
 
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
@@ -132,6 +135,12 @@ def _loss_value(outputs: object) -> float | None:
         if isinstance(loss, torch.Tensor):
             return float(loss.detach().item())
     return None
+
+
+def _smooth_value(previous: float | None, current: float, *, alpha: float) -> float:
+    if previous is None:
+        return current
+    return previous + alpha * (current - previous)
 
 
 def _trainer_device_args(device_name: str) -> tuple[str, int | str | list[int]]:

@@ -23,6 +23,7 @@ def predict_class_offsets(
     lookback_steps: int,
     batch_size: int,
     device: str,
+    allowed_action_count: int | None = None,
     reporter: Reporter | None = None,
 ) -> list[int]:
     reporter = reporter or NullReporter()
@@ -44,6 +45,15 @@ def predict_class_offsets(
         for batch in loader:
             device_batch = move_batch_to_device(batch, resolved_device)
             logits = model(device_batch.inputs).logits
+            if allowed_action_count is not None:
+                if allowed_action_count <= 0:
+                    raise ValueError("allowed_action_count must be positive")
+                if allowed_action_count > int(logits.shape[-1]):
+                    raise ValueError(
+                        "allowed_action_count exceeds artifact action space: "
+                        f"{allowed_action_count} > {int(logits.shape[-1])}"
+                    )
+                logits = logits[..., :allowed_action_count]
             predictions.extend(logits.argmax(dim=-1).cpu().tolist())
             reporter.update_task(task_id, advance=1)
     reporter.finish_task(task_id)

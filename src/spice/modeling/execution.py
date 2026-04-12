@@ -56,7 +56,6 @@ def run_persisted_training(
     manifest = build_training_artifact_manifest(training_run.prepared, spec=spec)
     summary = build_training_summary(
         training_run,
-        sample_count=spec.sample_count,
         chain_name=spec.chain.name,
         dataset_id=spec.dataset_id,
         model_id=spec.model.id,

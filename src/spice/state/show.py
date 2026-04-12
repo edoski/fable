@@ -36,8 +36,7 @@ def describe_root(root: Path, *, detail: str | None = None) -> dict[str, object]
         "root_kind": root_kind,
     }
     if root_kind == DATASET_ROOT_KIND:
-        summary = load_dataset_summary(db_path)
-        payload["dataset"] = _dataset_payload(summary)
+        payload["dataset"] = _dataset_payload(load_dataset_summary(db_path))
         if detail == "runs":
             payload["runs"] = list_acquire_runs(db_path)
         return payload
@@ -95,16 +94,13 @@ def sectioned_summary(
                 )
             )
         return "dataset summary", sections
-
     if root_kind == ARTIFACT_ROOT_KIND:
         return "artifact summary", _artifact_sections(payload)
-
     if root_kind == STUDY_ROOT_KIND:
         sections = _study_sections(payload)
         if "manifest" in payload:
             sections.extend(_artifact_sections(payload))
         return "study summary", sections
-
     raise ValueError(f"Unsupported root kind: {root_kind}")
 
 
@@ -116,12 +112,13 @@ def _artifact_payload(db_path: Path, *, detail: str | None) -> dict[str, object]
     payload["manifest"] = {
         "chain": manifest.chain.name,
         "dataset_id": manifest.dataset_id,
+        "task_id": manifest.task_id,
         "variant": manifest.variant.value,
         "study_id": None if manifest.study is None else manifest.study.id,
         "model_id": manifest.model.id,
-        "history_context_blocks": manifest.history_context_blocks,
-        "max_delay_seconds": manifest.max_delay_seconds,
+        "max_supported_delay_seconds": manifest.max_supported_delay_seconds,
         "lookback_seconds": manifest.lookback_seconds,
+        "sample_count": manifest.sample_count,
         "feature_set_id": manifest.feature_set_id,
         "feature_names": list(manifest.feature_names),
     }
@@ -186,10 +183,11 @@ def _artifact_sections(payload: dict[str, object]) -> list[tuple[str, list[tuple
             [
                 ("chain", str(manifest["chain"])),
                 ("dataset", str(manifest["dataset_id"])),
+                ("task", str(manifest["task_id"])),
                 ("model", str(manifest["model_id"])),
                 ("variant", str(manifest["variant"])),
                 ("study", str(manifest["study_id"] or "n/a")),
-                ("delay", f"{manifest['max_delay_seconds']}s"),
+                ("capability", f"{manifest['max_supported_delay_seconds']}s"),
             ],
         ),
     ]
@@ -222,6 +220,7 @@ def _artifact_sections(payload: dict[str, object]) -> list[tuple[str, list[tuple
             (
                 "simulation",
                 [
+                    ("requested", f"{simulation['requested_delay_seconds']}s"),
                     ("window", f"{simulation['simulation_window_seconds']}s"),
                     ("repetitions", str(simulation["repetitions"])),
                     ("events", str(simulation["total_events"])),
@@ -235,10 +234,7 @@ def _artifact_sections(payload: dict[str, object]) -> list[tuple[str, list[tuple
         sections.append(
             (
                 "epochs",
-                [
-                    (f"epoch {row['epoch']}", _epoch_string(_mapping(row)))
-                    for row in epochs
-                ],
+                [(f"epoch {row['epoch']}", _epoch_string(_mapping(row))) for row in epochs],
             )
         )
     runs = payload.get("runs")
@@ -266,6 +262,8 @@ def _study_sections(payload: dict[str, object]) -> list[tuple[str, list[tuple[st
                 ("direction", str(study["direction"])),
                 ("chain", str(context["chain"])),
                 ("dataset", str(context["dataset_id"])),
+                ("task", str(context["task_id"])),
+                ("feature set", str(context["feature_set_id"])),
                 ("model", str(context["model_id"])),
                 ("trials", str(study["trial_count"])),
                 ("state", str(payload["state_db"])),
@@ -294,10 +292,7 @@ def _study_sections(payload: dict[str, object]) -> list[tuple[str, list[tuple[st
         sections.append(
             (
                 "trials",
-                [
-                    (f"trial {row['number']}", _trial_string(_mapping(row)))
-                    for row in trials
-                ],
+                [(f"trial {row['number']}", _trial_string(_mapping(row))) for row in trials],
             )
         )
     return sections
@@ -325,8 +320,8 @@ def _training_summary_payload(summary) -> dict[str, object]:
     return {
         "best_epoch": summary.best_epoch,
         "split": (
-            f"train={summary.split_sizes.train_samples}, "
-            f"validation={summary.split_sizes.validation_samples}, "
+            f"train={summary.split_sizes.train_samples} "
+            f"validation={summary.split_sizes.validation_samples} "
             f"test={summary.split_sizes.test_samples}"
         ),
         "best_validation_metrics": asdict(summary.best_validation_metrics),
@@ -336,11 +331,12 @@ def _training_summary_payload(summary) -> dict[str, object]:
 
 def _simulation_summary_payload(summary) -> dict[str, object]:
     return {
+        "requested_delay_seconds": summary.requested_delay_seconds,
         "simulation_window_seconds": summary.simulation_window_seconds,
         "repetitions": summary.repetitions,
+        "total_events": summary.total_events,
         "profit_over_baseline": asdict(summary.profit_over_baseline),
         "cost_over_optimum": asdict(summary.cost_over_optimum),
-        "total_events": summary.total_events,
     }
 
 
@@ -348,55 +344,46 @@ def _window_string(window: dict[str, object]) -> str:
     return f"{window['start_timestamp']} -> {window['end_timestamp']}"
 
 
-def _metric_value(payload: dict[str, object], group: str, key: str) -> str:
-    metrics = _mapping(payload[group])
-    return f"{float(metrics[key]):.4f}"
+def _acquire_run_string(run: dict[str, object]) -> str:
+    return (
+        f"task={run['task_id']} feature_set={run['feature_set_id']} "
+        f"history={run['required_history_blocks']} blocks"
+    )
 
 
-def _aggregate_value(payload: dict[str, object], group: str, key: str) -> str:
-    metrics = _mapping(payload[group])
-    return f"{float(metrics[key]):.4f}"
+def _metric_value(summary: dict[str, object], metric_group: str, metric_name: str) -> str:
+    metrics = _mapping(summary[metric_group])
+    return f"{float(metrics[metric_name]):.4f}"
 
 
-def _epoch_string(payload: dict[str, object]) -> str:
-    train = _mapping(payload["train_metrics"])
-    validation = _mapping(payload["validation_metrics"])
+def _aggregate_value(summary: dict[str, object], metric_group: str, metric_name: str) -> str:
+    aggregate = _mapping(summary[metric_group])
+    return f"{float(aggregate[metric_name]):.4f}"
+
+
+def _epoch_string(row: dict[str, object]) -> str:
+    train = _mapping(row["train_metrics"])
+    validation = _mapping(row["validation_metrics"])
     return (
         f"train_loss={float(train['total_loss']):.4f} "
-        f"val_loss={float(validation['total_loss']):.4f} "
-        f"val_acc={float(validation['accuracy']):.3f}"
+        f"val_loss={float(validation['total_loss']):.4f}"
     )
 
 
-def _simulation_run_string(payload: dict[str, object]) -> str:
+def _simulation_run_string(row: dict[str, object]) -> str:
     return (
-        f"events={payload['n_events']} arrivals={payload['n_arrivals']} "
-        f"profit={float(payload['profit_over_baseline']):.4f} "
-        f"cost={float(payload['cost_over_optimum']):.4f}"
+        f"events={int(row['n_events'])} "
+        f"profit={float(row['profit_over_baseline']):.4f} "
+        f"cost={float(row['cost_over_optimum']):.4f}"
     )
 
 
-def _trial_string(payload: dict[str, object]) -> str:
-    value = payload["value"]
-    params = payload.get("params")
-    return (
-        f"state={payload['state']} "
-        f"value={'n/a' if value is None else f'{float(value):.4f}'} "
-        f"best_epoch={payload.get('best_epoch', 'n/a')} "
-        f"params={params if params is not None else 'n/a'}"
-    )
-
-
-def _acquire_run_string(payload: dict[str, object]) -> str:
-    return (
-        f"provider={payload['provider_name']} "
-        f"batch={payload['final_batch_size']} "
-        f"concurrency={payload['final_concurrency']} "
-        f"oversize_errors={payload['oversize_error_count']}"
-    )
+def _trial_string(row: dict[str, object]) -> str:
+    value = "n/a" if row["value"] is None else f"{float(row['value']):.4f}"
+    return f"state={row['state']} value={value}"
 
 
 def _mapping(payload: object) -> dict[str, object]:
     if not isinstance(payload, dict):
-        raise TypeError("Show payload must be a mapping")
+        raise TypeError("Expected mapping payload")
     return dict(payload)
