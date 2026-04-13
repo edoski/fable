@@ -10,8 +10,9 @@ from numpy.typing import NDArray
 
 from ..config import CompileMode, ModelConfig, TrainingConfig, TrainingPrecision
 from ..data.datasets import TemporalDatasetStore
-from .registry import resolve_auto_compile, resolve_default_precision
-from .torch_datasets import SequenceBatchLoader
+from . import torch_datasets as _torch_datasets  # noqa: F401
+from .registry import resolve_auto_compile, resolve_default_precision, resolve_input_representation
+from .representations import RepresentationLoader, build_representation_loader
 
 IntVector = NDArray[np.int64]
 _TORCHINDUCTOR_MIN_CUDA_SMS_FOR_AUTO_COMPILE = 68
@@ -83,18 +84,19 @@ def _device_supports_auto_compile(device: torch.device) -> bool:
     return properties.multi_processor_count >= _TORCHINDUCTOR_MIN_CUDA_SMS_FOR_AUTO_COMPILE
 
 
-def build_sequence_loader(
+def build_model_loader(
     store: TemporalDatasetStore,
     sample_indices: IntVector,
     *,
-    lookback_steps: int,
+    model_id: str,
     batch_size: int,
     shuffle: bool = False,
-) -> SequenceBatchLoader:
-    return SequenceBatchLoader(
+) -> RepresentationLoader:
+    _ = _torch_datasets
+    return build_representation_loader(
+        resolve_input_representation(model_id),
         store,
         sample_indices,
-        lookback_steps=lookback_steps,
         batch_size=batch_size,
         shuffle=shuffle,
     )

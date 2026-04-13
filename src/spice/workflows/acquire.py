@@ -1,4 +1,4 @@
-"""Canonical block dataset acquisition workflow."""
+"""Canonical block corpus acquisition workflow."""
 
 from __future__ import annotations
 
@@ -11,13 +11,13 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures.thread import _worker
 from contextlib import suppress
 from datetime import UTC, datetime
+from math import ceil
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
 from ..acquisition.datasets import (
     DatasetBuildOutcome,
-    build_history_plan,
     ensure_evaluation_dataset,
     ensure_history_dataset,
 )
@@ -26,11 +26,15 @@ from ..acquisition.metadata import (
     build_dataset_summary,
     provider_metadata,
 )
-from ..acquisition.rpc import RpcController, Web3BlockClient, evaluation_range
+from ..acquisition.rpc import RpcController, TimestampRange, Web3BlockClient, evaluation_range
 from ..config import AcquireConfig
 from ..core.console import Reporter
 from ..core.files import promote_paths_atomic, prune_empty_directories
+from ..data.datasets import build_temporal_store
+from ..data.io import load_block_frame
+from ..features import FeatureSelection, build_feature_table, make_feature_selection
 from ..planning.contracts import resolve_task_contract
+from ..planning.geometry import DelayWindow
 from ..state.catalog import upsert_dataset_record
 from ..state.dataset import write_dataset_state
 from ._shared import managed_workflow
@@ -107,6 +111,33 @@ def _workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:
         ("feature set", config.feature_set.id),
         ("provider", config.provider.name),
     ]
+
+
+def _count_valid_history_samples(
+    *,
+    history_dir: Path,
+    selection: FeatureSelection,
+    window: DelayWindow,
+) -> int:
+    blocks = load_block_frame(history_dir).sort("block_number")
+    feature_table = build_feature_table(blocks, selection=selection)
+    store = build_temporal_store(feature_table, window=window)
+    return store.n_samples
+
+
+def _initial_history_window_seconds(
+    *,
+    required_history_seconds: int,
+    sample_count: int,
+    max_supported_delay_seconds: int,
+    estimated_block_interval_seconds: float,
+) -> int:
+    return max(
+        required_history_seconds + max_supported_delay_seconds,
+        required_history_seconds
+        + max_supported_delay_seconds
+        + ceil(sample_count * estimated_block_interval_seconds),
+    )
 
 
 class _DaemonThreadPoolExecutor(ThreadPoolExecutor):
@@ -201,14 +232,16 @@ def run(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
 async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
     history_dir = config.paths.history_dir
     evaluation_dir = config.paths.evaluation_dir
-    state_db_path = config.paths.dataset_state_db
+    state_db_path = config.paths.corpus_state_db
     rpc_controller = RpcController.from_config(config.acquisition)
     contract = resolve_task_contract(
-        chain=config.chain,
         task=config.task,
         feature_set=config.feature_set,
     )
-    required_history_blocks = contract.required_history_blocks
+    selection = make_feature_selection(
+        config.feature_set.id,
+        tuple(config.feature_set.outputs),
+    )
     evaluation_window = evaluation_range(
         config.evaluation_window_start_timestamp,
         config.evaluation_window_end_timestamp,
@@ -251,10 +284,23 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                 evaluation_window,
                 chunk_size=config.acquisition.chunk_size,
             )
-            history_plan = await build_history_plan(
-                config=config,
-                block_client=block_client,
-                required_history_blocks=required_history_blocks,
+            estimated_block_interval_seconds = await block_client.estimate_recent_block_interval()
+            history_window_seconds = _initial_history_window_seconds(
+                required_history_seconds=contract.required_history_seconds,
+                sample_count=contract.sample_count,
+                max_supported_delay_seconds=contract.max_supported_delay_seconds,
+                estimated_block_interval_seconds=estimated_block_interval_seconds,
+            )
+            history_start_timestamp = max(
+                0,
+                config.history_window_end_timestamp - history_window_seconds,
+            )
+            history_plan = await block_client.plan_window(
+                TimestampRange(
+                    start=history_start_timestamp,
+                    end=config.history_window_end_timestamp,
+                ),
+                chunk_size=config.acquisition.chunk_size,
             )
             session.runtime.set_stage_state(
                 "history",
@@ -281,15 +327,14 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                             "dataset",
                             [
                                 ("name", config.dataset.name),
-                                ("storage id", config.paths.dataset_id),
+                                ("storage id", config.paths.corpus_id),
                                 ("chain", chain_label),
                                 ("task", config.task.id),
                                 ("feature set", config.feature_set.id),
                                 ("evaluation date", str(config.dataset.evaluation_date)),
-                                (
-                                    "required history",
-                                    _format_count(required_history_blocks, "block"),
-                                ),
+                                ("feature history", f"{contract.feature_history_seconds}s"),
+                                ("lookback", f"{contract.lookback_seconds}s"),
+                                ("history window", f"{history_window_seconds}s"),
                             ],
                         ),
                         (
@@ -315,30 +360,52 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                 return
 
             current_provider = provider_metadata(config)
-            config.paths.dataset_root.parent.mkdir(parents=True, exist_ok=True)
+            config.paths.corpus_root.parent.mkdir(parents=True, exist_ok=True)
             with TemporaryDirectory(
-                dir=config.paths.dataset_root.parent,
-                prefix=f".{config.paths.dataset_id}.acquire.",
+                dir=config.paths.corpus_root.parent,
+                prefix=f".{config.paths.corpus_id}.acquire.",
             ) as temp_root_name:
                 temp_root = Path(temp_root_name)
-                history_result = await ensure_history_dataset(
-                    config=config,
-                    block_client=block_client,
-                    output_dir=history_dir,
-                    working_dir=temp_root,
-                    history_plan=history_plan,
-                    required_history_blocks=required_history_blocks,
-                    rpc_controller=rpc_controller,
-                    reporter=history_reporter,
-                    stage_update=_update_history_stage,
-                )
+                while True:
+                    history_result = await ensure_history_dataset(
+                        config=config,
+                        block_client=block_client,
+                        output_dir=history_dir,
+                        working_dir=temp_root,
+                        history_plan=history_plan,
+                        rpc_controller=rpc_controller,
+                        reporter=history_reporter,
+                        stage_update=_update_history_stage,
+                    )
+                    valid_anchor_samples = _count_valid_history_samples(
+                        history_dir=history_result.path,
+                        selection=selection,
+                        window=contract.capability_window,
+                    )
+                    if valid_anchor_samples >= contract.sample_count:
+                        break
+                    history_window_seconds *= 2
+                    history_start_timestamp = max(
+                        0,
+                        config.history_window_end_timestamp - history_window_seconds,
+                    )
+                    history_plan = await block_client.plan_window(
+                        TimestampRange(
+                            start=history_start_timestamp,
+                            end=config.history_window_end_timestamp,
+                        ),
+                        chunk_size=config.acquisition.chunk_size,
+                    )
                 session.runtime.set_stage_state(
                     "history",
                     status=history_result.outcome.value,
                     total=history_result.validation.row_count,
                     completed=history_result.validation.row_count,
                     unit="blocks",
-                    message=f"{history_result.file_count:,} files",
+                    message=(
+                        f"{history_result.file_count:,} files, "
+                        f"anchors={valid_anchor_samples:,}"
+                    ),
                 )
                 evaluation_result = await ensure_evaluation_dataset(
                     config=config,
@@ -373,6 +440,8 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                     provider=current_provider,
                     contract=contract,
                     acquisition_runtime=rpc_controller.snapshot(),
+                    acquired_history_window_seconds=history_window_seconds,
+                    valid_anchor_samples=valid_anchor_samples,
                 )
                 temp_state_db = temp_root / ".spice" / "state.sqlite"
                 write_dataset_state(
@@ -389,11 +458,11 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                 promote_paths_atomic(promotions)
                 upsert_dataset_record(
                     config.paths.catalog_db,
-                    dataset_id=config.paths.dataset_id,
+                    dataset_id=config.paths.corpus_id,
                     dataset_name=config.dataset.name,
                     chain_name=config.chain.name,
                     provider_name=current_provider.name,
-                    root_path=config.paths.dataset_root,
+                    root_path=config.paths.corpus_root,
                     state_db_path=state_db_path,
                 )
             session.runtime.log_sectioned_summary(
@@ -403,7 +472,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                         "dataset",
                         [
                             ("name", config.dataset.name),
-                            ("storage id", config.paths.dataset_id),
+                            ("storage id", config.paths.corpus_id),
                             ("chain", chain_label),
                             ("task", config.task.id),
                             ("feature set", config.feature_set.id),
@@ -431,8 +500,8 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
         except (KeyboardInterrupt, asyncio.CancelledError):
             session.reporter.close()
             prune_empty_directories(
-                config.paths.dataset_root,
-                stop_at=config.paths.dataset_root.parent.parent,
+                config.paths.corpus_root,
+                stop_at=config.paths.corpus_root.parent.parent,
             )
             session.reporter.log(
                 "acquire cancelled; partial download removed",

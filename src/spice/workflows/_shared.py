@@ -19,13 +19,12 @@ from ..state.study import load_best_params, load_study_manifest, validate_tuned_
 def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
     variant = selected_artifact_variant(config)
     contract = resolve_task_contract(
-        chain=config.chain,
         task=config.task,
         feature_set=config.feature_set,
     )
     return TrainingSpec(
         chain=config.chain,
-        dataset_id=config.paths.dataset_id,
+        dataset_id=config.paths.corpus_id,
         dataset_name=config.dataset.name,
         artifact_id=(
             config.paths.artifact_id

@@ -231,20 +231,33 @@ def load_test_simulate_config(
     )
 
 
-def required_history_blocks(config: AcquireConfig) -> int:
+def synthetic_block_interval_seconds(chain_name: str) -> int:
+    return {
+        "ethereum": 12,
+        "polygon": 2,
+        "avalanche": 2,
+    }.get(chain_name, 12)
+
+
+def required_history_seconds(config: AcquireConfig) -> int:
     return resolve_task_contract(
-        chain=config.chain,
         task=config.task,
         feature_set=config.feature_set,
-    ).required_history_blocks
+    ).required_history_seconds
 
 
 def required_dataset_blocks(config: TrainConfig | TuneConfig | SimulateConfig) -> int:
-    return resolve_task_contract(
-        chain=config.chain,
+    contract = resolve_task_contract(
         task=config.task,
         feature_set=config.feature_set,
-    ).required_history_blocks
+    )
+    block_interval_seconds = synthetic_block_interval_seconds(config.chain.name)
+    required_seconds = (
+        contract.required_history_seconds
+        + contract.max_supported_delay_seconds
+        + contract.sample_count * block_interval_seconds
+    )
+    return max(64, math.ceil(required_seconds / block_interval_seconds) + 1)
 
 
 def make_block_rows(
@@ -253,12 +266,12 @@ def make_block_rows(
     start_block: int,
     start_timestamp: int,
     chain_id: int = 1,
-    block_time_seconds: int = 12,
+    block_interval_seconds: int = 12,
 ) -> list[dict[str, int]]:
     rows: list[dict[str, int]] = []
     for offset in range(count):
         block_number = start_block + offset
-        timestamp = start_timestamp + offset * block_time_seconds
+        timestamp = start_timestamp + offset * block_interval_seconds
         base_fee = int(
             1_000_000_000
             + 150_000_000 * math.sin(block_number / 2.0)
@@ -279,14 +292,14 @@ def make_block_rows(
 
 
 def make_history_rows(config: TrainConfig | TuneConfig | SimulateConfig) -> list[dict[str, int]]:
-    block_time_seconds = int(round(config.chain.runtime.block_time_seconds))
+    block_interval_seconds = synthetic_block_interval_seconds(config.chain.name)
     count = required_dataset_blocks(config)
     return make_block_rows(
         count,
         start_block=1,
-        start_timestamp=config.evaluation_window_start_timestamp - count * block_time_seconds,
+        start_timestamp=config.evaluation_window_start_timestamp - count * block_interval_seconds,
         chain_id=config.chain.runtime.chain_id,
-        block_time_seconds=block_time_seconds,
+        block_interval_seconds=block_interval_seconds,
     )
 
 
@@ -301,7 +314,7 @@ def make_evaluation_rows(
         start_block=start_block,
         start_timestamp=config.evaluation_window_start_timestamp,
         chain_id=config.chain.runtime.chain_id,
-        block_time_seconds=int(round(config.chain.runtime.block_time_seconds)),
+        block_interval_seconds=synthetic_block_interval_seconds(config.chain.name),
     )
 
 

@@ -300,47 +300,15 @@ class Web3BlockClient:
             expected_files=expected_files,
         )
 
-    async def plan_history_window(
-        self,
-        *,
-        end_timestamp: int,
-        required_history_blocks: int,
-        chunk_size: int,
-    ) -> BlockPullPlan:
-        if required_history_blocks <= 0:
-            raise ValueError("required_history_blocks must be positive")
-
-        evaluation_start_block = await self.find_first_block_at_or_after(end_timestamp)
-        history_start_block = max(0, evaluation_start_block - required_history_blocks)
-        history_start_timestamp = (await self._get_block(history_start_block)).timestamp
-        return self.plan_block_range(
-            BlockRange(start=history_start_block, end=evaluation_start_block),
-            window=TimestampRange(start=history_start_timestamp, end=end_timestamp),
-            chunk_size=chunk_size,
-        )
-
-    async def expand_history_plan(
-        self,
-        current: BlockPullPlan,
-        *,
-        observed_row_count: int,
-        required_history_blocks: int,
-        chunk_size: int,
-    ) -> BlockPullPlan:
-        missing_blocks = required_history_blocks - observed_row_count
-        if missing_blocks <= 0:
-            return current
-
-        expanded_start_block = max(
-            0,
-            current.block_range.start - (missing_blocks + chunk_size),
-        )
-        expanded_start_timestamp = (await self._get_block(expanded_start_block)).timestamp
-        return self.plan_block_range(
-            BlockRange(start=expanded_start_block, end=current.block_range.end),
-            window=TimestampRange(start=expanded_start_timestamp, end=current.window.end),
-            chunk_size=chunk_size,
-        )
+    async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:
+        if sample_size <= 1:
+            raise ValueError("sample_size must be greater than 1")
+        latest = await self._get_latest_block()
+        earliest_number = max(0, latest.number - sample_size + 1)
+        earliest = await self._get_block(earliest_number)
+        observed_blocks = max(1, latest.number - earliest.number)
+        observed_seconds = max(1, latest.timestamp - earliest.timestamp)
+        return observed_seconds / observed_blocks
 
     async def get_block_rows(self, block_numbers: list[int]) -> list[CanonicalBlockRow]:
         if not block_numbers:

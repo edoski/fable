@@ -8,6 +8,7 @@ from typing import NamedTuple, cast
 
 import torch
 from torch import nn
+from torch.nn.utils.rnn import pack_padded_sequence
 
 from ..config.models import ModelConfig
 
@@ -47,16 +48,35 @@ class SinusoidalPositionalEncoding(nn.Module):
         return inputs + positional_encoding[:, : inputs.size(1)]
 
 
+def sequence_lengths_from_mask(input_mask: torch.Tensor) -> torch.Tensor:
+    lengths = input_mask.to(dtype=torch.int64).sum(dim=1)
+    if torch.any(lengths <= 0):
+        raise ValueError("input_mask must contain at least one valid timestep per sample")
+    return lengths
+
+
+def take_last_valid(encoded: torch.Tensor, input_mask: torch.Tensor) -> torch.Tensor:
+    lengths = sequence_lengths_from_mask(input_mask)
+    last_positions = (lengths - 1).to(device=encoded.device)
+    batch_indices = torch.arange(encoded.size(0), device=encoded.device)
+    return encoded[batch_indices, last_positions]
+
+
 class TemporalModel(nn.Module, ABC):
     @abstractmethod
-    def forward(self, inputs: torch.Tensor) -> ModelOutputs:
+    def forward(self, inputs: torch.Tensor, input_mask: torch.Tensor) -> ModelOutputs:
         raise NotImplementedError
 
 
 class TemporalOutputHead(nn.Module):
-    def __init__(self, hidden_dim: int, action_count: int, head_hidden_dim: int) -> None:
+    def __init__(
+        self,
+        hidden_dim: int,
+        n_candidate_slots: int,
+        head_hidden_dim: int,
+    ) -> None:
         super().__init__()
-        self.classifier = MLPHead(hidden_dim, head_hidden_dim, action_count)
+        self.classifier = MLPHead(hidden_dim, head_hidden_dim, n_candidate_slots)
         self.regressor = MLPHead(hidden_dim, head_hidden_dim, 1)
 
     def forward(self, encoded: torch.Tensor) -> ModelOutputs:
@@ -67,7 +87,7 @@ class TemporalOutputHead(nn.Module):
 
 
 class LSTMBaseline(TemporalModel):
-    def __init__(self, n_features: int, action_count: int, config: ModelConfig) -> None:
+    def __init__(self, n_features: int, n_candidate_slots: int, config: ModelConfig) -> None:
         super().__init__()
         self.input_projection = nn.Linear(n_features, config.input_projection_dim)
         self.backbone = nn.LSTM(
@@ -79,38 +99,47 @@ class LSTMBaseline(TemporalModel):
         )
         self.output_head = TemporalOutputHead(
             config.hidden_size,
-            action_count,
+            n_candidate_slots,
             config.head_hidden_dim,
         )
 
-    def forward(self, inputs: torch.Tensor) -> ModelOutputs:
+    def forward(self, inputs: torch.Tensor, input_mask: torch.Tensor) -> ModelOutputs:
         projected = self.input_projection(inputs)
-        outputs, _ = self.backbone(projected)
-        last_state = outputs[:, -1, :]
+        lengths = sequence_lengths_from_mask(input_mask)
+        packed = pack_padded_sequence(
+            projected,
+            lengths.cpu(),
+            batch_first=True,
+            enforce_sorted=False,
+        )
+        _, (hidden_state, _) = self.backbone(packed)
+        last_state = hidden_state[-1]
         return self.output_head(last_state)
 
 
 class TransformerBaseline(TemporalModel):
-    def __init__(self, n_features: int, action_count: int, config: ModelConfig) -> None:
+    def __init__(self, n_features: int, n_candidate_slots: int, config: ModelConfig) -> None:
         super().__init__()
         self.input_projection = nn.Linear(n_features, config.d_model)
         self.position_encoding = SinusoidalPositionalEncoding(config.d_model)
         self.encoder = build_transformer_encoder(config)
         self.output_head = TemporalOutputHead(
             config.d_model,
-            action_count,
+            n_candidate_slots,
             config.head_hidden_dim,
         )
 
-    def forward(self, inputs: torch.Tensor) -> ModelOutputs:
+    def forward(self, inputs: torch.Tensor, input_mask: torch.Tensor) -> ModelOutputs:
         projected = self.input_projection(inputs)
-        encoded = self.encoder(self.position_encoding(projected))
-        last_state = encoded[:, -1, :]
-        return self.output_head(last_state)
+        encoded = self.encoder(
+            self.position_encoding(projected),
+            src_key_padding_mask=~input_mask.bool(),
+        )
+        return self.output_head(take_last_valid(encoded, input_mask))
 
 
 class TransformerLSTMBaseline(TemporalModel):
-    def __init__(self, n_features: int, action_count: int, config: ModelConfig) -> None:
+    def __init__(self, n_features: int, n_candidate_slots: int, config: ModelConfig) -> None:
         super().__init__()
         self.input_projection = nn.Linear(n_features, config.d_model)
         self.position_encoding = SinusoidalPositionalEncoding(config.d_model)
@@ -124,16 +153,27 @@ class TransformerLSTMBaseline(TemporalModel):
         )
         self.output_head = TemporalOutputHead(
             config.hidden_size,
-            action_count,
+            n_candidate_slots,
             config.head_hidden_dim,
         )
 
-    def forward(self, inputs: torch.Tensor) -> ModelOutputs:
+    def forward(self, inputs: torch.Tensor, input_mask: torch.Tensor) -> ModelOutputs:
         projected = self.input_projection(inputs)
-        encoded = self.encoder(self.position_encoding(projected))
-        recurrent, _ = self.lstm(encoded)
-        last_state = recurrent[:, -1, :]
-        return self.output_head(last_state)
+        encoded = self.encoder(
+            self.position_encoding(projected),
+            src_key_padding_mask=~input_mask.bool(),
+        )
+        lengths = sequence_lengths_from_mask(input_mask)
+        packed = pack_padded_sequence(
+            encoded,
+            lengths.cpu(),
+            batch_first=True,
+            enforce_sorted=False,
+        )
+        _, (hidden_state, _) = self.lstm(packed)
+        return self.output_head(hidden_state[-1])
+
+
 def build_transformer_encoder(config: ModelConfig) -> nn.TransformerEncoder:
     encoder_layer = nn.TransformerEncoderLayer(
         d_model=config.d_model,

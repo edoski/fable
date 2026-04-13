@@ -29,6 +29,7 @@ ModelTunedParamsT = TypeVar("ModelTunedParamsT", bound=TunedModelParams)
 @dataclass(frozen=True, slots=True)
 class ModelSpec(Generic[ModelConfigT, ModelTuningSpaceT, ModelTunedParamsT]):
     id: str
+    input_representation: str
     model_config_type: type[ModelConfigT]
     tuning_space_type: type[ModelTuningSpaceT]
     tuned_params_type: type[ModelTunedParamsT]
@@ -133,9 +134,17 @@ def coerce_tuned_parameter_set(
     return TunedParameterSet(training=training, model=model)
 
 
-def build_model(n_features: int, action_count: int, config: ModelConfig) -> TemporalModel:
+def build_model(
+    n_features: int,
+    n_candidate_slots: int,
+    config: ModelConfig,
+) -> TemporalModel:
     spec = model_spec(config.id)
-    return spec.build_model(n_features, action_count, cast(Any, config))
+    return spec.build_model(n_features, n_candidate_slots, cast(Any, config))
+
+
+def resolve_input_representation(model_id: str) -> str:
+    return model_spec(model_id).input_representation
 
 
 def resolve_default_precision(model_id: str, device: torch.device) -> TrainingPrecision:

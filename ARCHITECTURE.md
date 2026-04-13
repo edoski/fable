@@ -9,7 +9,34 @@ Runtime commands:
 3. `spice train`
 4. `spice simulate`
 
-One CLI. One config system. One feature path.
+One CLI. One config system. One canonical temporal semantics model.
+
+## Core Model
+
+SPICE has one architectural hierarchy:
+
+1. canonical domain truth
+2. model-input compilation
+3. model family
+
+Canonical domain truth is:
+
+- raw block corpus
+- timestamp-native feature table
+- ragged timestamp-native anchor samples
+
+Model-input compilation is a separate layer:
+
+- current sequence families use the shared `sequence_event` representation
+- future families may register a different representation if they need genuinely different input semantics
+
+Model family stays below that boundary:
+
+- `lstm`
+- `transformer`
+- `transformer_lstm`
+
+This keeps domain semantics stable while allowing future model growth.
 
 ## Config Flow
 
@@ -28,16 +55,32 @@ Flow:
 Selector rules:
 
 - `dataset.name` and `study.name` are human selectors.
-- `dataset_id`, `study_id`, and `artifact_id` are deterministic storage ids.
+- `corpus_id`, `study_id`, and `artifact_id` are deterministic storage ids.
 - Runtime commands work from selectors. Users do not need paths.
-- Reusing a study selector resumes the same stored study definition. Semantic drift is rejected.
+- Reusing a study selector resumes the same stored study definition. Drift is rejected.
 
-Public dataset definition:
+Public temporal contract:
 
 - `dataset.evaluation_date` defines the fixed one-day UTC evaluation window.
-- `dataset.sampling.sample_count` defines training and tuning sample count.
-- `dataset.history_context_blocks` defines the dataset contract boundary.
-- `acquisition.history_sample_budget` optionally acquires more history than training uses.
+- `task.lookback_seconds` defines real context span.
+- `task.sample_count` defines training and tuning anchor count.
+- `task.max_supported_delay_seconds` defines artifact capability.
+- `execution.requested_delay_seconds` defines the runtime deadline inside that capability.
+
+No config field encodes nominal block time.
+
+## Temporal Semantics
+
+SPICE is seconds-native outside and timestamp-native inside.
+
+For anchor block `i` at timestamp `t_i`:
+
+- context = blocks in `[t_i - lookback_seconds, t_i]`
+- valid future candidates = blocks in `(t_i, t_i + delay_seconds]`
+- label = cheapest valid future block inside that real deadline
+- baseline = next block
+
+This semantics is shared by acquisition sufficiency checks, training, inference, and simulation.
 
 ## Feature Architecture
 
@@ -48,10 +91,61 @@ Rules:
 - each feature is a small Hamilton node
 - feature selection is config-driven
 - feature formulas stay in Python
-- warmup is derived from the selected graph
-- dataset contracts may over-provision history relative to one feature set
-- training persists `feature_set_id`, ordered `feature_names`, and `feature_graph_fingerprint`
-- simulation rebuilds the exact same graph and fails on mismatch
+- feature history is derived from the selected graph in seconds
+- artifacts persist `feature_set_id`, ordered `feature_names`, and `feature_graph_fingerprint`
+- inference rebuilds the same graph and fails on mismatch
+
+Current feature family is time-native:
+
+- event-time deltas such as `seconds_since_previous_block`
+- elapsed time such as `elapsed_seconds`
+- rolling statistics over `60s`, `300s`, `600s`
+- trend windows over real time
+- wall-clock cyclical features
+
+## Corpus and Samples
+
+Raw block storage is a corpus. Public CLI still uses the selector word `dataset`.
+
+Derived learning data is not stored as fixed block windows. Instead SPICE builds ragged samples:
+
+- `anchor_row`
+- `context_start_row`
+- `candidate_end_row`
+- `class_label`
+
+Padding is not domain truth. Padding exists only in the collate path for model execution.
+
+## Model Boundary
+
+Current sequence families share one semantic batch shape because they solve the same sequence-event task.
+
+Shared batch semantics:
+
+- `inputs`
+- `input_mask`
+- candidate fee tensor
+- `candidate_mask`
+- labels, fee targets, baselines
+
+Important distinction:
+
+- `input_mask` is batch transport logic
+- `candidate_mask` is task semantics because valid future actions truly vary by sample
+
+The compiler seam is keyed by input representation semantics, not model family name.
+
+Current mapping:
+
+- `lstm` -> `sequence_event`
+- `transformer` -> `sequence_event`
+- `transformer_lstm` -> `sequence_event`
+
+Future examples:
+
+- `time_grid`
+- `graph`
+- `point_process`
 
 ## Package Roles
 
@@ -71,40 +165,43 @@ Rules:
 - `engine.py`: SQLAlchemy engine creation, SQLite PRAGMAs, root-kind bootstrap
 - `schema.py`: SPICE-owned Core table definitions
 - `catalog.py`: global selector-to-root catalog
-- `dataset.py`: dataset summary + acquire-run persistence
+- `dataset.py`: corpus summary + acquire-run persistence
 - `artifact.py`: manifest, training, and simulation persistence
 - `study.py`: Optuna-backed study helpers and tuned-param loading
 - `show.py`: selector-resolved inspection helpers
 
 ### `acquisition`
 
-- workflow/planning derives required history length before acquisition runs
-- [rpc.py](src/spice/acquisition/rpc.py): block planning, RPC pulling, adaptive batching
-- [datasets.py](src/spice/acquisition/datasets.py): history and evaluation dataset reuse
-- [metadata.py](src/spice/acquisition/metadata.py): typed dataset summary builders
+- [rpc.py](src/spice/acquisition/rpc.py): exact timestamp window resolution, RPC pulling, adaptive batching
+- [datasets.py](src/spice/acquisition/datasets.py): history and evaluation corpus reuse
+- [metadata.py](src/spice/acquisition/metadata.py): typed corpus summary builders
 
 ### `features`
 
-- [engine.py](src/spice/features/engine.py): Hamilton driver, feature selection, warmup, fingerprinting
-- [base.py](src/spice/features/base.py): base nodes
-- [rolling.py](src/spice/features/rolling.py): rolling statistics
-- [trend.py](src/spice/features/trend.py): trend features
+- [engine.py](src/spice/features/engine.py): Hamilton driver, feature selection, history-seconds derivation, fingerprinting
+- [base.py](src/spice/features/base.py): base event-time features
+- [rolling.py](src/spice/features/rolling.py): time-window statistics
+- [trend.py](src/spice/features/trend.py): time-window trend features
 
 ### `data`
 
 - [block_contract.py](src/spice/data/block_contract.py): canonical block schema
-- [io.py](src/spice/data/io.py): parquet dataset discovery and loading
-- [datasets.py](src/spice/data/datasets.py): array-backed stores and split helpers
-- [normalization.py](src/spice/data/normalization.py): scaler fitting and application
-- [validation.py](src/spice/data/validation.py): dataset validation
+- [io.py](src/spice/data/io.py): parquet corpus discovery and loading
+- [datasets.py](src/spice/data/datasets.py): timestamp-native sample store and split helpers
+- [normalization.py](src/spice/data/normalization.py): ragged-span scaler fitting and application
+- [validation.py](src/spice/data/validation.py): corpus validation
 
 ### `planning`
 
-- [geometry.py](src/spice/planning/geometry.py): shared lookback, delay, action-count, and history-sizing math
+- [geometry.py](src/spice/planning/geometry.py): seconds-based lookback and delay windows
+- [contracts.py](src/spice/planning/contracts.py): resolved task contracts shared across workflows
 
 ### `modeling`
 
+- [representations.py](src/spice/modeling/representations.py): input-representation registry
+- [torch_datasets.py](src/spice/modeling/torch_datasets.py): shared `sequence_event` batch compiler
 - [pipeline.py](src/spice/modeling/pipeline.py): training and inference dataset preparation
+- [models.py](src/spice/modeling/models.py): baseline temporal models
 - [training.py](src/spice/modeling/training.py): trainer execution and metrics
 - [execution.py](src/spice/modeling/execution.py): persisted training flow
 - [artifacts.py](src/spice/modeling/artifacts.py): model + manifest persistence and feature validation
@@ -121,18 +218,18 @@ Rules:
 
 ## Storage Layout
 
-Datasets:
+Corpora:
 
-- `outputs/datasets/<chain>/<dataset_id>/history/...`
-- `outputs/datasets/<chain>/<dataset_id>/evaluation/...`
-- `outputs/datasets/<chain>/<dataset_id>/.spice/state.sqlite`
+- `outputs/corpora/<chain>/<corpus_id>/history/...`
+- `outputs/corpora/<chain>/<corpus_id>/evaluation/...`
+- `outputs/corpora/<chain>/<corpus_id>/.spice/state.sqlite`
 
-Models:
+Artifacts:
 
-- `outputs/models/<chain>/<artifact_id>/model.pt`
-- `outputs/models/<chain>/<artifact_id>/.spice/state.sqlite`
+- `outputs/artifacts/<chain>/<artifact_id>/model.pt`
+- `outputs/artifacts/<chain>/<artifact_id>/.spice/state.sqlite`
 
-Tuning:
+Studies:
 
 - `outputs/studies/<chain>/<study_id>/.spice/state.sqlite`
 

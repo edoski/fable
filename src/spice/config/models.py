@@ -19,7 +19,7 @@ from pydantic import (
 )
 
 from ..features import validate_feature_selection
-from ..identifiers import artifact_storage_id, dataset_storage_id, study_storage_id
+from ..identifiers import artifact_storage_id, corpus_storage_id, study_storage_id
 
 
 class WorkflowTask(StrEnum):
@@ -79,7 +79,6 @@ def _utc_midnight_timestamp(value: date) -> int:
 
 class ChainRuntimeSpec(ConfigModel):
     chain_id: int = Field(gt=0)
-    block_time_seconds: float = Field(gt=0)
     uses_poa_extra_data: bool
 
 
@@ -471,11 +470,11 @@ class ProviderSpec(ConfigModel):
 class PathLayout:
     output_root: Path
     catalog_db: Path
-    dataset_id: str
-    dataset_root: Path
+    corpus_id: str
+    corpus_root: Path
     history_dir: Path
     evaluation_dir: Path
-    dataset_state_db: Path
+    corpus_state_db: Path
     artifact_id: str | None = None
     artifact_root: Path | None = None
     checkpoint_dir: Path | None = None
@@ -493,6 +492,9 @@ def build_path_layout(
     feature_set_name: str | None = None,
     model_name: str | None = None,
     task_name: str | None = None,
+    feature_set_payload: dict[str, object] | None = None,
+    model_payload: dict[str, object] | None = None,
+    task_payload: dict[str, object] | None = None,
     variant: ArtifactVariant = ArtifactVariant.BASELINE,
     study_name: str = "default",
     include_artifacts: bool = False,
@@ -500,8 +502,8 @@ def build_path_layout(
 ) -> PathLayout:
     output_root = storage.root
     catalog_db = output_root / ".spice" / "catalog.sqlite"
-    dataset_id = dataset_storage_id(chain_name=chain.name, dataset_name=dataset.name)
-    dataset_root = output_root / "datasets" / chain.name / dataset_id
+    corpus_id = corpus_storage_id(chain_name=chain.name, dataset_name=dataset.name)
+    corpus_root = output_root / "corpora" / chain.name / corpus_id
     artifact_id: str | None = None
     artifact_root: Path | None = None
     checkpoint_dir: Path | None = None
@@ -513,13 +515,20 @@ def build_path_layout(
     if include_artifacts:
         if feature_set_name is None or model_name is None or task_name is None:
             raise ValueError("artifact paths require feature_set_name, model_name, task_name")
+        if feature_set_payload is None or model_payload is None or task_payload is None:
+            raise ValueError(
+                "artifact paths require feature_set_payload, model_payload, task_payload"
+            )
+        resolved_feature_set_payload = feature_set_payload
+        resolved_model_payload = model_payload
+        resolved_task_payload = task_payload
         if tuning_mode or variant is ArtifactVariant.TUNED:
             study_id = study_storage_id(
                 chain_name=chain.name,
-                dataset_id=dataset_id,
-                feature_set_name=feature_set_name,
-                model_name=model_name,
-                task_name=task_name,
+                corpus_id=corpus_id,
+                feature_set=resolved_feature_set_payload,
+                model=resolved_model_payload,
+                task=resolved_task_payload,
                 study_name=study_name,
             )
             study_root = output_root / "studies" / chain.name / study_id
@@ -527,25 +536,25 @@ def build_path_layout(
         if not tuning_mode:
             artifact_id = artifact_storage_id(
                 chain_name=chain.name,
-                dataset_id=dataset_id,
-                feature_set_name=feature_set_name,
-                model_name=model_name,
-                task_name=task_name,
+                corpus_id=corpus_id,
+                feature_set=resolved_feature_set_payload,
+                model=resolved_model_payload,
+                task=resolved_task_payload,
                 variant=variant.value,
                 study_id=study_id if variant is ArtifactVariant.TUNED else None,
             )
-            artifact_root = output_root / "models" / chain.name / artifact_id
+            artifact_root = output_root / "artifacts" / chain.name / artifact_id
             checkpoint_dir = artifact_root / "checkpoints"
             artifact_state_db = artifact_root / ".spice" / "state.sqlite"
 
     return PathLayout(
         output_root=output_root,
         catalog_db=catalog_db,
-        dataset_id=dataset_id,
-        dataset_root=dataset_root,
-        history_dir=dataset_root / "history",
-        evaluation_dir=dataset_root / "evaluation",
-        dataset_state_db=dataset_root / ".spice" / "state.sqlite",
+        corpus_id=corpus_id,
+        corpus_root=corpus_root,
+        history_dir=corpus_root / "history",
+        evaluation_dir=corpus_root / "evaluation",
+        corpus_state_db=corpus_root / ".spice" / "state.sqlite",
         artifact_id=artifact_id,
         artifact_root=artifact_root,
         checkpoint_dir=checkpoint_dir,
@@ -628,6 +637,9 @@ class ModelWorkflowConfig(WorkflowConfig):
             feature_set_name=self.feature_set.id,
             model_name=self.model.id,
             task_name=self.task.id,
+            feature_set_payload=self.feature_set.model_dump(mode="json", exclude_none=True),
+            model_payload=self.model.model_dump(mode="json", exclude_none=True),
+            task_payload=self.task.model_dump(mode="json", exclude_none=True),
             variant=self.artifact.variant,
             study_name=self.study.name,
             include_artifacts=True,

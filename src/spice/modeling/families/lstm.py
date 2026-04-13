@@ -59,8 +59,12 @@ class LstmTunedModelParams(TunedModelParams):
         return self
 
 
-def _build_model(n_features: int, action_count: int, config: LstmModelConfig) -> TemporalModel:
-    return LSTMBaseline(n_features, action_count, config)
+def _build_model(
+    n_features: int,
+    n_candidate_slots: int,
+    config: LstmModelConfig,
+) -> TemporalModel:
+    return LSTMBaseline(n_features, n_candidate_slots, config)
 
 
 def _default_precision(device: torch.device) -> TrainingPrecision:
@@ -117,6 +121,7 @@ def _apply_model_params(
 register_model_spec(
     ModelSpec(
         id="lstm",
+        input_representation="sequence_event",
         model_config_type=LstmModelConfig,
         tuning_space_type=LstmTuningSpaceModelConfig,
         tuned_params_type=LstmTunedModelParams,

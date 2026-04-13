@@ -73,19 +73,6 @@ def validate_block_dataset(
     )
 
 
-async def build_history_plan(
-    *,
-    config: AcquireConfig,
-    block_client: Web3BlockClient,
-    required_history_blocks: int,
-) -> BlockPullPlan:
-    return await block_client.plan_history_window(
-        end_timestamp=config.history_window_end_timestamp,
-        required_history_blocks=required_history_blocks,
-        chunk_size=config.acquisition.chunk_size,
-    )
-
-
 def _load_existing_dataset(
     path: Path,
     *,
@@ -183,15 +170,9 @@ def _validate_history_result(
     validation: BlockDatasetValidationReport,
     *,
     history_plan: BlockPullPlan,
-    required_history_blocks: int,
 ) -> None:
     if validation.status != "clean":
         raise ValueError(f"Canonical history dataset validation failed: {validation}")
-    if validation.row_count < required_history_blocks:
-        raise ValueError(
-            "History dataset is too short; "
-            f"need at least {required_history_blocks} blocks, got {validation.row_count}"
-        )
     if validation.last_block_number != history_plan.block_range.end - 1:
         raise ValueError(
             "History dataset does not end at the requested evaluation boundary: "
@@ -263,7 +244,6 @@ async def ensure_history_dataset(
     output_dir: Path,
     working_dir: Path,
     history_plan: BlockPullPlan,
-    required_history_blocks: int,
     rpc_controller,
     reporter: Reporter,
     stage_update: StageUpdateCallback | None = None,
@@ -283,7 +263,6 @@ async def ensure_history_dataset(
                 _validate_history_result(
                     existing.validation,
                     history_plan=history_plan,
-                    required_history_blocks=required_history_blocks,
                 )
                 return DatasetBuildResult(
                     path=output_dir,
@@ -328,7 +307,6 @@ async def ensure_history_dataset(
             _validate_history_result(
                 validation,
                 history_plan=history_plan,
-                required_history_blocks=required_history_blocks,
             )
             return DatasetBuildResult(
                 path=working_dir / "history",
@@ -356,7 +334,6 @@ async def ensure_history_dataset(
     _validate_history_result(
         validation,
         history_plan=history_plan,
-        required_history_blocks=required_history_blocks,
     )
     return DatasetBuildResult(
         path=working_dir / "history",

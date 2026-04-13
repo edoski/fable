@@ -104,7 +104,9 @@ def _artifact_payload(db_path: Path, *, detail: str | None) -> dict[str, object]
             "model_id": manifest.model.id,
             "max_supported_delay_seconds": manifest.max_supported_delay_seconds,
             "lookback_seconds": manifest.lookback_seconds,
+            "feature_history_seconds": manifest.feature_history_seconds,
             "sample_count": manifest.sample_count,
+            "max_candidate_slots": manifest.max_candidate_slots,
             "feature_set_id": manifest.feature_set_id,
             "feature_names": list(manifest.feature_names),
         }
@@ -196,6 +198,9 @@ def _artifact_sections(payload: dict[str, object]) -> list[tuple[str, list[tuple
                 ("study", str(manifest["study_name"] or "n/a")),
                 ("study id", str(manifest["study_id"] or "n/a")),
                 ("capability", f"{manifest['max_supported_delay_seconds']}s"),
+                ("lookback", f"{manifest['lookback_seconds']}s"),
+                ("feature history", f"{manifest['feature_history_seconds']}s"),
+                ("max slots", str(manifest["max_candidate_slots"])),
             ],
         ),
     ]
@@ -333,7 +338,8 @@ def _window_string(window: dict[str, object]) -> str:
 def _acquire_run_string(run: dict[str, object]) -> str:
     return (
         f"task={run['task_id']} feature_set={run['feature_set_id']} "
-        f"history={run['required_history_blocks']} blocks"
+        f"history={run['acquired_history_window_seconds']}s "
+        f"anchors={run['valid_anchor_samples']}"
     )
 
 

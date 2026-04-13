@@ -5,50 +5,52 @@ import polars as pl
 import pytest
 
 from spice.core.console import NullReporter
+from spice.data.datasets import build_temporal_store
 from spice.data.io import load_block_frame
 from spice.features import FeatureSelection, build_feature_table
 from spice.modeling.artifacts import load_training_artifact
 from spice.modeling.pipeline import prepare_training_dataset
 from spice.modeling.torch_datasets import build_class_weights
 from spice.modeling.training import evaluate_model
+from spice.planning.geometry import DelayWindow
 from spice.state.artifact import load_training_summary
 from spice.workflows._shared import build_training_spec
 from spice.workflows.train import run as run_train
 from tests.support import load_test_train_config, model_workflow_override, seed_history_dataset
 
 
-def test_elapsed_blocks_stays_anchored_to_dataset_origin() -> None:
+def test_temporal_store_uses_real_timestamps_for_context_and_candidates() -> None:
     selection = FeatureSelection(
-        feature_set_id="test_elapsed",
-        feature_names=("elapsed_blocks",),
+        feature_set_id="test_timestamp_native",
+        feature_names=("seconds_since_previous_block", "elapsed_seconds"),
     )
     blocks = pl.DataFrame(
         {
-            "block_number": np.arange(100, 111, dtype=np.int64),
-            "timestamp": np.arange(1_700_000_000, 1_700_000_011, dtype=np.int64),
-            "base_fee_per_gas": np.full(11, 1_000_000_000, dtype=np.int64),
-            "gas_used": np.full(11, 18_000_000, dtype=np.int64),
-            "gas_limit": np.full(11, 30_000_000, dtype=np.int64),
-            "chain_id": np.ones(11, dtype=np.int64),
+            "block_number": np.arange(100, 107, dtype=np.int64),
+            "timestamp": np.array([0, 5, 11, 18, 27, 29, 40], dtype=np.int64),
+            "base_fee_per_gas": np.full(7, 1_000_000_000, dtype=np.int64),
+            "gas_used": np.full(7, 18_000_000, dtype=np.int64),
+            "gas_limit": np.full(7, 30_000_000, dtype=np.int64),
+            "chain_id": np.ones(7, dtype=np.int64),
         }
     )
-
-    origin_block_number = 100
-    training_table = build_feature_table(
-        blocks.slice(5, 5),
-        dataset_origin_block_number=origin_block_number,
-        selection=selection,
-    )
-    inference_table = build_feature_table(
-        blocks.slice(3, 7),
-        dataset_origin_block_number=origin_block_number,
-        selection=selection,
+    feature_table = build_feature_table(blocks, selection=selection)
+    store = build_temporal_store(
+        feature_table,
+        window=DelayWindow(
+            lookback_seconds=10,
+            delay_seconds=12,
+            feature_history_seconds=feature_table.feature_history_seconds,
+        ),
     )
 
-    np.testing.assert_array_equal(training_table.block_numbers, np.arange(105, 110, dtype=np.int64))
-    np.testing.assert_allclose(training_table.feature_matrix[:, 0], np.arange(5.0, 10.0))
-    np.testing.assert_array_equal(inference_table.block_numbers[-5:], training_table.block_numbers)
-    np.testing.assert_allclose(inference_table.feature_matrix[-5:, 0], training_table.feature_matrix[:, 0])
+    np.testing.assert_array_equal(store.anchor_rows, np.array([2, 3, 4, 5], dtype=np.int64))
+    np.testing.assert_array_equal(store.context_start_rows, np.array([1, 2, 3, 4], dtype=np.int64))
+    np.testing.assert_array_equal(
+        store.candidate_end_rows - store.candidate_start_rows,
+        np.array([1, 2, 1, 1], dtype=np.int64),
+    )
+    assert store.max_candidate_slots == 2
 
 
 def test_training_summary_metrics_match_replayed_saved_artifact(tmp_path) -> None:
@@ -66,23 +68,23 @@ def test_training_summary_metrics_match_replayed_saved_artifact(tmp_path) -> Non
     class_weights = build_class_weights(
         prepared.store.class_labels,
         prepared.split_indices.train,
-        prepared.action_count,
+        prepared.max_candidate_slots,
     )
 
     validation_metrics = evaluate_model(
         loaded_artifact.model,
+        model_id=config.model.id,
         store=prepared.store,
         sample_indices=prepared.split_indices.validation,
-        lookback_steps=prepared.geometry.lookback_steps,
         training_config=config.training,
         class_weights=class_weights,
         reporter=NullReporter(),
     )
     test_metrics = evaluate_model(
         loaded_artifact.model,
+        model_id=config.model.id,
         store=prepared.store,
         sample_indices=prepared.split_indices.test,
-        lookback_steps=prepared.geometry.lookback_steps,
         training_config=config.training,
         class_weights=class_weights,
         reporter=NullReporter(),

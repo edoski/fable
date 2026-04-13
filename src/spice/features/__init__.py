@@ -6,8 +6,9 @@ from .engine import (
     build_feature_driver,
     build_feature_table,
     feature_graph_fingerprint,
+    feature_history_seconds,
     feature_node_map,
-    feature_warmup_blocks,
+    make_feature_selection,
     validate_feature_selection,
 )
 
@@ -17,7 +18,8 @@ __all__ = [
     "build_feature_driver",
     "build_feature_table",
     "feature_graph_fingerprint",
+    "feature_history_seconds",
     "feature_node_map",
-    "feature_warmup_blocks",
+    "make_feature_selection",
     "validate_feature_selection",
 ]

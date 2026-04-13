@@ -8,7 +8,7 @@ import torch
 from ..config import TrainingConfig
 from .evaluation import BatchMetrics, EpochMetrics, compute_temporal_batch_metrics, mean_metrics
 from .models import ModelOutputs, TemporalModel
-from .torch_datasets import SequenceBatch
+from .torch_datasets import SequenceEventBatch
 
 
 class TemporalLightningModule(L.LightningModule):
@@ -19,21 +19,19 @@ class TemporalLightningModule(L.LightningModule):
         model: TemporalModel,
         *,
         class_weights: torch.Tensor,
-        action_count: int,
         training_config: TrainingConfig,
     ) -> None:
         super().__init__()
         self.model = model
         self.register_buffer("class_weights", class_weights, persistent=False)
-        self.action_count = action_count
         self.training_config = training_config
         self.train_history: list[EpochMetrics] = []
         self.validation_history: list[EpochMetrics] = []
         self._train_batches: list[BatchMetrics] = []
         self._validation_batches: list[BatchMetrics] = []
 
-    def forward(self, inputs: torch.Tensor) -> ModelOutputs:
-        return self.model(inputs)
+    def forward(self, inputs: torch.Tensor, input_mask: torch.Tensor) -> ModelOutputs:
+        return self.model(inputs, input_mask)
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return torch.optim.AdamW(
@@ -48,8 +46,8 @@ class TemporalLightningModule(L.LightningModule):
     def on_validation_epoch_start(self) -> None:
         self._validation_batches = []
 
-    def _shared_step(self, batch: SequenceBatch, *, stage: str) -> torch.Tensor:
-        outputs = self.model(batch.inputs)
+    def _shared_step(self, batch: SequenceEventBatch, *, stage: str) -> torch.Tensor:
+        outputs = self.model(batch.inputs, batch.input_mask)
         total_loss, metrics = compute_temporal_batch_metrics(
             outputs,
             batch,
@@ -91,10 +89,10 @@ class TemporalLightningModule(L.LightningModule):
             self._validation_batches.append(metrics)
         return total_loss
 
-    def training_step(self, batch: SequenceBatch, _batch_idx: int) -> torch.Tensor:
+    def training_step(self, batch: SequenceEventBatch, _batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, stage="train")
 
-    def validation_step(self, batch: SequenceBatch, _batch_idx: int) -> torch.Tensor:
+    def validation_step(self, batch: SequenceEventBatch, _batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, stage="validation")
 
     def on_train_epoch_end(self) -> None:

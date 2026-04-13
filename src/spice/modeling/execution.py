@@ -46,22 +46,22 @@ def _replay_split_metrics(
     class_weights = build_class_weights(
         prepared.store.class_labels,
         prepared.split_indices.train,
-        prepared.action_count,
+        prepared.max_candidate_slots,
     )
     best_validation_metrics = evaluate_model(
         model,
+        model_id=spec.model.id,
         store=prepared.store,
         sample_indices=prepared.split_indices.validation,
-        lookback_steps=prepared.geometry.lookback_steps,
         training_config=spec.training,
         class_weights=class_weights,
         reporter=reporter,
     )
     test_metrics = evaluate_model(
         model,
+        model_id=spec.model.id,
         store=prepared.store,
         sample_indices=prepared.split_indices.test,
-        lookback_steps=prepared.geometry.lookback_steps,
         training_config=spec.training,
         class_weights=class_weights,
         reporter=reporter,

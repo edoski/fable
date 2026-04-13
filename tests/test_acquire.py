@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from concurrent.futures.thread import _threads_queues
 from io import StringIO
 from pathlib import Path
@@ -8,19 +9,25 @@ from pathlib import Path
 import pytest
 from rich.console import Console
 
+import spice.workflows.acquire as acquire_workflow
 from spice.acquisition.provider import ManagedAsyncHTTPProvider
-from spice.acquisition.rpc import BlockPullPlan, BlockRange, RpcController, TimestampRange, Web3BlockClient
+from spice.acquisition.rpc import (
+    BlockPullPlan,
+    BlockRange,
+    RpcController,
+    TimestampRange,
+    Web3BlockClient,
+)
 from spice.core.console import NullReporter, PlainReporter
+from spice.planning.contracts import resolve_task_contract
 from spice.state.catalog import list_dataset_records
 from spice.state.dataset import list_acquire_runs, load_dataset_summary
-import spice.workflows.acquire as acquire_workflow
 from spice.workflows.acquire import _DaemonThreadPoolExecutor
 from spice.workflows.acquire import run as run_acquire
 from tests.support import (
     acquire_override,
     load_test_acquire_config,
     make_block_rows,
-    required_history_blocks,
     write_dataset_dir,
 )
 
@@ -51,30 +58,44 @@ class CaptureReporter(NullReporter):
         self.messages.append(message)
 
 
-def test_acquire_workflow_writes_canonical_dataset_and_metadata(
+def _plan_for_window(
+    window: TimestampRange,
+    *,
+    start_block: int,
+    chunk_size: int,
+    block_interval_seconds: int = 12,
+    expected_rows: int | None = None,
+) -> BlockPullPlan:
+    row_count = (
+        expected_rows
+        if expected_rows is not None
+        else max(1, math.ceil((window.end - window.start) / block_interval_seconds))
+    )
+    return BlockPullPlan(
+        window=window,
+        block_range=BlockRange(start=start_block, end=start_block + row_count),
+        expected_rows=row_count,
+        expected_files=max(1, math.ceil(row_count / chunk_size)),
+    )
+
+
+def test_acquire_workflow_writes_canonical_corpus_and_metadata(
     tmp_path,
     monkeypatch,
 ) -> None:
     config = load_test_acquire_config(tmp_path, override=acquire_override())
-    required_blocks = required_history_blocks(config)
-    block_time_seconds = int(round(config.chain.runtime.block_time_seconds))
-    history_plan = BlockPullPlan(
-        window=TimestampRange(
-            start=config.evaluation_window_start_timestamp - required_blocks * block_time_seconds,
-            end=config.evaluation_window_start_timestamp,
-        ),
-        block_range=BlockRange(start=100, end=100 + required_blocks),
-        expected_rows=required_blocks,
-        expected_files=1,
+    contract = resolve_task_contract(
+        task=config.task,
+        feature_set=config.feature_set,
     )
-    evaluation_plan = BlockPullPlan(
-        window=TimestampRange(
+    evaluation_plan = _plan_for_window(
+        TimestampRange(
             start=config.evaluation_window_start_timestamp,
             end=config.evaluation_window_end_timestamp,
         ),
-        block_range=BlockRange(start=10_000, end=10_032),
+        start_block=10_000,
         expected_rows=32,
-        expected_files=1,
+        chunk_size=config.acquisition.chunk_size,
     )
 
     class FakeAcquireClient:
@@ -85,19 +106,18 @@ def test_acquire_workflow_writes_canonical_dataset_and_metadata(
         async def close(self) -> None:
             return None
 
-        async def plan_history_window(
-            self,
-            *,
-            end_timestamp: int,
-            required_history_blocks: int,
-            chunk_size: int,
-        ) -> BlockPullPlan:
-            del end_timestamp, required_history_blocks, chunk_size
-            return history_plan
+        async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:
+            del sample_size
+            return 12.0
 
         async def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
-            del chunk_size
-            return evaluation_plan if window == evaluation_plan.window else history_plan
+            if window == evaluation_plan.window:
+                return evaluation_plan
+            return _plan_for_window(
+                window,
+                start_block=100,
+                chunk_size=chunk_size,
+            )
 
         def plan_block_range(
             self,
@@ -110,7 +130,7 @@ def test_acquire_workflow_writes_canonical_dataset_and_metadata(
                 window=window,
                 block_range=block_range,
                 expected_rows=block_range.count,
-                expected_files=max(1, (block_range.count + chunk_size - 1) // chunk_size),
+                expected_files=max(1, math.ceil(block_range.count / chunk_size)),
             )
 
         async def pull_block_range(
@@ -128,7 +148,7 @@ def test_acquire_workflow_writes_canonical_dataset_and_metadata(
                 start_block=plan.block_range.start,
                 start_timestamp=plan.window.start,
                 chain_id=config.chain.runtime.chain_id,
-                block_time_seconds=block_time_seconds,
+                block_interval_seconds=12,
             )
             write_dataset_dir(output_dir, rows)
             return plan
@@ -137,16 +157,18 @@ def test_acquire_workflow_writes_canonical_dataset_and_metadata(
 
     run_acquire(config, reporter=NullReporter())
 
-    summary = load_dataset_summary(config.paths.dataset_state_db)
-    runs = list_acquire_runs(config.paths.dataset_state_db)
-    assert config.paths.dataset_state_db.is_file()
-    assert summary.validation.history.rows == required_blocks
+    summary = load_dataset_summary(config.paths.corpus_state_db)
+    runs = list_acquire_runs(config.paths.corpus_state_db)
+    assert config.paths.corpus_state_db.is_file()
     assert summary.validation.evaluation.rows == evaluation_plan.expected_rows
     assert summary.provider.name == "publicnode"
     assert len(runs) == 1
     assert runs[0]["task_id"] == config.task.id
     assert runs[0]["feature_set_id"] == config.feature_set.id
-    assert runs[0]["required_history_blocks"] == required_blocks
+    assert runs[0]["feature_history_seconds"] == contract.feature_history_seconds
+    assert runs[0]["required_history_seconds"] == contract.required_history_seconds
+    assert runs[0]["valid_anchor_samples"] >= config.task.sample_count
+    assert runs[0]["acquired_history_window_seconds"] >= contract.required_history_seconds
     assert config.paths.history_dir.is_dir()
     assert config.paths.evaluation_dir.is_dir()
     datasets = list_dataset_records(
@@ -155,47 +177,13 @@ def test_acquire_workflow_writes_canonical_dataset_and_metadata(
         dataset_name=config.dataset.name,
     )
     assert len(datasets) == 1
-    assert datasets[0].dataset_id == config.paths.dataset_id
-
-
-def test_acquire_run_swallows_keyboard_interrupt(tmp_path, monkeypatch) -> None:
-    config = load_test_acquire_config(tmp_path, override=acquire_override())
-
-    def _raise_keyboard_interrupt(coro) -> None:
-        coro.close()
-        raise KeyboardInterrupt()
-
-    monkeypatch.setattr(
-        "spice.workflows.acquire._run_async_interruptibly",
-        _raise_keyboard_interrupt,
-    )
-
-    run_acquire(config, reporter=NullReporter())
+    assert datasets[0].dataset_id == config.paths.corpus_id
 
 
 def test_acquire_cancellation_during_planning_logs_warning(tmp_path, monkeypatch) -> None:
     config = load_test_acquire_config(tmp_path, override=acquire_override())
     output = StringIO()
     reporter = PlainReporter(console=Console(file=output, force_terminal=False, width=160))
-
-    history_plan = BlockPullPlan(
-        window=TimestampRange(
-            start=config.evaluation_window_start_timestamp - 120,
-            end=config.evaluation_window_start_timestamp,
-        ),
-        block_range=BlockRange(start=100, end=110),
-        expected_rows=10,
-        expected_files=1,
-    )
-    evaluation_plan = BlockPullPlan(
-        window=TimestampRange(
-            start=config.evaluation_window_start_timestamp,
-            end=config.evaluation_window_end_timestamp,
-        ),
-        block_range=BlockRange(start=10_000, end=10_032),
-        expected_rows=32,
-        expected_files=1,
-    )
 
     class FakeAcquireClient:
         def __init__(self, provider, chain) -> None:
@@ -204,21 +192,19 @@ def test_acquire_cancellation_during_planning_logs_warning(tmp_path, monkeypatch
         async def close(self) -> None:
             return None
 
-        async def plan_history_window(
-            self,
-            *,
-            end_timestamp: int,
-            required_history_blocks: int,
-            chunk_size: int,
-        ) -> BlockPullPlan:
-            del end_timestamp, required_history_blocks, chunk_size
+        async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:
+            del sample_size
             await asyncio.sleep(0.2)
-            return history_plan
+            return 12.0
 
         async def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
-            del window, chunk_size
+            del chunk_size
             await asyncio.sleep(0.2)
-            return evaluation_plan
+            return _plan_for_window(
+                window,
+                start_block=100,
+                chunk_size=config.acquisition.chunk_size,
+            )
 
     monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", FakeAcquireClient)
 
@@ -235,103 +221,7 @@ def test_acquire_cancellation_during_planning_logs_warning(tmp_path, monkeypatch
     assert "history [planning] - resolving window" in rendered
     assert "evaluation [planning] - resolving window" in rendered
     assert "warning: acquire cancelled; partial download removed" in rendered
-    assert config.paths.dataset_state_db.exists() is False
-
-
-def test_acquire_workflow_surfaces_planning_states(tmp_path, monkeypatch) -> None:
-    config = load_test_acquire_config(tmp_path, override=acquire_override())
-    required_blocks = required_history_blocks(config)
-    block_time_seconds = int(round(config.chain.runtime.block_time_seconds))
-    output = StringIO()
-    reporter = PlainReporter(console=Console(file=output, force_terminal=False, width=160))
-
-    history_plan = BlockPullPlan(
-        window=TimestampRange(
-            start=config.evaluation_window_start_timestamp - required_blocks * block_time_seconds,
-            end=config.evaluation_window_start_timestamp,
-        ),
-        block_range=BlockRange(start=100, end=100 + required_blocks),
-        expected_rows=required_blocks,
-        expected_files=1,
-    )
-    evaluation_plan = BlockPullPlan(
-        window=TimestampRange(
-            start=config.evaluation_window_start_timestamp,
-            end=config.evaluation_window_end_timestamp,
-        ),
-        block_range=BlockRange(start=10_000, end=10_032),
-        expected_rows=32,
-        expected_files=1,
-    )
-
-    class FakeAcquireClient:
-        def __init__(self, provider, chain) -> None:
-            del provider
-            self.chain = chain
-
-        async def close(self) -> None:
-            return None
-
-        async def plan_history_window(
-            self,
-            *,
-            end_timestamp: int,
-            required_history_blocks: int,
-            chunk_size: int,
-        ) -> BlockPullPlan:
-            del end_timestamp, required_history_blocks, chunk_size
-            return history_plan
-
-        async def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
-            del chunk_size
-            return evaluation_plan if window == evaluation_plan.window else history_plan
-
-        def plan_block_range(
-            self,
-            block_range: BlockRange,
-            *,
-            window: TimestampRange,
-            chunk_size: int,
-        ) -> BlockPullPlan:
-            return BlockPullPlan(
-                window=window,
-                block_range=block_range,
-                expected_rows=block_range.count,
-                expected_files=max(1, (block_range.count + chunk_size - 1) // chunk_size),
-            )
-
-        async def pull_block_range(
-            self,
-            output_dir: Path,
-            *,
-            plan: BlockPullPlan,
-            chunk_size: int,
-            rpc_controller,
-            reporter,
-        ) -> BlockPullPlan:
-            del chunk_size, rpc_controller, reporter
-            rows = make_block_rows(
-                plan.expected_rows,
-                start_block=plan.block_range.start,
-                start_timestamp=plan.window.start,
-                chain_id=config.chain.runtime.chain_id,
-                block_time_seconds=block_time_seconds,
-            )
-            write_dataset_dir(output_dir, rows)
-            return plan
-
-    monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", FakeAcquireClient)
-
-    run_acquire(config, reporter=reporter)
-
-    rendered = output.getvalue()
-    assert "history [planning] - resolving window" in rendered
-    assert "history [planning] - 0/" in rendered
-    assert "checking existing dataset" in rendered
-    assert "validating dataset" in rendered
-    assert "evaluation [pending] - 0/32 blocks - waiting for history" in rendered
-    assert "evaluation [planning] - 0/32 blocks - checking existing dataset" in rendered
-    assert "evaluation [planning] - 0/32 blocks - validating dataset" in rendered
+    assert config.paths.corpus_state_db.exists() is False
 
 
 def test_pull_block_range_emits_structured_progress_messages(tmp_path) -> None:
@@ -367,9 +257,12 @@ def test_pull_block_range_emits_structured_progress_messages(tmp_path) -> None:
             return make_block_rows(
                 len(block_numbers),
                 start_block=block_numbers[0],
-                start_timestamp=plan.window.start + (block_numbers[0] - plan.block_range.start) * 12,
+                start_timestamp=(
+                    plan.window.start
+                    + (block_numbers[0] - plan.block_range.start) * 12
+                ),
                 chain_id=config.chain.runtime.chain_id,
-                block_time_seconds=12,
+                block_interval_seconds=12,
             )
 
     client = FakeClient(config.provider, config.chain)

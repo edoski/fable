@@ -16,7 +16,7 @@ from numpy.typing import NDArray
 from . import base, rolling, trend
 
 FEATURE_KIND_TAG = "spice_kind"
-FEATURE_WARMUP_TAG = "spice_warmup"
+FEATURE_HISTORY_SECONDS_TAG = "spice_history_seconds"
 FEATURE_KIND_VALUE = "feature"
 
 FloatMatrix = NDArray[np.float32]
@@ -30,12 +30,24 @@ class FeatureSelection:
     feature_names: tuple[str, ...]
 
 
+def make_feature_selection(
+    feature_set_id: str,
+    feature_names: tuple[str, ...],
+) -> FeatureSelection:
+    selection = FeatureSelection(
+        feature_set_id=feature_set_id,
+        feature_names=feature_names,
+    )
+    validate_feature_selection(selection.feature_set_id, selection.feature_names)
+    return selection
+
+
 @dataclass(slots=True)
 class FeatureTable:
     feature_set_id: str
     feature_names: tuple[str, ...]
     feature_graph_fingerprint: str
-    warmup_blocks: int
+    feature_history_seconds: int
     block_numbers: IntVector
     timestamps: IntVector
     feature_matrix: FloatMatrix
@@ -76,9 +88,12 @@ def validate_feature_selection(feature_set_id: str, feature_names: tuple[str, ..
         raise ValueError("Unknown feature outputs: " + ", ".join(unknown))
 
 
-def feature_warmup_blocks(feature_names: tuple[str, ...]) -> int:
+def feature_history_seconds(feature_names: tuple[str, ...]) -> int:
     validate_feature_selection("validated", feature_names)
-    return max(int(feature_node_map()[name].tags[FEATURE_WARMUP_TAG]) for name in feature_names)
+    return max(
+        int(feature_node_map()[name].tags[FEATURE_HISTORY_SECONDS_TAG])
+        for name in feature_names
+    )
 
 
 def _dependency_closure(feature_names: tuple[str, ...]) -> list[HamiltonNode]:
@@ -122,17 +137,15 @@ def feature_graph_fingerprint(feature_names: tuple[str, ...]) -> str:
 def build_feature_table(
     blocks: pl.DataFrame,
     *,
-    dataset_origin_block_number: int,
     selection: FeatureSelection,
 ) -> FeatureTable:
     validate_feature_selection(selection.feature_set_id, selection.feature_names)
-    warmup_blocks = feature_warmup_blocks(selection.feature_names)
+    required_history_seconds = feature_history_seconds(selection.feature_names)
     graph_fingerprint = feature_graph_fingerprint(selection.feature_names)
     result = build_feature_driver().execute(
         list(selection.feature_names) + ["block_numbers", "timestamps", "log_base_fee"],
         inputs={
             "blocks": blocks,
-            "dataset_origin_block_number": int(dataset_origin_block_number),
         },
     )
     block_numbers = np.asarray(result["block_numbers"], dtype=np.int64)
@@ -150,9 +163,9 @@ def build_feature_table(
         feature_set_id=selection.feature_set_id,
         feature_names=selection.feature_names,
         feature_graph_fingerprint=graph_fingerprint,
-        warmup_blocks=warmup_blocks,
-        block_numbers=block_numbers[warmup_blocks:].astype(np.int64, copy=False),
-        timestamps=timestamps[warmup_blocks:].astype(np.int64, copy=False),
-        feature_matrix=feature_matrix[warmup_blocks:].astype(np.float32, copy=False),
-        log_base_fees=log_base_fees[warmup_blocks:].astype(np.float32, copy=False),
+        feature_history_seconds=required_history_seconds,
+        block_numbers=block_numbers.astype(np.int64, copy=False),
+        timestamps=timestamps.astype(np.int64, copy=False),
+        feature_matrix=feature_matrix.astype(np.float32, copy=False),
+        log_base_fees=log_base_fees.astype(np.float32, copy=False),
     )

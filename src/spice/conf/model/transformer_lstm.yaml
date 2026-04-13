@@ -5,4 +5,5 @@ dropout: 0.1
 d_model: 128
 nhead: 4
 transformer_layers: 2
+feedforward_dim: 256
 head_hidden_dim: 64

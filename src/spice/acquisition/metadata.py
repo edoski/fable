@@ -103,8 +103,10 @@ class TaskContractSnapshot:
     lookback_seconds: int
     sample_count: int
     max_supported_delay_seconds: int
-    required_history_context_blocks: int
-    required_history_blocks: int
+    feature_history_seconds: int
+    required_history_seconds: int
+    acquired_history_window_seconds: int
+    valid_anchor_samples: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,7 +231,7 @@ def build_dataset_summary(
 ) -> DatasetSummary:
     return DatasetSummary(
         dataset=DatasetIdentity(
-            id=config.paths.dataset_id,
+            id=config.paths.corpus_id,
             name=config.dataset.name,
         ),
         chain=ChainMetadata(
@@ -264,6 +266,8 @@ def build_acquire_run_record(
     provider: ProviderMetadata,
     contract: ResolvedTaskContract,
     acquisition_runtime: AcquisitionRuntimeSnapshot,
+    acquired_history_window_seconds: int,
+    valid_anchor_samples: int,
 ) -> AcquireRunRecord:
     return AcquireRunRecord(
         provider=provider,
@@ -273,8 +277,10 @@ def build_acquire_run_record(
             lookback_seconds=contract.lookback_seconds,
             sample_count=contract.sample_count,
             max_supported_delay_seconds=contract.max_supported_delay_seconds,
-            required_history_context_blocks=contract.required_history_context_blocks,
-            required_history_blocks=contract.required_history_blocks,
+            feature_history_seconds=contract.feature_history_seconds,
+            required_history_seconds=contract.required_history_seconds,
+            acquired_history_window_seconds=acquired_history_window_seconds,
+            valid_anchor_samples=valid_anchor_samples,
         ),
         settings=acquisition_settings(config),
         runtime=acquisition_runtime_metadata(acquisition_runtime),

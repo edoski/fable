@@ -173,7 +173,7 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
             upsert_artifact_record(
                 active_config.paths.catalog_db,
                 artifact_id=artifact_id,
-                dataset_id=active_config.paths.dataset_id,
+                dataset_id=active_config.paths.corpus_id,
                 dataset_name=active_config.dataset.name,
                 chain_name=active_config.chain.name,
                 feature_set_id=active_config.feature_set.id,

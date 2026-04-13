@@ -195,7 +195,7 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
             config.paths.catalog_db,
             study_id=study_id,
             study_name=config.study.name,
-            dataset_id=config.paths.dataset_id,
+            dataset_id=config.paths.corpus_id,
             dataset_name=config.dataset.name,
             chain_name=config.chain.name,
             feature_set_id=config.feature_set.id,

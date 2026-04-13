@@ -1,4 +1,4 @@
-"""Array-backed temporal stores and dataset slicing helpers."""
+"""Timestamp-native temporal stores and sample slicing helpers."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from numpy.typing import NDArray
 
 from ..config import SplitConfig
 from ..features import FeatureTable
-from ..planning.geometry import DatasetGeometry
+from ..planning.geometry import DelayWindow
 
 FloatMatrix = NDArray[np.float32]
 FloatVector = NDArray[np.float32]
@@ -26,14 +26,17 @@ class DatasetSplitIndices:
 @dataclass(slots=True)
 class TemporalDatasetStore:
     feature_matrix: FloatMatrix
+    log_base_fees: FloatVector
     block_numbers: IntVector
     timestamps: IntVector
-    sample_row_indices: IntVector
+    anchor_rows: IntVector
+    context_start_rows: IntVector
+    candidate_end_rows: IntVector
     class_labels: IntVector
-    action_log_fees: FloatMatrix
     target_log_fee: FloatVector
     next_block_log_fee: FloatVector
     optimal_log_fee: FloatVector
+    max_candidate_slots: int
 
     @property
     def n_rows(self) -> int:
@@ -45,75 +48,109 @@ class TemporalDatasetStore:
 
     @property
     def n_samples(self) -> int:
-        return int(self.sample_row_indices.shape[0])
+        return int(self.anchor_rows.shape[0])
 
     @property
-    def action_count(self) -> int:
-        return int(self.action_log_fees.shape[1])
+    def candidate_start_rows(self) -> IntVector:
+        return self.anchor_rows + 1
 
-
-def trim_history_for_sample_count(
-    n_blocks: int,
-    *,
-    sample_count: int,
-    geometry: DatasetGeometry,
-) -> slice:
-    required_blocks = geometry.required_block_count(sample_count)
-    if n_blocks < required_blocks:
-        raise ValueError(
-            "History dataset is too short for the requested sample count; "
-            f"need at least {required_blocks} blocks, got {n_blocks}"
-        )
-    return slice(n_blocks - required_blocks, n_blocks)
-
-
-def history_context_slice(n_blocks: int, *, geometry: DatasetGeometry) -> slice:
-    if n_blocks < geometry.history_context_blocks:
-        raise ValueError(
-            "History dataset is too short to provide evaluation context; "
-            f"need at least {geometry.history_context_blocks} blocks, got {n_blocks}"
-        )
-    return slice(n_blocks - geometry.history_context_blocks, n_blocks)
-
-
+    @property
+    def candidate_counts(self) -> IntVector:
+        return self.candidate_end_rows - self.candidate_start_rows
 def build_temporal_store(
     feature_table: FeatureTable,
     *,
-    lookback_steps: int,
-    action_count: int,
+    window: DelayWindow,
+    max_candidate_slots: int | None = None,
 ) -> TemporalDatasetStore:
-    if lookback_steps <= 0:
-        raise ValueError("lookback_steps must be positive")
-    if action_count <= 0:
-        raise ValueError("action_count must be positive")
+    if window.lookback_seconds <= 0:
+        raise ValueError("lookback_seconds must be positive")
+    if window.delay_seconds <= 0:
+        raise ValueError("delay_seconds must be positive")
 
-    max_sample_row = len(feature_table.block_numbers) - action_count
-    if max_sample_row <= lookback_steps - 1:
+    timestamps = feature_table.timestamps
+    block_numbers = feature_table.block_numbers
+    log_base_fees = feature_table.log_base_fees
+    feature_matrix = feature_table.feature_matrix
+    if timestamps.size == 0:
         raise ValueError("Feature table is too short to produce any supervised samples")
 
-    sample_row_indices = np.arange(lookback_steps - 1, max_sample_row, dtype=np.int64)
-    future_windows = np.lib.stride_tricks.sliding_window_view(
-        feature_table.log_base_fees[1:],
-        window_shape=action_count,
+    required_history_seconds = window.required_history_seconds
+    context_start_rows = np.searchsorted(
+        timestamps,
+        timestamps - window.lookback_seconds,
+        side="left",
+    ).astype(np.int64, copy=False)
+    candidate_end_rows = np.searchsorted(
+        timestamps,
+        timestamps + window.delay_seconds,
+        side="right",
+    ).astype(np.int64, copy=False)
+    anchor_candidates = np.arange(timestamps.shape[0], dtype=np.int64)
+    candidate_counts = candidate_end_rows - (anchor_candidates + 1)
+    history_ready = (timestamps - timestamps[0]) >= required_history_seconds
+    valid_anchor_mask = history_ready & (candidate_counts > 0)
+    anchor_rows = anchor_candidates[valid_anchor_mask].astype(np.int64, copy=False)
+    if anchor_rows.size == 0:
+        raise ValueError("Feature table is too short to produce any supervised samples")
+
+    selected_context_starts = context_start_rows[anchor_rows].astype(np.int64, copy=False)
+    selected_candidate_ends = candidate_end_rows[anchor_rows].astype(np.int64, copy=False)
+    candidate_starts = anchor_rows + 1
+    selected_candidate_counts = selected_candidate_ends - candidate_starts
+    resolved_max_candidate_slots = (
+        int(selected_candidate_counts.max())
+        if max_candidate_slots is None
+        else int(max_candidate_slots)
     )
-    action_log_fees = future_windows[sample_row_indices].astype(np.float32, copy=False)
-    class_labels = np.argmin(action_log_fees, axis=1).astype(np.int64, copy=False)
-    row_selector = np.arange(class_labels.shape[0], dtype=np.int64)
-    target_log_fee = action_log_fees[row_selector, class_labels].astype(np.float32, copy=False)
-    next_block_log_fee = action_log_fees[:, 0].astype(np.float32, copy=False)
-    optimal_log_fee = action_log_fees.min(axis=1).astype(np.float32, copy=False)
+    if resolved_max_candidate_slots <= 0:
+        raise ValueError("max_candidate_slots must be positive")
+    if np.any(selected_candidate_counts > resolved_max_candidate_slots):
+        raise ValueError("Configured max_candidate_slots is too small for this dataset")
+
+    class_labels = np.empty(anchor_rows.shape[0], dtype=np.int64)
+    target_log_fee = np.empty(anchor_rows.shape[0], dtype=np.float32)
+    next_block_log_fee = np.empty(anchor_rows.shape[0], dtype=np.float32)
+    optimal_log_fee = np.empty(anchor_rows.shape[0], dtype=np.float32)
+    for sample_index, (start_row, end_row) in enumerate(
+        zip(candidate_starts, selected_candidate_ends, strict=True)
+    ):
+        candidate_logs = log_base_fees[start_row:end_row]
+        label = int(np.argmin(candidate_logs))
+        class_labels[sample_index] = label
+        target_log_fee[sample_index] = np.float32(candidate_logs[label])
+        next_block_log_fee[sample_index] = np.float32(candidate_logs[0])
+        optimal_log_fee[sample_index] = np.float32(candidate_logs.min())
 
     return TemporalDatasetStore(
-        feature_matrix=feature_table.feature_matrix,
-        block_numbers=feature_table.block_numbers,
-        timestamps=feature_table.timestamps,
-        sample_row_indices=sample_row_indices,
+        feature_matrix=feature_matrix,
+        log_base_fees=log_base_fees,
+        block_numbers=block_numbers,
+        timestamps=timestamps,
+        anchor_rows=anchor_rows,
+        context_start_rows=selected_context_starts,
+        candidate_end_rows=selected_candidate_ends,
         class_labels=class_labels,
-        action_log_fees=action_log_fees,
         target_log_fee=target_log_fee,
         next_block_log_fee=next_block_log_fee,
         optimal_log_fee=optimal_log_fee,
+        max_candidate_slots=resolved_max_candidate_slots,
     )
+
+
+def tail_sample_indices(
+    store: TemporalDatasetStore,
+    *,
+    sample_count: int,
+) -> IntVector:
+    if sample_count <= 0:
+        raise ValueError("sample_count must be positive")
+    if store.n_samples < sample_count:
+        raise ValueError(
+            "History dataset is too short for the requested sample count; "
+            f"need at least {sample_count} valid anchors, got {store.n_samples}"
+        )
+    return np.arange(store.n_samples - sample_count, store.n_samples, dtype=np.int64)
 
 
 def filter_sample_indices_by_timestamp_window(
@@ -122,7 +159,7 @@ def filter_sample_indices_by_timestamp_window(
     start_timestamp: int,
     end_timestamp: int,
 ) -> IntVector:
-    sample_timestamps = store.timestamps[store.sample_row_indices]
+    sample_timestamps = store.timestamps[store.anchor_rows]
     mask = (sample_timestamps >= start_timestamp) & (sample_timestamps < end_timestamp)
     return np.flatnonzero(mask).astype(np.int64, copy=False)
 

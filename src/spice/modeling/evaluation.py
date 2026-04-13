@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 from ..config import TrainingConfig
 from .models import ModelOutputs
-from .torch_datasets import SequenceBatch
+from .torch_datasets import SequenceEventBatch
 
 
 @dataclass(slots=True)
@@ -56,12 +56,15 @@ def mean_metrics(metrics: list[BatchMetrics]) -> EpochMetrics:
 
 def compute_temporal_losses(
     outputs: ModelOutputs,
-    batch: SequenceBatch,
+    batch: SequenceEventBatch,
     *,
     class_weights: torch.Tensor,
     training_config: TrainingConfig,
 ) -> TemporalLosses:
-    logits = outputs.logits
+    logits = outputs.logits.masked_fill(
+        ~batch.candidate_mask,
+        torch.finfo(outputs.logits.dtype).min,
+    )
     fee_hat = outputs.fee_hat
     action_loss = F.cross_entropy(
         logits,
@@ -85,7 +88,7 @@ def compute_temporal_losses(
 
 def compute_temporal_batch_metrics(
     outputs: ModelOutputs,
-    batch: SequenceBatch,
+    batch: SequenceEventBatch,
     *,
     class_weights: torch.Tensor,
     training_config: TrainingConfig,
@@ -100,7 +103,8 @@ def compute_temporal_batch_metrics(
         logits=outputs.logits.detach(),
         total_loss=losses.total_loss.detach(),
         class_labels=batch.class_label.detach(),
-        action_log_fees=batch.action_log_fees.detach(),
+        candidate_log_fees=batch.candidate_log_fees.detach(),
+        candidate_mask=batch.candidate_mask.detach(),
         next_block_log_fee=batch.next_block_log_fee.detach(),
         optimal_log_fee=batch.optimal_log_fee.detach(),
     )
@@ -108,29 +112,37 @@ def compute_temporal_batch_metrics(
 
 def realized_log_fees_from_logits(
     logits: torch.Tensor,
-    action_log_fees: torch.Tensor,
+    candidate_log_fees: torch.Tensor,
+    candidate_mask: torch.Tensor,
 ) -> torch.Tensor:
-    predicted_offsets = logits.argmax(dim=-1)
-    return action_log_fees.gather(dim=1, index=predicted_offsets.unsqueeze(-1)).squeeze(-1)
+    masked_logits = logits.masked_fill(~candidate_mask, torch.finfo(logits.dtype).min)
+    predicted_offsets = masked_logits.argmax(dim=-1)
+    return candidate_log_fees.gather(dim=1, index=predicted_offsets.unsqueeze(-1)).squeeze(-1)
 
 
 def compute_batch_metrics(
     logits: torch.Tensor,
     total_loss: torch.Tensor,
     class_labels: torch.Tensor,
-    action_log_fees: torch.Tensor,
+    candidate_log_fees: torch.Tensor,
+    candidate_mask: torch.Tensor,
     next_block_log_fee: torch.Tensor,
     optimal_log_fee: torch.Tensor,
 ) -> BatchMetrics:
     count = class_labels.numel()
-    realized_log_fee = realized_log_fees_from_logits(logits, action_log_fees)
+    masked_logits = logits.masked_fill(~candidate_mask, torch.finfo(logits.dtype).min)
+    realized_log_fee = realized_log_fees_from_logits(
+        masked_logits,
+        candidate_log_fees,
+        candidate_mask,
+    )
     realized_fee = torch.exp(realized_log_fee)
     baseline_fee = torch.exp(next_block_log_fee)
     optimum_fee = torch.exp(optimal_log_fee)
     return BatchMetrics(
         count=count,
         total_loss_sum=total_loss.item() * count,
-        correct_count=int((logits.argmax(dim=-1) == class_labels).sum().item()),
+        correct_count=int((masked_logits.argmax(dim=-1) == class_labels).sum().item()),
         realized_fee_sum=float(realized_fee.sum().item()),
         baseline_fee_sum=float(baseline_fee.sum().item()),
         optimal_fee_sum=float(optimum_fee.sum().item()),

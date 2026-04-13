@@ -26,6 +26,7 @@ class TransformerLstmModelConfig(ModelConfig):
     d_model: int = Field(gt=0)
     nhead: int = Field(gt=0)
     transformer_layers: int = Field(gt=0)
+    feedforward_dim: int = Field(gt=0)
     head_hidden_dim: int = Field(gt=0)
 
     @model_validator(mode="after")
@@ -73,10 +74,10 @@ class TransformerLstmTunedModelParams(TunedModelParams):
 
 def _build_model(
     n_features: int,
-    action_count: int,
+    n_candidate_slots: int,
     config: TransformerLstmModelConfig,
 ) -> TemporalModel:
-    return TransformerLSTMBaseline(n_features, action_count, config)
+    return TransformerLSTMBaseline(n_features, n_candidate_slots, config)
 
 
 def _default_precision(device: torch.device) -> TrainingPrecision:
@@ -139,6 +140,7 @@ def _apply_model_params(
 register_model_spec(
     ModelSpec(
         id="transformer_lstm",
+        input_representation="sequence_event",
         model_config_type=TransformerLstmModelConfig,
         tuning_space_type=TransformerLstmTuningSpaceModelConfig,
         tuned_params_type=TransformerLstmTunedModelParams,

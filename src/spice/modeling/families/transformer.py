@@ -79,10 +79,10 @@ class TransformerTunedModelParams(TunedModelParams):
 
 def _build_model(
     n_features: int,
-    action_count: int,
+    n_candidate_slots: int,
     config: TransformerModelConfig,
 ) -> TemporalModel:
-    return TransformerBaseline(n_features, action_count, config)
+    return TransformerBaseline(n_features, n_candidate_slots, config)
 
 
 def _default_precision(device: torch.device) -> TrainingPrecision:
@@ -148,6 +148,7 @@ def _apply_model_params(
 register_model_spec(
     ModelSpec(
         id="transformer",
+        input_representation="sequence_event",
         model_config_type=TransformerModelConfig,
         tuning_space_type=TransformerTuningSpaceModelConfig,
         tuned_params_type=TransformerTunedModelParams,

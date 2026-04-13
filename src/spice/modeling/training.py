@@ -16,7 +16,7 @@ from ..config import ModelConfig, TrainingConfig
 from ..core.console import NullReporter, Reporter, format_compact_number
 from ..data.datasets import TemporalDatasetStore
 from ._runtime import (
-    build_sequence_loader,
+    build_model_loader,
     resolve_compile_enabled,
     resolve_device,
     resolve_trainer_precision,
@@ -187,7 +187,6 @@ def train_model(
     store: TemporalDatasetStore,
     train_sample_indices: IntVector,
     validation_sample_indices: IntVector,
-    lookback_steps: int,
     training_config: TrainingConfig,
     artifact_dir: Path,
     reporter: Reporter | None = None,
@@ -216,15 +215,13 @@ def train_model(
         store=store,
         train_sample_indices=train_sample_indices,
         validation_sample_indices=validation_sample_indices,
-        lookback_steps=lookback_steps,
+        model_id=model_config.id,
         batch_size=training_config.batch_size,
-        device=device,
     )
 
     module = TemporalLightningModule(
         fit_model,
         class_weights=data_module.class_weights,
-        action_count=store.action_count,
         training_config=training_config,
     )
     checkpoint_callback = ModelCheckpoint(
@@ -290,9 +287,9 @@ def train_model(
 def evaluate_model(
     model: torch.nn.Module,
     *,
+    model_id: str,
     store: TemporalDatasetStore,
     sample_indices: IntVector,
-    lookback_steps: int,
     training_config: TrainingConfig,
     class_weights: torch.Tensor | None = None,
     reporter: Reporter | None = None,
@@ -304,12 +301,16 @@ def evaluate_model(
     model.to(device)
     model.eval()
     if class_weights is None:
-        class_weights = build_class_weights(store.class_labels, sample_indices, store.action_count)
+        class_weights = build_class_weights(
+            store.class_labels,
+            sample_indices,
+            store.max_candidate_slots,
+        )
     class_weights = class_weights.to(device)
-    loader = build_sequence_loader(
+    loader = build_model_loader(
         store,
         sample_indices,
-        lookback_steps=lookback_steps,
+        model_id=model_id,
         batch_size=training_config.batch_size,
     )
     task_id = reporter.start_task("evaluate model", total=len(loader), unit="batches")
@@ -317,7 +318,7 @@ def evaluate_model(
     with torch.no_grad():
         for batch in loader:
             device_batch = move_batch_to_device(batch, device)
-            outputs = model(device_batch.inputs)
+            outputs = model(device_batch.inputs, device_batch.input_mask)
             _, batch_metrics = compute_temporal_batch_metrics(
                 outputs,
                 device_batch,

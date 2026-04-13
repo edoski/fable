@@ -1,5 +1,4 @@
 name: polygon
 runtime:
   chain_id: 137
-  block_time_seconds: 2.0
   uses_poa_extra_data: true

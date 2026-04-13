@@ -40,9 +40,11 @@ class TrainingSummary:
     task_id: str
     max_supported_delay_seconds: int
     lookback_seconds: int
+    feature_history_seconds: int
     sample_count: int
-    n_blocks_available: int
-    n_blocks_used: int
+    max_candidate_slots: int
+    n_rows_available: int
+    n_rows_used: int
     split_sizes: SplitSizes
     best_epoch: int
     resolved_device: str
@@ -83,12 +85,14 @@ class SimulationSummaryRecord:
     max_supported_delay_seconds: int
     requested_delay_seconds: int
     lookback_seconds: int
+    feature_history_seconds: int
     simulation_window_seconds: int
     arrival_rate_per_second: float
     repetitions: int
-    n_history_context_blocks: int
-    n_evaluation_blocks: int
+    n_history_rows: int
+    n_evaluation_rows: int
     sample_count: int
+    max_candidate_slots: int
     profit_over_baseline: SimulationAggregateSummary
     cost_over_optimum: SimulationAggregateSummary
     baseline_cost_over_optimum: SimulationAggregateSummary
@@ -140,9 +144,11 @@ def build_training_summary(
         task_id=manifest.task_id,
         max_supported_delay_seconds=manifest.max_supported_delay_seconds,
         lookback_seconds=manifest.lookback_seconds,
+        feature_history_seconds=manifest.feature_history_seconds,
         sample_count=manifest.sample_count,
-        n_blocks_available=prepared.n_blocks_available,
-        n_blocks_used=prepared.n_blocks_used,
+        max_candidate_slots=manifest.max_candidate_slots,
+        n_rows_available=prepared.n_rows_available,
+        n_rows_used=prepared.n_rows_used,
         split_sizes=SplitSizes(
             train_samples=int(prepared.split_indices.train.shape[0]),
             validation_samples=int(prepared.split_indices.validation.shape[0]),
@@ -181,12 +187,14 @@ def build_simulation_summary_record(
         max_supported_delay_seconds=manifest.max_supported_delay_seconds,
         requested_delay_seconds=requested_delay_seconds,
         lookback_seconds=manifest.lookback_seconds,
+        feature_history_seconds=manifest.feature_history_seconds,
         simulation_window_seconds=window_seconds,
         arrival_rate_per_second=arrival_rate_per_second,
         repetitions=repetitions,
-        n_history_context_blocks=prepared.n_history_context_blocks,
-        n_evaluation_blocks=prepared.n_evaluation_blocks,
+        n_history_rows=prepared.n_history_rows,
+        n_evaluation_rows=prepared.n_evaluation_rows,
         sample_count=prepared.sample_count,
+        max_candidate_slots=manifest.max_candidate_slots,
         profit_over_baseline=SimulationAggregateSummary(
             mean=simulation.mean_profit_over_baseline,
             std=simulation.std_profit_over_baseline,

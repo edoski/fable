@@ -1,6 +1,6 @@
 # SPICE
 
-SPICE is a temporal fee-timing pipeline for EVM chains. It acquires canonical block datasets, builds Hamilton-based feature tables, tunes models, trains artifacts, and runs evaluation-day simulations.
+SPICE is a temporal fee-timing pipeline for EVM chains. It acquires canonical block corpora, builds timestamp-native feature tables, tunes models, trains artifacts, and runs evaluation-day simulations.
 
 ## Stack
 
@@ -11,7 +11,7 @@ SPICE is a temporal fee-timing pipeline for EVM chains. It acquires canonical bl
 - `Lightning` + `PyTorch` for training
 - `Optuna` for tuning and study persistence
 - `web3.py` for RPC access
-- `Polars` + `Pandera` for block-table validation and dataset IO
+- `Polars` + `Pandera` for block-table validation and corpus IO
 
 ## Setup
 
@@ -40,7 +40,7 @@ spice tune --preset icdcs_2026 --model lstm --feature-set icdcs_2026 --trial-cou
 spice simulate --preset icdcs_2026 --variant baseline
 spice config list provider
 spice config show dataset icdcs_2026
-spice config create chain my_chain --set runtime.chain_id=123 --set runtime.block_time_seconds=2.0 --set runtime.uses_poa_extra_data=false
+spice config create chain my_chain --set runtime.chain_id=123 --set runtime.uses_poa_extra_data=false
 spice config update provider direct --set chains.my_chain.endpoint.env_var=MY_CHAIN_RPC_URL
 spice config delete preset old_preset
 spice show dataset
@@ -63,12 +63,13 @@ Config loading lives in [src/spice/config](src/spice/config).
 Named specs live under [src/spice/conf](src/spice/conf):
 
 - `preset/`: convenience bundles of named selectors
-- `dataset/`: dataset contracts
+- `dataset/`: evaluation-date selectors
 - `chain/`, `provider/`: chain and RPC specs
+- `task/`, `execution/`: delay budgets and sampling contracts in real seconds
 - `model/`, `feature_set/`: modeling choices
 - `training/`, `split/`, `simulation/`, `acquisition/`, `tuning/`, `tuning_space/`: workflow profiles
 
-Core spec authoring now goes through `spice config`:
+Core spec authoring goes through `spice config`:
 
 - `spice config list <group>`
 - `spice config show <group> <name>`
@@ -76,45 +77,70 @@ Core spec authoring now goes through `spice config`:
 - `spice config update <group> <name> --set path=value ... --unset path ...`
 - `spice config delete <group> <name> [--force]`
 
-Phase 2a authorable groups:
-
-- `chain`
-- `provider`
-- `dataset`
-- `task`
-- `execution`
-- `feature-set`
-- `preset`
-
 Rules:
 
 - Presets are optional. They are not the canonical schema.
 - `spice config` writes canonical YAML into `src/spice/conf/<group>/<name>.yaml`.
-- `dataset.history_context_blocks` is the dataset contract boundary for feature warmup + lookback.
-- `acquire` uses the dataset contract to fetch enough raw blocks.
-- `train` and `simulate` validate that the selected feature graph fits inside that contract.
+- `task.lookback_seconds` and `task.max_supported_delay_seconds` are real wall-clock contracts.
+- Feature history is derived from the selected feature graph in seconds.
+- `acquire` expands raw history until the selected task and feature graph produce enough valid anchor samples.
+- `train` and `simulate` validate that the selected feature graph matches the trained artifact.
+
+## Temporal Semantics
+
+Public interfaces stay seconds-native:
+
+- `lookback_seconds`
+- `max_supported_delay_seconds`
+- `requested_delay_seconds`
+
+Internal semantics are timestamp-native:
+
+- context = blocks with timestamps inside the real lookback window
+- valid future candidates = blocks inside the real delay window
+- labels = cheapest valid future block under that real deadline
+
+SPICE does not convert seconds into nominal block counts anymore.
 
 ## Output Layout
 
 - catalog: `outputs/.spice/catalog.sqlite`
-- history blocks: `outputs/datasets/<chain>/<dataset_id>/history/...`
-- evaluation blocks: `outputs/datasets/<chain>/<dataset_id>/evaluation/...`
-- dataset state: `outputs/datasets/<chain>/<dataset_id>/.spice/state.sqlite`
+- history corpus: `outputs/corpora/<chain>/<corpus_id>/history/...`
+- evaluation corpus: `outputs/corpora/<chain>/<corpus_id>/evaluation/...`
+- corpus state: `outputs/corpora/<chain>/<corpus_id>/.spice/state.sqlite`
 - tuned study state: `outputs/studies/<chain>/<study_id>/.spice/state.sqlite`
-- model artifacts: `outputs/models/<chain>/<artifact_id>/...`
-- artifact state: `outputs/models/<chain>/<artifact_id>/.spice/state.sqlite`
+- model artifacts: `outputs/artifacts/<chain>/<artifact_id>/...`
+- artifact state: `outputs/artifacts/<chain>/<artifact_id>/.spice/state.sqlite`
 
 `outputs/` is the default root. Override it only when you want isolation somewhere else.
 
 Users query by selectors such as `--dataset`, `--study`, `--model`, `--task`, and `--variant`.
-The filesystem ids are deterministic internal storage ids. The catalog maps selectors to roots.
-Structured state is SQLite-only. SPICE no longer persists generated JSON metadata or report files.
+`dataset` is the public selector word. Internally the raw block collection is a `corpus`.
+Storage ids are deterministic internal ids. The catalog maps selectors to roots.
+Structured state is SQLite-only. SPICE does not persist generated JSON metadata or report files.
 Re-running `spice tune` with the same study resumes that study up to the requested total `--trial-count`.
+
+## Current Model Boundary
+
+Canonical internal truth is:
+
+- raw block corpus
+- timestamp-native feature table
+- ragged timestamp-native samples
+
+Current sequence families share one semantic input representation:
+
+- `lstm`
+- `transformer`
+- `transformer_lstm`
+
+That shared representation is compiled into a masked/padded batch only at the model boundary.
+Future model families can register a different input representation without changing corpus storage, task semantics, or workflow interfaces.
 
 ## Verification
 
 ```bash
-ruff check src/spice tests
-pyright
-pytest -q
+uv run ruff check src tests
+uv run pyright
+uv run pytest -q
 ```

@@ -82,8 +82,9 @@ def summarize_realized_costs(
 
     selected_sample_indices = sample_indices[selected_positions]
     selected_offsets = np.asarray(predicted_offsets, dtype=np.int64)[selected_positions]
-    selected_action_log_fees = store.action_log_fees[selected_sample_indices]
-    realized_logs = selected_action_log_fees[np.arange(selected_offsets.shape[0]), selected_offsets]
+    selected_anchor_rows = store.anchor_rows[selected_sample_indices]
+    realized_rows = selected_anchor_rows + 1 + selected_offsets
+    realized_logs = store.log_base_fees[realized_rows]
     realized_total = float(np.exp(realized_logs.astype(np.float64, copy=False)).sum())
     baseline_total = float(
         np.exp(
@@ -126,7 +127,7 @@ def run_temporal_simulation(
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
 
-    sample_timestamps = store.timestamps[store.sample_row_indices[sample_indices]]
+    sample_timestamps = store.timestamps[store.anchor_rows[sample_indices]]
     first_timestamp = int(sample_timestamps[0])
     last_timestamp = int(sample_timestamps[-1])
     latest_start = last_timestamp - window_seconds

@@ -96,7 +96,6 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
             ):
                 raise ValueError("Configured task does not match the trained artifact contract")
             contract = resolve_feature_contract(
-                chain=config.chain,
                 task=config.task,
                 feature_set_id=selection.feature_set_id,
                 feature_names=selection.feature_names,
@@ -114,8 +113,9 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 history_blocks,
                 evaluation_blocks,
                 selection=selection,
-                geometry=contract.geometry_for_delay(config.execution.requested_delay_seconds),
+                window=contract.window_for_delay(config.execution.requested_delay_seconds),
                 scaler=loaded_artifact.manifest.scaler,
+                max_candidate_slots=loaded_artifact.manifest.max_candidate_slots,
                 window_start_timestamp=config.evaluation_window_start_timestamp,
                 window_end_timestamp=config.evaluation_window_end_timestamp,
             )
@@ -125,12 +125,11 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
             )
             predictions = predict_class_offsets(
                 loaded_artifact.model,
+                model_id=loaded_artifact.manifest.model.id,
                 store=prepared.store,
                 sample_indices=prepared.sample_indices,
-                lookback_steps=prepared.geometry.lookback_steps,
                 batch_size=config.training.batch_size,
                 device=config.training.device,
-                allowed_action_count=prepared.geometry.action_count,
                 reporter=predict_reporter,
             )
             simulation = run_temporal_simulation(

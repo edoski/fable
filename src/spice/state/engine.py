@@ -12,7 +12,7 @@ from sqlalchemy.engine import Connection, create_engine
 
 from .schema import metadata, spice_meta
 
-DATASET_ROOT_KIND = "dataset"
+DATASET_ROOT_KIND = "corpus"
 ARTIFACT_ROOT_KIND = "artifact"
 STUDY_ROOT_KIND = "study"
 STATE_DB_FILENAME = "state.sqlite"

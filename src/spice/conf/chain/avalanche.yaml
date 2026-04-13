@@ -1,5 +1,4 @@
 name: avalanche
 runtime:
   chain_id: 43114
-  block_time_seconds: 1.6
   uses_poa_extra_data: true

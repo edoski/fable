@@ -1,4 +1,4 @@
-"""Dataset-root SQLAlchemy persistence."""
+"""Corpus-root SQLAlchemy persistence."""
 
 from __future__ import annotations
 
@@ -77,8 +77,10 @@ def write_dataset_state(
                     lookback_seconds=acquire_run.task.lookback_seconds,
                     sample_count=acquire_run.task.sample_count,
                     max_supported_delay_seconds=acquire_run.task.max_supported_delay_seconds,
-                    required_history_context_blocks=acquire_run.task.required_history_context_blocks,
-                    required_history_blocks=acquire_run.task.required_history_blocks,
+                    feature_history_seconds=acquire_run.task.feature_history_seconds,
+                    required_history_seconds=acquire_run.task.required_history_seconds,
+                    acquired_history_window_seconds=acquire_run.task.acquired_history_window_seconds,
+                    valid_anchor_samples=acquire_run.task.valid_anchor_samples,
                     chunk_size=acquire_run.settings.chunk_size,
                     rpc_batch_size=acquire_run.settings.rpc_batch_size,
                     rpc_concurrency=acquire_run.settings.rpc_concurrency,

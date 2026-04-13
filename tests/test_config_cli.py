@@ -47,8 +47,6 @@ def test_config_create_update_and_unset_commands(tmp_path, monkeypatch) -> None:
             "--set",
             "runtime.chain_id=7070",
             "--set",
-            "runtime.block_time_seconds=2.5",
-            "--set",
             "runtime.uses_poa_extra_data=false",
         ],
     )
@@ -57,7 +55,6 @@ def test_config_create_update_and_unset_commands(tmp_path, monkeypatch) -> None:
         "name": "phase2_chain",
         "runtime": {
             "chain_id": 7070,
-            "block_time_seconds": 2.5,
             "uses_poa_extra_data": False,
         },
     }
@@ -197,8 +194,6 @@ def test_config_delete_blocks_on_dependents_and_force_bypasses(tmp_path, monkeyp
             "phase2_chain",
             "--set",
             "runtime.chain_id=9090",
-            "--set",
-            "runtime.block_time_seconds=3.0",
             "--set",
             "runtime.uses_poa_extra_data=false",
         ],

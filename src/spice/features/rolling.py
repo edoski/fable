@@ -1,83 +1,166 @@
-"""Rolling Hamilton feature nodes."""
+"""Time-window Hamilton feature nodes."""
 
 from __future__ import annotations
 
 import numpy as np
-import polars as pl
 from hamilton.function_modifiers import tag
 from numpy.typing import NDArray
 
 FloatVector = NDArray[np.float64]
+IntVector = NDArray[np.int64]
 
 
-def _rolling_stat(values: FloatVector, *, window: int, stat: str) -> FloatVector:
+def _window_bounds(timestamps: IntVector, *, window_seconds: int) -> IntVector:
+    if window_seconds <= 0:
+        raise ValueError("window_seconds must be positive")
+    starts = np.searchsorted(
+        timestamps,
+        timestamps - window_seconds,
+        side="left",
+    )
+    valid = (timestamps - timestamps[0]) >= window_seconds
+    return np.where(valid, starts, -1).astype(np.int64, copy=False)
+
+
+def _rolling_mean(values: FloatVector, starts: IntVector) -> FloatVector:
+    result = np.full(values.shape[0], np.nan, dtype=np.float64)
     if values.size == 0:
-        return np.empty(0, dtype=np.float64)
-    series = pl.Series(values)
-    if stat == "mean":
-        result = series.rolling_mean(window_size=window, min_samples=window)
-    elif stat == "std":
-        result = series.rolling_std(window_size=window, min_samples=window, ddof=0)
-    else:  # pragma: no cover - guarded by local usage
-        raise ValueError(f"Unsupported rolling stat: {stat}")
-    return result.to_numpy().astype(np.float64, copy=False)
+        return result
+    cumsum = np.concatenate(([0.0], np.cumsum(values, dtype=np.float64)))
+    for index, start in enumerate(starts):
+        if start < 0:
+            continue
+        count = index - start + 1
+        result[index] = (cumsum[index + 1] - cumsum[start]) / count
+    return result
 
 
-@tag(spice_kind="feature", spice_warmup="9")
-def rolling_mean_log_base_fee_10(log_base_fee: FloatVector) -> FloatVector:
-    return _rolling_stat(log_base_fee, window=10, stat="mean")
+def _rolling_std(values: FloatVector, starts: IntVector) -> FloatVector:
+    result = np.full(values.shape[0], np.nan, dtype=np.float64)
+    if values.size == 0:
+        return result
+    cumsum = np.concatenate(([0.0], np.cumsum(values, dtype=np.float64)))
+    square_cumsum = np.concatenate(([0.0], np.cumsum(values * values, dtype=np.float64)))
+    for index, start in enumerate(starts):
+        if start < 0:
+            continue
+        count = index - start + 1
+        mean = (cumsum[index + 1] - cumsum[start]) / count
+        second_moment = (square_cumsum[index + 1] - square_cumsum[start]) / count
+        variance = max(0.0, second_moment - mean * mean)
+        result[index] = variance**0.5
+    return result
 
 
-@tag(spice_kind="feature", spice_warmup="9")
-def rolling_std_log_base_fee_10(log_base_fee: FloatVector) -> FloatVector:
-    return _rolling_stat(log_base_fee, window=10, stat="std")
+def _rolling_mean_feature(
+    values: FloatVector,
+    timestamps: IntVector,
+    *,
+    window_seconds: int,
+) -> FloatVector:
+    return _rolling_mean(values, _window_bounds(timestamps, window_seconds=window_seconds))
 
 
-@tag(spice_kind="feature", spice_warmup="9")
-def rolling_mean_gas_utilization_10(gas_utilization: FloatVector) -> FloatVector:
-    return _rolling_stat(gas_utilization, window=10, stat="mean")
+def _rolling_std_feature(
+    values: FloatVector,
+    timestamps: IntVector,
+    *,
+    window_seconds: int,
+) -> FloatVector:
+    return _rolling_std(values, _window_bounds(timestamps, window_seconds=window_seconds))
 
 
-@tag(spice_kind="feature", spice_warmup="9")
-def rolling_std_gas_utilization_10(gas_utilization: FloatVector) -> FloatVector:
-    return _rolling_stat(gas_utilization, window=10, stat="std")
+@tag(spice_kind="feature", spice_history_seconds="60")
+def rolling_mean_log_base_fee_60s(
+    log_base_fee: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_mean_feature(log_base_fee, timestamps, window_seconds=60)
 
 
-@tag(spice_kind="feature", spice_warmup="49")
-def rolling_mean_log_base_fee_50(log_base_fee: FloatVector) -> FloatVector:
-    return _rolling_stat(log_base_fee, window=50, stat="mean")
+@tag(spice_kind="feature", spice_history_seconds="60")
+def rolling_std_log_base_fee_60s(
+    log_base_fee: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_std_feature(log_base_fee, timestamps, window_seconds=60)
 
 
-@tag(spice_kind="feature", spice_warmup="49")
-def rolling_std_log_base_fee_50(log_base_fee: FloatVector) -> FloatVector:
-    return _rolling_stat(log_base_fee, window=50, stat="std")
+@tag(spice_kind="feature", spice_history_seconds="60")
+def rolling_mean_gas_utilization_60s(
+    gas_utilization: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_mean_feature(gas_utilization, timestamps, window_seconds=60)
 
 
-@tag(spice_kind="feature", spice_warmup="49")
-def rolling_mean_gas_utilization_50(gas_utilization: FloatVector) -> FloatVector:
-    return _rolling_stat(gas_utilization, window=50, stat="mean")
+@tag(spice_kind="feature", spice_history_seconds="60")
+def rolling_std_gas_utilization_60s(
+    gas_utilization: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_std_feature(gas_utilization, timestamps, window_seconds=60)
 
 
-@tag(spice_kind="feature", spice_warmup="49")
-def rolling_std_gas_utilization_50(gas_utilization: FloatVector) -> FloatVector:
-    return _rolling_stat(gas_utilization, window=50, stat="std")
+@tag(spice_kind="feature", spice_history_seconds="300")
+def rolling_mean_log_base_fee_300s(
+    log_base_fee: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_mean_feature(log_base_fee, timestamps, window_seconds=300)
 
 
-@tag(spice_kind="feature", spice_warmup="199")
-def rolling_mean_log_base_fee_200(log_base_fee: FloatVector) -> FloatVector:
-    return _rolling_stat(log_base_fee, window=200, stat="mean")
+@tag(spice_kind="feature", spice_history_seconds="300")
+def rolling_std_log_base_fee_300s(
+    log_base_fee: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_std_feature(log_base_fee, timestamps, window_seconds=300)
 
 
-@tag(spice_kind="feature", spice_warmup="199")
-def rolling_std_log_base_fee_200(log_base_fee: FloatVector) -> FloatVector:
-    return _rolling_stat(log_base_fee, window=200, stat="std")
+@tag(spice_kind="feature", spice_history_seconds="300")
+def rolling_mean_gas_utilization_300s(
+    gas_utilization: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_mean_feature(gas_utilization, timestamps, window_seconds=300)
 
 
-@tag(spice_kind="feature", spice_warmup="199")
-def rolling_mean_gas_utilization_200(gas_utilization: FloatVector) -> FloatVector:
-    return _rolling_stat(gas_utilization, window=200, stat="mean")
+@tag(spice_kind="feature", spice_history_seconds="300")
+def rolling_std_gas_utilization_300s(
+    gas_utilization: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_std_feature(gas_utilization, timestamps, window_seconds=300)
 
 
-@tag(spice_kind="feature", spice_warmup="199")
-def rolling_std_gas_utilization_200(gas_utilization: FloatVector) -> FloatVector:
-    return _rolling_stat(gas_utilization, window=200, stat="std")
+@tag(spice_kind="feature", spice_history_seconds="600")
+def rolling_mean_log_base_fee_600s(
+    log_base_fee: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_mean_feature(log_base_fee, timestamps, window_seconds=600)
+
+
+@tag(spice_kind="feature", spice_history_seconds="600")
+def rolling_std_log_base_fee_600s(
+    log_base_fee: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_std_feature(log_base_fee, timestamps, window_seconds=600)
+
+
+@tag(spice_kind="feature", spice_history_seconds="600")
+def rolling_mean_gas_utilization_600s(
+    gas_utilization: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_mean_feature(gas_utilization, timestamps, window_seconds=600)
+
+
+@tag(spice_kind="feature", spice_history_seconds="600")
+def rolling_std_gas_utilization_600s(
+    gas_utilization: FloatVector,
+    timestamps: IntVector,
+) -> FloatVector:
+    return _rolling_std_feature(gas_utilization, timestamps, window_seconds=600)
