@@ -5,12 +5,23 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from ..config import ArtifactVariant, ModelConfig, ProblemSpec, StudyConfig
+from ..config import (
+    ArtifactVariant,
+    ModelConfig,
+    PredictionConfig,
+    ProblemSpec,
+    StudyConfig,
+)
 from ..features import FeaturePrerequisites
+from ..prediction import (
+    MetricDescriptor,
+    MetricSet,
+    PredictionSimulationRun,
+    PredictionSimulationSummary,
+    WindowMetricSummary,
+)
 from ..temporal.scaling import ScalerStats
-from .objective import EpochMetrics, WindowMetricSummary
 from .pipeline import PreparedInferenceDataset, PreparedTrainingDataset, TrainingRunResult
-from .simulation import SimulationRunSummary, SimulationSummary
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +33,8 @@ class ArtifactChainMetadata:
 class TrainingArtifactManifest:
     artifact_id: str
     objective_id: str
+    prediction: PredictionConfig
+    metric_descriptors: list[MetricDescriptor]
     chain: ArtifactChainMetadata
     dataset_id: str
     dataset_name: str
@@ -42,6 +55,14 @@ class TrainingArtifactManifest:
     @property
     def problem_id(self) -> str:
         return self.problem.id
+
+    @property
+    def prediction_id(self) -> str:
+        return self.prediction.id
+
+    @property
+    def prediction_family_id(self) -> str:
+        return self.prediction.family.id
 
     @property
     def max_supported_delay_seconds(self) -> int:
@@ -71,6 +92,9 @@ class SplitSizes:
 class TrainingSummary:
     artifact_id: str
     objective_id: str
+    prediction_id: str
+    prediction_family_id: str
+    metric_descriptors: list[MetricDescriptor]
     chain: str
     dataset_id: str
     dataset_name: str
@@ -96,21 +120,24 @@ class TrainingSummary:
     storage_mode_id: str
     batch_planner_id: str
     family_execution_id: str
-    best_validation_metrics: EpochMetrics
-    test_metrics: EpochMetrics
+    best_validation_metrics: MetricSet
+    test_metrics: MetricSet
 
 
 @dataclass(frozen=True, slots=True)
 class TrainingEpochRecord:
     epoch: int
-    train_metrics: EpochMetrics
-    validation_metrics: EpochMetrics
+    train_metrics: MetricSet
+    validation_metrics: MetricSet
 
 
 @dataclass(frozen=True, slots=True)
 class SimulationSummaryRecord:
     artifact_id: str
     objective_id: str
+    prediction_id: str
+    prediction_family_id: str
+    metric_descriptors: list[MetricDescriptor]
     chain: str
     dataset_id: str
     dataset_name: str
@@ -131,17 +158,10 @@ class SimulationSummaryRecord:
     n_evaluation_rows: int
     sample_count: int
     max_candidate_slots: int
-    profit_over_baseline: float
-    cost_over_optimum: float
-    baseline_cost_over_optimum: float
-    realized_fee_sum: float
-    baseline_fee_sum: float
-    optimum_fee_sum: float
-    window_profit_over_baseline: WindowMetricSummary
-    window_cost_over_optimum: WindowMetricSummary
-    window_baseline_cost_over_optimum: WindowMetricSummary
+    metrics: MetricSet
+    window_metrics: dict[str, WindowMetricSummary]
     total_events: int
-    runs: list[SimulationRunSummary]
+    runs: list[PredictionSimulationRun]
 
 
 def iter_epoch_records(result: TrainingRunResult) -> Iterator[TrainingEpochRecord]:
@@ -168,12 +188,15 @@ def build_training_summary(
     model_id: str,
     manifest: TrainingArtifactManifest,
     prepared: PreparedTrainingDataset,
-    best_validation_metrics: EpochMetrics,
-    test_metrics: EpochMetrics,
+    best_validation_metrics: MetricSet,
+    test_metrics: MetricSet,
 ) -> TrainingSummary:
     return TrainingSummary(
         artifact_id=manifest.artifact_id,
         objective_id=manifest.objective_id,
+        prediction_id=manifest.prediction_id,
+        prediction_family_id=manifest.prediction_family_id,
+        metric_descriptors=list(manifest.metric_descriptors),
         chain=chain_name,
         dataset_id=dataset_id,
         dataset_name=manifest.dataset_name,
@@ -212,7 +235,7 @@ def build_simulation_summary_record(
     manifest: TrainingArtifactManifest,
     *,
     prepared: PreparedInferenceDataset,
-    simulation: SimulationSummary,
+    simulation: PredictionSimulationSummary,
     requested_delay_seconds: int,
     window_seconds: int,
     arrival_rate_per_second: float,
@@ -221,6 +244,9 @@ def build_simulation_summary_record(
     return SimulationSummaryRecord(
         artifact_id=manifest.artifact_id,
         objective_id=manifest.objective_id,
+        prediction_id=manifest.prediction_id,
+        prediction_family_id=manifest.prediction_family_id,
+        metric_descriptors=list(manifest.metric_descriptors),
         chain=manifest.chain.name,
         dataset_id=manifest.dataset_id,
         dataset_name=manifest.dataset_name,
@@ -241,15 +267,8 @@ def build_simulation_summary_record(
         n_evaluation_rows=prepared.n_evaluation_rows,
         sample_count=prepared.sample_count,
         max_candidate_slots=manifest.max_candidate_slots,
-        profit_over_baseline=simulation.profit_over_baseline,
-        cost_over_optimum=simulation.cost_over_optimum,
-        baseline_cost_over_optimum=simulation.baseline_cost_over_optimum,
-        realized_fee_sum=simulation.realized_fee_sum,
-        baseline_fee_sum=simulation.baseline_fee_sum,
-        optimum_fee_sum=simulation.optimum_fee_sum,
-        window_profit_over_baseline=simulation.window_profit_over_baseline,
-        window_cost_over_optimum=simulation.window_cost_over_optimum,
-        window_baseline_cost_over_optimum=simulation.window_baseline_cost_over_optimum,
+        metrics=simulation.metrics,
+        window_metrics=dict(simulation.window_metrics),
         total_events=simulation.total_events,
         runs=list(simulation.runs),
     )

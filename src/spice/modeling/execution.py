@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..core.reporting import NullReporter, Reporter
+from ..prediction import MetricSet
 from ..storage.artifact import write_training_state
 from ..storage.engine import RootKind
 from .artifacts import (
@@ -14,7 +15,6 @@ from .artifacts import (
     load_training_artifact,
     persist_training_artifact,
 )
-from .objective import EpochMetrics
 from .pipeline import TrainingRunResult, TrainingSpec, TrainingStageReporters, run_training
 from .results import (
     TrainingSummary,
@@ -29,7 +29,7 @@ class PersistedTrainingRun:
     training_run: TrainingRunResult
     manifest: TrainingArtifactManifest
     summary: TrainingSummary
-    best_validation_metrics: EpochMetrics
+    best_validation_metrics: MetricSet
     artifact_dir: Path
     artifact_paths: tuple[Path, ...]
 
@@ -40,11 +40,12 @@ def _replay_split_metrics(
     spec: TrainingSpec,
     model,
     reporter: Reporter,
-) -> tuple[EpochMetrics, EpochMetrics]:
+) -> tuple[MetricSet, MetricSet]:
     prepared = training_run.prepared
     best_validation_metrics = evaluate_model(
         model,
         model_id=spec.model.id,
+        prediction_contract=spec.prediction_contract,
         store=prepared.store,
         sample_indices=prepared.split_indices.validation,
         training_config=spec.training,
@@ -53,6 +54,7 @@ def _replay_split_metrics(
     test_metrics = evaluate_model(
         model,
         model_id=spec.model.id,
+        prediction_contract=spec.prediction_contract,
         store=prepared.store,
         sample_indices=prepared.split_indices.test,
         training_config=spec.training,

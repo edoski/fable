@@ -16,10 +16,12 @@ from .models import (
     DatasetSpec,
     ExecutionSpec,
     FeatureSetConfig,
+    PredictionConfig,
     PresetSpec,
     ProblemSpec,
     ProviderSpec,
     coerce_feature_set_config,
+    coerce_prediction_config,
     coerce_problem_spec,
 )
 
@@ -33,6 +35,7 @@ class ConfigGroup(StrEnum):
     PROBLEM = "problem"
     EXECUTION = "execution"
     FEATURE_SET = "feature-set"
+    PREDICTION = "prediction"
     PRESET = "preset"
 
 
@@ -89,6 +92,13 @@ _GROUP_DEFINITIONS = (
         authorable=True,
     ),
     ConfigGroupDefinition(
+        token=ConfigGroup.PREDICTION.value,
+        directory="prediction",
+        model_type=PredictionConfig,
+        identity_field="id",
+        authorable=True,
+    ),
+    ConfigGroupDefinition(
         token=ConfigGroup.PRESET.value,
         directory="preset",
         model_type=PresetSpec,
@@ -104,6 +114,7 @@ _KNOWN_GROUP_DIRECTORIES = frozenset(
         "dataset",
         "execution",
         "feature_set",
+        "prediction",
         "model",
         "preset",
         "provider",
@@ -123,6 +134,7 @@ _PRESET_REFERENCE_GROUPS = {
     "provider": "provider",
     "model": "model",
     "feature_set": "feature_set",
+    "prediction": "prediction",
     "acquisition": "acquisition",
     "training": "training",
     "split": "split",
@@ -281,7 +293,11 @@ def validate_mapping_for_write(
         else (
             coerce_feature_set_config(payload)
             if definition.model_type is FeatureSetConfig
-            else definition.model_type.model_validate(payload)
+            else (
+                coerce_prediction_config(payload)
+                if definition.model_type is PredictionConfig
+                else definition.model_type.model_validate(payload)
+            )
         )
     )
     _validate_identity(definition=definition, name=name, model=model)

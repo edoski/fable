@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import math
 from abc import ABC
-from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol, cast
 
 import torch
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence
+
+from ..prediction import PredictionOutputSpec
 
 if TYPE_CHECKING:
     from .families.lstm import LstmModelConfig
@@ -16,8 +19,16 @@ if TYPE_CHECKING:
     from .families.transformer_lstm import TransformerLstmModelConfig
 
 
-class ModelOutputs(NamedTuple):
-    logits: torch.Tensor
+@dataclass(frozen=True, slots=True)
+class ModelOutputs:
+    heads: dict[str, torch.Tensor]
+
+    def head(self, head_id: str) -> torch.Tensor:
+        try:
+            return self.heads[head_id]
+        except KeyError as exc:
+            known = ", ".join(sorted(self.heads)) or "<none>"
+            raise ValueError(f"Unknown output head: {head_id}. Known heads: {known}") from exc
 
 
 class MLPHead(nn.Module):
@@ -88,18 +99,30 @@ class TemporalOutputHead(nn.Module):
     def __init__(
         self,
         hidden_dim: int,
-        n_candidate_slots: int,
+        output_spec: PredictionOutputSpec,
         head_hidden_dim: int,
     ) -> None:
         super().__init__()
-        self.classifier = MLPHead(hidden_dim, head_hidden_dim, n_candidate_slots)
+        self.heads = nn.ModuleDict(
+            {
+                head.id: MLPHead(hidden_dim, head_hidden_dim, head.size)
+                for head in output_spec.heads
+            }
+        )
 
     def forward(self, encoded: torch.Tensor) -> ModelOutputs:
-        return ModelOutputs(logits=self.classifier(encoded))
+        return ModelOutputs(
+            heads={head_id: head(encoded) for head_id, head in self.heads.items()}
+        )
 
 
 class LSTMBaseline(TemporalModel):
-    def __init__(self, n_features: int, n_candidate_slots: int, config: LstmModelConfig) -> None:
+    def __init__(
+        self,
+        n_features: int,
+        output_spec: PredictionOutputSpec,
+        config: LstmModelConfig,
+    ) -> None:
         super().__init__()
         self.input_projection = nn.Linear(n_features, config.input_projection_dim)
         self.backbone = nn.LSTM(
@@ -111,7 +134,7 @@ class LSTMBaseline(TemporalModel):
         )
         self.output_head = TemporalOutputHead(
             config.hidden_size,
-            n_candidate_slots,
+            output_spec,
             config.head_hidden_dim,
         )
 
@@ -126,7 +149,7 @@ class TransformerBaseline(TemporalModel):
     def __init__(
         self,
         n_features: int,
-        n_candidate_slots: int,
+        output_spec: PredictionOutputSpec,
         config: TransformerModelConfig,
     ) -> None:
         super().__init__()
@@ -135,7 +158,7 @@ class TransformerBaseline(TemporalModel):
         self.encoder = build_transformer_encoder(config)
         self.output_head = TemporalOutputHead(
             config.d_model,
-            n_candidate_slots,
+            output_spec,
             config.head_hidden_dim,
         )
 
@@ -152,7 +175,7 @@ class TransformerLSTMBaseline(TemporalModel):
     def __init__(
         self,
         n_features: int,
-        n_candidate_slots: int,
+        output_spec: PredictionOutputSpec,
         config: TransformerLstmModelConfig,
     ) -> None:
         super().__init__()
@@ -168,7 +191,7 @@ class TransformerLSTMBaseline(TemporalModel):
         )
         self.output_head = TemporalOutputHead(
             config.hidden_size,
-            n_candidate_slots,
+            output_spec,
             config.head_hidden_dim,
         )
 

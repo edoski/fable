@@ -6,32 +6,28 @@ import lightning as L
 import torch
 
 from ..config import TrainingConfig
+from ..prediction import CompiledPredictionContract, MetricSet
 from .models import ModelOutputs, TemporalModel
-from .objective import (
-    BatchMetrics,
-    EpochMetrics,
-    compute_temporal_batch_metrics,
-    summarize_epoch_metrics,
-)
-from .problem_batches import TemporalProblemBatch
 
 
 class TemporalLightningModule(L.LightningModule):
-    """Training harness for the temporal candidate-choice problem."""
+    """Training harness for temporal SPICE models."""
 
     def __init__(
         self,
         model: TemporalModel,
         *,
         training_config: TrainingConfig,
+        prediction_contract: CompiledPredictionContract,
     ) -> None:
         super().__init__()
         self.model = model
         self.training_config = training_config
-        self.train_history: list[EpochMetrics] = []
-        self.validation_history: list[EpochMetrics] = []
-        self._train_batches: list[BatchMetrics] = []
-        self._validation_batches: list[BatchMetrics] = []
+        self.prediction_contract = prediction_contract
+        self.train_history: list[MetricSet] = []
+        self.validation_history: list[MetricSet] = []
+        self._train_batches: list[object] = []
+        self._validation_batches: list[object] = []
 
     def forward(self, **model_kwargs: torch.Tensor) -> ModelOutputs:
         return self.model(**model_kwargs)
@@ -49,12 +45,33 @@ class TemporalLightningModule(L.LightningModule):
     def on_validation_epoch_start(self) -> None:
         self._validation_batches = []
 
-    def _shared_step(self, batch: TemporalProblemBatch, *, stage: str) -> torch.Tensor:
+    def _log_metric_set(self, stage: str, metrics: MetricSet) -> None:
+        for descriptor in self.prediction_contract.metric_descriptors:
+            if descriptor.id not in metrics.values:
+                continue
+            value = metrics.values[descriptor.id]
+            self.log(
+                f"{stage}/{descriptor.id}",
+                value,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=(stage != "train" and descriptor.role == "primary"),
+            )
+            self.log(
+                f"{stage}_{descriptor.id}",
+                value,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=False,
+            )
+
+    def _shared_step(self, batch, *, stage: str) -> torch.Tensor:
         outputs = self.model(**batch.model_kwargs())
-        objective_loss, metrics = compute_temporal_batch_metrics(
-            outputs.logits,
-            batch.objective_targets(),
+        objective_loss, batch_state = self.prediction_contract.compute_batch_loss_and_state(
+            outputs,
+            batch.targets,
         )
+        metric_set = self.prediction_contract.summarize_epoch_metrics([batch_state])
         self.log(
             f"{stage}/objective_loss",
             objective_loss,
@@ -63,73 +80,34 @@ class TemporalLightningModule(L.LightningModule):
             prog_bar=False,
         )
         self.log(
-            f"{stage}/exact_optimum_hit_rate",
-            metrics.exact_hit_count / metrics.count,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=(stage != "train"),
-        )
-        self.log(
             f"{stage}_objective_loss",
             objective_loss,
             on_step=False,
             on_epoch=True,
             prog_bar=False,
         )
-        self.log(
-            f"{stage}_exact_optimum_hit_rate",
-            metrics.exact_hit_count / metrics.count,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-        )
+        self._log_metric_set(stage, metric_set)
 
         if stage == "train":
-            self._train_batches.append(metrics)
+            self._train_batches.append(batch_state)
         else:
-            self._validation_batches.append(metrics)
+            self._validation_batches.append(batch_state)
         return objective_loss
 
-    def training_step(self, batch: TemporalProblemBatch, _batch_idx: int) -> torch.Tensor:
+    def training_step(self, batch, _batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, stage="train")
 
-    def validation_step(self, batch: TemporalProblemBatch, _batch_idx: int) -> torch.Tensor:
+    def validation_step(self, batch, _batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, stage="validation")
 
     def on_train_epoch_end(self) -> None:
         if self._train_batches:
-            metrics = summarize_epoch_metrics(self._train_batches)
+            metrics = self.prediction_contract.summarize_epoch_metrics(self._train_batches)
             self.train_history.append(metrics)
-            self.log(
-                "train/profit_over_baseline",
-                metrics.profit_over_baseline,
-                prog_bar=False,
-            )
-            self.log("train_profit_over_baseline", metrics.profit_over_baseline, prog_bar=False)
-            self.log("train/cost_over_optimum", metrics.cost_over_optimum, prog_bar=False)
-            self.log("train_cost_over_optimum", metrics.cost_over_optimum, prog_bar=False)
+            self._log_metric_set("train", metrics)
 
     def on_validation_epoch_end(self) -> None:
         if self._validation_batches:
-            metrics = summarize_epoch_metrics(self._validation_batches)
+            metrics = self.prediction_contract.summarize_epoch_metrics(self._validation_batches)
             self.validation_history.append(metrics)
-            self.log(
-                "validation/profit_over_baseline",
-                metrics.profit_over_baseline,
-                prog_bar=True,
-            )
-            self.log(
-                "validation_profit_over_baseline",
-                metrics.profit_over_baseline,
-                prog_bar=False,
-            )
-            self.log(
-                "validation/cost_over_optimum",
-                metrics.cost_over_optimum,
-                prog_bar=False,
-            )
-            self.log(
-                "validation_cost_over_optimum",
-                metrics.cost_over_optimum,
-                prog_bar=False,
-            )
+            self._log_metric_set("validation", metrics)

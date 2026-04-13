@@ -32,6 +32,7 @@ def test_training_summary_metrics_match_replayed_saved_artifact(
     validation_metrics = evaluate_model(
         loaded_artifact.model,
         model_id=config.model.id,
+        prediction_contract=spec.prediction_contract,
         store=prepared.store,
         sample_indices=prepared.split_indices.validation,
         training_config=config.training,
@@ -40,6 +41,7 @@ def test_training_summary_metrics_match_replayed_saved_artifact(
     test_metrics = evaluate_model(
         loaded_artifact.model,
         model_id=config.model.id,
+        prediction_contract=spec.prediction_contract,
         store=prepared.store,
         sample_indices=prepared.split_indices.test,
         training_config=config.training,
@@ -47,29 +49,33 @@ def test_training_summary_metrics_match_replayed_saved_artifact(
     )
 
     assert summary.objective_id == "profit_over_baseline"
-    assert summary.representation_id == "sequence_event"
+    assert summary.representation_id == "sequence_inputs"
     assert summary.batch_planner_id == "signature_bucketed"
     assert summary.family_execution_id == "dense_recurrent_last_valid"
-    assert summary.best_validation_metrics.objective_loss == pytest.approx(
-        validation_metrics.objective_loss
+    assert summary.best_validation_metrics.require("objective_loss") == pytest.approx(
+        validation_metrics.require("objective_loss")
     )
-    assert summary.best_validation_metrics.exact_optimum_hit_rate == pytest.approx(
-        validation_metrics.exact_optimum_hit_rate
+    assert summary.best_validation_metrics.require("exact_optimum_hit_rate") == pytest.approx(
+        validation_metrics.require("exact_optimum_hit_rate")
     )
-    assert summary.best_validation_metrics.profit_over_baseline == pytest.approx(
-        validation_metrics.profit_over_baseline
+    assert summary.best_validation_metrics.require("profit_over_baseline") == pytest.approx(
+        validation_metrics.require("profit_over_baseline")
     )
-    assert summary.test_metrics.objective_loss == pytest.approx(test_metrics.objective_loss)
-    assert summary.test_metrics.exact_optimum_hit_rate == pytest.approx(
-        test_metrics.exact_optimum_hit_rate
+    assert summary.test_metrics.require("objective_loss") == pytest.approx(
+        test_metrics.require("objective_loss")
     )
-    assert summary.test_metrics.profit_over_baseline == pytest.approx(
-        test_metrics.profit_over_baseline
+    assert summary.test_metrics.require("exact_optimum_hit_rate") == pytest.approx(
+        test_metrics.require("exact_optimum_hit_rate")
+    )
+    assert summary.test_metrics.require("profit_over_baseline") == pytest.approx(
+        test_metrics.require("profit_over_baseline")
     )
 
     epochs = list_training_epochs(config.paths.artifact_state_db)
     assert epochs
     assert epochs[summary.best_epoch - 1].epoch == summary.best_epoch
-    assert epochs[summary.best_epoch - 1].validation_metrics.profit_over_baseline == pytest.approx(
-        summary.best_validation_metrics.profit_over_baseline
+    assert epochs[summary.best_epoch - 1].validation_metrics.require(
+        "profit_over_baseline"
+    ) == pytest.approx(
+        summary.best_validation_metrics.require("profit_over_baseline")
     )

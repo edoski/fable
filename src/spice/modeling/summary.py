@@ -2,7 +2,19 @@
 
 from __future__ import annotations
 
+from ..prediction import MetricDescriptor
 from .results import SimulationSummaryRecord, TrainingSummary
+
+
+def _metric_lines(
+    descriptors: list[MetricDescriptor],
+    metrics,
+) -> list[tuple[str, str]]:
+    return [
+        (descriptor.label, f"{metrics.require(descriptor.id):.4f}")
+        for descriptor in descriptors
+        if descriptor.id in metrics.values
+    ]
 
 
 def training_summary_sections(
@@ -17,6 +29,7 @@ def training_summary_sections(
                 ("chain", summary.chain),
                 ("model", summary.model_id),
                 ("problem", summary.problem_id),
+                ("prediction", summary.prediction_id),
             ],
         ),
         (
@@ -53,18 +66,20 @@ def training_summary_sections(
                         f"test={summary.split_sizes.test_samples:,}"
                     ),
                 ),
-                (
-                    "validation profit",
-                    f"{summary.best_validation_metrics.profit_over_baseline:.4f}",
-                ),
-                (
-                    "validation cost",
-                    f"{summary.best_validation_metrics.cost_over_optimum:.4f}",
-                ),
-                (
-                    "test profit over baseline",
-                    f"{summary.test_metrics.profit_over_baseline:.4f}",
-                ),
+                *[
+                    (f"validation {label}", value)
+                    for label, value in _metric_lines(
+                        summary.metric_descriptors,
+                        summary.best_validation_metrics,
+                    )
+                ],
+                *[
+                    (f"test {label}", value)
+                    for label, value in _metric_lines(
+                        summary.metric_descriptors,
+                        summary.test_metrics,
+                    )
+                ],
             ],
         ),
     ]
@@ -82,6 +97,7 @@ def simulation_summary_sections(
                 ("chain", summary.chain),
                 ("model", summary.model_id),
                 ("problem", summary.problem_id),
+                ("prediction", summary.prediction_id),
             ],
         ),
         (
@@ -104,9 +120,6 @@ def simulation_summary_sections(
         ),
         (
             "results",
-            [
-                ("profit over baseline", f"{summary.profit_over_baseline:.4f}"),
-                ("cost over optimum", f"{summary.cost_over_optimum:.4f}"),
-            ],
+            _metric_lines(summary.metric_descriptors, summary.metrics),
         ),
     ]

@@ -10,6 +10,7 @@ from ..features import FeaturePrerequisites
 from ..modeling.artifacts import TrainingArtifactManifest
 from ..modeling.results import SimulationSummaryRecord, TrainingEpochRecord, TrainingSummary
 from ..modeling.simulation import SimulationRunSummary
+from ..prediction import MetricDescriptor
 from . import (
     ARTIFACT_ROOT_KIND,
     DATASET_ROOT_KIND,
@@ -88,6 +89,7 @@ def study_list_sections(
                         f"chain={record.chain_name} "
                         f"dataset={record.dataset_name} "
                         f"feature_set={record.feature_set_id} "
+                        f"prediction={record.prediction_id} "
                         f"model={record.model_id} "
                         f"problem={record.problem_id} "
                         f"id={record.study_id}"
@@ -112,6 +114,7 @@ def artifact_list_sections(
                         f"chain={record.chain_name} "
                         f"dataset={record.dataset_name} "
                         f"feature_set={record.feature_set_id} "
+                        f"prediction={record.prediction_id} "
                         f"model={record.model_id} "
                         f"problem={record.problem_id} "
                         f"variant={record.variant}"
@@ -219,6 +222,7 @@ def _artifact_sections(
             [
                 ("artifact id", manifest.artifact_id),
                 ("objective", manifest.objective_id),
+                ("prediction", manifest.prediction_id),
                 ("dataset", manifest.dataset_name),
                 ("dataset id", manifest.dataset_id),
                 ("chain", manifest.chain.name),
@@ -261,16 +265,18 @@ def _artifact_sections(
                         ),
                     ),
                     (
-                        "validation profit",
-                        _metric_string(training.best_validation_metrics.profit_over_baseline),
+                        "validation metrics",
+                        _metric_bundle_string(
+                            training.metric_descriptors,
+                            training.best_validation_metrics.values,
+                        ),
                     ),
                     (
-                        "validation cost",
-                        _metric_string(training.best_validation_metrics.cost_over_optimum),
-                    ),
-                    (
-                        "test profit over baseline",
-                        _metric_string(training.test_metrics.profit_over_baseline),
+                        "test metrics",
+                        _metric_bundle_string(
+                            training.metric_descriptors,
+                            training.test_metrics.values,
+                        ),
                     ),
                 ],
             )
@@ -285,8 +291,13 @@ def _artifact_sections(
                     ("window", f"{simulation.simulation_window_seconds}s"),
                     ("repetitions", str(simulation.repetitions)),
                     ("events", str(simulation.total_events)),
-                    ("profit", _metric_string(simulation.profit_over_baseline)),
-                    ("cost", _metric_string(simulation.cost_over_optimum)),
+                    (
+                        "metrics",
+                        _metric_bundle_string(
+                            simulation.metric_descriptors,
+                            simulation.metrics.values,
+                        ),
+                    ),
                 ],
             )
         )
@@ -326,6 +337,7 @@ def _study_sections(
                 ("name", manifest.study_name),
                 ("storage id", manifest.study_id),
                 ("objective", manifest.objective_id),
+                ("prediction", manifest.prediction_id),
                 ("chain", manifest.chain_name),
                 ("dataset", manifest.dataset_name),
                 ("dataset id", manifest.dataset_id),
@@ -362,6 +374,10 @@ def _study_sections(
                 (
                     "feature set config",
                     _mapping_fields(manifest.feature_set.model_dump(mode="json")),
+                ),
+                (
+                    "prediction config",
+                    _mapping_fields(manifest.prediction.model_dump(mode="json")),
                 ),
                 (
                     "model config",
@@ -430,16 +446,15 @@ def _metric_string(value: float) -> str:
 
 def _epoch_string(record: TrainingEpochRecord) -> str:
     return (
-        f"train_profit={record.train_metrics.profit_over_baseline:.4f} "
-        f"val_profit={record.validation_metrics.profit_over_baseline:.4f}"
+        f"train={_metric_bundle_string([], record.train_metrics.values)} "
+        f"val={_metric_bundle_string([], record.validation_metrics.values)}"
     )
 
 
 def _simulation_run_string(run: SimulationRunSummary) -> str:
     return (
         f"events={run.n_events} "
-        f"profit={run.profit_over_baseline:.4f} "
-        f"cost={run.cost_over_optimum:.4f}"
+        f"metrics={_metric_bundle_string([], run.metrics)}"
     )
 
 
@@ -456,6 +471,21 @@ def _mapping_fields(payload: dict[str, object]) -> list[tuple[str, str]]:
         (str(key).replace("_", " "), _value_string(value))
         for key, value in payload.items()
     ]
+
+
+def _metric_bundle_string(
+    descriptors: list[MetricDescriptor],
+    metrics: dict[str, float],
+) -> str:
+    if descriptors:
+        ordered = [
+            f"{descriptor.id}={metrics[descriptor.id]:.4f}"
+            for descriptor in descriptors
+            if descriptor.id in metrics
+        ]
+        if ordered:
+            return " ".join(ordered)
+    return " ".join(f"{metric_id}={value:.4f}" for metric_id, value in sorted(metrics.items()))
 
 
 def _value_string(value: object) -> str:

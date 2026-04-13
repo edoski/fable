@@ -9,6 +9,7 @@ import torch
 from pydantic import Field, field_validator, model_validator
 
 from ...config.models import TrainingPrecision
+from ...prediction import PredictionOutputSpec
 from ..models import LSTMBaseline, TemporalModel
 from .base import ModelConfig, ModelTuningSpaceConfig, TunedModelParams
 from .registry import ModelSpec, register_model_spec
@@ -57,10 +58,10 @@ class LstmTunedModelParams(TunedModelParams[Literal["lstm"]]):
 
 def _build_model(
     n_features: int,
-    n_candidate_slots: int,
+    output_spec: PredictionOutputSpec,
     config: LstmModelConfig,
 ) -> TemporalModel:
-    return LSTMBaseline(n_features, n_candidate_slots, config)
+    return LSTMBaseline(n_features, output_spec, config)
 
 
 def _default_precision(device: torch.device) -> TrainingPrecision:
@@ -115,7 +116,7 @@ def _apply_model_params(
 register_model_spec(
     ModelSpec(
         id="lstm",
-        input_representation="sequence_event",
+        input_representation="sequence_inputs",
         family_execution_id="dense_recurrent_last_valid",
         model_config_type=LstmModelConfig,
         tuning_space_type=LstmTuningSpaceModelConfig,

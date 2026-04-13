@@ -4,8 +4,10 @@ from types import SimpleNamespace
 
 import torch
 
+from spice.config import coerce_prediction_config
 from spice.core.reporting import NullReporter
 from spice.modeling.training import ReporterProgressCallback
+from spice.prediction import compile_prediction_contract
 
 
 class CaptureReporter(NullReporter):
@@ -36,7 +38,20 @@ class CaptureReporter(NullReporter):
 
 def test_reporter_progress_callback_smooths_training_loss() -> None:
     reporter = CaptureReporter()
-    callback = ReporterProgressCallback(reporter, max_epochs=5)
+    prediction = coerce_prediction_config(
+        {
+            "id": "candidate_slate_current",
+            "family": {"id": "candidate_slate_current"},
+        }
+    )
+    callback = ReporterProgressCallback(
+        reporter,
+        max_epochs=5,
+        prediction_contract=compile_prediction_contract(
+            prediction_id=prediction.id,
+            family_config=prediction.family,
+        ),
+    )
     trainer = SimpleNamespace(num_training_batches=10, current_epoch=0)
 
     callback.on_train_start(trainer, SimpleNamespace())

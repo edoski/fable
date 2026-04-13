@@ -14,7 +14,6 @@ from ..core.reporting import Reporter
 from ..core.runtime import ConsoleRuntime
 from ..modeling.execution import run_persisted_training
 from ..modeling.families.registry import sample_tuned_parameters
-from ..modeling.objective import active_objective, objective_value
 from ..modeling.pipeline import TrainingStageReporters, build_training_spec
 from ..modeling.tuning import apply_tuned_parameters
 from ..storage.catalog import upsert_study_record
@@ -49,6 +48,7 @@ def _workflow_facts(config: TuneConfig) -> list[tuple[str, str]]:
         ("chain", config.chain.name),
         ("problem", config.problem.id),
         ("feature set", config.feature_set.id),
+        ("prediction", config.prediction.id),
         ("model", config.model.id),
         ("study", config.study.name),
     ]
@@ -99,7 +99,7 @@ def _objective(
                 reporter=session.reporter,
                 persist_artifact=False,
             )
-    metric_value = objective_value(persisted.best_validation_metrics, active_objective())
+    metric_value = spec.prediction_contract.objective_value(persisted.best_validation_metrics)
     record_trial_best_epoch(trial, persisted.training_run.training_result.best_epoch)
     if config.tuning.enable_pruning:
         trial.report(metric_value, step=persisted.training_run.training_result.best_epoch)
@@ -195,6 +195,7 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
             dataset_name=config.dataset.name,
             chain_name=config.chain.name,
             feature_set_id=config.feature_set.id,
+            prediction_id=config.prediction.id,
             model_id=config.model.id,
             problem_id=config.problem.id,
             root_path=study_root,

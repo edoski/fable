@@ -11,7 +11,11 @@ from spice.modeling.models import (
     packed_lstm_last_state_reference,
     take_last_valid,
 )
-from spice.modeling.representations import build_sequence_event_batch
+from spice.modeling.representations import build_sequence_input_batch
+from spice.prediction.families.candidate_slate_current.outputs import (
+    CANDIDATE_LOGITS_HEAD_ID,
+    build_output_spec,
+)
 from spice.temporal.problem_store import CompiledProblemStore
 
 
@@ -46,10 +50,11 @@ def _test_store() -> CompiledProblemStore:
 
 def test_lstm_baseline_matches_packed_reference() -> None:
     torch.manual_seed(7)
-    batch = build_sequence_event_batch(_test_store(), sample_indices=np.array([0, 1, 2, 3]))
+    store = _test_store()
+    batch = build_sequence_input_batch(store, sample_indices=np.array([0, 1, 2, 3]))
     model = LSTMBaseline(
         n_features=batch.inputs.shape[-1],
-        n_candidate_slots=batch.candidate_log_fees.shape[-1],
+        output_spec=build_output_spec(store.max_candidate_slots),
         config=LstmModelConfig(
             input_projection_dim=8,
             hidden_size=8,
@@ -72,8 +77,8 @@ def test_lstm_baseline_matches_packed_reference() -> None:
 
         assert torch.allclose(dense_last, reference_last, atol=1e-6, rtol=1e-6)
         assert torch.allclose(
-            model.output_head(dense_last).logits,
-            model(batch.inputs, batch.input_mask).logits,
+            model.output_head(dense_last).head(CANDIDATE_LOGITS_HEAD_ID),
+            model(batch.inputs, batch.input_mask).head(CANDIDATE_LOGITS_HEAD_ID),
             atol=1e-6,
             rtol=1e-6,
         )
@@ -81,10 +86,11 @@ def test_lstm_baseline_matches_packed_reference() -> None:
 
 def test_transformer_lstm_baseline_matches_packed_reference() -> None:
     torch.manual_seed(11)
-    batch = build_sequence_event_batch(_test_store(), sample_indices=np.array([0, 1, 2, 3]))
+    store = _test_store()
+    batch = build_sequence_input_batch(store, sample_indices=np.array([0, 1, 2, 3]))
     model = TransformerLSTMBaseline(
         n_features=batch.inputs.shape[-1],
-        n_candidate_slots=batch.candidate_log_fees.shape[-1],
+        output_spec=build_output_spec(store.max_candidate_slots),
         config=TransformerLstmModelConfig(
             hidden_size=8,
             num_layers=2,
@@ -114,8 +120,8 @@ def test_transformer_lstm_baseline_matches_packed_reference() -> None:
 
         assert torch.allclose(dense_last, reference_last, atol=1e-6, rtol=1e-6)
         assert torch.allclose(
-            model.output_head(dense_last).logits,
-            model(batch.inputs, batch.input_mask).logits,
+            model.output_head(dense_last).head(CANDIDATE_LOGITS_HEAD_ID),
+            model(batch.inputs, batch.input_mask).head(CANDIDATE_LOGITS_HEAD_ID),
             atol=1e-6,
             rtol=1e-6,
         )

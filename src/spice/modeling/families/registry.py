@@ -16,6 +16,7 @@ from ...config.models import (
     TuningSpaceConfig,
     TuningTrainingSearchSpace,
 )
+from ...prediction import PredictionOutputSpec
 from ..models import TemporalModel
 from .base import ModelConfig, ModelTuningSpaceConfig, TunedModelParams
 
@@ -32,7 +33,7 @@ class ModelSpec(Generic[ModelConfigT, ModelTuningSpaceT, ModelTunedParamsT]):
     model_config_type: type[ModelConfigT]
     tuning_space_type: type[ModelTuningSpaceT]
     tuned_params_type: type[ModelTunedParamsT]
-    build_model: Callable[[int, int, ModelConfigT], TemporalModel]
+    build_model: Callable[[int, PredictionOutputSpec, ModelConfigT], TemporalModel]
     default_precision: Callable[[torch.device], TrainingPrecision]
     auto_compile: Callable[[torch.device, str], bool]
     validate_tuning_space: Callable[[ModelConfigT, ModelTuningSpaceT], None]
@@ -135,11 +136,11 @@ def coerce_tuned_parameter_set(
 
 def build_model(
     n_features: int,
-    n_candidate_slots: int,
+    output_spec: PredictionOutputSpec,
     config: ModelConfig,
 ) -> TemporalModel:
     spec = model_spec(config.id)
-    return spec.build_model(n_features, n_candidate_slots, cast(Any, config))
+    return spec.build_model(n_features, output_spec, cast(Any, config))
 
 
 def resolve_input_representation(model_id: str) -> str:

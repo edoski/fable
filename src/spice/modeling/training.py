@@ -14,11 +14,12 @@ from numpy.typing import NDArray
 
 from ..config import ModelConfig, TrainingConfig
 from ..core.reporting import NullReporter, Reporter, format_compact_number
+from ..prediction import CompiledPredictionContract, MetricSet
 from ..temporal.problem_store import CompiledProblemStore
 from ._runtime import (
-    build_model_loader,
+    build_prediction_loader,
     build_representation_runtime_context,
-    prepare_model_representation,
+    prepare_prediction_representation,
     resolve_compile_enabled,
     resolve_device,
     resolve_family_execution,
@@ -28,15 +29,6 @@ from ._runtime import (
 from .datamodule import TemporalDataModule
 from .lightning_module import TemporalLightningModule
 from .models import TemporalModel
-from .objective import (
-    EpochMetrics,
-    best_epoch,
-    compute_temporal_batch_metrics,
-    primary_direction,
-    primary_validation_metric_name,
-    summarize_epoch_metrics,
-)
-from .problem_batches import TemporalProblemBatch
 
 IntVector = NDArray[np.int64]
 
@@ -44,8 +36,8 @@ IntVector = NDArray[np.int64]
 @dataclass(slots=True)
 class TrainingResult:
     best_epoch: int
-    train_history: list[EpochMetrics]
-    validation_history: list[EpochMetrics]
+    train_history: list[MetricSet]
+    validation_history: list[MetricSet]
     best_checkpoint_path: Path | None
     resolved_precision: str
     compiled: bool
@@ -61,10 +53,17 @@ def _unwrap_compiled_model(model: TemporalModel) -> TemporalModel:
 
 
 class ReporterProgressCallback(L.Callback):
-    def __init__(self, reporter: Reporter, *, max_epochs: int) -> None:
+    def __init__(
+        self,
+        reporter: Reporter,
+        *,
+        max_epochs: int,
+        prediction_contract: CompiledPredictionContract,
+    ) -> None:
         super().__init__()
         self._reporter = reporter
         self._max_epochs = max_epochs
+        self._prediction_contract = prediction_contract
         self._task_id: int | None = None
         self._total_batches = 0
         self._train_batches_per_epoch = 0
@@ -93,7 +92,7 @@ class ReporterProgressCallback(L.Callback):
         batch,
         batch_idx: int,
     ) -> None:
-        del batch
+        del batch, pl_module
         if self._task_id is None:
             return
         loss_value = _loss_value(outputs)
@@ -120,13 +119,14 @@ class ReporterProgressCallback(L.Callback):
                 self._total_batches,
                 (trainer.current_epoch + 1) * self._train_batches_per_epoch,
             )
+        primary_value = latest.require(self._prediction_contract.primary_metric_id)
         self._reporter.update_task(
             self._task_id,
             completed=completed,
             message=(
                 f"epoch={trainer.current_epoch + 1}/{self._max_epochs} "
-                f"validation profit={format_compact_number(latest.profit_over_baseline)} "
-                f"cost={format_compact_number(latest.cost_over_optimum)}"
+                f"validation {self._prediction_contract.primary_metric_id}="
+                f"{format_compact_number(primary_value)}"
             ),
         )
 
@@ -137,7 +137,7 @@ class ReporterProgressCallback(L.Callback):
         validation_history = getattr(pl_module, "validation_history", [])
         self._reporter.finish_task(
             self._task_id,
-            message=f"best epoch {_best_epoch(validation_history)}",
+            message=f"best epoch {_best_epoch(validation_history, self._prediction_contract)}",
         )
         self._task_id = None
 
@@ -185,14 +185,18 @@ def _trainer_device_args(device_name: str) -> tuple[str, int | str | list[int]]:
     return "cpu", 1
 
 
-def _best_epoch(validation_history: list[EpochMetrics]) -> int:
-    return best_epoch(validation_history)
+def _best_epoch(
+    validation_history: list[MetricSet],
+    prediction_contract: CompiledPredictionContract,
+) -> int:
+    return prediction_contract.best_epoch(validation_history)
 
 
 def train_model(
     model: TemporalModel,
     *,
     model_config: ModelConfig,
+    prediction_contract: CompiledPredictionContract,
     store: CompiledProblemStore,
     train_sample_indices: IntVector,
     validation_sample_indices: IntVector,
@@ -223,16 +227,18 @@ def train_model(
         device=device,
         batch_size=training_config.batch_size,
     )
-    train_representation = prepare_model_representation(
+    train_representation = prepare_prediction_representation(
         store,
         train_sample_indices,
         model_id=model_config.id,
+        prediction_contract=prediction_contract,
         runtime_context=runtime_context,
     )
-    validation_representation = prepare_model_representation(
+    validation_representation = prepare_prediction_representation(
         store,
         validation_sample_indices,
         model_id=model_config.id,
+        prediction_contract=prediction_contract,
         runtime_context=runtime_context,
     )
 
@@ -245,9 +251,10 @@ def train_model(
     module = TemporalLightningModule(
         fit_model,
         training_config=training_config,
+        prediction_contract=prediction_contract,
     )
-    monitor = primary_validation_metric_name()
-    mode = "max" if primary_direction() == "maximize" else "min"
+    monitor = prediction_contract.checkpoint_monitor
+    mode = "max" if prediction_contract.direction == "maximize" else "min"
     checkpoint_callback = ModelCheckpoint(
         dirpath=artifact_dir / "checkpoints",
         filename=f"epoch={{epoch:02d}}-{monitor}={{{monitor}:.6f}}",
@@ -266,7 +273,11 @@ def train_model(
     callbacks: list[L.Callback] = [
         checkpoint_callback,
         early_stopping,
-        ReporterProgressCallback(reporter, max_epochs=training_config.max_epochs),
+        ReporterProgressCallback(
+            reporter,
+            max_epochs=training_config.max_epochs,
+            prediction_contract=prediction_contract,
+        ),
     ]
     trainer = L.Trainer(
         accelerator=accelerator,
@@ -292,7 +303,7 @@ def train_model(
     trained_model = _unwrap_compiled_model(module.model)
     if trained_model is not model:
         model.load_state_dict(trained_model.state_dict())
-    best_epoch = _best_epoch(module.validation_history)
+    best_epoch = _best_epoch(module.validation_history, prediction_contract)
     return TrainingResult(
         best_epoch=best_epoch,
         train_history=module.train_history,
@@ -316,11 +327,12 @@ def evaluate_model(
     model: torch.nn.Module,
     *,
     model_id: str,
+    prediction_contract: CompiledPredictionContract,
     store: CompiledProblemStore,
     sample_indices: IntVector,
     training_config: TrainingConfig,
     reporter: Reporter | None = None,
-) -> EpochMetrics:
+) -> MetricSet:
     reporter = reporter or NullReporter()
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
@@ -331,25 +343,25 @@ def evaluate_model(
         device=device,
         batch_size=training_config.batch_size,
     )
-    loader = build_model_loader(
+    loader = build_prediction_loader(
         store,
         sample_indices,
         model_id=model_id,
+        prediction_contract=prediction_contract,
         runtime_context=runtime_context,
         seed=training_config.seed,
     )
     task_id = reporter.start_task("evaluate model", total=len(loader), unit="batches")
-    metrics = []
+    batch_states: list[object] = []
     with torch.no_grad():
         for batch in loader:
-            batch = cast(TemporalProblemBatch, batch)
             device_batch = batch.to_device(device)
             outputs = model(**device_batch.model_kwargs())
-            _, batch_metrics = compute_temporal_batch_metrics(
-                outputs.logits,
-                device_batch.objective_targets(),
+            _, batch_state = prediction_contract.compute_batch_loss_and_state(
+                outputs,
+                device_batch.targets,
             )
-            metrics.append(batch_metrics)
+            batch_states.append(batch_state)
             reporter.update_task(task_id, advance=1)
     reporter.finish_task(task_id)
-    return summarize_epoch_metrics(metrics)
+    return prediction_contract.summarize_epoch_metrics(batch_states)

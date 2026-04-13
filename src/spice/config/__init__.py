@@ -22,6 +22,7 @@ from .models import (
     FeatureSetConfig,
     ModelConfig,
     ModelTuningSpaceConfig,
+    PredictionConfig,
     PresetSpec,
     ProblemSpec,
     ProviderSpec,
@@ -43,6 +44,7 @@ from .models import (
     WorkflowTask,
     apply_provider_acquisition_overrides,
     coerce_feature_set_config,
+    coerce_prediction_config,
     coerce_problem_spec,
 )
 
@@ -59,6 +61,7 @@ __all__ = [
     "ModelConfig",
     "ModelTuningSpaceConfig",
     "PathLayout",
+    "PredictionConfig",
     "PresetSpec",
     "ProviderSpec",
     "SimulateConfig",
@@ -81,6 +84,7 @@ __all__ = [
     "apply_provider_acquisition_overrides",
     "build_path_layout",
     "coerce_feature_set_config",
+    "coerce_prediction_config",
     "coerce_problem_spec",
     "load_acquire_config",
     "load_named_group",

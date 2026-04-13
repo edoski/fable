@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
 
-from ..config import SplitConfig
+if TYPE_CHECKING:
+    from ..config import SplitConfig
 
 FloatMatrix = NDArray[np.float32]
 FloatVector = NDArray[np.float32]

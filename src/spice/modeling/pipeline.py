@@ -12,6 +12,7 @@ from ..config import (
     ChainSpec,
     FeatureSetConfig,
     ModelConfig,
+    PredictionConfig,
     ProblemSpec,
     SplitConfig,
     StudyConfig,
@@ -27,6 +28,7 @@ from ..features import (
     build_feature_table,
     make_feature_selection,
 )
+from ..prediction import CompiledPredictionContract, compile_prediction_contract
 from ..temporal.compilers import CompilerRuntimeMetadata
 from ..temporal.contracts import CompiledProblemContract, resolve_problem_contract
 from ..temporal.problem_store import (
@@ -52,6 +54,8 @@ class TrainingSpec:
     problem: ProblemSpec
     contract: CompiledProblemContract
     feature_set: FeatureSetConfig
+    prediction: PredictionConfig
+    prediction_contract: CompiledPredictionContract
     model: ModelConfig
     split: SplitConfig
     training: TrainingConfig
@@ -66,6 +70,15 @@ def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
         problem=config.problem,
         feature_set=config.feature_set,
     )
+    prediction_contract = compile_prediction_contract(
+        prediction_id=config.prediction.id,
+        family_config=config.prediction.family,
+    )
+    if config.workflow.value not in prediction_contract.supported_workflows:
+        raise ValueError(
+            f"prediction family {prediction_contract.prediction_family_id} does not support "
+            f"{config.workflow.value}"
+        )
     return TrainingSpec(
         chain=config.chain,
         dataset_id=config.paths.corpus_id,
@@ -78,6 +91,8 @@ def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
         problem=config.problem,
         contract=contract,
         feature_set=config.feature_set,
+        prediction=config.prediction,
+        prediction_contract=prediction_contract,
         model=config.model,
         variant=variant,
         study=config.study if variant is ArtifactVariant.TUNED else None,
@@ -290,11 +305,16 @@ def run_training(
         message=f"rows={prepared.n_rows_used} samples={prepared.sample_count}",
     )
     build_task = active_reporters.build.start_task("build model")
-    model = build_model(prepared.n_features, prepared.max_candidate_slots, spec.model)
+    model = build_model(
+        prepared.n_features,
+        spec.prediction_contract.build_output_spec(prepared.max_candidate_slots),
+        spec.model,
+    )
     active_reporters.build.finish_task(build_task, message=spec.model.id)
     training_result = train_model(
         model,
         model_config=spec.model,
+        prediction_contract=spec.prediction_contract,
         store=prepared.store,
         train_sample_indices=prepared.split_indices.train,
         validation_sample_indices=prepared.split_indices.validation,

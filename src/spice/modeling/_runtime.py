@@ -11,6 +11,7 @@ import torch
 from numpy.typing import NDArray
 
 from ..config import CompileMode, ModelConfig, TrainingConfig, TrainingPrecision
+from ..prediction import CompiledPredictionContract, bind_prediction_representation
 from ..temporal.problem_store import CompiledProblemStore
 from .families.registry import (
     resolve_auto_compile,
@@ -130,6 +131,24 @@ def prepare_model_representation(
     )
 
 
+def prepare_prediction_representation(
+    store: CompiledProblemStore,
+    sample_indices: IntVector,
+    *,
+    model_id: str,
+    prediction_contract: CompiledPredictionContract,
+    runtime_context: RepresentationRuntimeContext,
+):
+    prepared = prepare_model_representation(
+        store,
+        sample_indices,
+        model_id=model_id,
+        runtime_context=runtime_context,
+    )
+    targets = prediction_contract.prepare_targets(store, sample_indices)
+    return bind_prediction_representation(prepared, targets=targets)
+
+
 def build_model_loader(
     store: CompiledProblemStore,
     sample_indices: IntVector,
@@ -144,6 +163,30 @@ def build_model_loader(
         store,
         sample_indices,
         runtime_context=runtime_context,
+        seed=seed,
+        shuffle=shuffle,
+    )
+
+
+def build_prediction_loader(
+    store: CompiledProblemStore,
+    sample_indices: IntVector,
+    *,
+    model_id: str,
+    prediction_contract: CompiledPredictionContract,
+    runtime_context: RepresentationRuntimeContext,
+    seed: int,
+    shuffle: bool = False,
+) -> PreparedRepresentationLoader:
+    prepared = prepare_prediction_representation(
+        store,
+        sample_indices,
+        model_id=model_id,
+        prediction_contract=prediction_contract,
+        runtime_context=runtime_context,
+    )
+    return PreparedRepresentationLoader(
+        prepared,
         seed=seed,
         shuffle=shuffle,
     )

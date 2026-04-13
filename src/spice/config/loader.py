@@ -17,6 +17,7 @@ from .models import (
     ExecutionSpec,
     FeatureSetConfig,
     ModelConfig,
+    PredictionConfig,
     PresetSpec,
     ProblemSpec,
     ProviderSpec,
@@ -32,6 +33,7 @@ from .models import (
     TuningSpaceConfig,
     apply_provider_acquisition_overrides,
     coerce_feature_set_config,
+    coerce_prediction_config,
     coerce_problem_spec,
 )
 from .registry import list_group_names, load_named_group, load_yaml_mapping
@@ -45,6 +47,7 @@ _KNOWN_TOP_LEVEL_CONFIG_KEYS = {
     "dataset",
     "execution",
     "feature_set",
+    "prediction",
     "model",
     "problem",
     "provider",
@@ -63,6 +66,7 @@ _MERGEABLE_NAMED_GROUPS = {
     "chain": "chain",
     "provider": "provider",
     "feature_set": "feature_set",
+    "prediction": "prediction",
     "training": "training",
     "split": "split",
     "simulation": "simulation",
@@ -166,6 +170,14 @@ def resolve_feature_set(raw: object) -> FeatureSetConfig:
     if isinstance(raw, Mapping):
         return coerce_feature_set_config(raw)
     raise ValueError("feature_set must be provided as a spec name or mapping")
+
+
+def resolve_prediction(raw: object) -> PredictionConfig:
+    if isinstance(raw, str):
+        return coerce_prediction_config(load_named_group(raw, "prediction"))
+    if isinstance(raw, Mapping):
+        return coerce_prediction_config(raw)
+    raise ValueError("prediction must be provided as a spec name or mapping")
 
 
 def resolve_storage(raw: object | None) -> StorageSpec:
@@ -285,6 +297,7 @@ def _resolve_model_workflow(
     ProblemSpec,
     ModelConfig,
     FeatureSetConfig,
+    PredictionConfig,
     StudyConfig,
     ArtifactConfig,
 ]:
@@ -298,6 +311,7 @@ def _resolve_model_workflow(
     else:
         raise ValueError("model must be provided as a spec name or mapping")
     feature_set = resolve_feature_set(payload["feature_set"])
+    prediction = resolve_prediction(payload["prediction"])
     study_raw = payload.get("study")
     if isinstance(study_raw, Mapping):
         study = StudyConfig.model_validate(study_raw)
@@ -309,7 +323,7 @@ def _resolve_model_workflow(
         if isinstance(artifact_raw, Mapping)
         else ArtifactConfig()
     )
-    return dataset, chain, storage, problem, model, feature_set, study, artifact
+    return dataset, chain, storage, problem, model, feature_set, prediction, study, artifact
 
 
 def load_train_config(
@@ -321,6 +335,7 @@ def load_train_config(
     chain: str | None = None,
     model: str | None = None,
     feature_set: str | None = None,
+    prediction: str | None = None,
     training: str | None = None,
     split: str | None = None,
     storage_root: Path | None = None,
@@ -337,6 +352,7 @@ def load_train_config(
                 "chain": chain,
                 "model": model,
                 "feature_set": feature_set,
+                "prediction": prediction,
                 "training": training,
                 "split": split,
                 "study": study,
@@ -356,6 +372,7 @@ def load_train_config(
         problem_spec,
         model_spec,
         feature_set_spec,
+        prediction_spec,
         study_spec,
         artifact_spec,
     ) = _resolve_model_workflow(payload)
@@ -376,6 +393,7 @@ def load_train_config(
         problem=problem_spec,
         model=model_spec,
         feature_set=feature_set_spec,
+        prediction=prediction_spec,
         study=study_spec,
         artifact=artifact_spec,
         training=training_spec,
@@ -392,6 +410,7 @@ def load_tune_config(
     chain: str | None = None,
     model: str | None = None,
     feature_set: str | None = None,
+    prediction: str | None = None,
     training: str | None = None,
     split: str | None = None,
     tuning: str | None = None,
@@ -410,6 +429,7 @@ def load_tune_config(
                 "chain": chain,
                 "model": model,
                 "feature_set": feature_set,
+                "prediction": prediction,
                 "training": training,
                 "split": split,
                 "tuning": {"trial_count": trial_count} if trial_count is not None else tuning,
@@ -430,6 +450,7 @@ def load_tune_config(
         problem_spec,
         model_spec,
         feature_set_spec,
+        prediction_spec,
         study_spec,
         artifact_spec,
     ) = _resolve_model_workflow(payload)
@@ -473,6 +494,7 @@ def load_tune_config(
         problem=problem_spec,
         model=model_spec,
         feature_set=feature_set_spec,
+        prediction=prediction_spec,
         study=study_spec,
         artifact=artifact_spec,
         training=training_spec,
@@ -491,6 +513,7 @@ def load_simulate_config(
     chain: str | None = None,
     model: str | None = None,
     feature_set: str | None = None,
+    prediction: str | None = None,
     training: str | None = None,
     simulation: str | None = None,
     execution: str | None = None,
@@ -508,6 +531,7 @@ def load_simulate_config(
                 "chain": chain,
                 "model": model,
                 "feature_set": feature_set,
+                "prediction": prediction,
                 "training": training,
                 "simulation": simulation,
                 "execution": execution,
@@ -528,6 +552,7 @@ def load_simulate_config(
         problem_spec,
         model_spec,
         feature_set_spec,
+        prediction_spec,
         study_spec,
         artifact_spec,
     ) = _resolve_model_workflow(payload)
@@ -553,6 +578,7 @@ def load_simulate_config(
         problem=problem_spec,
         model=model_spec,
         feature_set=feature_set_spec,
+        prediction=prediction_spec,
         study=study_spec,
         artifact=artifact_spec,
         training=training_spec,

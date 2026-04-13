@@ -7,20 +7,19 @@ from typing import TYPE_CHECKING, cast
 
 from sqlalchemy.engine import RowMapping
 
-from ..config import ArtifactVariant, StudyConfig, coerce_problem_spec
+from ..config import ArtifactVariant, StudyConfig, coerce_prediction_config, coerce_problem_spec
 from ..features import FeaturePrerequisites
+from ..prediction import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..temporal.scaling import ScalerStats
 from .families.registry import coerce_model_config
-from .objective import EpochMetrics, WindowMetricSummary
 
 if TYPE_CHECKING:
+    from ..prediction import PredictionSimulationRun
     from .artifacts import TrainingArtifactManifest
     from .results import (
         SimulationSummaryRecord,
-        TrainingEpochRecord,
         TrainingSummary,
     )
-    from .simulation import SimulationRunSummary
 
 
 def mapping_payload(payload: object) -> dict[str, object]:
@@ -33,12 +32,6 @@ def string_list_payload(payload: object) -> list[str]:
     if not isinstance(payload, list):
         raise TypeError("Expected list payload")
     return [str(value) for value in payload]
-
-
-def int_list_payload(payload: object) -> list[int]:
-    if not isinstance(payload, list):
-        raise TypeError("Expected list payload")
-    return [int(value) for value in payload]
 
 
 def _row_value(row: RowMapping, key: str) -> object:
@@ -72,33 +65,36 @@ def _float_value(value: object) -> float:
     return float(cast(int | float | str | bytes, value))
 
 
-def _payload_float(mapping: dict[str, object], key: str) -> float:
-    return _float_value(mapping[key])
-
-
 def study_config_from_name(study_name: object) -> StudyConfig | None:
     if study_name is None:
         return None
     return StudyConfig(name=str(study_name))
 
 
-def epoch_metrics_values(metrics: EpochMetrics) -> dict[str, float]:
+def metric_descriptor_values(descriptor: MetricDescriptor) -> dict[str, str]:
     return {
-        "objective_loss": metrics.objective_loss,
-        "exact_optimum_hit_rate": metrics.exact_optimum_hit_rate,
-        "cost_over_optimum": metrics.cost_over_optimum,
-        "profit_over_baseline": metrics.profit_over_baseline,
+        "id": descriptor.id,
+        "label": descriptor.label,
+        "role": descriptor.role,
     }
 
 
-def epoch_metrics_from_payload(payload: object) -> EpochMetrics:
+def metric_descriptor_from_payload(payload: object) -> MetricDescriptor:
     mapping = mapping_payload(payload)
-    return EpochMetrics(
-        objective_loss=_payload_float(mapping, "objective_loss"),
-        exact_optimum_hit_rate=_payload_float(mapping, "exact_optimum_hit_rate"),
-        cost_over_optimum=_payload_float(mapping, "cost_over_optimum"),
-        profit_over_baseline=_payload_float(mapping, "profit_over_baseline"),
+    return MetricDescriptor(
+        id=str(mapping["id"]),
+        label=str(mapping["label"]),
+        role=str(mapping["role"]),  # type: ignore[arg-type]
     )
+
+
+def metric_set_values(metrics: MetricSet) -> dict[str, float]:
+    return dict(metrics.values)
+
+
+def metric_set_from_payload(payload: object) -> MetricSet:
+    mapping = mapping_payload(payload)
+    return MetricSet(values={str(key): _float_value(value) for key, value in mapping.items()})
 
 
 def window_metric_values(summary: WindowMetricSummary) -> dict[str, float]:
@@ -111,9 +107,19 @@ def window_metric_values(summary: WindowMetricSummary) -> dict[str, float]:
 def window_metric_from_payload(payload: object) -> WindowMetricSummary:
     mapping = mapping_payload(payload)
     return WindowMetricSummary(
-        mean=_payload_float(mapping, "mean"),
-        std=_payload_float(mapping, "std"),
+        mean=_float_value(mapping["mean"]),
+        std=_float_value(mapping["std"]),
     )
+
+
+def metric_descriptors_values(descriptors: list[MetricDescriptor]) -> list[dict[str, str]]:
+    return [metric_descriptor_values(descriptor) for descriptor in descriptors]
+
+
+def metric_descriptors_from_payload(payload: object) -> list[MetricDescriptor]:
+    if not isinstance(payload, list):
+        raise TypeError("Expected list payload")
+    return [metric_descriptor_from_payload(item) for item in payload]
 
 
 def artifact_manifest_values(manifest: TrainingArtifactManifest) -> dict[str, object]:
@@ -121,6 +127,10 @@ def artifact_manifest_values(manifest: TrainingArtifactManifest) -> dict[str, ob
         "singleton": 1,
         "artifact_id": manifest.artifact_id,
         "objective_id": manifest.objective_id,
+        "prediction_id": manifest.prediction_id,
+        "prediction_family_id": manifest.prediction_family_id,
+        "prediction": manifest.prediction.model_dump(mode="json"),
+        "metric_descriptors": metric_descriptors_values(manifest.metric_descriptors),
         "chain_name": manifest.chain.name,
         "dataset_id": manifest.dataset_id,
         "dataset_name": manifest.dataset_name,
@@ -145,12 +155,14 @@ def artifact_manifest_values(manifest: TrainingArtifactManifest) -> dict[str, ob
     }
 
 
-def artifact_manifest_from_row(row: RowMapping) -> TrainingArtifactManifest:
+def artifact_manifest_from_row(row: RowMapping):
     from .results import ArtifactChainMetadata, TrainingArtifactManifest
 
     return TrainingArtifactManifest(
         artifact_id=_row_str(row, "artifact_id"),
         objective_id=_row_str(row, "objective_id"),
+        prediction=coerce_prediction_config(mapping_payload(_row_value(row, "prediction"))),
+        metric_descriptors=metric_descriptors_from_payload(_row_value(row, "metric_descriptors")),
         chain=ArtifactChainMetadata(name=_row_str(row, "chain_name")),
         dataset_id=_row_str(row, "dataset_id"),
         dataset_name=_row_str(row, "dataset_name"),
@@ -177,6 +189,9 @@ def training_summary_values(summary: TrainingSummary) -> dict[str, object]:
         "singleton": 1,
         "artifact_id": summary.artifact_id,
         "objective_id": summary.objective_id,
+        "prediction_id": summary.prediction_id,
+        "prediction_family_id": summary.prediction_family_id,
+        "metric_descriptors": metric_descriptors_values(summary.metric_descriptors),
         "chain_name": summary.chain,
         "dataset_id": summary.dataset_id,
         "dataset_name": summary.dataset_name,
@@ -204,17 +219,20 @@ def training_summary_values(summary: TrainingSummary) -> dict[str, object]:
         "storage_mode_id": summary.storage_mode_id,
         "batch_planner_id": summary.batch_planner_id,
         "family_execution_id": summary.family_execution_id,
-        "best_validation_metrics": epoch_metrics_values(summary.best_validation_metrics),
-        "test_metrics": epoch_metrics_values(summary.test_metrics),
+        "best_validation_metrics": metric_set_values(summary.best_validation_metrics),
+        "test_metrics": metric_set_values(summary.test_metrics),
     }
 
 
-def training_summary_from_row(row: RowMapping) -> TrainingSummary:
+def training_summary_from_row(row: RowMapping):
     from .results import SplitSizes, TrainingSummary
 
     return TrainingSummary(
         artifact_id=_row_str(row, "artifact_id"),
         objective_id=_row_str(row, "objective_id"),
+        prediction_id=_row_str(row, "prediction_id"),
+        prediction_family_id=_row_str(row, "prediction_family_id"),
+        metric_descriptors=metric_descriptors_from_payload(_row_value(row, "metric_descriptors")),
         chain=_row_str(row, "chain_name"),
         dataset_id=_row_str(row, "dataset_id"),
         dataset_name=_row_str(row, "dataset_name"),
@@ -246,28 +264,26 @@ def training_summary_from_row(row: RowMapping) -> TrainingSummary:
         storage_mode_id=_row_str(row, "storage_mode_id"),
         batch_planner_id=_row_str(row, "batch_planner_id"),
         family_execution_id=_row_str(row, "family_execution_id"),
-        best_validation_metrics=epoch_metrics_from_payload(
-            _row_value(row, "best_validation_metrics")
-        ),
-        test_metrics=epoch_metrics_from_payload(_row_value(row, "test_metrics")),
+        best_validation_metrics=metric_set_from_payload(_row_value(row, "best_validation_metrics")),
+        test_metrics=metric_set_from_payload(_row_value(row, "test_metrics")),
     )
 
 
-def training_epoch_values(record: TrainingEpochRecord) -> dict[str, object]:
+def training_epoch_values(record) -> dict[str, object]:
     return {
         "epoch": record.epoch,
-        "train_metrics": epoch_metrics_values(record.train_metrics),
-        "validation_metrics": epoch_metrics_values(record.validation_metrics),
+        "train_metrics": metric_set_values(record.train_metrics),
+        "validation_metrics": metric_set_values(record.validation_metrics),
     }
 
 
-def training_epoch_from_row(row: RowMapping) -> TrainingEpochRecord:
+def training_epoch_from_row(row: RowMapping):
     from .results import TrainingEpochRecord
 
     return TrainingEpochRecord(
         epoch=_row_int(row, "epoch"),
-        train_metrics=epoch_metrics_from_payload(_row_value(row, "train_metrics")),
-        validation_metrics=epoch_metrics_from_payload(_row_value(row, "validation_metrics")),
+        train_metrics=metric_set_from_payload(_row_value(row, "train_metrics")),
+        validation_metrics=metric_set_from_payload(_row_value(row, "validation_metrics")),
     )
 
 
@@ -276,6 +292,9 @@ def simulation_summary_values(summary: SimulationSummaryRecord) -> dict[str, obj
         "singleton": 1,
         "artifact_id": summary.artifact_id,
         "objective_id": summary.objective_id,
+        "prediction_id": summary.prediction_id,
+        "prediction_family_id": summary.prediction_family_id,
+        "metric_descriptors": metric_descriptors_values(summary.metric_descriptors),
         "chain_name": summary.chain,
         "dataset_id": summary.dataset_id,
         "dataset_name": summary.dataset_name,
@@ -296,17 +315,11 @@ def simulation_summary_values(summary: SimulationSummaryRecord) -> dict[str, obj
         "n_evaluation_rows": summary.n_evaluation_rows,
         "sample_count": summary.sample_count,
         "max_candidate_slots": summary.max_candidate_slots,
-        "profit_over_baseline": summary.profit_over_baseline,
-        "cost_over_optimum": summary.cost_over_optimum,
-        "baseline_cost_over_optimum": summary.baseline_cost_over_optimum,
-        "realized_fee_sum": summary.realized_fee_sum,
-        "baseline_fee_sum": summary.baseline_fee_sum,
-        "optimum_fee_sum": summary.optimum_fee_sum,
-        "window_profit_over_baseline": window_metric_values(summary.window_profit_over_baseline),
-        "window_cost_over_optimum": window_metric_values(summary.window_cost_over_optimum),
-        "window_baseline_cost_over_optimum": window_metric_values(
-            summary.window_baseline_cost_over_optimum
-        ),
+        "metrics": metric_set_values(summary.metrics),
+        "window_metrics": {
+            metric_id: window_metric_values(metric)
+            for metric_id, metric in summary.window_metrics.items()
+        },
         "total_events": summary.total_events,
     }
 
@@ -314,13 +327,17 @@ def simulation_summary_values(summary: SimulationSummaryRecord) -> dict[str, obj
 def simulation_summary_from_row(
     row: RowMapping,
     *,
-    runs: list[SimulationRunSummary],
-) -> SimulationSummaryRecord:
+    runs: list[PredictionSimulationRun],
+):
     from .results import SimulationSummaryRecord
 
+    window_payload = mapping_payload(_row_value(row, "window_metrics"))
     return SimulationSummaryRecord(
         artifact_id=_row_str(row, "artifact_id"),
         objective_id=_row_str(row, "objective_id"),
+        prediction_id=_row_str(row, "prediction_id"),
+        prediction_family_id=_row_str(row, "prediction_family_id"),
+        metric_descriptors=metric_descriptors_from_payload(_row_value(row, "metric_descriptors")),
         chain=_row_str(row, "chain_name"),
         dataset_id=_row_str(row, "dataset_id"),
         dataset_name=_row_str(row, "dataset_name"),
@@ -343,54 +360,37 @@ def simulation_summary_from_row(
         n_evaluation_rows=_row_int(row, "n_evaluation_rows"),
         sample_count=_row_int(row, "sample_count"),
         max_candidate_slots=_row_int(row, "max_candidate_slots"),
-        profit_over_baseline=_row_float(row, "profit_over_baseline"),
-        cost_over_optimum=_row_float(row, "cost_over_optimum"),
-        baseline_cost_over_optimum=_row_float(row, "baseline_cost_over_optimum"),
-        realized_fee_sum=_row_float(row, "realized_fee_sum"),
-        baseline_fee_sum=_row_float(row, "baseline_fee_sum"),
-        optimum_fee_sum=_row_float(row, "optimum_fee_sum"),
-        window_profit_over_baseline=window_metric_from_payload(
-            _row_value(row, "window_profit_over_baseline")
-        ),
-        window_cost_over_optimum=window_metric_from_payload(
-            _row_value(row, "window_cost_over_optimum")
-        ),
-        window_baseline_cost_over_optimum=window_metric_from_payload(
-            _row_value(row, "window_baseline_cost_over_optimum")
-        ),
+        metrics=metric_set_from_payload(_row_value(row, "metrics")),
+        window_metrics={
+            str(metric_id): window_metric_from_payload(metric)
+            for metric_id, metric in window_payload.items()
+        },
         total_events=_row_int(row, "total_events"),
         runs=runs,
     )
 
 
-def simulation_run_values(run: SimulationRunSummary, *, ordinal: int) -> dict[str, object]:
+def simulation_run_values(run: PredictionSimulationRun, *, ordinal: int) -> dict[str, object]:
     return {
         "ordinal": ordinal,
         "window_start_timestamp": run.window_start_timestamp,
         "window_end_timestamp": run.window_end_timestamp,
         "n_arrivals": run.n_arrivals,
         "n_events": run.n_events,
-        "profit_over_baseline": run.profit_over_baseline,
-        "cost_over_optimum": run.cost_over_optimum,
-        "baseline_cost_over_optimum": run.baseline_cost_over_optimum,
-        "realized_fee_sum": run.realized_fee_sum,
-        "baseline_fee_sum": run.baseline_fee_sum,
-        "optimum_fee_sum": run.optimum_fee_sum,
+        "metrics": dict(run.metrics),
     }
 
 
-def simulation_run_from_row(row: RowMapping) -> SimulationRunSummary:
-    from .simulation import SimulationRunSummary
+def simulation_run_from_row(row: RowMapping):
+    from ..prediction import PredictionSimulationRun
 
-    return SimulationRunSummary(
+    return PredictionSimulationRun(
         window_start_timestamp=_row_float(row, "window_start_timestamp"),
         window_end_timestamp=_row_float(row, "window_end_timestamp"),
         n_arrivals=_row_int(row, "n_arrivals"),
         n_events=_row_int(row, "n_events"),
-        profit_over_baseline=_row_float(row, "profit_over_baseline"),
-        cost_over_optimum=_row_float(row, "cost_over_optimum"),
-        baseline_cost_over_optimum=_row_float(row, "baseline_cost_over_optimum"),
-        realized_fee_sum=_row_float(row, "realized_fee_sum"),
-        baseline_fee_sum=_row_float(row, "baseline_fee_sum"),
-        optimum_fee_sum=_row_float(row, "optimum_fee_sum"),
+        metrics={
+            str(key): _float_value(value)
+            for key, value in mapping_payload(_row_value(row, "metrics")).items()
+        },
     )

@@ -10,19 +10,18 @@ import torch
 from spice.config import coerce_problem_spec
 from spice.core.reporting import NullReporter
 from spice.features import FeatureSelection, build_feature_table
-from spice.modeling.objective import (
-    EpochMetrics,
+from spice.prediction import MetricSet
+from spice.prediction.families.candidate_slate_current.batch import CandidateSlateTargetBatch
+from spice.prediction.families.candidate_slate_current.loss import compute_objective_loss
+from spice.prediction.families.candidate_slate_current.metrics import (
     best_epoch,
-    compute_objective_loss,
-    optuna_direction,
-    primary_validation_metric_name,
+    objective_value,
 )
-from spice.modeling.problem_batches import CandidateChoiceTargets
-from spice.modeling.simulation import run_temporal_simulation
+from spice.prediction.families.candidate_slate_current.replay import run_replay
 from spice.temporal.contracts import resolve_feature_contract
 
 
-def _build_test_store() -> object:
+def _build_test_store():
     selection = FeatureSelection(
         feature_set_id="test_timestamp_native",
         feature_family_id="time_native",
@@ -64,7 +63,7 @@ def test_objective_loss_prefers_cheaper_candidates_and_ignores_masked_slots() ->
     logits_bad = torch.tensor([[4.0, -4.0, 100.0]], dtype=torch.float32)
     logits_good = torch.tensor([[-4.0, 4.0, 100.0]], dtype=torch.float32)
 
-    targets = CandidateChoiceTargets(
+    targets = CandidateSlateTargetBatch(
         candidate_log_fees=candidate_log_fees,
         candidate_mask=candidate_mask,
     )
@@ -75,39 +74,44 @@ def test_objective_loss_prefers_cheaper_candidates_and_ignores_masked_slots() ->
     assert good_loss.item() < bad_loss.item()
 
 
-def test_objective_selection_follows_validation_profit() -> None:
+def test_prediction_selection_follows_validation_profit() -> None:
     history = [
-        EpochMetrics(
-            objective_loss=0.90,
-            exact_optimum_hit_rate=0.30,
-            cost_over_optimum=0.25,
-            profit_over_baseline=0.04,
+        MetricSet(
+            values={
+                "objective_loss": 0.90,
+                "exact_optimum_hit_rate": 0.30,
+                "cost_over_optimum": 0.25,
+                "profit_over_baseline": 0.04,
+            }
         ),
-        EpochMetrics(
-            objective_loss=1.20,
-            exact_optimum_hit_rate=0.20,
-            cost_over_optimum=0.18,
-            profit_over_baseline=0.11,
+        MetricSet(
+            values={
+                "objective_loss": 1.20,
+                "exact_optimum_hit_rate": 0.20,
+                "cost_over_optimum": 0.18,
+                "profit_over_baseline": 0.11,
+            }
         ),
-        EpochMetrics(
-            objective_loss=0.70,
-            exact_optimum_hit_rate=0.40,
-            cost_over_optimum=0.20,
-            profit_over_baseline=0.08,
+        MetricSet(
+            values={
+                "objective_loss": 0.70,
+                "exact_optimum_hit_rate": 0.40,
+                "cost_over_optimum": 0.20,
+                "profit_over_baseline": 0.08,
+            }
         ),
     ]
 
     assert best_epoch(history) == 2
-    assert primary_validation_metric_name() == "validation_profit_over_baseline"
-    assert optuna_direction() == "maximize"
+    assert objective_value(history[1]) == pytest.approx(0.11)
 
 
-def test_simulation_summary_uses_event_weighted_totals() -> None:
+def test_replay_summary_uses_event_weighted_totals() -> None:
     store = _build_test_store()
     sample_indices = np.arange(store.n_samples, dtype=np.int64)
     predictions = [0] * store.n_samples
 
-    summary = run_temporal_simulation(
+    summary = run_replay(
         store,
         predictions,
         sample_indices=sample_indices,
@@ -118,16 +122,16 @@ def test_simulation_summary_uses_event_weighted_totals() -> None:
         reporter=NullReporter(),
     )
 
-    realized_fee_sum = sum(run.realized_fee_sum for run in summary.runs)
-    baseline_fee_sum = sum(run.baseline_fee_sum for run in summary.runs)
-    optimum_fee_sum = sum(run.optimum_fee_sum for run in summary.runs)
+    realized_fee_sum = sum(run.metrics["realized_fee_sum"] for run in summary.runs)
+    baseline_fee_sum = sum(run.metrics["baseline_fee_sum"] for run in summary.runs)
+    optimum_fee_sum = sum(run.metrics["optimum_fee_sum"] for run in summary.runs)
 
-    assert summary.profit_over_baseline == pytest.approx(
+    assert summary.metrics.require("profit_over_baseline") == pytest.approx(
         (baseline_fee_sum - realized_fee_sum) / baseline_fee_sum
     )
-    assert summary.cost_over_optimum == pytest.approx(
+    assert summary.metrics.require("cost_over_optimum") == pytest.approx(
         (realized_fee_sum - optimum_fee_sum) / optimum_fee_sum
     )
-    assert summary.window_profit_over_baseline.mean == pytest.approx(
-        np.mean([run.profit_over_baseline for run in summary.runs])
+    assert summary.window_metrics["profit_over_baseline"].mean == pytest.approx(
+        np.mean([run.metrics["profit_over_baseline"] for run in summary.runs])
     )

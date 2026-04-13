@@ -6,11 +6,12 @@ from ..config import SimulateConfig
 from ..core.reporting import Reporter
 from ..corpus.io import load_block_frame
 from ..modeling.artifacts import load_training_artifact, validate_artifact_feature_graph
-from ..modeling.inference import predict_candidate_offsets
+from ..modeling.inference import predict_with_model
 from ..modeling.pipeline import prepare_inference_dataset
 from ..modeling.results import build_simulation_summary_record
-from ..modeling.simulation import run_temporal_simulation
+from ..modeling.simulation import run_prediction_replay
 from ..modeling.summary import simulation_summary_sections
+from ..prediction import compile_prediction_contract
 from ..storage import ARTIFACT_ROOT_KIND, RootKind
 from ..storage.artifact import write_simulation_state
 from ..temporal.contracts import resolve_feature_contract
@@ -22,6 +23,7 @@ def _workflow_facts(config: SimulateConfig) -> list[tuple[str, str]]:
         ("dataset", config.dataset.name),
         ("chain", config.chain.name),
         ("problem", config.problem.id),
+        ("prediction", config.prediction.id),
         ("execution", config.execution.id),
         ("model", config.model.id),
         ("variant", config.artifact.variant.value),
@@ -85,10 +87,26 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 raise ValueError(
                     "Configured problem does not match the trained artifact semantics"
                 )
+            if (
+                loaded_artifact.manifest.prediction.model_dump(mode="json")
+                != config.prediction.model_dump(mode="json")
+            ):
+                raise ValueError(
+                    "Configured prediction does not match the trained artifact semantics"
+                )
             contract = resolve_feature_contract(
                 problem=config.problem,
                 selection=selection,
             )
+            prediction_contract = compile_prediction_contract(
+                prediction_id=config.prediction.id,
+                family_config=config.prediction.family,
+            )
+            if "simulate" not in prediction_contract.supported_workflows:
+                raise ValueError(
+                    f"prediction family {prediction_contract.prediction_family_id} "
+                    "does not support simulate"
+                )
             if (
                 config.execution.requested_delay_seconds
                 > loaded_artifact.manifest.max_supported_delay_seconds
@@ -114,16 +132,18 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 prepare_task,
                 message=f"samples={prepared.sample_count}",
             )
-            predictions = predict_candidate_offsets(
+            predictions = predict_with_model(
                 loaded_artifact.model,
                 model_id=loaded_artifact.manifest.model.id,
+                prediction_contract=prediction_contract,
                 store=prepared.store,
                 sample_indices=prepared.sample_indices,
                 batch_size=config.training.batch_size,
                 device=config.training.device,
                 reporter=predict_reporter,
             )
-            simulation = run_temporal_simulation(
+            simulation = run_prediction_replay(
+                prediction_contract,
                 prepared.store,
                 predictions,
                 sample_indices=prepared.sample_indices,

@@ -41,6 +41,7 @@ def _workflow_facts(config: TrainConfig) -> list[tuple[str, str]]:
         ("dataset", config.dataset.name),
         ("chain", config.chain.name),
         ("problem", config.problem.id),
+        ("prediction", config.prediction.id),
         ("model", config.model.id),
         ("variant", config.artifact.variant.value),
     ]
@@ -116,6 +117,7 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
                 dataset_name=active_config.dataset.name,
                 chain_name=active_config.chain.name,
                 feature_set_id=active_config.feature_set.id,
+                prediction_id=active_config.prediction.id,
                 model_id=active_config.model.id,
                 problem_id=active_config.problem.id,
                 variant=active_config.artifact.variant.value,

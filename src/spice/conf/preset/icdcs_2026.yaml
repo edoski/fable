@@ -3,6 +3,7 @@ problem: icdcs_2026
 execution: icdcs_2026
 provider: publicnode
 feature_set: icdcs_2026
+prediction: candidate_slate_current
 acquisition: default
 training: icdcs_2026
 split: default

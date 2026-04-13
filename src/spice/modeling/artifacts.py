@@ -10,11 +10,11 @@ import torch
 from ..core.constants import MODEL_STATE_FILENAME
 from ..core.files import write_path_atomic
 from ..features import FeatureSelection, feature_graph_fingerprint, make_feature_selection
+from ..prediction import compile_prediction_contract
 from ..storage.artifact import load_artifact_manifest, write_artifact_manifest
 from ..storage.engine import RootKind
 from .families.registry import build_model
 from .models import TemporalModel
-from .objective import active_objective
 from .pipeline import PreparedTrainingDataset, TrainingSpec
 from .results import ArtifactChainMetadata, TrainingArtifactManifest
 
@@ -63,7 +63,9 @@ def build_training_artifact_manifest(
 ) -> TrainingArtifactManifest:
     return TrainingArtifactManifest(
         artifact_id=spec.artifact_id,
-        objective_id=active_objective().objective_id,
+        objective_id=spec.prediction_contract.objective_id,
+        prediction=spec.prediction,
+        metric_descriptors=list(spec.prediction_contract.metric_descriptors),
         chain=ArtifactChainMetadata(name=spec.chain.name),
         dataset_id=spec.dataset_id,
         dataset_name=spec.dataset_name,
@@ -85,7 +87,15 @@ def build_training_artifact_manifest(
 
 def load_training_artifact(artifact_dir: Path) -> LoadedTrainingArtifact:
     manifest = load_artifact_manifest(artifact_dir / ".spice" / "state.sqlite")
-    model = build_model(manifest.n_features, manifest.max_candidate_slots, manifest.model)
+    prediction_contract = compile_prediction_contract(
+        prediction_id=manifest.prediction.id,
+        family_config=manifest.prediction.family,
+    )
+    model = build_model(
+        manifest.n_features,
+        prediction_contract.build_output_spec(manifest.max_candidate_slots),
+        manifest.model,
+    )
     state_dict = torch.load(artifact_dir / MODEL_STATE_FILENAME, map_location="cpu")
     model.load_state_dict(state_dict)
     model.eval()

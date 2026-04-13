@@ -16,6 +16,7 @@ from sqlalchemy import select
 from ..config import (
     FeatureSetConfig,
     ModelConfig,
+    PredictionConfig,
     ProblemSpec,
     SplitConfig,
     TrainConfig,
@@ -24,6 +25,7 @@ from ..config import (
     TunedParameterSet,
     TuningSpaceConfig,
     coerce_feature_set_config,
+    coerce_prediction_config,
     coerce_problem_spec,
 )
 from ..modeling.families.registry import (
@@ -31,7 +33,7 @@ from ..modeling.families.registry import (
     coerce_tuned_parameter_set,
     coerce_tuning_space_config,
 )
-from ..modeling.objective import active_objective, objective_spec, optuna_direction
+from ..prediction import compile_prediction_contract
 from .engine import STUDY_ROOT_KIND, create_state_engine, db_url, ensure_state_db
 from .schema import STUDY_TABLES, study_manifest
 
@@ -52,6 +54,7 @@ class StudyTrialState(StrEnum):
 class StudyManifest:
     study_id: str
     objective_id: str
+    prediction: PredictionConfig
     study_name: str
     chain_name: str
     dataset_id: str
@@ -74,6 +77,14 @@ class StudyManifest:
     @property
     def feature_set_id(self) -> str:
         return self.feature_set.id
+
+    @property
+    def prediction_id(self) -> str:
+        return self.prediction.id
+
+    @property
+    def prediction_family_id(self) -> str:
+        return self.prediction.family.id
 
     @property
     def model_id(self) -> str:
@@ -133,9 +144,14 @@ def study_storage(db_path: Path) -> RDBStorage:
 def manifest_from_tune_config(config: TuneConfig) -> StudyManifest:
     if config.paths.study_id is None:
         raise ValueError("study_id is required for study manifests")
+    prediction_contract = compile_prediction_contract(
+        prediction_id=config.prediction.id,
+        family_config=config.prediction.family,
+    )
     return StudyManifest(
         study_id=config.paths.study_id,
-        objective_id=active_objective().objective_id,
+        objective_id=prediction_contract.objective_id,
+        prediction=config.prediction,
         study_name=config.study.name,
         chain_name=config.chain.name,
         dataset_id=config.paths.corpus_id,
@@ -178,6 +194,7 @@ def load_study_manifest(db_path: Path) -> StudyManifest:
         return StudyManifest(
             study_id=str(row["study_id"]),
             objective_id=str(row["objective_id"]),
+            prediction=coerce_prediction_config(_mapping(row["prediction"])),
             study_name=str(row["study_name"]),
             chain_name=str(row["chain_name"]),
             dataset_id=str(row["dataset_id"]),
@@ -333,6 +350,7 @@ def study_summary_sections(
                 ("chain", summary.manifest.chain_name),
                 ("dataset", summary.manifest.dataset_name),
                 ("problem", summary.manifest.problem_id),
+                ("prediction", summary.manifest.prediction_id),
                 ("model", summary.manifest.model_id),
                 ("trials", str(summary.trial_counts.total)),
             ],
@@ -374,6 +392,7 @@ def validate_tuned_train_request(config: TrainConfig, *, manifest: StudyManifest
         "study_name": manifest.study_name,
         "study_id": manifest.study_id,
         "objective_id": manifest.objective_id,
+        "prediction": manifest.prediction.model_dump(mode="json"),
         "chain_name": manifest.chain_name,
         "dataset_id": manifest.dataset_id,
         "dataset_name": manifest.dataset_name,
@@ -384,7 +403,11 @@ def validate_tuned_train_request(config: TrainConfig, *, manifest: StudyManifest
     requested_payload = {
         "study_name": config.study.name,
         "study_id": config.paths.study_id,
-        "objective_id": active_objective().objective_id,
+        "objective_id": compile_prediction_contract(
+            prediction_id=config.prediction.id,
+            family_config=config.prediction.family,
+        ).objective_id,
+        "prediction": config.prediction.model_dump(mode="json"),
         "chain_name": config.chain.name,
         "dataset_id": config.paths.corpus_id,
         "dataset_name": config.dataset.name,
@@ -461,10 +484,14 @@ def _load_materialized_study(db_path: Path, *, manifest: StudyManifest) -> optun
 def _load_or_create_materialized_study(db_path: Path, *, manifest: StudyManifest) -> optuna.Study:
     summaries = optuna.get_all_study_summaries(storage=study_storage(db_path))
     if not summaries:
+        prediction_contract = compile_prediction_contract(
+            prediction_id=manifest.prediction.id,
+            family_config=manifest.prediction.family,
+        )
         return optuna.create_study(
             study_name=manifest.study_name,
             storage=study_storage(db_path),
-            direction=optuna_direction(objective_spec(manifest.objective_id)),
+            direction=prediction_contract.direction,
             load_if_exists=False,
             sampler=optuna.samplers.TPESampler(seed=manifest.sampler_seed),
             pruner=(
@@ -482,12 +509,15 @@ def _manifest_values(manifest: StudyManifest) -> dict[str, object]:
         "singleton": 1,
         "study_id": manifest.study_id,
         "objective_id": manifest.objective_id,
+        "prediction_id": manifest.prediction_id,
+        "prediction_family_id": manifest.prediction_family_id,
         "study_name": manifest.study_name,
         "chain_name": manifest.chain_name,
         "dataset_id": manifest.dataset_id,
         "dataset_name": manifest.dataset_name,
         "problem_id": manifest.problem_id,
         "feature_set_id": manifest.feature_set_id,
+        "prediction": manifest.prediction.model_dump(mode="json"),
         "model_id": manifest.model_id,
         "problem": manifest.problem.model_dump(mode="json"),
         "feature_set": manifest.feature_set.model_dump(mode="json"),
@@ -509,6 +539,7 @@ def _study_semantics_payload(manifest: StudyManifest) -> dict[str, object]:
         "study_name": manifest.study_name,
         "study_id": manifest.study_id,
         "objective_id": manifest.objective_id,
+        "prediction": manifest.prediction.model_dump(mode="json"),
         "chain_name": manifest.chain_name,
         "dataset_id": manifest.dataset_id,
         "dataset_name": manifest.dataset_name,

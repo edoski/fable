@@ -2,35 +2,30 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 import numpy as np
 import torch
 from numpy.typing import NDArray
 
 from ..core.reporting import NullReporter, Reporter
+from ..prediction import CompiledPredictionContract
 from ..temporal.problem_store import CompiledProblemStore
-from ._runtime import (
-    build_model_loader,
-    build_representation_runtime_context,
-    resolve_device,
-)
+from ._runtime import build_prediction_loader, build_representation_runtime_context, resolve_device
 from .models import TemporalModel
-from .problem_batches import TemporalProblemBatch
 
 IntVector = NDArray[np.int64]
 
 
-def predict_candidate_offsets(
+def predict_with_model(
     model: TemporalModel,
     *,
     model_id: str,
+    prediction_contract: CompiledPredictionContract,
     store: CompiledProblemStore,
     sample_indices: IntVector,
     batch_size: int,
     device: str,
     reporter: Reporter | None = None,
-) -> list[int]:
+) -> object:
     reporter = reporter or NullReporter()
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
@@ -42,33 +37,26 @@ def predict_candidate_offsets(
         device=resolved_device,
         batch_size=batch_size,
     )
-    loader = build_model_loader(
+    loader = build_prediction_loader(
         store,
         sample_indices,
         model_id=model_id,
+        prediction_contract=prediction_contract,
         runtime_context=runtime_context,
         seed=0,
     )
-    task_id = reporter.start_task("predict candidates", total=len(loader), unit="batches")
-    predictions = [0] * int(sample_indices.shape[0])
+    task_id = reporter.start_task("predict", total=len(loader), unit="batches")
+    predictions = prediction_contract.allocate_prediction_buffer(int(sample_indices.shape[0]))
     with torch.no_grad():
         for batch in loader:
-            batch = cast(TemporalProblemBatch, batch)
-            sample_positions = batch.sample_positions.tolist()
             device_batch = batch.to_device(resolved_device)
-            logits = model(**device_batch.model_kwargs()).logits
-            targets = device_batch.objective_targets()
-            logits = logits.masked_fill(
-                ~targets.candidate_mask,
-                torch.finfo(logits.dtype).min,
+            outputs = model(**device_batch.model_kwargs())
+            prediction_contract.decode_into(
+                predictions,
+                batch.sample_positions,
+                outputs,
+                device_batch.targets,
             )
-            batch_predictions = logits.argmax(dim=-1).cpu().tolist()
-            for sample_position, prediction in zip(
-                sample_positions,
-                batch_predictions,
-                strict=True,
-            ):
-                predictions[int(sample_position)] = int(prediction)
             reporter.update_task(task_id, advance=1)
     reporter.finish_task(task_id)
     return predictions

@@ -23,6 +23,7 @@ from ..modeling.families.base import (
     ModelTuningSpaceConfig,
     TunedModelParams,
 )
+from ..prediction import PredictionFamilyConfig
 from ..temporal.compilers import ProblemCompilerConfig
 
 if TYPE_CHECKING:
@@ -239,6 +240,33 @@ def coerce_feature_set_config(payload: Mapping[str, object] | FeatureSetConfig) 
         raise TypeError("feature_set.family must be a mapping")
     raw_payload["family"] = coerce_feature_family_config(raw_family)
     return FeatureSetConfig.model_validate(raw_payload)
+
+
+class PredictionConfig(ConfigModel):
+    id: str
+    family: SerializeAsAny[PredictionFamilyConfig]
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, value: str) -> str:
+        return _validate_path_segment(value, label="prediction.id")
+
+
+def coerce_prediction_config(payload: Mapping[str, object] | PredictionConfig) -> PredictionConfig:
+    from ..prediction import coerce_prediction_family_config
+
+    raw_payload = (
+        payload.model_dump(mode="json")
+        if isinstance(payload, PredictionConfig)
+        else dict(payload)
+    )
+    raw_family = raw_payload.get("family")
+    if raw_family is None:
+        raise ValueError("prediction.family is required")
+    if not isinstance(raw_family, Mapping) and not isinstance(raw_family, PredictionFamilyConfig):
+        raise TypeError("prediction.family must be a mapping")
+    raw_payload["family"] = coerce_prediction_family_config(raw_family)
+    return PredictionConfig.model_validate(raw_payload)
 
 
 class StudyConfig(ConfigModel):
@@ -517,6 +545,7 @@ class ModelWorkflowConfig(WorkflowConfig):
     problem: ProblemSpec
     model: SerializeAsAny[ModelConfig]
     feature_set: FeatureSetConfig
+    prediction: PredictionConfig
     study: StudyConfig = StudyConfig()
     artifact: ArtifactConfig = ArtifactConfig()
 
@@ -534,6 +563,8 @@ class ModelWorkflowConfig(WorkflowConfig):
             feature_set_payload=self.feature_set.model_dump(mode="json", exclude_none=True),
             model_payload=self.model.model_dump(mode="json", exclude_none=True),
             problem_payload=self.problem.model_dump(mode="json", exclude_none=True),
+            prediction_name=self.prediction.id,
+            prediction_payload=self.prediction.model_dump(mode="json", exclude_none=True),
             variant=self.artifact.variant,
             study_name=self.study.name,
             include_artifacts=True,
@@ -586,6 +617,7 @@ class PresetSpec(ConfigModel):
     provider: str | None = None
     model: str | None = None
     feature_set: str | None = None
+    prediction: str | None = None
     acquisition: str | None = None
     training: str | None = None
     split: str | None = None

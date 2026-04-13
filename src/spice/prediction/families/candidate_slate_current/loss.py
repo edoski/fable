@@ -1,16 +1,16 @@
-"""Differentiable training objective."""
+"""Current-family differentiable loss."""
 
 from __future__ import annotations
 
 import torch
 
-from ..problem_batches import CandidateChoiceTargets
-from .references import masked_candidate_logits
+from .batch import CandidateSlateTargetBatch
+from .outputs import masked_candidate_logits
 
 
 def compute_objective_loss(
     logits: torch.Tensor,
-    targets: CandidateChoiceTargets,
+    targets: CandidateSlateTargetBatch,
 ) -> torch.Tensor:
     masked_logits = masked_candidate_logits(logits, targets.candidate_mask)
     policy = torch.softmax(masked_logits, dim=-1)
