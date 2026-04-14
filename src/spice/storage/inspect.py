@@ -265,14 +265,14 @@ def _artifact_sections(
                     (
                         "validation metrics",
                         _metric_bundle_string(
-                            training.metric_descriptors,
+                            training.training_metric_descriptors,
                             training.best_validation_metrics.values,
                         ),
                     ),
                     (
                         "test metrics",
                         _metric_bundle_string(
-                            training.metric_descriptors,
+                            training.training_metric_descriptors,
                             training.test_metrics.values,
                         ),
                     ),
@@ -292,13 +292,20 @@ def _artifact_sections(
                     (
                         "metrics",
                         _metric_bundle_string(
-                            simulation.metric_descriptors,
+                            simulation.simulation_metric_descriptors,
                             simulation.metrics.values,
                         ),
                     ),
                 ],
             )
         )
+        if simulation.window_metrics:
+            sections.append(
+                (
+                    "simulation windows",
+                    _window_metric_fields(simulation),
+                )
+            )
     if description.epochs:
         sections.append(
             (
@@ -483,6 +490,22 @@ def _metric_bundle_string(
         if ordered:
             return " ".join(ordered)
     return " ".join(f"{metric_id}={value:.4f}" for metric_id, value in sorted(metrics.items()))
+
+
+def _window_metric_fields(
+    summary: SimulationSummaryRecord,
+) -> list[tuple[str, str]]:
+    return [
+        (
+            descriptor.label,
+            (
+                f"mean={summary.window_metrics[descriptor.id].mean:.4f} "
+                f"std={summary.window_metrics[descriptor.id].std:.4f}"
+            ),
+        )
+        for descriptor in summary.simulation_metric_descriptors
+        if descriptor.id in summary.window_metrics
+    ]
 
 
 def _value_string(value: object) -> str:

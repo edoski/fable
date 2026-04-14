@@ -168,7 +168,7 @@ The current shared sequence batch contains only model inputs:
 
 Prediction-family targets are compiled separately and attached after representation preparation.
 
-Economic references such as optimum index, baseline fee, and realized fee are derived by the objective package from that candidate slate. They are not persisted as separate batch payload.
+Economic references such as optimum index, baseline fee, and realized fee are derived by the active prediction family from that candidate slate. They are not persisted as separate batch payload.
 
 Future model families can register a different input representation without changing corpus storage, problem semantics, or workflow interfaces.
 
@@ -181,6 +181,12 @@ Future model families can register a different input representation without chan
 - typed root descriptions are rendered into console sections
 
 SPICE does not route `show` through workflow config loading. It is a selector-driven inspection path over already-materialized state.
+
+Passive state naming stays strict:
+
+- `Snapshot`: captured semantic or runtime state
+- `Record`: persisted envelope or read-model row
+- `Summary`: derived user-facing read model
 
 ## Verification
 

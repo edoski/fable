@@ -128,7 +128,9 @@ def artifact_manifest_values(manifest: TrainingArtifactManifest) -> dict[str, ob
         "prediction_id": manifest.prediction_id,
         "prediction_family_id": manifest.prediction_family_id,
         "prediction": manifest.prediction.model_dump(mode="json"),
-        "metric_descriptors": metric_descriptors_values(manifest.metric_descriptors),
+        "training_metric_descriptors": metric_descriptors_values(
+            manifest.training_metric_descriptors
+        ),
         "chain_name": manifest.chain.name,
         "dataset_id": manifest.dataset_id,
         "dataset_name": manifest.dataset_name,
@@ -160,7 +162,9 @@ def artifact_manifest_from_row(row: RowMapping):
     return TrainingArtifactManifest(
         artifact_id=_row_str(row, "artifact_id"),
         prediction=coerce_prediction_config(mapping_payload(_row_value(row, "prediction"))),
-        metric_descriptors=metric_descriptors_from_payload(_row_value(row, "metric_descriptors")),
+        training_metric_descriptors=metric_descriptors_from_payload(
+            _row_value(row, "training_metric_descriptors")
+        ),
         chain=ArtifactChainMetadata(name=_row_str(row, "chain_name")),
         dataset_id=_row_str(row, "dataset_id"),
         dataset_name=_row_str(row, "dataset_name"),
@@ -186,7 +190,9 @@ def training_summary_values(summary: TrainingSummary) -> dict[str, object]:
         "artifact_id": summary.artifact_id,
         "prediction_id": summary.prediction_id,
         "prediction_family_id": summary.prediction_family_id,
-        "metric_descriptors": metric_descriptors_values(summary.metric_descriptors),
+        "training_metric_descriptors": metric_descriptors_values(
+            summary.training_metric_descriptors
+        ),
         "chain_name": summary.chain,
         "dataset_id": summary.dataset_id,
         "dataset_name": summary.dataset_name,
@@ -225,7 +231,9 @@ def training_summary_from_row(row: RowMapping):
         artifact_id=_row_str(row, "artifact_id"),
         prediction_id=_row_str(row, "prediction_id"),
         prediction_family_id=_row_str(row, "prediction_family_id"),
-        metric_descriptors=metric_descriptors_from_payload(_row_value(row, "metric_descriptors")),
+        training_metric_descriptors=metric_descriptors_from_payload(
+            _row_value(row, "training_metric_descriptors")
+        ),
         chain=_row_str(row, "chain_name"),
         dataset_id=_row_str(row, "dataset_id"),
         dataset_name=_row_str(row, "dataset_name"),
@@ -285,7 +293,9 @@ def simulation_summary_values(summary: SimulationSummaryRecord) -> dict[str, obj
         "artifact_id": summary.artifact_id,
         "prediction_id": summary.prediction_id,
         "prediction_family_id": summary.prediction_family_id,
-        "metric_descriptors": metric_descriptors_values(summary.metric_descriptors),
+        "simulation_metric_descriptors": metric_descriptors_values(
+            summary.simulation_metric_descriptors
+        ),
         "chain_name": summary.chain,
         "dataset_id": summary.dataset_id,
         "dataset_name": summary.dataset_name,
@@ -327,7 +337,9 @@ def simulation_summary_from_row(
         artifact_id=_row_str(row, "artifact_id"),
         prediction_id=_row_str(row, "prediction_id"),
         prediction_family_id=_row_str(row, "prediction_family_id"),
-        metric_descriptors=metric_descriptors_from_payload(_row_value(row, "metric_descriptors")),
+        simulation_metric_descriptors=metric_descriptors_from_payload(
+            _row_value(row, "simulation_metric_descriptors")
+        ),
         chain=_row_str(row, "chain_name"),
         dataset_id=_row_str(row, "dataset_id"),
         dataset_name=_row_str(row, "dataset_name"),

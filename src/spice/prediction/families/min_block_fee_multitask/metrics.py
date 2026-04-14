@@ -22,7 +22,7 @@ class MinBlockFeeBatchState:
     correct_offset_count: int
 
 
-METRIC_DESCRIPTORS: tuple[MetricDescriptor, ...] = (
+TRAINING_METRIC_DESCRIPTORS: tuple[MetricDescriptor, ...] = (
     MetricDescriptor(id="total_loss", label="total loss", role="primary"),
     MetricDescriptor(
         id="offset_accuracy",
@@ -37,21 +37,6 @@ METRIC_DESCRIPTORS: tuple[MetricDescriptor, ...] = (
     MetricDescriptor(
         id="regression_loss",
         label="regression loss",
-        role="diagnostic",
-    ),
-    MetricDescriptor(
-        id="profit_over_baseline",
-        label="profit over baseline",
-        role="secondary",
-    ),
-    MetricDescriptor(
-        id="cost_over_optimum",
-        label="cost over optimum",
-        role="secondary",
-    ),
-    MetricDescriptor(
-        id="baseline_cost_over_optimum",
-        label="baseline cost over optimum",
         role="diagnostic",
     ),
 )

@@ -17,6 +17,7 @@ from ...contracts import (
     PredictionTargetBatch,
     PreparedPredictionTargets,
 )
+from ...offset_selection.replay import SIMULATION_METRIC_DESCRIPTORS
 from ...registry import PredictionFamilySpec, register_prediction_family_spec
 from .batch import (
     MinBlockFeeTargetBatch,
@@ -24,7 +25,7 @@ from .batch import (
 )
 from .config import MinBlockFeeMultitaskFamilyConfig
 from .metrics import (
-    METRIC_DESCRIPTORS,
+    TRAINING_METRIC_DESCRIPTORS,
     best_epoch,
     compute_batch_loss_and_state,
     inverse_frequency_class_weights,
@@ -109,7 +110,7 @@ class MinBlockFeeMultitaskPredictionContract(CompiledPredictionContract):
             raise TypeError("min_block_fee_multitask expects MinBlockFeeTargetBatch targets")
         decode_into(predictions, sample_positions, outputs, targets)
 
-    def replay(
+    def simulate(
         self,
         store: CompiledProblemStore,
         predictions: object,
@@ -139,8 +140,9 @@ def _compile(
     return MinBlockFeeMultitaskPredictionContract(
         prediction_id=prediction_id,
         prediction_family_id="min_block_fee_multitask",
-        metric_descriptors=METRIC_DESCRIPTORS,
+        training_metric_descriptors=TRAINING_METRIC_DESCRIPTORS,
         progress_metric_descriptors=PROGRESS_METRIC_DESCRIPTORS,
+        simulation_metric_descriptors=SIMULATION_METRIC_DESCRIPTORS,
         primary_metric_id="total_loss",
         direction="minimize",
         supported_workflows=frozenset({"train", "tune", "simulate"}),

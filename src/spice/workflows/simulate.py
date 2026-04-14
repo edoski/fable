@@ -9,7 +9,7 @@ from ..modeling.artifacts import load_training_artifact, validate_artifact_seman
 from ..modeling.inference import predict_with_model
 from ..modeling.pipeline import prepare_inference_dataset
 from ..modeling.results import build_simulation_summary_record
-from ..modeling.simulation import run_prediction_replay
+from ..modeling.simulation import run_prediction_simulation
 from ..modeling.summary import simulation_summary_sections
 from ..prediction import compile_prediction_contract
 from ..storage import ARTIFACT_ROOT_KIND, RootKind
@@ -131,7 +131,7 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 device=config.training.device,
                 reporter=predict_reporter,
             )
-            simulation = run_prediction_replay(
+            simulation = run_prediction_simulation(
                 prediction_contract,
                 prepared.store,
                 predictions,
@@ -146,6 +146,9 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 loaded_artifact.manifest,
                 prepared=prepared,
                 simulation=simulation,
+                simulation_metric_descriptors=list(
+                    prediction_contract.simulation_metric_descriptors
+                ),
                 requested_delay_seconds=config.execution.requested_delay_seconds,
                 window_seconds=config.simulation.window_seconds,
                 arrival_rate_per_second=config.simulation.arrival_rate_per_second,

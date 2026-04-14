@@ -48,7 +48,7 @@ class TemporalLightningModule(L.LightningModule):
         self._validation_batches = []
 
     def _log_metric_set(self, stage: str, metrics: MetricSet) -> None:
-        for descriptor in self.prediction_contract.metric_descriptors:
+        for descriptor in self.prediction_contract.training_metric_descriptors:
             if descriptor.id not in metrics.values:
                 continue
             value = metrics.values[descriptor.id]

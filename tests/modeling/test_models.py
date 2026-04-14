@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 
 from spice.modeling.families.lstm import LstmModelConfig
@@ -84,6 +85,11 @@ def test_lstm_baseline_matches_packed_reference() -> None:
         )
 
 
+@pytest.mark.filterwarnings(
+    "ignore:"
+    "The PyTorch API of nested tensors is in prototype stage and will change "
+    "in the near future.*:UserWarning"
+)
 def test_transformer_lstm_baseline_matches_packed_reference() -> None:
     torch.manual_seed(11)
     store = _test_store()

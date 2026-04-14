@@ -146,12 +146,6 @@ _PRESET_REFERENCE_GROUPS = {
 
 def config_root() -> Path:
     return _CONF_ROOT
-
-
-def authorable_group_tokens() -> tuple[str, ...]:
-    return tuple(definition.token for definition in _GROUP_DEFINITIONS if definition.authorable)
-
-
 def normalize_group_name(group: str) -> str:
     if group in _GROUP_BY_TOKEN:
         return _GROUP_BY_TOKEN[group].directory

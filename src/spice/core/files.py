@@ -25,20 +25,6 @@ def write_path_atomic(path: Path, writer: Callable[[Path], None]) -> None:
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
-
-
-def write_text_atomic(path: Path, payload: str, *, encoding: str = "utf-8") -> None:
-    def _write(tmp_path: Path) -> None:
-        tmp_path.write_text(payload, encoding=encoding)
-
-    write_path_atomic(path, _write)
-
-
-def make_temp_dir(parent: Path, *, prefix: str) -> Path:
-    parent.mkdir(parents=True, exist_ok=True)
-    return Path(tempfile.mkdtemp(dir=parent, prefix=prefix))
-
-
 def promote_paths_atomic(promotions: list[tuple[Path, Path]]) -> None:
     backups: list[tuple[Path, Path]] = []
     promoted: list[Path] = []

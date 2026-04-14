@@ -243,6 +243,42 @@ def test_simulate_workflow_smoke(
     assert summary.runs == runs
 
 
+@pytest.mark.parametrize(
+    ("prediction_name", "expected_family_id"),
+    [
+        ("candidate_offset_selection", "candidate_offset_selection"),
+        ("icdcs_2026_paper", "min_block_fee_multitask"),
+    ],
+)
+def test_simulate_workflow_supports_both_prediction_families(
+    tmp_path,
+    deep_merge,
+    prediction_name,
+    expected_family_id,
+    load_test_simulate_config,
+    load_test_train_config,
+    model_workflow_override,
+    seed_evaluation_dataset,
+    seed_history_dataset,
+) -> None:
+    override = deep_merge(
+        model_workflow_override(),
+        {"prediction": prediction_name},
+    )
+    train_config = load_test_train_config(tmp_path, override=override)
+    simulate_config = load_test_simulate_config(tmp_path, override=override)
+    seed_history_dataset(train_config)
+    seed_evaluation_dataset(simulate_config)
+
+    run_train(train_config, reporter=NullReporter())
+    run_simulate(simulate_config, reporter=NullReporter())
+
+    summary = load_simulation_summary(simulate_config.paths.artifact_state_db)
+    assert summary is not None
+    assert summary.prediction_family_id == expected_family_id
+    assert summary.simulation_metric_descriptors
+
+
 def test_simulate_rejects_execution_request_above_capability(
     tmp_path,
     deep_merge,

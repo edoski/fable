@@ -28,10 +28,6 @@ class LoadedTrainingArtifact:
     representation_contract: CompiledRepresentationContract
 
 
-def feature_contract_from_manifest(manifest: TrainingArtifactManifest) -> CompiledFeatureContract:
-    return compile_feature_contract(feature_set=manifest.feature_set)
-
-
 def validate_artifact_semantics(
     manifest: TrainingArtifactManifest,
     *,
@@ -64,7 +60,7 @@ def build_training_artifact_manifest(
     return TrainingArtifactManifest(
         artifact_id=spec.artifact_id,
         prediction=spec.prediction,
-        metric_descriptors=list(spec.prediction_contract.metric_descriptors),
+        training_metric_descriptors=list(spec.prediction_contract.training_metric_descriptors),
         chain=ArtifactChainMetadata(name=spec.chain.name),
         dataset_id=spec.dataset_id,
         dataset_name=spec.dataset_name,

@@ -30,7 +30,7 @@ Canonical domain truth is:
 
 Model-input compilation is a separate layer:
 
-- current sequence families use the shared `sequence_event` representation
+- current sequence families use the shared `sequence_inputs` representation
 - future families may register a different representation if they need genuinely different input semantics
 
 Prediction semantics is another separate layer:
@@ -39,7 +39,7 @@ Prediction semantics is another separate layer:
 - one compiled prediction family contract
 - one family-owned target contract
 - one family-owned output contract
-- one family-owned loss, metrics, decode, and replay bundle
+- one family-owned loss, metrics, decode, and simulation bundle
 - one primary validation and tuning metric selected by that family
 
 Model family stays below that boundary:
@@ -125,9 +125,9 @@ Family-owned responsibilities:
 - best-epoch selection
 - optimization value for tuning
 - decode
-- replay
+- simulate
 
-Replay metrics stay economic and family-neutral:
+Simulation metrics stay economic and family-neutral:
 
 - `profit_over_baseline`
 - `cost_over_optimum`
@@ -177,28 +177,26 @@ Padding is not domain truth. Padding exists only in the collate path for model e
 
 ## Model Boundary
 
-Current sequence families share one semantic batch shape because they solve the same sequence-event problem.
+Current sequence families share one semantic input representation because they solve the same sequence problem.
 
-Shared batch semantics:
+Shared representation semantics:
 
 - `inputs`
 - `input_mask`
-- `candidate_log_fees`
-- `candidate_mask`
 
 Important distinction:
 
 - `input_mask` is batch transport logic
-- `candidate_mask` is problem semantics because valid future actions truly vary by sample
-- optimum index, baseline fee, and realized fee are derived from the candidate slate by the objective package
+- prediction-family targets are compiled separately after representation preparation
+- optimum index, baseline fee, and realized fee are derived by the active prediction family
 
 The compiler seam is keyed by input representation semantics, not model family name.
 
 Current mapping:
 
-- `lstm` -> `sequence_event`
-- `transformer` -> `sequence_event`
-- `transformer_lstm` -> `sequence_event`
+- `lstm` -> `sequence_inputs`
+- `transformer` -> `sequence_inputs`
+- `transformer_lstm` -> `sequence_inputs`
 
 Future examples:
 
@@ -278,7 +276,6 @@ These are selector-driven commands over existing state. They do not use workflow
 ### `modeling`
 
 - [representations.py](src/spice/modeling/representations.py): input-representation registry
-- [problem_batches.py](src/spice/modeling/problem_batches.py): shared semantic batch contracts
 - [pipeline.py](src/spice/modeling/pipeline.py): training and inference dataset preparation
 - [models.py](src/spice/modeling/models.py): baseline temporal models
 - [training.py](src/spice/modeling/training.py): trainer execution and metrics
@@ -287,7 +284,6 @@ These are selector-driven commands over existing state. They do not use workflow
 - [results.py](src/spice/modeling/results.py): typed training and simulation summary envelopes
 - [result_codecs.py](src/spice/modeling/result_codecs.py): typed runtime-to-storage codecs
 - [simulation.py](src/spice/modeling/simulation.py): Poisson-arrival simulation over evaluation examples
-- `objective/`: objective spec, references, loss, metrics, and selection
 
 ### `workflows`
 
@@ -325,3 +321,9 @@ Notes:
 - `spice config ...` is the human-facing config authoring path
 - `spice show dataset|study|artifact` is the human-facing inspection path
 - `spice delete dataset|study|artifact` is the cleanup path
+
+Passive state naming stays strict:
+
+- `Snapshot`: captured semantic or runtime state
+- `Record`: persisted envelope or read-model row
+- `Summary`: derived user-facing read model

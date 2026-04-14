@@ -109,8 +109,9 @@ class PredictionPreparedRepresentation:
 class CompiledPredictionContract:
     prediction_id: str
     prediction_family_id: str
-    metric_descriptors: tuple[MetricDescriptor, ...]
+    training_metric_descriptors: tuple[MetricDescriptor, ...]
     progress_metric_descriptors: tuple[StageMetricDescriptor, ...]
+    simulation_metric_descriptors: tuple[MetricDescriptor, ...]
     primary_metric_id: str
     direction: Literal["maximize", "minimize"]
     supported_workflows: frozenset[str]
@@ -181,7 +182,7 @@ class CompiledPredictionContract:
     ) -> None:
         raise NotImplementedError
 
-    def replay(
+    def simulate(
         self,
         store: CompiledProblemStore,
         predictions: object,

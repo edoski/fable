@@ -1,4 +1,4 @@
-"""Prediction-family replay helpers."""
+"""Prediction-family simulation helpers."""
 
 from __future__ import annotations
 
@@ -15,10 +15,9 @@ from ..temporal.problem_store import CompiledProblemStore
 
 IntVector = NDArray[np.int64]
 SimulationRunSummary = PredictionSimulationRun
-SimulationSummary = PredictionSimulationSummary
 
 
-def run_prediction_replay(
+def run_prediction_simulation(
     prediction_contract: CompiledPredictionContract,
     store: CompiledProblemStore,
     predictions: object,
@@ -30,7 +29,7 @@ def run_prediction_replay(
     seed: int,
     reporter: Reporter | None = None,
 ) -> PredictionSimulationSummary:
-    return prediction_contract.replay(
+    return prediction_contract.simulate(
         store,
         predictions,
         sample_indices,

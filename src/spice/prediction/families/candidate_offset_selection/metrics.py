@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
 import torch
 
-from ...base import MetricDescriptor, MetricSet, WindowMetricSummary
+from ...base import MetricDescriptor, MetricSet
 from .batch import CandidateSlateTargetBatch
 from .loss import compute_selection_loss
 from .outputs import masked_candidate_logits
@@ -23,7 +22,7 @@ class CandidateSlateBatchState:
     optimal_fee_sum: float
 
 
-METRIC_DESCRIPTORS: tuple[MetricDescriptor, ...] = (
+TRAINING_METRIC_DESCRIPTORS: tuple[MetricDescriptor, ...] = (
     MetricDescriptor(
         id="profit_over_baseline",
         label="profit over baseline",
@@ -123,10 +122,3 @@ def best_epoch(history: list[MetricSet]) -> int:
         ),
     )
     return winner + 1
-
-
-def summarize_window_metric(values: list[float]) -> WindowMetricSummary:
-    return WindowMetricSummary(
-        mean=float(np.mean(values)),
-        std=float(np.std(values)),
-    )

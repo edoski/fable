@@ -34,7 +34,7 @@ class PersistedTrainingRun:
     artifact_paths: tuple[Path, ...]
 
 
-def _replay_split_metrics(
+def _evaluate_split_metrics(
     training_run: TrainingRunResult,
     *,
     spec: TrainingSpec,
@@ -100,7 +100,7 @@ def run_persisted_training(
             model=training_run.model,
         )
         loaded_artifact = load_training_artifact(artifact_dir)
-        best_validation_metrics, test_metrics = _replay_split_metrics(
+        best_validation_metrics, test_metrics = _evaluate_split_metrics(
             training_run,
             spec=spec,
             model=loaded_artifact.model,
@@ -130,7 +130,7 @@ def run_persisted_training(
             ]
         )
     else:
-        best_validation_metrics, test_metrics = _replay_split_metrics(
+        best_validation_metrics, test_metrics = _evaluate_split_metrics(
             training_run,
             spec=spec,
             model=training_run.model,

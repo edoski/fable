@@ -60,16 +60,6 @@ class PreparedRepresentation(Protocol):
     ) -> Iterator[ModelInputBatch]: ...
 
 
-class RepresentationLoader(Protocol):
-    representation_id: str
-    storage_mode_id: str
-    batch_planner_id: str
-
-    def __iter__(self) -> Iterator[ModelInputBatch]: ...
-
-    def __len__(self) -> int: ...
-
-
 @dataclass(frozen=True, slots=True)
 class InputRepresentationSpec:
     id: str
@@ -198,26 +188,6 @@ def prepare_representation(
         sample_indices,
         runtime_context=runtime_context,
     )
-
-
-def build_representation_loader(
-    representation_id: str,
-    store: CompiledProblemStore,
-    sample_indices: IntVector,
-    *,
-    runtime_context: RepresentationRuntimeContext,
-    seed: int,
-    shuffle: bool = False,
-) -> PreparedRepresentationLoader:
-    return compile_representation_contract(representation_id).build_loader(
-        store,
-        sample_indices,
-        runtime_context=runtime_context,
-        seed=seed,
-        shuffle=shuffle,
-    )
-
-
 def build_sequence_input_batch(
     store: CompiledProblemStore,
     sample_indices: IntVector,

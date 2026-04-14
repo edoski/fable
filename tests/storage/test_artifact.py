@@ -20,6 +20,7 @@ from spice.modeling.results import (
     TrainingEpochRecord,
     TrainingSummary,
 )
+from spice.modeling.summary import simulation_summary_sections
 from spice.prediction import (
     MetricSet,
     PredictionSimulationRun,
@@ -51,8 +52,30 @@ def _prediction_config():
     )
 
 
+def _paper_prediction_config():
+    return coerce_prediction_config(
+        {
+            "id": "icdcs_2026_paper",
+            "family": {
+                "id": "min_block_fee_multitask",
+                "classification_loss_weight": 1.0,
+                "regression_loss_weight": 1.0,
+                "class_weighting": "inverse_frequency",
+            },
+        }
+    )
+
+
 def _prediction_contract():
     prediction = _prediction_config()
+    return compile_prediction_contract(
+        prediction_id=prediction.id,
+        family_config=prediction.family,
+    )
+
+
+def _paper_prediction_contract():
+    prediction = _paper_prediction_config()
     return compile_prediction_contract(
         prediction_id=prediction.id,
         family_config=prediction.family,
@@ -82,7 +105,7 @@ def test_training_artifact_summary_round_trip(tmp_path) -> None:
     manifest = TrainingArtifactManifest(
         artifact_id="artifact-1",
         prediction=prediction,
-        metric_descriptors=list(contract.metric_descriptors),
+        training_metric_descriptors=list(contract.training_metric_descriptors),
         chain=ArtifactChainMetadata(name="ethereum"),
         dataset_id="icdcs_2026",
         dataset_name="icdcs_2026",
@@ -120,7 +143,7 @@ def test_training_artifact_summary_round_trip(tmp_path) -> None:
         artifact_id=manifest.artifact_id,
         prediction_id=manifest.prediction_id,
         prediction_family_id=manifest.prediction_family_id,
-        metric_descriptors=list(manifest.metric_descriptors),
+        training_metric_descriptors=list(manifest.training_metric_descriptors),
         chain=manifest.chain.name,
         dataset_id=manifest.dataset_id,
         dataset_name=manifest.dataset_name,
@@ -232,7 +255,7 @@ def test_artifact_validation_uses_full_feature_set_and_catches_feature_drift() -
     manifest = TrainingArtifactManifest(
         artifact_id="artifact-1",
         prediction=prediction,
-        metric_descriptors=list(_prediction_contract().metric_descriptors),
+        training_metric_descriptors=list(_prediction_contract().training_metric_descriptors),
         chain=ArtifactChainMetadata(name="ethereum"),
         dataset_id="icdcs_2026",
         dataset_name="icdcs_2026",
@@ -282,7 +305,7 @@ def test_artifact_validation_uses_full_feature_set_and_catches_feature_drift() -
     drifted_manifest = TrainingArtifactManifest(
         artifact_id=manifest.artifact_id,
         prediction=manifest.prediction,
-        metric_descriptors=list(manifest.metric_descriptors),
+        training_metric_descriptors=list(manifest.training_metric_descriptors),
         chain=manifest.chain,
         dataset_id=manifest.dataset_id,
         dataset_name=manifest.dataset_name,
@@ -319,7 +342,7 @@ def test_simulation_artifact_summary_round_trip(tmp_path) -> None:
         artifact_id="artifact-1",
         prediction_id="candidate_offset_selection",
         prediction_family_id="candidate_offset_selection",
-        metric_descriptors=list(contract.metric_descriptors),
+        simulation_metric_descriptors=list(contract.simulation_metric_descriptors),
         chain="ethereum",
         dataset_id="icdcs_2026",
         dataset_name="icdcs_2026",
@@ -395,3 +418,63 @@ def test_simulation_artifact_summary_round_trip(tmp_path) -> None:
 
     assert loaded_summary == summary
     assert loaded_runs == summary.runs
+
+
+@pytest.mark.parametrize(
+    "contract_factory",
+    [_prediction_contract, _paper_prediction_contract],
+)
+def test_simulation_summary_sections_use_simulation_descriptors_and_window_metrics(
+    contract_factory,
+) -> None:
+    contract = contract_factory()
+    summary = SimulationSummaryRecord(
+        artifact_id="artifact-1",
+        prediction_id=contract.prediction_id,
+        prediction_family_id=contract.prediction_family_id,
+        simulation_metric_descriptors=list(contract.simulation_metric_descriptors),
+        chain="ethereum",
+        dataset_id="icdcs_2026",
+        dataset_name="icdcs_2026",
+        variant=ArtifactVariant.BASELINE,
+        study=None,
+        study_id=None,
+        model_id="lstm",
+        problem_id="test_problem",
+        max_supported_delay_seconds=36,
+        requested_delay_seconds=24,
+        lookback_seconds=120,
+        feature_family_id="block_native",
+        feature_prerequisites=FeaturePrerequisites(history_seconds=120, warmup_rows=200),
+        simulation_window_seconds=600,
+        arrival_rate_per_second=0.02,
+        repetitions=3,
+        n_history_rows=128,
+        n_evaluation_rows=64,
+        sample_count=24,
+        max_candidate_slots=3,
+        metrics=MetricSet(
+            values={
+                "profit_over_baseline": 0.2,
+                "cost_over_optimum": 0.15,
+                "baseline_cost_over_optimum": 0.25,
+                "realized_fee_sum": 9.0,
+                "baseline_fee_sum": 10.0,
+                "optimum_fee_sum": 8.0,
+            }
+        ),
+        window_metrics={
+            "profit_over_baseline": WindowMetricSummary(mean=0.2, std=0.01),
+            "cost_over_optimum": WindowMetricSummary(mean=0.15, std=0.02),
+        },
+        total_events=6,
+        runs=[],
+    )
+
+    sections = dict(simulation_summary_sections(summary))
+
+    assert "results" in sections
+    assert ("profit over baseline", "0.2000") in sections["results"]
+    assert ("cost over optimum", "0.1500") in sections["results"]
+    assert "window metrics" in sections
+    assert ("profit over baseline", "mean=0.2000 std=0.0100") in sections["window metrics"]

@@ -34,7 +34,7 @@ class ArtifactChainMetadata:
 class TrainingArtifactManifest:
     artifact_id: str
     prediction: PredictionConfig
-    metric_descriptors: list[MetricDescriptor]
+    training_metric_descriptors: list[MetricDescriptor]
     chain: ArtifactChainMetadata
     dataset_id: str
     dataset_name: str
@@ -103,7 +103,7 @@ class TrainingSummary:
     artifact_id: str
     prediction_id: str
     prediction_family_id: str
-    metric_descriptors: list[MetricDescriptor]
+    training_metric_descriptors: list[MetricDescriptor]
     chain: str
     dataset_id: str
     dataset_name: str
@@ -144,7 +144,7 @@ class SimulationSummaryRecord:
     artifact_id: str
     prediction_id: str
     prediction_family_id: str
-    metric_descriptors: list[MetricDescriptor]
+    simulation_metric_descriptors: list[MetricDescriptor]
     chain: str
     dataset_id: str
     dataset_name: str
@@ -202,7 +202,7 @@ def build_training_summary(
         artifact_id=manifest.artifact_id,
         prediction_id=manifest.prediction_id,
         prediction_family_id=manifest.prediction_family_id,
-        metric_descriptors=list(manifest.metric_descriptors),
+        training_metric_descriptors=list(manifest.training_metric_descriptors),
         chain=chain_name,
         dataset_id=dataset_id,
         dataset_name=manifest.dataset_name,
@@ -241,6 +241,7 @@ def build_simulation_summary_record(
     *,
     prepared: PreparedInferenceDataset,
     simulation: PredictionSimulationSummary,
+    simulation_metric_descriptors: list[MetricDescriptor],
     requested_delay_seconds: int,
     window_seconds: int,
     arrival_rate_per_second: float,
@@ -250,7 +251,7 @@ def build_simulation_summary_record(
         artifact_id=manifest.artifact_id,
         prediction_id=manifest.prediction_id,
         prediction_family_id=manifest.prediction_family_id,
-        metric_descriptors=list(manifest.metric_descriptors),
+        simulation_metric_descriptors=list(simulation_metric_descriptors),
         chain=manifest.chain.name,
         dataset_id=manifest.dataset_id,
         dataset_name=manifest.dataset_name,

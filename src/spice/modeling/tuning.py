@@ -17,15 +17,7 @@ from ..storage.study import load_best_params, load_study_manifest, validate_tune
 from .families.registry import (
     apply_tuned_parameters as apply_model_tuned_parameters,
 )
-from .families.registry import (
-    coerce_model_config,
-    coerce_tuning_space_config,
-    flatten_tuned_model_params,
-)
-
-
-def flatten_tuned_parameters(params: TunedParameterSet) -> dict[str, float | int]:
-    return flatten_tuned_model_params(params)
+from .families.registry import coerce_model_config, coerce_tuning_space_config
 
 
 def apply_tuned_parameters(

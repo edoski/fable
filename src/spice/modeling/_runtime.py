@@ -143,26 +143,6 @@ def prepare_prediction_representation(
     )
     targets = prediction_contract.prepare_targets(store, sample_indices)
     return bind_prediction_representation(prepared, targets=targets)
-
-
-def build_model_loader(
-    store: CompiledProblemStore,
-    sample_indices: IntVector,
-    *,
-    representation_contract: CompiledRepresentationContract,
-    runtime_context: RepresentationRuntimeContext,
-    seed: int,
-    shuffle: bool = False,
-) -> PreparedRepresentationLoader:
-    return representation_contract.build_loader(
-        store,
-        sample_indices,
-        runtime_context=runtime_context,
-        seed=seed,
-        shuffle=shuffle,
-    )
-
-
 def build_prediction_loader(
     store: CompiledProblemStore,
     sample_indices: IntVector,

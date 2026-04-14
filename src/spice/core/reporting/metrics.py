@@ -112,17 +112,6 @@ def _progress_bucket(stage: _StageState) -> int | None:
         return 10
     bucket_count = min(10, stage.total)
     return min(bucket_count, (stage.completed * bucket_count) // stage.total)
-
-
-def _format_progress_count(stage: _StageState, *, include_unit: bool = True) -> str:
-    suffix = ""
-    if include_unit and stage.unit is not None:
-        suffix = f" {stage.unit}"
-    if stage.total is None:
-        return f"{stage.completed:,}{suffix}" if stage.completed else "--"
-    return f"{stage.completed:,}/{stage.total:,}{suffix}"
-
-
 def _format_progress_percent(stage: _StageState) -> str:
     if stage.total is None or stage.total <= 0:
         return "--"

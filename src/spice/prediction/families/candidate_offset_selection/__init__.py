@@ -16,11 +16,12 @@ from ...contracts import (
     PredictionTargetBatch,
     PreparedPredictionTargets,
 )
+from ...offset_selection.replay import SIMULATION_METRIC_DESCRIPTORS
 from ...registry import PredictionFamilySpec, register_prediction_family_spec
 from .batch import CandidateSlateTargetBatch
 from .config import CandidateOffsetSelectionFamilyConfig
 from .metrics import (
-    METRIC_DESCRIPTORS,
+    TRAINING_METRIC_DESCRIPTORS,
     best_epoch,
     compute_batch_loss_and_state,
     summarize_epoch_metrics,
@@ -81,7 +82,7 @@ class CandidateOffsetSelectionPredictionContract(CompiledPredictionContract):
             raise TypeError("candidate_offset_selection expects CandidateSlateTargetBatch targets")
         decode_into(predictions, sample_positions, outputs, targets)
 
-    def replay(
+    def simulate(
         self,
         store: CompiledProblemStore,
         predictions: object,
@@ -112,8 +113,9 @@ def _compile(
     return CandidateOffsetSelectionPredictionContract(
         prediction_id=prediction_id,
         prediction_family_id="candidate_offset_selection",
-        metric_descriptors=METRIC_DESCRIPTORS,
+        training_metric_descriptors=TRAINING_METRIC_DESCRIPTORS,
         progress_metric_descriptors=PROGRESS_METRIC_DESCRIPTORS,
+        simulation_metric_descriptors=SIMULATION_METRIC_DESCRIPTORS,
         primary_metric_id="profit_over_baseline",
         direction="maximize",
         supported_workflows=frozenset({"train", "tune", "simulate"}),

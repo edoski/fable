@@ -160,22 +160,6 @@ class ConsoleRuntime:
             metric_descriptors=metric_descriptors,
         )
 
-    def log_summary(self, title: str, rows: list[tuple[str, str]]) -> None:
-        if self.console.is_terminal:
-            self.reporter.close()
-            table = Table.grid(padding=(0, 1))
-            table.add_column(style="bold cyan", justify="right")
-            table.add_column()
-            for label, value in rows:
-                table.add_row(label, value)
-            self.console.print(
-                _with_top_terminal_spacer(Panel(table, title=title, border_style="cyan"))
-            )
-            return
-        self.reporter.log(title)
-        for label, value in rows:
-            self.reporter.log(f"{label}: {value}")
-
     def log_sectioned_summary(
         self,
         title: str,

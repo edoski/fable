@@ -523,7 +523,6 @@ class PlainReporter(_BaseWorkflowReporter):
 
     def __init__(self, console: Console | None = None) -> None:
         super().__init__(console=console)
-        self._workflow_announced = False
 
     def _on_workflow_configured(self) -> None:
         if self._workflow_title is None:
@@ -531,7 +530,6 @@ class PlainReporter(_BaseWorkflowReporter):
         self.console.print(self._workflow_title, markup=False)
         for label, value in self._workflow_facts:
             self.console.print(f"{label}: {value}", markup=False)
-        self._workflow_announced = True
 
     def _on_stage_change(self, stage: _StageState) -> None:
         if not self._should_emit(stage):

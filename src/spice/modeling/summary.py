@@ -17,6 +17,20 @@ def _metric_lines(
     ]
 
 
+def _window_metric_lines(summary: SimulationSummaryRecord) -> list[tuple[str, str]]:
+    return [
+        (
+            descriptor.label,
+            (
+                f"mean={summary.window_metrics[descriptor.id].mean:.4f} "
+                f"std={summary.window_metrics[descriptor.id].std:.4f}"
+            ),
+        )
+        for descriptor in summary.simulation_metric_descriptors
+        if descriptor.id in summary.window_metrics
+    ]
+
+
 def training_summary_sections(
     summary: TrainingSummary,
 ) -> list[tuple[str, list[tuple[str, str]]]]:
@@ -68,14 +82,14 @@ def training_summary_sections(
                 *[
                     (f"validation {label}", value)
                     for label, value in _metric_lines(
-                        summary.metric_descriptors,
+                        summary.training_metric_descriptors,
                         summary.best_validation_metrics,
                     )
                 ],
                 *[
                     (f"test {label}", value)
                     for label, value in _metric_lines(
-                        summary.metric_descriptors,
+                        summary.training_metric_descriptors,
                         summary.test_metrics,
                     )
                 ],
@@ -119,6 +133,11 @@ def simulation_summary_sections(
         ),
         (
             "results",
-            _metric_lines(summary.metric_descriptors, summary.metrics),
+            _metric_lines(summary.simulation_metric_descriptors, summary.metrics),
+        ),
+        *(
+            []
+            if not summary.window_metrics
+            else [("window metrics", _window_metric_lines(summary))]
         ),
     ]
