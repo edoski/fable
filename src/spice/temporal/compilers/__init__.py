@@ -1,6 +1,6 @@
 """Problem compiler registry package."""
 
-from .base import CompilerRuntimeMetadata, ProblemCompilerConfig, ProblemCompilerSpec
+from .base import ProblemCompilerConfig, ProblemCompilerSpec
 from .registry import (
     coerce_problem_compiler_config,
     problem_compiler_spec,
@@ -8,7 +8,6 @@ from .registry import (
 )
 
 __all__ = [
-    "CompilerRuntimeMetadata",
     "ProblemCompilerConfig",
     "ProblemCompilerSpec",
     "coerce_problem_compiler_config",

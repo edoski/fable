@@ -73,11 +73,39 @@ class FeatureFamilySpec(Generic[FeatureFamilyConfigT]):
     id: str
     config_type: type[FeatureFamilyConfigT]
     modules: tuple[object, ...]
-    compile_contract: Callable[
-        [str, FeatureFamilyConfigT, tuple[str, ...]],
-        CompiledFeatureContract,
-    ]
     resolve_prerequisites: Callable[
         [tuple[str, ...], dict[str, HamiltonNode]],
         FeaturePrerequisites,
     ]
+
+    def compile_contract(
+        self,
+        feature_set_id: str,
+        family_config: FeatureFamilyConfigT,
+        feature_names: tuple[str, ...],
+    ) -> CompiledFeatureContract:
+        from ..contracts import CompiledFeatureContract
+        from ..engine import feature_graph_fingerprint, feature_node_map, make_feature_selection
+
+        if family_config.id != self.id:
+            raise ValueError(
+                f"Feature family config {family_config.id} does not match spec {self.id}"
+            )
+        selection = make_feature_selection(
+            feature_set_id=feature_set_id,
+            feature_family_id=self.id,
+            feature_names=feature_names,
+        )
+        return CompiledFeatureContract(
+            feature_set_id=selection.feature_set_id,
+            feature_family_id=selection.feature_family_id,
+            feature_names=selection.feature_names,
+            feature_graph_fingerprint=feature_graph_fingerprint(
+                selection.feature_family_id,
+                selection.feature_names,
+            ),
+            feature_prerequisites=self.resolve_prerequisites(
+                selection.feature_names,
+                feature_node_map(self.id),
+            ),
+        )

@@ -14,7 +14,13 @@ from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
-from .reporting import PlainReporter, Reporter, RichReporter
+from .reporting import (
+    PlainReporter,
+    Reporter,
+    RichReporter,
+    StageMetricDescriptor,
+    StageMetricValue,
+)
 from .reporting.metrics import _with_top_terminal_spacer
 
 _LIGHTNING_LOGGER_NAMES = (
@@ -116,6 +122,7 @@ class ConsoleRuntime:
         status: str = "pending",
         running_status: str = "running",
         done_status: str = "done",
+        metric_descriptors: Iterable[StageMetricDescriptor] = (),
     ) -> Reporter:
         return self.reporter.stage_reporter(
             key,
@@ -125,6 +132,7 @@ class ConsoleRuntime:
             status=status,
             running_status=running_status,
             done_status=done_status,
+            metric_descriptors=metric_descriptors,
         )
 
     def set_stage_state(
@@ -137,6 +145,8 @@ class ConsoleRuntime:
         unit: str | None = None,
         completed: int | None = None,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
+        metric_descriptors: Iterable[StageMetricDescriptor] = (),
     ) -> None:
         self.reporter.set_stage_state(
             key,
@@ -146,6 +156,8 @@ class ConsoleRuntime:
             unit=unit,
             completed=completed,
             message=message,
+            metrics=metrics,
+            metric_descriptors=metric_descriptors,
         )
 
     def log_summary(self, title: str, rows: list[tuple[str, str]]) -> None:

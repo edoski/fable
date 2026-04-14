@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Protocol
 
+from .state import StageMetricDescriptor, StageMetricValue
+
 ReporterTask = int
 
 
@@ -26,6 +28,7 @@ class Reporter(Protocol):
         completed: int | None = None,
         advance: int | None = None,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
     ) -> None: ...
 
     def finish_task(
@@ -33,6 +36,7 @@ class Reporter(Protocol):
         task_id: ReporterTask,
         *,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
         silent: bool = False,
     ) -> None: ...
 
@@ -53,6 +57,7 @@ class Reporter(Protocol):
         status: str = "pending",
         running_status: str = "running",
         done_status: str = "done",
+        metric_descriptors: Iterable[StageMetricDescriptor] = (),
     ) -> Reporter: ...
 
     def set_stage_state(
@@ -65,6 +70,8 @@ class Reporter(Protocol):
         unit: str | None = None,
         completed: int | None = None,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
+        metric_descriptors: Iterable[StageMetricDescriptor] = (),
     ) -> None: ...
 
     def close(self) -> None: ...

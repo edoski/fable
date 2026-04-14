@@ -13,9 +13,9 @@ from ...features import (
     FeaturePrerequisites,
     ResolvedFeatureTable,
 )
-from ..contracts import CompiledProblemContract
+from ..contracts import CompiledProblemContract, ProblemRuntimeMetadata
 from ..problem_store import CompiledProblemStore
-from .base import CompilerRuntimeMetadata, ProblemCompilerConfig, ProblemCompilerSpec
+from .base import ProblemCompilerConfig, ProblemCompilerSpec
 from .registry import register_problem_compiler_spec
 
 
@@ -56,7 +56,7 @@ class TimestampNativeCompiledProblemContract(CompiledProblemContract):
     def build_capability_store(
         self,
         feature_table: ResolvedFeatureTable,
-    ) -> tuple[CompiledProblemStore, CompilerRuntimeMetadata]:
+    ) -> tuple[CompiledProblemStore, ProblemRuntimeMetadata]:
         return (
             _build_timestamp_problem_store(
                 feature_table,
@@ -74,7 +74,7 @@ class TimestampNativeCompiledProblemContract(CompiledProblemContract):
         feature_table: ResolvedFeatureTable,
         requested_delay_seconds: int,
         *,
-        compiler_runtime_metadata: CompilerRuntimeMetadata,
+        compiler_runtime_metadata: ProblemRuntimeMetadata,
         max_candidate_slots: int,
     ) -> CompiledProblemStore:
         del compiler_runtime_metadata

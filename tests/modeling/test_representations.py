@@ -5,11 +5,11 @@ import torch
 
 from spice.config import coerce_prediction_config
 from spice.modeling._runtime import build_prediction_loader
+from spice.modeling.families.registry import compile_default_representation_contract
 from spice.modeling.inference import predict_with_model
 from spice.modeling.models import ModelOutputs, TemporalModel, take_last_valid
 from spice.modeling.representations import (
     RepresentationRuntimeContext,
-    compile_representation_contract,
     prepare_representation,
 )
 from spice.prediction import compile_prediction_contract
@@ -125,7 +125,7 @@ def test_sequence_input_storage_modes_yield_identical_batches() -> None:
 def test_prediction_loader_binds_current_family_targets() -> None:
     store = _test_store()
     sample_indices = np.array([0, 1, 2, 3], dtype=np.int64)
-    representation_contract = compile_representation_contract("sequence_inputs")
+    representation_contract = compile_default_representation_contract("lstm")
     loader = build_prediction_loader(
         store,
         sample_indices,
@@ -153,7 +153,7 @@ def test_prediction_loader_binds_current_family_targets() -> None:
 def test_predict_with_model_decodes_candidate_offsets() -> None:
     store = _test_store()
     sample_indices = np.array([0, 1, 2, 3], dtype=np.int64)
-    representation_contract = compile_representation_contract("sequence_inputs")
+    representation_contract = compile_default_representation_contract("lstm")
     predictions = predict_with_model(
         _ToyTemporalModel(n_candidate_slots=store.max_candidate_slots),
         prediction_contract=_prediction_contract(),

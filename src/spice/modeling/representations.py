@@ -75,10 +75,17 @@ class InputRepresentationSpec:
     id: str
     prepare: Callable[..., PreparedRepresentation]
 
+    def compile_contract(self) -> CompiledRepresentationContract:
+        return CompiledRepresentationContract(
+            representation_id=self.id,
+            prepare_impl=self.prepare,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class CompiledRepresentationContract:
     representation_id: str
+    prepare_impl: Callable[..., PreparedRepresentation]
 
     def prepare(
         self,
@@ -87,8 +94,7 @@ class CompiledRepresentationContract:
         *,
         runtime_context: RepresentationRuntimeContext,
     ) -> PreparedRepresentation:
-        spec = input_representation_spec(self.representation_id)
-        return spec.prepare(
+        return self.prepare_impl(
             store,
             sample_indices,
             runtime_context=runtime_context,
@@ -177,7 +183,7 @@ def input_representation_spec(representation_id: str) -> InputRepresentationSpec
 
 def compile_representation_contract(representation_id: str) -> CompiledRepresentationContract:
     spec = input_representation_spec(representation_id)
-    return CompiledRepresentationContract(representation_id=spec.id)
+    return spec.compile_contract()
 
 
 def prepare_representation(

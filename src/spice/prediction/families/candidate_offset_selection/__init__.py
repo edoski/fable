@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import torch
 
-from ....core.reporting import Reporter
+from ....core.reporting import Reporter, StageMetricDescriptor
 from ....modeling.models import ModelOutputs
 from ....temporal.problem_store import CompiledProblemStore
 from ...base import MetricSet, PredictionOutputSpec, PredictionSimulationSummary
@@ -28,6 +28,13 @@ from .metrics import (
 from .outputs import CANDIDATE_LOGITS_HEAD_ID, build_output_spec
 from .replay import allocate_prediction_buffer, decode_into, run_replay
 from .targets import prepare_candidate_slate_targets
+
+PROGRESS_METRIC_DESCRIPTORS: tuple[StageMetricDescriptor, ...] = (
+    StageMetricDescriptor(id="profit_over_baseline", label="profit", width=8),
+    StageMetricDescriptor(id="cost_over_optimum", label="cost", width=8),
+    StageMetricDescriptor(id="total_loss", label="loss", width=7),
+    StageMetricDescriptor(id="exact_optimum_hit_rate", label="hit", width=6),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +113,7 @@ def _compile(
         prediction_id=prediction_id,
         prediction_family_id="candidate_offset_selection",
         metric_descriptors=METRIC_DESCRIPTORS,
+        progress_metric_descriptors=PROGRESS_METRIC_DESCRIPTORS,
         primary_metric_id="profit_over_baseline",
         direction="maximize",
         supported_workflows=frozenset({"train", "tune", "simulate"}),

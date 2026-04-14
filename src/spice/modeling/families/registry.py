@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 
 import optuna
 import torch
@@ -20,6 +20,9 @@ from ...prediction import PredictionOutputSpec
 from ..models import TemporalModel
 from .base import ModelConfig, ModelTuningSpaceConfig, TunedModelParams
 
+if TYPE_CHECKING:
+    from ..representations import CompiledRepresentationContract
+
 ModelConfigT = TypeVar("ModelConfigT", bound=ModelConfig)
 ModelTuningSpaceT = TypeVar("ModelTuningSpaceT", bound=ModelTuningSpaceConfig)
 ModelTunedParamsT = TypeVar("ModelTunedParamsT", bound=TunedModelParams)
@@ -28,7 +31,7 @@ ModelTunedParamsT = TypeVar("ModelTunedParamsT", bound=TunedModelParams)
 @dataclass(frozen=True, slots=True)
 class ModelSpec(Generic[ModelConfigT, ModelTuningSpaceT, ModelTunedParamsT]):
     id: str
-    input_representation: str
+    default_representation_id: str
     model_config_type: type[ModelConfigT]
     tuning_space_type: type[ModelTuningSpaceT]
     tuned_params_type: type[ModelTunedParamsT]
@@ -38,6 +41,11 @@ class ModelSpec(Generic[ModelConfigT, ModelTuningSpaceT, ModelTunedParamsT]):
     validate_tuning_space: Callable[[ModelConfigT, ModelTuningSpaceT], None]
     sample_model_params: Callable[[optuna.Trial, ModelTuningSpaceT], ModelTunedParamsT | None]
     apply_model_params: Callable[[ModelConfigT, ModelTunedParamsT], ModelConfigT]
+
+    def compile_representation_contract(self) -> CompiledRepresentationContract:
+        from ..representations import compile_representation_contract
+
+        return compile_representation_contract(self.default_representation_id)
 
 
 _MODEL_SPECS: dict[str, ModelSpec[Any, Any, Any]] = {}
@@ -142,8 +150,8 @@ def build_model(
     return spec.build_model(n_features, output_spec, cast(Any, config))
 
 
-def resolve_input_representation(model_id: str) -> str:
-    return model_spec(model_id).input_representation
+def compile_default_representation_contract(model_id: str) -> CompiledRepresentationContract:
+    return model_spec(model_id).compile_representation_contract()
 
 
 def resolve_default_precision(model_id: str, device: torch.device) -> TrainingPrecision:

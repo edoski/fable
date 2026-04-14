@@ -11,11 +11,8 @@ from .engine import (
     FeatureSelection,
     ResolvedFeatureTable,
     build_feature_table,
-    feature_graph_fingerprint,
-    make_feature_selection,
-    resolve_feature_prerequisites,
 )
-from .families import FeatureFamilyConfig, FeaturePrerequisites, feature_family_spec
+from .families import FeaturePrerequisites, feature_family_spec
 
 if TYPE_CHECKING:
     from ..config.models import FeatureSetConfig
@@ -47,29 +44,4 @@ def compile_feature_contract(*, feature_set: FeatureSetConfig) -> CompiledFeatur
         feature_set.id,
         feature_set.family,
         tuple(feature_set.outputs),
-    )
-
-
-def compile_feature_contract_for_family(
-    feature_set_id: str,
-    family_config: FeatureFamilyConfig,
-    feature_names: tuple[str, ...],
-) -> CompiledFeatureContract:
-    selection = make_feature_selection(
-        feature_set_id=feature_set_id,
-        feature_family_id=family_config.id,
-        feature_names=feature_names,
-    )
-    return CompiledFeatureContract(
-        feature_set_id=selection.feature_set_id,
-        feature_family_id=selection.feature_family_id,
-        feature_names=selection.feature_names,
-        feature_graph_fingerprint=feature_graph_fingerprint(
-            selection.feature_family_id,
-            selection.feature_names,
-        ),
-        feature_prerequisites=resolve_feature_prerequisites(
-            selection.feature_family_id,
-            selection.feature_names,
-        ),
     )

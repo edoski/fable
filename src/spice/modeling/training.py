@@ -13,7 +13,12 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from numpy.typing import NDArray
 
 from ..config import ModelConfig, TrainingConfig
-from ..core.reporting import NullReporter, Reporter, format_compact_number
+from ..core.reporting import (
+    NullReporter,
+    Reporter,
+    StageMetricValue,
+    format_compact_number,
+)
 from ..prediction import CompiledPredictionContract, MetricSet
 from ..temporal.problem_store import CompiledProblemStore
 from ._runtime import (
@@ -31,6 +36,7 @@ from .lightning_module import TemporalLightningModule
 from .models import TemporalModel
 
 IntVector = NDArray[np.int64]
+_EPOCH_STAGE_METRIC_ID = "epoch"
 
 
 @dataclass(slots=True)
@@ -96,15 +102,30 @@ class ReporterProgressCallback(L.Callback):
         if self._task_id is None:
             return
         loss_value = _loss_value(outputs)
-        message = (
-            f"epoch={trainer.current_epoch + 1}/{self._max_epochs} "
-            "batch "
-            f"{_format_compact_progress(batch_idx + 1, max(1, self._train_batches_per_epoch))}"
+        metrics = [
+            StageMetricValue(
+                id=_EPOCH_STAGE_METRIC_ID,
+                value=f"{trainer.current_epoch + 1}/{self._max_epochs}",
+            )
+        ]
+        message = "batch " + _format_compact_progress(
+            batch_idx + 1,
+            max(1, self._train_batches_per_epoch),
         )
         if loss_value is not None:
             self._smoothed_loss = _smooth_value(self._smoothed_loss, loss_value, alpha=0.12)
-            message = f"{message} loss={format_compact_number(self._smoothed_loss)}"
-        self._reporter.update_task(self._task_id, advance=1, message=message)
+            metrics.append(
+                StageMetricValue(
+                    id="total_loss",
+                    value=format_compact_number(self._smoothed_loss),
+                )
+            )
+        self._reporter.update_task(
+            self._task_id,
+            advance=1,
+            message=message,
+            metrics=metrics,
+        )
 
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         if self._task_id is None:
@@ -119,15 +140,18 @@ class ReporterProgressCallback(L.Callback):
                 self._total_batches,
                 (trainer.current_epoch + 1) * self._train_batches_per_epoch,
             )
-        primary_value = latest.require(self._prediction_contract.primary_metric_id)
+        metrics = (
+            StageMetricValue(
+                id=_EPOCH_STAGE_METRIC_ID,
+                value=f"{trainer.current_epoch + 1}/{self._max_epochs}",
+            ),
+            *self._prediction_contract.format_progress_metrics(latest),
+        )
         self._reporter.update_task(
             self._task_id,
             completed=completed,
-            message=(
-                f"epoch={trainer.current_epoch + 1}/{self._max_epochs} "
-                f"validation {self._prediction_contract.primary_metric_id}="
-                f"{format_compact_number(primary_value)}"
-            ),
+            message="validation",
+            metrics=metrics,
         )
 
     def on_train_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:

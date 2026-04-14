@@ -12,11 +12,8 @@ from rich.text import Text
 
 from .metrics import (
     _PROGRESS_BAR_STYLES,
-    _STAGE_METRIC_LABELS,
-    _STAGE_METRIC_WIDTHS,
     _STAGE_STATUS_STYLES,
-    _active_stage_metric_columns,
-    _extract_stage_metrics,
+    _active_stage_metric_descriptors,
     _panel_body_width,
     _render_elapsed,
     _render_eta,
@@ -90,12 +87,13 @@ class RichReporter(_BaseWorkflowReporter):
 
     def _render_stage_table(self) -> Table:
         available_width = _panel_body_width(self.console)
-        metric_columns = _active_stage_metric_columns(
+        metric_columns = _active_stage_metric_descriptors(
             self._stages.values(),
             available_width=available_width,
         )
+        visible_metric_ids = {descriptor.id for descriptor in metric_columns}
         has_detail = any(
-            _extract_stage_metrics(stage.detail, visible_metrics=metric_columns)[1]
+            _render_stage_detail(stage, visible_metric_ids=visible_metric_ids).plain
             for stage in self._stages.values()
         )
         layout = _stage_layout(
@@ -126,10 +124,10 @@ class RichReporter(_BaseWorkflowReporter):
             overflow="ellipsis",
         )
         table.add_column("progress", width=layout.progress_width, no_wrap=True)
-        for metric_key in layout.metric_columns:
+        for descriptor in layout.metric_columns:
             table.add_column(
-                _STAGE_METRIC_LABELS[metric_key],
-                width=_STAGE_METRIC_WIDTHS[metric_key],
+                descriptor.label,
+                width=descriptor.width,
                 no_wrap=True,
                 justify="right",
             )
@@ -141,24 +139,20 @@ class RichReporter(_BaseWorkflowReporter):
         if layout.show_detail:
             table.add_column("detail", ratio=1, no_wrap=True, overflow="ellipsis")
         for stage in self._stages.values():
-            metrics, detail = _extract_stage_metrics(
-                stage.detail,
-                visible_metrics=layout.metric_columns,
-            )
             row = [
                 Text(stage.label, style="bold"),
                 Text(stage.status, style=_STAGE_STATUS_STYLES.get(stage.status, "")),
                 self._render_progress(stage, bar_width=layout.progress_bar_width),
             ]
-            for metric_key in layout.metric_columns:
-                row.append(_render_stage_metric(metrics.get(metric_key)))
+            for descriptor in layout.metric_columns:
+                row.append(_render_stage_metric(stage.metric_values.get(descriptor.id)))
             if layout.show_rate:
                 row.append(_render_rate(stage))
             row.append(_render_elapsed(stage))
             if layout.show_eta:
                 row.append(_render_eta(stage))
             if layout.show_detail:
-                row.append(_render_stage_detail(detail))
+                row.append(_render_stage_detail(stage, visible_metric_ids=visible_metric_ids))
             table.add_row(*row)
         return table
 

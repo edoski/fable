@@ -116,7 +116,7 @@ def _apply_model_params(
 register_model_spec(
     ModelSpec(
         id="lstm",
-        input_representation="sequence_inputs",
+        default_representation_id="sequence_inputs",
         model_config_type=LstmModelConfig,
         tuning_space_type=LstmTuningSpaceModelConfig,
         tuned_params_type=LstmTunedModelParams,

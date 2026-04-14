@@ -143,7 +143,7 @@ def _apply_model_params(
 register_model_spec(
     ModelSpec(
         id="transformer",
-        input_representation="sequence_inputs",
+        default_representation_id="sequence_inputs",
         model_config_type=TransformerModelConfig,
         tuning_space_type=TransformerTuningSpaceModelConfig,
         tuned_params_type=TransformerTunedModelParams,

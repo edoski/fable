@@ -18,7 +18,7 @@ from spice.acquisition.rpc import (
     TimestampRange,
     Web3BlockClient,
 )
-from spice.core.reporting import NullReporter, PlainReporter
+from spice.core.reporting import NullReporter, PlainReporter, StageMetricValue
 from spice.features import compile_feature_contract
 from spice.storage.catalog import list_dataset_records
 from spice.storage.corpus import list_acquire_runs, load_dataset_summary
@@ -30,6 +30,7 @@ from spice.workflows.acquire import run as run_acquire
 class CaptureReporter(NullReporter):
     def __init__(self) -> None:
         self.messages: list[str | None] = []
+        self.metrics: list[dict[str, str]] = []
 
     def start_task(
         self,
@@ -48,9 +49,11 @@ class CaptureReporter(NullReporter):
         completed: int | None = None,
         advance: int | None = None,
         message: str | None = None,
+        metrics: tuple[StageMetricValue, ...] = (),
     ) -> None:
         del problem_id, completed, advance
         self.messages.append(message)
+        self.metrics.append({metric.id: metric.value for metric in metrics})
 
 
 def _plan_for_window(
@@ -291,9 +294,12 @@ def test_pull_block_range_emits_structured_progress_messages(
         )
     )
 
-    assert reporter.messages[0] == "batch=16 conc=8"
-    assert "oversize backoff batch=8 conc=8" in reporter.messages
-    assert reporter.messages.count("batch=8 conc=8") == 2
+    assert reporter.messages[0] is None
+    assert reporter.metrics[0] == {"batch": "16", "conc": "8"}
+    assert ("oversize backoff", {"batch": "8", "conc": "8"}) in list(
+        zip(reporter.messages, reporter.metrics, strict=True)
+    )
+    assert reporter.metrics.count({"batch": "8", "conc": "8"}) == 3
 
 
 def test_acquire_executor_threads_skip_python_exit_registry() -> None:

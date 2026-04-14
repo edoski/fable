@@ -13,9 +13,9 @@ from ...features import (
     FeaturePrerequisites,
     ResolvedFeatureTable,
 )
-from ..contracts import CompiledProblemContract
+from ..contracts import CompiledProblemContract, ProblemRuntimeMetadata
 from ..problem_store import CompiledProblemStore
-from .base import CompilerRuntimeMetadata, ProblemCompilerConfig, ProblemCompilerSpec
+from .base import ProblemCompilerConfig, ProblemCompilerSpec
 from .registry import register_problem_compiler_spec
 
 _INTERVAL_KEY = "effective_block_interval_seconds"
@@ -58,7 +58,7 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
     def build_capability_store(
         self,
         feature_table: ResolvedFeatureTable,
-    ) -> tuple[CompiledProblemStore, CompilerRuntimeMetadata]:
+    ) -> tuple[CompiledProblemStore, ProblemRuntimeMetadata]:
         effective_block_interval_seconds = _calibrate_effective_block_interval_seconds(
             feature_table
         )
@@ -90,7 +90,7 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
         feature_table: ResolvedFeatureTable,
         requested_delay_seconds: int,
         *,
-        compiler_runtime_metadata: CompilerRuntimeMetadata,
+        compiler_runtime_metadata: ProblemRuntimeMetadata,
         max_candidate_slots: int,
     ) -> CompiledProblemStore:
         if requested_delay_seconds <= 0:
@@ -213,7 +213,7 @@ def _candidate_count_for_delay(
     return max(1, math.floor(max_delay_seconds / effective_block_interval_seconds)) + 1
 
 
-def _runtime_float(metadata: CompilerRuntimeMetadata, key: str) -> float:
+def _runtime_float(metadata: ProblemRuntimeMetadata, key: str) -> float:
     try:
         value = metadata[key]
     except KeyError as exc:
@@ -221,7 +221,7 @@ def _runtime_float(metadata: CompilerRuntimeMetadata, key: str) -> float:
     return float(cast(int | float | str, value))
 
 
-def _runtime_int(metadata: CompilerRuntimeMetadata, key: str) -> int:
+def _runtime_int(metadata: ProblemRuntimeMetadata, key: str) -> int:
     try:
         value = metadata[key]
     except KeyError as exc:

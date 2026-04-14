@@ -39,6 +39,3 @@ class ProblemCompilerSpec(Generic[ProblemCompilerConfigT]):
     id: str
     config_type: type[ProblemCompilerConfigT]
     compile_problem: Callable[[ProblemSpec, CompiledFeatureContract], CompiledProblemContract]
-
-
-CompilerRuntimeMetadata = dict[str, object]

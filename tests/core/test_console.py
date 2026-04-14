@@ -5,8 +5,23 @@ from io import StringIO
 import pytest
 from rich.console import Console
 
-from spice.core.reporting import PlainReporter, RichReporter
-from spice.core.reporting.metrics import _extract_stage_metrics, _render_eta, _render_rate
+from spice.core.reporting import (
+    PlainReporter,
+    RichReporter,
+    StageMetricDescriptor,
+    StageMetricValue,
+)
+from spice.core.reporting.metrics import _render_eta, _render_rate
+
+_ACQUIRE_METRICS = (
+    StageMetricDescriptor(id="batch", label="batch", width=7),
+    StageMetricDescriptor(id="conc", label="conc", width=5),
+)
+_TRAIN_METRICS = (
+    StageMetricDescriptor(id="epoch", label="epoch", width=7),
+    StageMetricDescriptor(id="total_loss", label="loss", width=7),
+    StageMetricDescriptor(id="profit_over_baseline", label="profit", width=8),
+)
 
 
 def test_plain_reporter_renders_staged_workflow_lines() -> None:
@@ -24,6 +39,7 @@ def test_plain_reporter_renders_staged_workflow_lines() -> None:
         unit="blocks",
         status="pending",
         running_status="pulling",
+        metric_descriptors=_ACQUIRE_METRICS,
     )
     reporter.set_stage_state(
         "evaluation",
@@ -35,7 +51,14 @@ def test_plain_reporter_renders_staged_workflow_lines() -> None:
     )
 
     task_id = history.start_task("pull Avalanche blocks", total=10, unit="blocks")
-    history.update_task(task_id, completed=5, message="batch=256 conc=8")
+    history.update_task(
+        task_id,
+        completed=5,
+        metrics=(
+            StageMetricValue(id="batch", value="256"),
+            StageMetricValue(id="conc", value="8"),
+        ),
+    )
     history.finish_task(task_id, message="5 files")
     reporter.set_stage_state(
         "history",
@@ -89,15 +112,6 @@ def test_rich_reporter_smoke() -> None:
     assert "history" in rendered
     assert "evaluation" in rendered
     assert "pulling" in rendered
-
-
-def test_extract_stage_metrics_promotes_train_metrics() -> None:
-    metrics, detail = _extract_stage_metrics("epoch=1/50 batch 12.5k/12.5k loss=1.31 profit=0.081")
-
-    assert metrics == {"epoch": "1/50", "loss": "1.31", "profit": "0.081"}
-    assert detail == "batch 12.5k/12.5k"
-
-
 def test_rich_reporter_renders_train_metrics_in_columns() -> None:
     output = StringIO()
     reporter = RichReporter(console=Console(file=output, force_terminal=False, width=240))
@@ -107,12 +121,23 @@ def test_rich_reporter_renders_train_metrics_in_columns() -> None:
         title="train",
         facts=[("dataset", "icdcs_2026"), ("chain", "ethereum"), ("model", "lstm")],
     )
-    fit = reporter.stage_reporter("fit", label="fit", total=100, unit="batches")
+    fit = reporter.stage_reporter(
+        "fit",
+        label="fit",
+        total=100,
+        unit="batches",
+        metric_descriptors=_TRAIN_METRICS,
+    )
     task_id = fit.start_task("train epochs", total=100, unit="batches")
     fit.update_task(
         task_id,
         completed=10,
-        message="epoch=1/50 batch 10/100 loss=1.31 profit=0.081",
+        message="batch 10/100",
+        metrics=(
+            StageMetricValue(id="epoch", value="1/50"),
+            StageMetricValue(id="total_loss", value="1.31"),
+            StageMetricValue(id="profit_over_baseline", value="0.081"),
+        ),
     )
     reporter.console.print(reporter._render_stage_table())
 
@@ -141,9 +166,18 @@ def test_rich_reporter_renders_acquire_metrics_in_columns_on_wide_terminals() ->
         unit="blocks",
         status="pending",
         running_status="pulling",
+        metric_descriptors=_ACQUIRE_METRICS,
     )
     task_id = history.start_task("pull ethereum blocks", total=64, unit="blocks")
-    history.update_task(task_id, completed=32, message="batch=256 conc=8 retrying")
+    history.update_task(
+        task_id,
+        completed=32,
+        message="retrying",
+        metrics=(
+            StageMetricValue(id="batch", value="256"),
+            StageMetricValue(id="conc", value="8"),
+        ),
+    )
     reporter.console.print(reporter._render_stage_table())
 
     rendered = output.getvalue()
@@ -172,9 +206,18 @@ def test_rich_reporter_keeps_hidden_acquire_metrics_in_detail_on_narrow_terminal
         unit="blocks",
         status="pending",
         running_status="pulling",
+        metric_descriptors=_ACQUIRE_METRICS,
     )
     task_id = history.start_task("pull ethereum blocks", total=64, unit="blocks")
-    history.update_task(task_id, completed=32, message="batch=256 conc=8 retrying")
+    history.update_task(
+        task_id,
+        completed=32,
+        message="retrying",
+        metrics=(
+            StageMetricValue(id="batch", value="256"),
+            StageMetricValue(id="conc", value="8"),
+        ),
+    )
     reporter.console.print(reporter._render_stage_table())
 
     rendered = output.getvalue()
@@ -198,7 +241,13 @@ def test_reporter_rate_uses_recent_progress_while_eta_uses_stage_average(monkeyp
     reporter = RichReporter(console=Console(file=StringIO(), force_terminal=False, width=160))
     reporter._refresh_live = lambda: None
 
-    fit = reporter.stage_reporter("fit", label="fit", total=100, unit="batches")
+    fit = reporter.stage_reporter(
+        "fit",
+        label="fit",
+        total=100,
+        unit="batches",
+        metric_descriptors=_TRAIN_METRICS,
+    )
     task_id = fit.start_task("train epochs", total=100, unit="batches")
 
     clock.now = 1.0
@@ -207,7 +256,12 @@ def test_reporter_rate_uses_recent_progress_while_eta_uses_stage_average(monkeyp
     assert stage.smoothed_rate == pytest.approx(10.0)
 
     clock.now = 11.0
-    fit.update_task(task_id, completed=10, message="validation profit=0.020")
+    fit.update_task(
+        task_id,
+        completed=10,
+        message="validation",
+        metrics=(StageMetricValue(id="profit_over_baseline", value="0.020"),),
+    )
     assert stage.smoothed_rate == pytest.approx(10.0)
 
     clock.now = 12.0

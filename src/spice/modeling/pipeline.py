@@ -28,8 +28,11 @@ from ..features import (
     compile_feature_contract,
 )
 from ..prediction import CompiledPredictionContract, compile_prediction_contract
-from ..temporal.compilers import CompilerRuntimeMetadata
-from ..temporal.contracts import CompiledProblemContract, compile_problem_contract
+from ..temporal.contracts import (
+    CompiledProblemContract,
+    ProblemRuntimeMetadata,
+    compile_problem_contract,
+)
 from ..temporal.problem_store import (
     CompiledProblemStore,
     DatasetSplitIndices,
@@ -39,8 +42,8 @@ from ..temporal.problem_store import (
     tail_sample_indices,
 )
 from ..temporal.scaling import ScalerStats, fit_standard_scaler, transform_feature_matrix
-from ._runtime import CompiledRepresentationContract, compile_model_representation_contract
-from .families.registry import build_model
+from ._runtime import CompiledRepresentationContract
+from .families.registry import build_model, compile_default_representation_contract
 from .models import TemporalModel
 from .training import TrainingResult, train_model
 
@@ -97,7 +100,7 @@ def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
         feature_set=config.feature_set,
         prediction=config.prediction,
         prediction_contract=prediction_contract,
-        representation_contract=compile_model_representation_contract(config.model.id),
+        representation_contract=compile_default_representation_contract(config.model.id),
         model=config.model,
         variant=variant,
         study=config.study if variant is ArtifactVariant.TUNED else None,
@@ -120,7 +123,7 @@ class PreparedTrainingDataset:
     store: CompiledProblemStore
     split_indices: DatasetSplitIndices
     scaler: ScalerStats
-    compiler_runtime_metadata: CompilerRuntimeMetadata
+    compiler_runtime_metadata: ProblemRuntimeMetadata
 
     @property
     def n_features(self) -> int:
@@ -243,7 +246,7 @@ def prepare_inference_dataset(
     feature_contract: CompiledFeatureContract,
     contract: CompiledProblemContract,
     requested_delay_seconds: int,
-    compiler_runtime_metadata: CompilerRuntimeMetadata,
+    compiler_runtime_metadata: ProblemRuntimeMetadata,
     scaler: ScalerStats,
     max_candidate_slots: int,
     window_start_timestamp: int,

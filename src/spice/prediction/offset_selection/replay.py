@@ -1,4 +1,4 @@
-"""Family-neutral helpers for offset-based replay."""
+"""Shared replay helpers for offset-based prediction families."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from collections.abc import Sequence
 import numpy as np
 from numpy.typing import NDArray
 
-from ..core.reporting import NullReporter, Reporter
-from ..temporal.problem_store import CompiledProblemStore
-from .base import (
+from ...core.reporting import NullReporter, Reporter
+from ...temporal.problem_store import CompiledProblemStore
+from ..base import (
     MetricSet,
     PredictionSimulationRun,
     PredictionSimulationSummary,

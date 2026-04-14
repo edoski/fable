@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..config import ArtifactVariant, TrainConfig
 from ..core.constants import MODEL_STATE_FILENAME
 from ..core.files import remove_path
-from ..core.reporting import Reporter
+from ..core.reporting import Reporter, StageMetricDescriptor
 from ..modeling.execution import run_persisted_training
 from ..modeling.pipeline import TrainingStageReporters, build_training_spec
 from ..modeling.summary import training_summary_sections
@@ -13,6 +13,10 @@ from ..modeling.tuning import apply_study_best_params
 from ..storage import ARTIFACT_ROOT_KIND, RootKind
 from ..storage.catalog import upsert_artifact_record
 from ._shared import abort_cleanup, managed_workflow
+
+_FIT_STAGE_METRICS: tuple[StageMetricDescriptor, ...] = (
+    StageMetricDescriptor(id="epoch", label="epoch", width=7),
+)
 
 
 def _clean_training_outputs(config: TrainConfig, *, prune_empty_root: bool) -> None:
@@ -82,6 +86,10 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
                 "fit",
                 label="fit",
                 running_status="running",
+                metric_descriptors=(
+                    *_FIT_STAGE_METRICS,
+                    *spec.prediction_contract.progress_metric_descriptors,
+                ),
             ),
             evaluate=session.runtime.stage_reporter("evaluate", label="evaluate"),
         )

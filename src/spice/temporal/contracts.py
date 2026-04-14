@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING
 from ..config.models import ProblemSpec
 from ..features import CompiledFeatureContract, FeaturePrerequisites
 
+ProblemRuntimeMetadata = dict[str, object]
+
 if TYPE_CHECKING:
     from ..features import ResolvedFeatureTable
-    from .compilers import CompilerRuntimeMetadata
     from .problem_store import CompiledProblemStore
 
 
@@ -42,7 +43,7 @@ class CompiledProblemContract:
     def build_capability_store(
         self,
         feature_table: ResolvedFeatureTable,
-    ) -> tuple[CompiledProblemStore, CompilerRuntimeMetadata]:
+    ) -> tuple[CompiledProblemStore, ProblemRuntimeMetadata]:
         raise NotImplementedError
 
     def build_requested_delay_store(
@@ -50,7 +51,7 @@ class CompiledProblemContract:
         feature_table: ResolvedFeatureTable,
         requested_delay_seconds: int,
         *,
-        compiler_runtime_metadata: CompilerRuntimeMetadata,
+        compiler_runtime_metadata: ProblemRuntimeMetadata,
         max_candidate_slots: int,
     ) -> CompiledProblemStore:
         raise NotImplementedError

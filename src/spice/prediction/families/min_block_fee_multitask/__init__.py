@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from ....core.reporting import Reporter
+from ....core.reporting import Reporter, StageMetricDescriptor
 from ....modeling.models import ModelOutputs
 from ....temporal.problem_store import CompiledProblemStore
 from ...base import MetricSet, PredictionOutputSpec, PredictionSimulationSummary
@@ -33,6 +33,13 @@ from .metrics import (
 from .outputs import MIN_LOG_FEE_HEAD_ID, OFFSET_LOGITS_HEAD_ID, build_output_spec
 from .replay import allocate_prediction_buffer, decode_into, run_replay
 from .targets import prepare_min_block_fee_targets
+
+PROGRESS_METRIC_DESCRIPTORS: tuple[StageMetricDescriptor, ...] = (
+    StageMetricDescriptor(id="total_loss", label="loss", width=7),
+    StageMetricDescriptor(id="offset_accuracy", label="hit", width=6),
+    StageMetricDescriptor(id="classification_loss", label="cls", width=7),
+    StageMetricDescriptor(id="regression_loss", label="reg", width=7),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +140,7 @@ def _compile(
         prediction_id=prediction_id,
         prediction_family_id="min_block_fee_multitask",
         metric_descriptors=METRIC_DESCRIPTORS,
+        progress_metric_descriptors=PROGRESS_METRIC_DESCRIPTORS,
         primary_metric_id="total_loss",
         direction="minimize",
         supported_workflows=frozenset({"train", "tune", "simulate"}),

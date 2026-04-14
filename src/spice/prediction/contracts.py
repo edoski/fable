@@ -10,7 +10,12 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 
-from ..core.reporting import Reporter
+from ..core.reporting import (
+    Reporter,
+    StageMetricDescriptor,
+    StageMetricValue,
+    format_compact_number,
+)
 from ..temporal.problem_store import CompiledProblemStore
 from .base import (
     MetricDescriptor,
@@ -105,6 +110,7 @@ class CompiledPredictionContract:
     prediction_id: str
     prediction_family_id: str
     metric_descriptors: tuple[MetricDescriptor, ...]
+    progress_metric_descriptors: tuple[StageMetricDescriptor, ...]
     primary_metric_id: str
     direction: Literal["maximize", "minimize"]
     supported_workflows: frozenset[str]
@@ -152,6 +158,16 @@ class CompiledPredictionContract:
 
     def optimization_value(self, metrics: MetricSet) -> float:
         return metrics.require(self.primary_metric_id)
+
+    def format_progress_metrics(self, metrics: MetricSet) -> tuple[StageMetricValue, ...]:
+        return tuple(
+            StageMetricValue(
+                id=descriptor.id,
+                value=format_compact_number(metrics.values[descriptor.id]),
+            )
+            for descriptor in self.progress_metric_descriptors
+            if descriptor.id in metrics.values
+        )
 
     def allocate_prediction_buffer(self, sample_count: int) -> object:
         raise NotImplementedError

@@ -9,7 +9,7 @@ from numpy.typing import NDArray
 from ....core.reporting import Reporter
 from ....temporal.problem_store import CompiledProblemStore
 from ...base import PredictionSimulationSummary
-from ...replay_utils import run_offset_replay
+from ...offset_selection.replay import run_offset_replay
 from .batch import CandidateSlateTargetBatch
 from .outputs import candidate_logits, masked_candidate_logits
 

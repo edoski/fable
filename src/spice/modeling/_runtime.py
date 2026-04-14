@@ -16,14 +16,12 @@ from ..temporal.problem_store import CompiledProblemStore
 from .families.registry import (
     resolve_auto_compile,
     resolve_default_precision,
-    resolve_input_representation,
 )
 from .representations import (
     CompiledRepresentationContract,
     PreparedRepresentation,
     PreparedRepresentationLoader,
     RepresentationRuntimeContext,
-    compile_representation_contract,
 )
 
 try:
@@ -113,10 +111,6 @@ def build_representation_runtime_context(
         batch_size=batch_size,
         available_memory_bytes=_available_system_memory_bytes(),
     )
-
-
-def compile_model_representation_contract(model_id: str) -> CompiledRepresentationContract:
-    return compile_representation_contract(resolve_input_representation(model_id))
 
 
 def prepare_model_representation(

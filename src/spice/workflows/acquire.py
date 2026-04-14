@@ -17,7 +17,7 @@ from typing import Any, cast
 from ..acquisition.rpc import RpcController, TimestampRange, Web3BlockClient, evaluation_range
 from ..config import AcquireConfig
 from ..core.files import promote_paths_atomic, prune_empty_directories
-from ..core.reporting import Reporter
+from ..core.reporting import Reporter, StageMetricDescriptor
 from ..corpus.builders import (
     ensure_evaluation_dataset,
     ensure_history_dataset,
@@ -34,6 +34,11 @@ from ..storage.catalog import upsert_dataset_record
 from ..storage.corpus import write_dataset_state
 from ..temporal.contracts import CompiledProblemContract, compile_problem_contract
 from ._shared import managed_workflow
+
+_RPC_STAGE_METRICS: tuple[StageMetricDescriptor, ...] = (
+    StageMetricDescriptor(id="batch", label="batch", width=7),
+    StageMetricDescriptor(id="conc", label="conc", width=5),
+)
 
 
 def _workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:
@@ -172,12 +177,14 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
             label="history",
             status="pending",
             running_status="pulling",
+            metric_descriptors=_RPC_STAGE_METRICS,
         )
         evaluation_reporter = session.runtime.stage_reporter(
             "evaluation",
             label="evaluation",
             status="pending",
             running_status="pulling",
+            metric_descriptors=_RPC_STAGE_METRICS,
         )
 
         def _update_stage(key: str, status: str, message: str | None = None) -> None:

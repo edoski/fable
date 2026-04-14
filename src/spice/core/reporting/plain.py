@@ -10,12 +10,11 @@ from rich.console import Console
 from .metrics import (
     _ACTIVE_STAGE_STATUSES,
     _FINAL_STAGE_STATUSES,
-    _format_stage_detail,
     _progress_bucket,
     _smooth_value,
 )
 from .protocol import Reporter, ReporterTask
-from .state import _StageState, _TaskBinding
+from .state import StageMetricDescriptor, StageMetricValue, _StageState, _TaskBinding
 
 
 class NullReporter:
@@ -41,8 +40,9 @@ class NullReporter:
         completed: int | None = None,
         advance: int | None = None,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
     ) -> None:
-        del task_id, completed, advance, message
+        del task_id, completed, advance, message, metrics
         return None
 
     def finish_task(
@@ -50,9 +50,10 @@ class NullReporter:
         task_id: ReporterTask,
         *,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
         silent: bool = False,
     ) -> None:
-        del task_id, message, silent
+        del task_id, message, metrics, silent
         return None
 
     def configure_workflow(
@@ -74,8 +75,9 @@ class NullReporter:
         status: str = "pending",
         running_status: str = "running",
         done_status: str = "done",
+        metric_descriptors: Iterable[StageMetricDescriptor] = (),
     ) -> Reporter:
-        del key, label, total, unit, status, running_status, done_status
+        del key, label, total, unit, status, running_status, done_status, metric_descriptors
         return self
 
     def set_stage_state(
@@ -88,8 +90,10 @@ class NullReporter:
         unit: str | None = None,
         completed: int | None = None,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
+        metric_descriptors: Iterable[StageMetricDescriptor] = (),
     ) -> None:
-        del key, label, status, total, unit, completed, message
+        del key, label, status, total, unit, completed, message, metrics, metric_descriptors
         return None
 
     def close(self) -> None:
@@ -143,12 +147,14 @@ class _BoundStageReporter(NullReporter):
         completed: int | None = None,
         advance: int | None = None,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
     ) -> None:
         self._owner.update_task(
             task_id,
             completed=completed,
             advance=advance,
             message=message,
+            metrics=metrics,
         )
 
     def finish_task(
@@ -156,9 +162,10 @@ class _BoundStageReporter(NullReporter):
         task_id: ReporterTask,
         *,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
         silent: bool = False,
     ) -> None:
-        self._owner.finish_task(task_id, message=message, silent=silent)
+        self._owner.finish_task(task_id, message=message, metrics=metrics, silent=silent)
 
     def configure_workflow(
         self,
@@ -178,6 +185,7 @@ class _BoundStageReporter(NullReporter):
         status: str = "pending",
         running_status: str = "running",
         done_status: str = "done",
+        metric_descriptors: Iterable[StageMetricDescriptor] = (),
     ) -> Reporter:
         return self._owner.stage_reporter(
             key,
@@ -187,6 +195,7 @@ class _BoundStageReporter(NullReporter):
             status=status,
             running_status=running_status,
             done_status=done_status,
+            metric_descriptors=metric_descriptors,
         )
 
     def set_stage_state(
@@ -199,6 +208,8 @@ class _BoundStageReporter(NullReporter):
         unit: str | None = None,
         completed: int | None = None,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
+        metric_descriptors: Iterable[StageMetricDescriptor] = (),
     ) -> None:
         self._owner.set_stage_state(
             key,
@@ -208,6 +219,8 @@ class _BoundStageReporter(NullReporter):
             unit=unit,
             completed=completed,
             message=message,
+            metrics=metrics,
+            metric_descriptors=metric_descriptors,
         )
 
     def close(self) -> None:
@@ -258,6 +271,7 @@ class _BaseWorkflowReporter(NullReporter):
         completed: int | None = None,
         advance: int | None = None,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
     ) -> None:
         binding = self._task_bindings.get(task_id)
         if binding is None:
@@ -276,7 +290,8 @@ class _BaseWorkflowReporter(NullReporter):
         if advance is not None:
             stage.completed = max(0, stage.completed + advance)
         self._update_stage_rate(stage, previous_completed=previous_completed)
-        stage.detail = _format_stage_detail(stage.label, binding.task_name, message)
+        stage.metric_values = {metric.id: metric.value for metric in metrics}
+        stage.detail = message
         self._on_stage_change(stage)
 
     def finish_task(
@@ -284,6 +299,7 @@ class _BaseWorkflowReporter(NullReporter):
         task_id: ReporterTask,
         *,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
         silent: bool = False,
     ) -> None:
         binding = self._task_bindings.pop(task_id, None)
@@ -303,7 +319,8 @@ class _BaseWorkflowReporter(NullReporter):
         self._update_stage_rate(stage, previous_completed=previous_completed)
         stage.status = binding.done_status
         if not silent:
-            stage.detail = _format_stage_detail(stage.label, binding.task_name, message)
+            stage.metric_values = {metric.id: metric.value for metric in metrics}
+            stage.detail = message
         self._on_stage_change(stage)
 
     def configure_workflow(
@@ -326,8 +343,16 @@ class _BaseWorkflowReporter(NullReporter):
         status: str = "pending",
         running_status: str = "running",
         done_status: str = "done",
+        metric_descriptors: Iterable[StageMetricDescriptor] = (),
     ) -> Reporter:
-        stage = self._ensure_stage(key, label=label, status=status, total=total, unit=unit)
+        stage = self._ensure_stage(
+            key,
+            label=label,
+            status=status,
+            total=total,
+            unit=unit,
+            metric_descriptors=tuple(metric_descriptors),
+        )
         self._on_stage_change(stage)
         return _BoundStageReporter(
             self,
@@ -347,10 +372,18 @@ class _BaseWorkflowReporter(NullReporter):
         unit: str | None = None,
         completed: int | None = None,
         message: str | None = None,
+        metrics: Iterable[StageMetricValue] = (),
+        metric_descriptors: Iterable[StageMetricDescriptor] = (),
     ) -> None:
-        stage = self._ensure_stage(key, label=label or key)
+        stage = self._ensure_stage(
+            key,
+            label=label or key,
+            metric_descriptors=tuple(metric_descriptors),
+        )
         if label is not None:
             stage.label = label
+        if metric_descriptors:
+            stage.metric_descriptors = tuple(metric_descriptors)
         if total is not None:
             stage.total = total
         if unit is not None:
@@ -359,6 +392,8 @@ class _BaseWorkflowReporter(NullReporter):
             previous_completed = stage.completed
             stage.completed = max(0, completed)
             self._update_stage_rate(stage, previous_completed=previous_completed)
+        metric_values = tuple(metrics)
+        stage.metric_values = {metric.id: metric.value for metric in metric_values}
         if message is not None:
             stage.detail = message
         if status is not None:
@@ -370,6 +405,7 @@ class _BaseWorkflowReporter(NullReporter):
                 stage.last_progress_at = None
                 stage.last_progress_completed = stage.completed
                 stage.smoothed_rate = None
+                stage.metric_values = {}
             elif status in _ACTIVE_STAGE_STATUSES and stage.started_at is None:
                 started_at = time.monotonic()
                 stage.started_at = started_at
@@ -400,10 +436,11 @@ class _BaseWorkflowReporter(NullReporter):
         stage.total = total
         stage.unit = unit
         stage.completed = 0
+        stage.metric_values = {}
         stage.last_progress_at = started_at
         stage.last_progress_completed = 0
         stage.smoothed_rate = None
-        stage.detail = _format_stage_detail(stage.label, task_name, None)
+        stage.detail = None
         task_id = self._next_task_id
         self._next_task_id += 1
         self._task_bindings[task_id] = _TaskBinding(
@@ -422,6 +459,7 @@ class _BaseWorkflowReporter(NullReporter):
         status: str | None = None,
         total: int | None = None,
         unit: str | None = None,
+        metric_descriptors: tuple[StageMetricDescriptor, ...] = (),
     ) -> _StageState:
         stage = self._stages.get(key)
         if stage is None:
@@ -429,12 +467,15 @@ class _BaseWorkflowReporter(NullReporter):
                 key=key,
                 label=label,
                 status=status or "pending",
+                metric_descriptors=metric_descriptors,
                 total=total,
                 unit=unit,
             )
             self._stages[key] = stage
             return stage
         stage.label = label
+        if metric_descriptors:
+            stage.metric_descriptors = metric_descriptors
         if status is not None:
             stage.status = status
         if total is not None:
@@ -498,6 +539,7 @@ class PlainReporter(_BaseWorkflowReporter):
         self.console.print(self._format_stage_line(stage), markup=False)
         stage.last_emitted_status = stage.status
         stage.last_emitted_detail = stage.detail
+        stage.last_emitted_metric_values = dict(stage.metric_values)
         stage.last_emitted_completed = stage.completed
         stage.last_emitted_bucket = _progress_bucket(stage)
 
@@ -505,6 +547,8 @@ class PlainReporter(_BaseWorkflowReporter):
         if stage.status != stage.last_emitted_status:
             return True
         if stage.detail != stage.last_emitted_detail:
+            return True
+        if stage.metric_values != stage.last_emitted_metric_values:
             return True
         if stage.total is None:
             return stage.completed != stage.last_emitted_completed
@@ -522,6 +566,14 @@ class PlainReporter(_BaseWorkflowReporter):
         elif stage.completed > 0:
             suffix = "" if stage.unit is None else f" {stage.unit}"
             pieces.append(f"{stage.completed:,}{suffix}")
-        if stage.detail:
-            pieces.append(stage.detail)
+        metric_tokens = [
+            f"{descriptor.label}={stage.metric_values[descriptor.id]}"
+            for descriptor in stage.metric_descriptors
+            if descriptor.id in stage.metric_values
+        ]
+        if metric_tokens:
+            pieces.append(" ".join(metric_tokens))
+        detail = stage.detail
+        if detail:
+            pieces.append(detail)
         return " - ".join(pieces)

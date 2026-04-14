@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import Literal
 
-from ...contracts import compile_feature_contract_for_family
 from ..base import FeatureFamilyConfig, FeatureFamilySpec, tagged_feature_prerequisites
 from ..registry import register_feature_family_spec
 from . import base, rolling, trend
@@ -19,7 +18,6 @@ register_feature_family_spec(
         id="block_native",
         config_type=BlockNativeFeatureFamilyConfig,
         modules=(base, rolling, trend),
-        compile_contract=cast(object, compile_feature_contract_for_family),
-        resolve_prerequisites=cast(object, tagged_feature_prerequisites),
+        resolve_prerequisites=tagged_feature_prerequisites,
     )
 )

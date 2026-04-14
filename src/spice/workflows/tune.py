@@ -10,12 +10,13 @@ import optuna
 from optuna.trial import FrozenTrial, TrialState
 
 from ..config import TuneConfig
-from ..core.reporting import Reporter
+from ..core.reporting import Reporter, StageMetricDescriptor
 from ..core.runtime import ConsoleRuntime
 from ..modeling.execution import run_persisted_training
 from ..modeling.families.registry import sample_tuned_parameters
 from ..modeling.pipeline import TrainingStageReporters, build_training_spec
 from ..modeling.tuning import apply_tuned_parameters
+from ..prediction import compile_prediction_contract
 from ..storage.catalog import upsert_study_record
 from ..storage.study import (
     build_study_summary,
@@ -25,6 +26,10 @@ from ..storage.study import (
     study_summary_sections,
 )
 from ._shared import managed_workflow
+
+_TRIAL_STAGE_METRICS: tuple[StageMetricDescriptor, ...] = (
+    StageMetricDescriptor(id="epoch", label="epoch", width=7),
+)
 
 
 def _trial_status_message(trial: FrozenTrial) -> str:
@@ -132,7 +137,18 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
             total=config.tuning.trial_count,
             unit="trials",
         )
-        trial_reporter = session.runtime.stage_reporter("trial", label="trial")
+        prediction_contract = compile_prediction_contract(
+            prediction_id=config.prediction.id,
+            family_config=config.prediction.family,
+        )
+        trial_reporter = session.runtime.stage_reporter(
+            "trial",
+            label="trial",
+            metric_descriptors=(
+                *_TRIAL_STAGE_METRICS,
+                *prediction_contract.progress_metric_descriptors,
+            ),
+        )
         study_access = open_tuning_study(study_state_db, config=config)
         study_task = study_reporter.start_task(
             "tune study",

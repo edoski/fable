@@ -18,7 +18,7 @@ from web3 import AsyncWeb3
 from web3.exceptions import Web3RPCError
 
 from ..config import AcquisitionConfig, ChainSpec, ProviderSpec
-from ..core.reporting import NullReporter, Reporter
+from ..core.reporting import NullReporter, Reporter, StageMetricValue
 from ..corpus.contract import (
     CanonicalBlockRow,
     RpcBlock,
@@ -362,7 +362,7 @@ class Web3BlockClient:
             reporter.update_task(
                 task_id,
                 completed=0,
-                message=self._progress_message(
+                metrics=self._progress_metrics(
                     batch_size=rpc_controller.current_batch_size,
                     concurrency=rpc_controller.current_concurrency,
                 ),
@@ -409,10 +409,10 @@ class Web3BlockClient:
                             reporter.update_task(
                                 task_id,
                                 completed=completed,
-                                message=self._progress_message(
+                                message="oversize backoff",
+                                metrics=self._progress_metrics(
                                     batch_size=next_batch_size,
                                     concurrency=rpc_controller.current_concurrency,
-                                    note="oversize backoff",
                                 ),
                             )
                             for retry_request in self._split_request(
@@ -432,10 +432,10 @@ class Web3BlockClient:
                             reporter.update_task(
                                 task_id,
                                 completed=completed,
-                                message=self._progress_message(
+                                message="transient retry",
+                                metrics=self._progress_metrics(
                                     batch_size=rpc_controller.current_batch_size,
                                     concurrency=rpc_controller.current_concurrency,
-                                    note="transient retry",
                                 ),
                             )
                             heappush(pending_requests, request.retry())
@@ -460,7 +460,7 @@ class Web3BlockClient:
                     reporter.update_task(
                         task_id,
                         completed=completed,
-                        message=self._progress_message(
+                        metrics=self._progress_metrics(
                             batch_size=request.size,
                             concurrency=rpc_controller.current_concurrency,
                         ),
@@ -614,16 +614,15 @@ class Web3BlockClient:
         return destination
 
     @staticmethod
-    def _progress_message(
+    def _progress_metrics(
         *,
         batch_size: int,
         concurrency: int,
-        note: str | None = None,
-    ) -> str:
-        metrics = f"batch={batch_size} conc={concurrency}"
-        if note is None:
-            return metrics
-        return f"{note} {metrics}"
+    ) -> tuple[StageMetricValue, ...]:
+        return (
+            StageMetricValue(id="batch", value=f"{batch_size}"),
+            StageMetricValue(id="conc", value=f"{concurrency}"),
+        )
 
 
 def evaluation_range(start_timestamp: int, end_timestamp: int) -> TimestampRange:

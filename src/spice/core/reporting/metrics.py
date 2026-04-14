@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Collection, Iterable
+from collections.abc import Iterable
 
 from rich.console import Console, RenderableType
 from rich.padding import Padding
 from rich.text import Text
 
-from .state import _StageLayout, _StageState
+from .state import StageMetricDescriptor, _StageLayout, _StageState
 
 _FINAL_STAGE_STATUSES = frozenset(
     {"done", "failed", "reused", "extended", "rebuilt", "created"}
@@ -42,43 +42,6 @@ _PROGRESS_BAR_STYLES = {
     "rebuilt": ("grey23", "yellow", "yellow", "yellow"),
     "failed": ("grey23", "red", "red", "red"),
 }
-_DETAIL_VALUE_LABELS = frozenset({"batch", "conc"})
-_STAGE_METRIC_PRIORITY = ("epoch", "profit", "cost", "loss", "hit", "batch", "conc")
-_STAGE_METRIC_LABELS = {
-    "epoch": "epoch",
-    "profit": "profit",
-    "cost": "cost",
-    "loss": "loss",
-    "hit": "hit",
-    "batch": "batch",
-    "conc": "conc",
-}
-_STAGE_METRIC_WIDTHS = {
-    "epoch": 7,
-    "profit": 8,
-    "cost": 8,
-    "loss": 7,
-    "hit": 6,
-    "batch": 7,
-    "conc": 5,
-}
-_STAGE_METRIC_ALIASES = {
-    "epoch": "epoch",
-    "profit": "profit",
-    "validation_profit": "profit",
-    "validation_profit_over_baseline": "profit",
-    "cost": "cost",
-    "validation_cost": "cost",
-    "validation_cost_over_optimum": "cost",
-    "loss": "loss",
-    "validation_loss": "loss",
-    "hit": "hit",
-    "exact_optimum_hit_rate": "hit",
-    "validation_exact_optimum_hit_rate": "hit",
-    "batch": "batch",
-    "conc": "conc",
-}
-_KEY_VALUE_TOKEN_PATTERN = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9_]*)=(?P<value>.+)$")
 _RATE_COLUMN_WIDTH = 11
 _TIME_COLUMN_WIDTH = 7
 
@@ -94,47 +57,21 @@ def _with_top_terminal_spacer(renderable: RenderableType) -> Padding:
     return Padding(renderable, (1, 0, 0, 0))
 
 
-def _format_stage_detail(label: str, task_name: str, message: str | None) -> str | None:
-    del label, task_name
-    return message
-
-
-def _extract_stage_metrics(
-    raw_detail: str | None,
-    *,
-    visible_metrics: Collection[str] | None = None,
-) -> tuple[dict[str, str], str | None]:
-    if not raw_detail:
-        return {}, None
-    metrics: dict[str, str] = {}
-    detail_tokens: list[str] = []
-    stripped_metrics = None if visible_metrics is None else set(visible_metrics)
-    for token in raw_detail.split():
-        match = _KEY_VALUE_TOKEN_PATTERN.match(token)
-        if match is None:
-            detail_tokens.append(token)
-            continue
-        metric_key = _STAGE_METRIC_ALIASES.get(match.group("key"))
-        if metric_key is None:
-            detail_tokens.append(token)
-            continue
-        metrics[metric_key] = match.group("value")
-        if stripped_metrics is not None and metric_key not in stripped_metrics:
-            detail_tokens.append(token)
-    detail = " ".join(detail_tokens).strip() or None
-    return metrics, detail
-
-
-def _active_stage_metric_columns(
+def _active_stage_metric_descriptors(
     stages: Iterable[_StageState],
     *,
     available_width: int,
-) -> tuple[str, ...]:
-    active_metrics = [
-        metric_key
-        for metric_key in _STAGE_METRIC_PRIORITY
-        if any(metric_key in _extract_stage_metrics(stage.detail)[0] for stage in stages)
-    ]
+) -> tuple[StageMetricDescriptor, ...]:
+    active_metrics: list[StageMetricDescriptor] = []
+    seen: set[str] = set()
+    for stage in stages:
+        for descriptor in stage.metric_descriptors:
+            if descriptor.id in seen:
+                continue
+            if descriptor.id not in stage.metric_values:
+                continue
+            seen.add(descriptor.id)
+            active_metrics.append(descriptor)
     if not active_metrics:
         return ()
     if available_width >= 150:
@@ -150,7 +87,7 @@ def _stage_layout(
     available_width: int,
     *,
     has_detail: bool,
-    metric_columns: tuple[str, ...] = (),
+    metric_columns: tuple[StageMetricDescriptor, ...] = (),
 ) -> _StageLayout:
     if has_detail:
         if available_width >= 132:
@@ -277,7 +214,26 @@ def _render_stage_metric(value: str | None) -> Text:
     return Text(value, style="bright_cyan")
 
 
-def _render_stage_detail(raw_detail: str | None) -> Text:
+def _detail_with_hidden_metrics(
+    stage: _StageState,
+    *,
+    visible_metric_ids: set[str],
+) -> str | None:
+    hidden_metric_tokens = [
+        f"{descriptor.label}={stage.metric_values[descriptor.id]}"
+        for descriptor in stage.metric_descriptors
+        if descriptor.id in stage.metric_values and descriptor.id not in visible_metric_ids
+    ]
+    pieces = [*hidden_metric_tokens]
+    if stage.detail:
+        pieces.append(stage.detail)
+    if not pieces:
+        return None
+    return " ".join(pieces)
+
+
+def _render_stage_detail(stage: _StageState, *, visible_metric_ids: set[str]) -> Text:
+    raw_detail = _detail_with_hidden_metrics(stage, visible_metric_ids=visible_metric_ids)
     if not raw_detail:
         return Text("")
 
@@ -308,16 +264,6 @@ def _append_detail_fragment(detail: Text, fragment: str) -> None:
         detail.append(fragment, style="cyan")
         return
 
-    label, _, value = fragment.partition(" ")
-    if label in _DETAIL_VALUE_LABELS and value:
-        detail.append(label, style="dim")
-        detail.append(" ", style="dim")
-        detail.append(value, style="bright_cyan")
-        return
-
-    if _append_key_value_sequence(detail, fragment):
-        return
-
     number_match = re.match(r"^(?P<number>\d[\d,]*) (?P<label>[A-Za-z].+)$", fragment)
     if number_match is not None:
         detail.append(number_match.group("number"), style="bright_white")
@@ -326,26 +272,6 @@ def _append_detail_fragment(detail: Text, fragment: str) -> None:
         return
 
     detail.append(fragment, style="dim")
-
-
-def _append_key_value_sequence(detail: Text, fragment: str) -> bool:
-    tokens = fragment.split()
-    if not tokens:
-        return False
-    matches = [_KEY_VALUE_TOKEN_PATTERN.match(token) for token in tokens]
-    if any(match is None for match in matches):
-        return False
-    for index, match in enumerate(matches):
-        assert match is not None
-        if index > 0:
-            detail.append(" ", style="dim")
-        key = match.group("key")
-        value = match.group("value")
-        detail.append(key, style="dim")
-        detail.append("=", style="dim")
-        value_style = "bright_cyan" if key in _DETAIL_VALUE_LABELS else "bright_white"
-        detail.append(value, style=value_style)
-    return True
 
 
 def _smooth_value(previous: float | None, current: float, *, alpha: float) -> float:

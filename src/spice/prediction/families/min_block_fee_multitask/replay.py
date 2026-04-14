@@ -7,7 +7,7 @@ import torch
 from ....core.reporting import Reporter
 from ....temporal.problem_store import CompiledProblemStore
 from ...base import PredictionSimulationSummary
-from ...replay_utils import run_offset_replay
+from ...offset_selection.replay import run_offset_replay
 from .batch import MinBlockFeeTargetBatch
 from .outputs import OFFSET_LOGITS_HEAD_ID, masked_offset_logits
 

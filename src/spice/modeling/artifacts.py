@@ -14,8 +14,8 @@ from ..features import CompiledFeatureContract, compile_feature_contract
 from ..prediction import compile_prediction_contract
 from ..storage.artifact import load_artifact_manifest, write_artifact_manifest
 from ..storage.engine import RootKind
-from ._runtime import CompiledRepresentationContract, compile_model_representation_contract
-from .families.registry import build_model
+from ._runtime import CompiledRepresentationContract
+from .families.registry import build_model, compile_default_representation_contract
 from .models import TemporalModel
 from .pipeline import PreparedTrainingDataset, TrainingSpec
 from .results import ArtifactChainMetadata, TrainingArtifactManifest
@@ -99,7 +99,7 @@ def load_training_artifact(artifact_dir: Path) -> LoadedTrainingArtifact:
     return LoadedTrainingArtifact(
         manifest=manifest,
         model=model,
-        representation_contract=compile_model_representation_contract(manifest.model.id),
+        representation_contract=compile_default_representation_contract(manifest.model.id),
     )
 
 
