@@ -1,4 +1,8 @@
-"""Block-window trend Hamilton feature nodes."""
+"""Block-window trend Hamilton feature nodes.
+
+SPICE operationalizes the paper's underspecified long-horizon trend
+feature as a 200-block slope over log base fee.
+"""
 
 from __future__ import annotations
 

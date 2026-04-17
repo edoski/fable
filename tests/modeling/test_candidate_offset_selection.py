@@ -9,12 +9,13 @@ import torch
 
 from spice.config import coerce_feature_set_config, coerce_problem_spec
 from spice.core.reporting import NullReporter
+from spice.evaluation import coerce_evaluator_config, compile_evaluator_contract
 from spice.features import compile_feature_contract
+from spice.modeling.evaluation import run_prediction_evaluation
 from spice.prediction import MetricSet
 from spice.prediction.families.candidate_offset_selection.batch import CandidateSlateTargetBatch
 from spice.prediction.families.candidate_offset_selection.loss import compute_selection_loss
 from spice.prediction.families.candidate_offset_selection.metrics import best_epoch
-from spice.prediction.families.candidate_offset_selection.replay import run_replay
 from spice.temporal.contracts import compile_problem_contract
 
 
@@ -107,19 +108,27 @@ def test_prediction_selection_follows_validation_profit() -> None:
     assert history[1].require("profit_over_baseline") == pytest.approx(0.11)
 
 
-def test_replay_summary_uses_event_weighted_totals() -> None:
+def test_poisson_replay_summary_uses_event_weighted_totals() -> None:
     store = _build_test_store()
     sample_indices = np.arange(store.n_samples, dtype=np.int64)
     predictions = [0] * store.n_samples
 
-    summary = run_replay(
+    evaluator = compile_evaluator_contract(
+        coerce_evaluator_config(
+            {
+                "id": "poisson_replay",
+                "window_seconds": 8,
+                "arrival_rate_per_second": 0.3,
+                "repetitions": 4,
+                "seed": 2026,
+            }
+        )
+    )
+    summary = run_prediction_evaluation(
+        evaluator,
         store,
         predictions,
         sample_indices=sample_indices,
-        window_seconds=8,
-        arrival_rate_per_second=0.3,
-        repetitions=4,
-        seed=2026,
         reporter=NullReporter(),
     )
 

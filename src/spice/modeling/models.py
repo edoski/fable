@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 import torch
 from torch import nn
-from torch.nn.utils.rnn import pack_padded_sequence
 
 from ..prediction import PredictionOutputSpec
 
@@ -32,11 +31,19 @@ class ModelOutputs:
 
 
 class MLPHead(nn.Module):
-    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int) -> None:
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        output_dim: int,
+        *,
+        dropout: float,
+    ) -> None:
         super().__init__()
         self.layers = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, output_dim),
         )
 
@@ -75,22 +82,6 @@ def take_last_valid(encoded: torch.Tensor, input_mask: torch.Tensor) -> torch.Te
     return encoded[batch_indices, last_positions]
 
 
-def packed_lstm_last_state_reference(
-    backbone: nn.LSTM,
-    inputs: torch.Tensor,
-    input_mask: torch.Tensor,
-) -> torch.Tensor:
-    lengths = sequence_lengths_from_mask(input_mask)
-    packed = pack_padded_sequence(
-        inputs,
-        lengths.cpu(),
-        batch_first=True,
-        enforce_sorted=False,
-    )
-    _, (hidden_state, _) = backbone(packed)
-    return hidden_state[-1]
-
-
 class TemporalModel(nn.Module, ABC):
     """Base class for models that solve the temporal candidate-choice problem."""
 
@@ -101,11 +92,18 @@ class TemporalOutputHead(nn.Module):
         hidden_dim: int,
         output_spec: PredictionOutputSpec,
         head_hidden_dim: int,
+        *,
+        dropout: float,
     ) -> None:
         super().__init__()
         self.heads = nn.ModuleDict(
             {
-                head.id: MLPHead(hidden_dim, head_hidden_dim, head.size)
+                head.id: MLPHead(
+                    hidden_dim,
+                    head_hidden_dim,
+                    head.size,
+                    dropout=dropout,
+                )
                 for head in output_spec.heads
             }
         )
@@ -136,6 +134,7 @@ class LSTMBaseline(TemporalModel):
             config.hidden_size,
             output_spec,
             config.head_hidden_dim,
+            dropout=config.dropout,
         )
 
     def forward(self, inputs: torch.Tensor, input_mask: torch.Tensor) -> ModelOutputs:
@@ -160,6 +159,7 @@ class TransformerBaseline(TemporalModel):
             config.d_model,
             output_spec,
             config.head_hidden_dim,
+            dropout=config.dropout,
         )
 
     def forward(self, inputs: torch.Tensor, input_mask: torch.Tensor) -> ModelOutputs:
@@ -185,14 +185,15 @@ class TransformerLSTMBaseline(TemporalModel):
         self.lstm = nn.LSTM(
             input_size=config.d_model,
             hidden_size=config.hidden_size,
-            num_layers=max(1, config.num_layers - 1),
-            dropout=config.dropout if config.num_layers > 2 else 0.0,
+            num_layers=config.num_layers,
+            dropout=config.dropout if config.num_layers > 1 else 0.0,
             batch_first=True,
         )
         self.output_head = TemporalOutputHead(
             config.hidden_size,
             output_spec,
             config.head_hidden_dim,
+            dropout=config.dropout,
         )
 
     def forward(self, inputs: torch.Tensor, input_mask: torch.Tensor) -> ModelOutputs:
@@ -202,7 +203,8 @@ class TransformerLSTMBaseline(TemporalModel):
             src_key_padding_mask=~input_mask.bool(),
         )
         recurrent, _ = self.lstm(encoded)
-        return self.output_head(take_last_valid(recurrent, input_mask))
+        last_state = take_last_valid(recurrent, input_mask)
+        return self.output_head(last_state)
 
 
 class TransformerEncoderConfig(Protocol):

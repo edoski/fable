@@ -1,25 +1,26 @@
-"""Simulation workflow."""
+"""Evaluation workflow."""
 
 from __future__ import annotations
 
-from ..config import SimulateConfig
+from ..config import EvaluateConfig
 from ..core.errors import ConfigResolutionError
 from ..core.reporting import Reporter
 from ..corpus.io import load_block_frame
+from ..evaluation import compile_evaluator_contract
 from ..modeling.artifacts import load_training_artifact, validate_artifact_semantics
+from ..modeling.evaluation import run_prediction_evaluation
 from ..modeling.inference import predict_with_model
 from ..modeling.pipeline import prepare_inference_dataset
-from ..modeling.results import LoadedSimulationSummary, build_simulation_runtime_summary
-from ..modeling.simulation import run_prediction_simulation
-from ..modeling.summary import simulation_summary_sections
+from ..modeling.results import LoadedEvaluationSummary, build_evaluation_runtime_summary
+from ..modeling.summary import evaluation_summary_sections
 from ..prediction import compile_prediction_contract
 from ..storage import ARTIFACT_ROOT_KIND, RootKind
-from ..storage.artifact import write_simulation_state
+from ..storage.artifact import write_evaluation_state
 from ..temporal.contracts import compile_problem_contract
 from ._shared import abort_cleanup, managed_workflow
 
 
-def _workflow_facts(config: SimulateConfig) -> list[tuple[str, str]]:
+def _workflow_facts(config: EvaluateConfig) -> list[tuple[str, str]]:
     facts = [
         ("dataset", config.dataset.name),
         ("chain", config.chain.name),
@@ -28,36 +29,37 @@ def _workflow_facts(config: SimulateConfig) -> list[tuple[str, str]]:
         ("delay", f"{config.delay_seconds}s"),
         ("model", config.model.id),
         ("variant", config.artifact.variant.value),
+        ("evaluator", config.evaluation.evaluator.id),
     ]
     if config.artifact.variant.value == "tuned":
         facts.append(("study", config.study.name))
     return facts
 
 
-def _state_root_kind(config: SimulateConfig) -> RootKind:
+def _state_root_kind(config: EvaluateConfig) -> RootKind:
     del config
     return ARTIFACT_ROOT_KIND
 
 
-def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
+def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
     artifact_dir = config.paths.artifact_root
     history_block_path = config.paths.history_dir
     evaluation_block_path = config.paths.evaluation_dir
     if artifact_dir is None:
-        raise ConfigResolutionError("simulation workflow requires artifact output paths")
+        raise ConfigResolutionError("evaluation workflow requires artifact output paths")
     with managed_workflow(
         config,
         run_name=(
-            f"simulate-{config.chain.name}-{config.model.id}"
+            f"evaluate-{config.chain.name}-{config.model.id}"
             f"-{config.problem.id}-{config.delay_seconds}s"
         ),
         reporter=reporter,
     ) as session:
-        session.runtime.configure_workflow("simulate", _workflow_facts(config))
+        session.runtime.configure_workflow("evaluate", _workflow_facts(config))
         load_reporter = session.runtime.stage_reporter("load", label="load")
         prepare_reporter = session.runtime.stage_reporter("prepare", label="prepare")
         predict_reporter = session.runtime.stage_reporter("predict", label="predict")
-        simulation_reporter = session.runtime.stage_reporter("simulate", label="simulate")
+        evaluation_reporter = session.runtime.stage_reporter("evaluate", label="evaluate")
         write_reporter = session.runtime.stage_reporter(
             "write",
             label="write",
@@ -65,10 +67,10 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
         )
         with abort_cleanup(
             session.reporter,
-            label="simulate",
+            label="evaluate",
             cleanup=lambda: None,
         ):
-            load_task = load_reporter.start_task("load inference inputs")
+            load_task = load_reporter.start_task("load evaluation inputs")
             loaded_artifact = load_training_artifact(artifact_dir)
             feature_contract = validate_artifact_semantics(
                 loaded_artifact.manifest,
@@ -87,15 +89,17 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
             contract = compile_problem_contract(
                 problem=config.problem,
                 feature_contract=feature_contract,
+                chain_runtime=config.chain.runtime,
             )
             prediction_contract = compile_prediction_contract(
                 prediction_id=config.prediction.id,
                 family_config=config.prediction.family,
             )
-            if "simulate" not in prediction_contract.supported_workflows:
+            evaluator_contract = compile_evaluator_contract(config.evaluation.evaluator)
+            if "evaluate" not in prediction_contract.supported_workflows:
                 raise ConfigResolutionError(
                     f"prediction family {prediction_contract.prediction_family_id} "
-                    "does not support simulate"
+                    "does not support evaluate"
                 )
             if config.delay_seconds > loaded_artifact.manifest.max_delay_seconds:
                 raise ConfigResolutionError(
@@ -118,7 +122,7 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 prepare_task,
                 message=f"samples={prepared.sample_count}",
             )
-            predictions = predict_with_model(
+            decoded_offsets = predict_with_model(
                 loaded_artifact.model,
                 prediction_contract=prediction_contract,
                 representation_contract=loaded_artifact.representation_contract,
@@ -128,37 +132,35 @@ def run(config: SimulateConfig, *, reporter: Reporter | None = None) -> None:
                 device=config.training.device,
                 reporter=predict_reporter,
             )
-            simulation = run_prediction_simulation(
-                prediction_contract,
+            evaluation = run_prediction_evaluation(
+                evaluator_contract,
                 prepared.store,
-                predictions,
+                decoded_offsets,
                 sample_indices=prepared.sample_indices,
-                window_seconds=config.simulation.window_seconds,
-                arrival_rate_per_second=config.simulation.arrival_rate_per_second,
-                repetitions=config.simulation.repetitions,
-                seed=config.simulation.seed,
-                reporter=simulation_reporter,
+                reporter=evaluation_reporter,
             )
-            runtime_summary = build_simulation_runtime_summary(
+            runtime_summary = build_evaluation_runtime_summary(
                 prepared=prepared,
-                simulation=simulation,
+                evaluation=evaluation,
                 delay_seconds=config.delay_seconds,
-                window_seconds=config.simulation.window_seconds,
-                arrival_rate_per_second=config.simulation.arrival_rate_per_second,
-                repetitions=config.simulation.repetitions,
+                evaluator_id=evaluator_contract.evaluator_id,
+                evaluator_config=evaluator_contract.config_payload,
+                metric_descriptors=evaluator_contract.metric_descriptors,
             )
-            summary = LoadedSimulationSummary(
-                manifest=loaded_artifact.manifest,
-                runtime=runtime_summary,
-            )
-            report_task = write_reporter.start_task("write simulation state")
-            write_simulation_state(
+            report_task = write_reporter.start_task("write evaluation state")
+            evaluation_id, recorded_at = write_evaluation_state(
                 artifact_dir / ".spice" / "state.sqlite",
                 root_kind=_state_root_kind(config),
                 summary=runtime_summary,
             )
             write_reporter.finish_task(report_task, message=str(artifact_dir), silent=True)
+            summary = LoadedEvaluationSummary(
+                evaluation_id=evaluation_id,
+                recorded_at=recorded_at,
+                manifest=loaded_artifact.manifest,
+                runtime=runtime_summary,
+            )
         session.runtime.log_sectioned_summary(
-            "simulation summary",
-            simulation_summary_sections(summary),
+            "evaluation summary",
+            evaluation_summary_sections(summary),
         )

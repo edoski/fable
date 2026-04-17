@@ -12,12 +12,14 @@ from ..config import (
     coerce_prediction_config,
     coerce_problem_spec,
 )
+from ..evaluation import EvaluationRun
 from ..features import FeaturePrerequisites
 from ..prediction import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..semantics import (
     ArtifactSemantics,
     CorpusSemantics,
     FeatureSemantics,
+    InputNormalizationSemantics,
     PredictionSemantics,
     ProblemSemantics,
     RepresentationSemantics,
@@ -27,9 +29,8 @@ from ..temporal.scaling import ScalerStats
 from .families.registry import coerce_model_config
 
 if TYPE_CHECKING:
-    from ..prediction import PredictionSimulationRun
     from .results import (
-        SimulationRuntimeSummary,
+        EvaluationRuntimeSummary,
         TrainingArtifactManifest,
         TrainingEpochRecord,
         TrainingRuntimeSummary,
@@ -195,12 +196,12 @@ def training_epoch_from_payload(payload: dict[str, object], *, epoch: int):
     )
 
 
-def simulation_summary_payload(summary: SimulationRuntimeSummary) -> dict[str, object]:
+def evaluation_summary_payload(summary: EvaluationRuntimeSummary) -> dict[str, object]:
     return {
         "delay_seconds": summary.delay_seconds,
-        "simulation_window_seconds": summary.simulation_window_seconds,
-        "arrival_rate_per_second": summary.arrival_rate_per_second,
-        "repetitions": summary.repetitions,
+        "evaluator_id": summary.evaluator_id,
+        "evaluator_config": dict(summary.evaluator_config),
+        "metric_descriptors": metric_descriptors_values(summary.metric_descriptors),
         "n_history_rows": summary.n_history_rows,
         "n_evaluation_rows": summary.n_evaluation_rows,
         "sample_count": summary.sample_count,
@@ -213,19 +214,19 @@ def simulation_summary_payload(summary: SimulationRuntimeSummary) -> dict[str, o
     }
 
 
-def simulation_summary_from_payload(
+def evaluation_summary_from_payload(
     payload: dict[str, object],
     *,
-    runs: list[PredictionSimulationRun],
+    runs: list[EvaluationRun],
 ):
-    from .results import SimulationRuntimeSummary
+    from .results import EvaluationRuntimeSummary
 
     window_payload = mapping_payload(payload["window_metrics"])
-    return SimulationRuntimeSummary(
+    return EvaluationRuntimeSummary(
         delay_seconds=_int_value(payload["delay_seconds"]),
-        simulation_window_seconds=_int_value(payload["simulation_window_seconds"]),
-        arrival_rate_per_second=_float_value(payload["arrival_rate_per_second"]),
-        repetitions=_int_value(payload["repetitions"]),
+        evaluator_id=str(payload["evaluator_id"]),
+        evaluator_config=mapping_payload(payload["evaluator_config"]),
+        metric_descriptors=metric_descriptors_from_payload(payload["metric_descriptors"]),
         n_history_rows=_int_value(payload["n_history_rows"]),
         n_evaluation_rows=_int_value(payload["n_evaluation_rows"]),
         sample_count=_int_value(payload["sample_count"]),
@@ -239,28 +240,25 @@ def simulation_summary_from_payload(
     )
 
 
-def simulation_run_payload(run: PredictionSimulationRun) -> dict[str, object]:
+def evaluation_run_payload(run: EvaluationRun) -> dict[str, object]:
     return {
-        "window_start_timestamp": run.window_start_timestamp,
-        "window_end_timestamp": run.window_end_timestamp,
-        "n_arrivals": run.n_arrivals,
         "n_events": run.n_events,
         "metrics": dict(run.metrics),
+        "metadata": dict(run.metadata),
     }
 
 
-def simulation_run_from_payload(payload: dict[str, object]):
-    from ..prediction import PredictionSimulationRun
-
-    return PredictionSimulationRun(
-        window_start_timestamp=_float_value(payload["window_start_timestamp"]),
-        window_end_timestamp=_float_value(payload["window_end_timestamp"]),
-        n_arrivals=_int_value(payload["n_arrivals"]),
+def evaluation_run_from_payload(payload: dict[str, object]):
+    return EvaluationRun(
         n_events=_int_value(payload["n_events"]),
         metrics={
             str(key): _float_value(value)
             for key, value in mapping_payload(payload["metrics"]).items()
         },
+        metadata={
+            str(key): _metadata_value(value)
+            for key, value in mapping_payload(payload["metadata"]).items()
+        }
     )
 
 
@@ -269,6 +267,9 @@ def artifact_semantics_payload(semantics: ArtifactSemantics) -> dict[str, object
         "problem": problem_semantics_payload(semantics.problem),
         "feature": feature_semantics_payload(semantics.feature),
         "prediction": prediction_semantics_payload(semantics.prediction),
+        "input_normalization": input_normalization_semantics_payload(
+            semantics.input_normalization
+        ),
         "representation": representation_semantics_payload(semantics.representation),
         "max_candidate_slots": semantics.max_candidate_slots,
     }
@@ -279,6 +280,14 @@ def artifact_semantics_from_payload(payload: dict[str, object]) -> ArtifactSeman
         problem=problem_semantics_from_payload(mapping_payload(payload["problem"])),
         feature=feature_semantics_from_payload(mapping_payload(payload["feature"])),
         prediction=prediction_semantics_from_payload(mapping_payload(payload["prediction"])),
+        input_normalization=input_normalization_semantics_from_payload(
+            mapping_payload(
+                payload.get(
+                    "input_normalization",
+                    {"input_normalization_id": "window_weighted_standard"},
+                )
+            )
+        ),
         representation=representation_semantics_from_payload(
             mapping_payload(payload["representation"])
         ),
@@ -305,6 +314,9 @@ def study_semantics_payload(semantics: StudySemantics) -> dict[str, object]:
         "problem": problem_semantics_payload(semantics.problem),
         "feature": feature_semantics_payload(semantics.feature),
         "prediction": prediction_semantics_payload(semantics.prediction),
+        "input_normalization": input_normalization_semantics_payload(
+            semantics.input_normalization
+        ),
         "representation": representation_semantics_payload(semantics.representation),
     }
 
@@ -314,6 +326,14 @@ def study_semantics_from_payload(payload: dict[str, object]) -> StudySemantics:
         problem=problem_semantics_from_payload(mapping_payload(payload["problem"])),
         feature=feature_semantics_from_payload(mapping_payload(payload["feature"])),
         prediction=prediction_semantics_from_payload(mapping_payload(payload["prediction"])),
+        input_normalization=input_normalization_semantics_from_payload(
+            mapping_payload(
+                payload.get(
+                    "input_normalization",
+                    {"input_normalization_id": "window_weighted_standard"},
+                )
+            )
+        ),
         representation=representation_semantics_from_payload(
             mapping_payload(payload["representation"])
         ),
@@ -380,9 +400,6 @@ def prediction_semantics_payload(semantics: PredictionSemantics) -> dict[str, ob
             }
             for descriptor in semantics.progress_metric_descriptors
         ],
-        "simulation_metric_descriptors": metric_descriptors_values(
-            semantics.simulation_metric_descriptors
-        ),
         "primary_metric_id": semantics.primary_metric_id,
         "direction": semantics.direction,
         "supported_workflows": sorted(semantics.supported_workflows),
@@ -413,12 +430,23 @@ def prediction_semantics_from_payload(payload: dict[str, object]) -> PredictionS
             for item in progress_payload
             if isinstance(item, Mapping)
         ),
-        simulation_metric_descriptors=metric_descriptors_from_payload(
-            payload["simulation_metric_descriptors"]
-        ),
         primary_metric_id=str(payload["primary_metric_id"]),
         direction=_prediction_direction(payload["direction"]),
         supported_workflows=frozenset(str(value) for value in workflows_payload),
+    )
+
+
+def input_normalization_semantics_payload(
+    semantics: InputNormalizationSemantics,
+) -> dict[str, object]:
+    return {"input_normalization_id": semantics.input_normalization_id}
+
+
+def input_normalization_semantics_from_payload(
+    payload: dict[str, object],
+) -> InputNormalizationSemantics:
+    return InputNormalizationSemantics(
+        input_normalization_id=str(payload["input_normalization_id"]),
     )
 
 
@@ -436,6 +464,16 @@ def _int_value(value: object) -> int:
 
 def _float_value(value: object) -> float:
     return float(cast(int | float | str | bytes, value))
+
+
+def _metadata_value(value: object) -> str | int | float:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return value
+    return str(value)
 
 
 def _optional_str(value: object) -> str | None:

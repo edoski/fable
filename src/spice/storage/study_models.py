@@ -79,6 +79,10 @@ class StudyManifest:
     def representation_id(self) -> str:
         return self.semantics.representation.representation_id
 
+    @property
+    def input_normalization_id(self) -> str:
+        return self.semantics.input_normalization.input_normalization_id
+
 
 @dataclass(frozen=True, slots=True)
 class TrialSummary:

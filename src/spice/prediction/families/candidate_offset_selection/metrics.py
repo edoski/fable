@@ -22,6 +22,39 @@ class CandidateSlateBatchState:
     optimal_fee_sum: float
 
 
+@dataclass(slots=True)
+class CandidateSlateEpochAccumulator:
+    count: int = 0
+    total_loss_sum: float = 0.0
+    exact_hit_count: int = 0
+    realized_fee_sum: float = 0.0
+    baseline_fee_sum: float = 0.0
+    optimal_fee_sum: float = 0.0
+
+    def update(self, batch_state: object) -> None:
+        if not isinstance(batch_state, CandidateSlateBatchState):
+            raise TypeError("candidate_offset_selection expects CandidateSlateBatchState values")
+        self.count += batch_state.count
+        self.total_loss_sum += batch_state.total_loss_sum
+        self.exact_hit_count += batch_state.exact_hit_count
+        self.realized_fee_sum += batch_state.realized_fee_sum
+        self.baseline_fee_sum += batch_state.baseline_fee_sum
+        self.optimal_fee_sum += batch_state.optimal_fee_sum
+
+    def snapshot(self) -> MetricSet:
+        return _metric_set_from_totals(
+            count=self.count,
+            total_loss_sum=self.total_loss_sum,
+            exact_hit_count=self.exact_hit_count,
+            realized_fee_sum=self.realized_fee_sum,
+            baseline_fee_sum=self.baseline_fee_sum,
+            optimal_fee_sum=self.optimal_fee_sum,
+        )
+
+    def finalize(self) -> MetricSet:
+        return self.snapshot()
+
+
 TRAINING_METRIC_DESCRIPTORS: tuple[MetricDescriptor, ...] = (
     MetricDescriptor(
         id="profit_over_baseline",
@@ -96,18 +129,18 @@ def summarize_epoch_metrics(batch_states: list[object]) -> MetricSet:
     states = [state for state in batch_states if isinstance(state, CandidateSlateBatchState)]
     if not states:
         raise ValueError("Cannot summarize an empty batch-state collection")
-    count = sum(item.count for item in states)
-    realized_fee_sum = sum(item.realized_fee_sum for item in states)
-    baseline_fee_sum = sum(item.baseline_fee_sum for item in states)
-    optimal_fee_sum = sum(item.optimal_fee_sum for item in states)
-    return MetricSet(
-        values={
-            "total_loss": sum(item.total_loss_sum for item in states) / count,
-            "exact_optimum_hit_rate": sum(item.exact_hit_count for item in states) / count,
-            "cost_over_optimum": (realized_fee_sum - optimal_fee_sum) / optimal_fee_sum,
-            "profit_over_baseline": (baseline_fee_sum - realized_fee_sum) / baseline_fee_sum,
-        }
+    return _metric_set_from_totals(
+        count=sum(item.count for item in states),
+        total_loss_sum=sum(item.total_loss_sum for item in states),
+        exact_hit_count=sum(item.exact_hit_count for item in states),
+        realized_fee_sum=sum(item.realized_fee_sum for item in states),
+        baseline_fee_sum=sum(item.baseline_fee_sum for item in states),
+        optimal_fee_sum=sum(item.optimal_fee_sum for item in states),
     )
+
+
+def create_epoch_accumulator() -> CandidateSlateEpochAccumulator:
+    return CandidateSlateEpochAccumulator()
 
 
 def best_epoch(history: list[MetricSet]) -> int:
@@ -122,3 +155,24 @@ def best_epoch(history: list[MetricSet]) -> int:
         ),
     )
     return winner + 1
+
+
+def _metric_set_from_totals(
+    *,
+    count: int,
+    total_loss_sum: float,
+    exact_hit_count: int,
+    realized_fee_sum: float,
+    baseline_fee_sum: float,
+    optimal_fee_sum: float,
+) -> MetricSet:
+    if count <= 0:
+        raise ValueError("Cannot summarize an empty accumulator")
+    return MetricSet(
+        values={
+            "total_loss": total_loss_sum / count,
+            "exact_optimum_hit_rate": exact_hit_count / count,
+            "cost_over_optimum": (realized_fee_sum - optimal_fee_sum) / optimal_fee_sum,
+            "profit_over_baseline": (baseline_fee_sum - realized_fee_sum) / baseline_fee_sum,
+        }
+    )

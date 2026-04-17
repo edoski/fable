@@ -78,6 +78,8 @@ async def ensure_history_dataset(
                 chunk_size=chunk_size,
                 rpc_controller=rpc_controller,
                 reporter=reporter,
+                progress_total=history_plan.expected_rows,
+                progress_completed=existing.validation.row_count,
             )
             update_stage("planning", "writing merged dataset")
             history_frame = combined_frame(prefix_frame, existing.frame)
@@ -113,6 +115,7 @@ async def ensure_history_dataset(
         chunk_size=chunk_size,
         rpc_controller=rpc_controller,
         reporter=reporter,
+        progress_total=history_plan.expected_rows,
     )
     update_stage("planning", "validating dataset")
     validation = validate_block_dataset(

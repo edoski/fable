@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from uuid import uuid4
+
 from ..config import ArtifactVariant, TrainConfig
-from ..core.constants import MODEL_STATE_FILENAME
 from ..core.errors import ConfigResolutionError
-from ..core.files import remove_path
+from ..core.files import promote_paths_atomic, prune_empty_directories, remove_path
 from ..core.reporting import Reporter, StageMetricDescriptor
 from ..modeling.persisted_training import run_persisted_training
 from ..modeling.pipeline import TrainingStageReporters, build_training_spec
@@ -20,25 +22,13 @@ _FIT_STAGE_METRICS: tuple[StageMetricDescriptor, ...] = (
 )
 
 
-def _clean_training_outputs(config: TrainConfig, *, prune_empty_root: bool) -> None:
-    artifact_root = config.paths.artifact_root
-    checkpoint_dir = config.paths.checkpoint_dir
-    artifact_state_db = config.paths.artifact_state_db
-    if artifact_root is None or checkpoint_dir is None:
-        raise ConfigResolutionError("training workflow requires artifact output paths")
-    paths = [
-        checkpoint_dir,
-        artifact_root / MODEL_STATE_FILENAME,
-    ]
-    if artifact_state_db is not None:
-        paths.append(artifact_state_db)
-    for path in paths:
-        remove_path(path)
-    if prune_empty_root and artifact_root.exists():
-        try:
-            next(artifact_root.iterdir())
-        except StopIteration:
-            artifact_root.rmdir()
+def _build_staged_artifact_root(artifact_root: Path) -> Path:
+    return artifact_root.parent / f".{artifact_root.name}.staging.{uuid4().hex}"
+
+
+def _cleanup_staged_artifact_root(staged_root: Path, *, prune_stop_at: Path) -> None:
+    remove_path(staged_root)
+    prune_empty_directories(staged_root.parent, stop_at=prune_stop_at)
 
 
 def _workflow_facts(config: TrainConfig) -> list[tuple[str, str]]:
@@ -79,6 +69,8 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
         history_block_path = active_config.paths.history_dir
         if artifact_dir is None:
             raise ConfigResolutionError("training workflow requires artifact output paths")
+        staged_artifact_root = _build_staged_artifact_root(artifact_dir)
+        prune_stop_at = artifact_dir.parent.parent
         stage_reporters = TrainingStageReporters(
             load=session.runtime.stage_reporter("load", label="load"),
             prepare=session.runtime.stage_reporter("prepare", label="prepare"),
@@ -102,13 +94,19 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
         with abort_cleanup(
             session.reporter,
             label="train",
-            cleanup=lambda: _clean_training_outputs(active_config, prune_empty_root=True),
+            cleanup=lambda: _cleanup_staged_artifact_root(
+                staged_artifact_root,
+                prune_stop_at=prune_stop_at,
+            ),
         ):
-            _clean_training_outputs(active_config, prune_empty_root=True)
+            _cleanup_staged_artifact_root(
+                staged_artifact_root,
+                prune_stop_at=prune_stop_at,
+            )
             persisted = run_persisted_training(
                 history_block_path,
                 spec=spec,
-                artifact_dir=artifact_dir,
+                artifact_dir=staged_artifact_root,
                 stage_reporters=stage_reporters,
                 write_reporter=write_reporter,
                 reporter=session.reporter,
@@ -119,6 +117,7 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
             artifact_id = active_config.paths.artifact_id
             if artifact_root is None or artifact_state_db is None or artifact_id is None:
                 raise ConfigResolutionError("training workflow requires artifact output paths")
+            promote_paths_atomic([(artifact_root, staged_artifact_root)])
             upsert_artifact_record(
                 active_config.paths.catalog_db,
                 artifact_id=artifact_id,

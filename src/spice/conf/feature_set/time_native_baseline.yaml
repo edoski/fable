@@ -1,0 +1,24 @@
+id: time_native_baseline
+family:
+  id: time_native
+outputs:
+  - log_base_fee
+  - gas_utilization
+  - hour_sin
+  - hour_cos
+  - weekday_sin
+  - weekday_cos
+  - elapsed_seconds
+  - trend_slope_600s
+  - rolling_mean_log_base_fee_60s
+  - rolling_std_log_base_fee_60s
+  - rolling_mean_gas_utilization_60s
+  - rolling_std_gas_utilization_60s
+  - rolling_mean_log_base_fee_300s
+  - rolling_std_log_base_fee_300s
+  - rolling_mean_gas_utilization_300s
+  - rolling_std_gas_utilization_300s
+  - rolling_mean_log_base_fee_600s
+  - rolling_std_log_base_fee_600s
+  - rolling_mean_gas_utilization_600s
+  - rolling_std_gas_utilization_600s

@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 from spice.cli import app
 from spice.config import (
-    SimulateConfig,
+    EvaluateConfig,
     TrainConfig,
     TuneConfig,
     WorkflowTask,
@@ -17,7 +17,7 @@ from spice.core.reporting import NullReporter
 from spice.features import compile_feature_contract
 from spice.storage.catalog import CatalogStudyRecord
 from spice.temporal.contracts import compile_problem_contract
-from spice.workflows.simulate import run as run_simulate
+from spice.workflows.evaluate import run as run_evaluate
 from spice.workflows.train import run as run_train
 from spice.workflows.tune import run as run_tune
 
@@ -33,7 +33,7 @@ def _model_workflow_override(
     compiler_id: str = "estimated_block",
 ) -> dict[str, object]:
     feature_set_name = (
-        "icdcs_2026_time_native" if compiler_id == "timestamp_native" else "icdcs_2026"
+        "time_native_baseline" if compiler_id == "timestamp_native" else "icdcs_2026"
     )
     return {
         "chain": "ethereum",
@@ -62,11 +62,14 @@ def _model_workflow_override(
                 "min_delta": 0.0,
             },
         },
-        "simulation": {
-            "window_seconds": 600,
-            "arrival_rate_per_second": 0.02,
-            "repetitions": 3,
-            "seed": 2026,
+        "evaluation": {
+            "evaluator": {
+                "id": "poisson_replay",
+                "window_seconds": 600,
+                "arrival_rate_per_second": 0.02,
+                "repetitions": 3,
+                "seed": 2026,
+            }
         },
         "tuning": {
             "trial_count": 2,
@@ -125,16 +128,16 @@ def _load_test_tune_config(
     )
 
 
-def _load_test_simulate_config(
+def _load_test_evaluate_config(
     tmp_path: Path,
     load_workflow_config,
     *,
     override: dict[str, object] | None = None,
-) -> SimulateConfig:
+) -> EvaluateConfig:
     return cast(
-        SimulateConfig,
+        EvaluateConfig,
         load_workflow_config(
-            WorkflowTask.SIMULATE,
+            WorkflowTask.EVALUATE,
             workspace=tmp_path,
             preset="icdcs_2026",
             override=override,
@@ -154,6 +157,7 @@ def _seed_history_dataset(config) -> Path:
     contract = compile_problem_contract(
         problem=config.problem,
         feature_contract=feature_contract,
+        chain_runtime=config.chain.runtime,
     )
     block_interval_seconds = 12
     row_count = max(
@@ -195,11 +199,11 @@ def _seed_evaluation_dataset(config) -> Path:
 def test_show_command_smoke(tmp_path, load_workflow_config) -> None:
     override = _model_workflow_override()
     train_config = _load_test_train_config(tmp_path, load_workflow_config, override=override)
-    simulate_config = _load_test_simulate_config(tmp_path, load_workflow_config, override=override)
+    evaluate_config = _load_test_evaluate_config(tmp_path, load_workflow_config, override=override)
     _seed_history_dataset(train_config)
-    _seed_evaluation_dataset(simulate_config)
+    _seed_evaluation_dataset(evaluate_config)
     run_train(train_config, reporter=NullReporter())
-    run_simulate(simulate_config, reporter=NullReporter())
+    run_evaluate(evaluate_config, reporter=NullReporter())
 
     result = runner.invoke(
         app,
@@ -226,7 +230,7 @@ def test_show_command_smoke(tmp_path, load_workflow_config) -> None:
     assert result.exit_code == 0, result.stdout
     assert "artifact summary" in result.stdout
     assert train_config.model.id in result.stdout
-    assert "simulation" in result.stdout
+    assert "evaluation" in result.stdout
 
 
 def test_show_study_config_detail_smoke(tmp_path, load_workflow_config) -> None:

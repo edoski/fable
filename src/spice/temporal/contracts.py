@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..config.models import ProblemSpec
+from ..config.models import ChainRuntimeSpec, ProblemSpec
 from ..features import CompiledFeatureContract, FeaturePrerequisites
 from ..semantics import ProblemSemantics
 
@@ -72,10 +72,12 @@ def compile_problem_contract(
     *,
     problem: ProblemSpec,
     feature_contract: CompiledFeatureContract,
+    chain_runtime: ChainRuntimeSpec | None = None,
 ) -> CompiledProblemContract:
     from .compilers.registry import problem_compiler_spec
 
     return problem_compiler_spec(problem.compiler.id).compile_problem(
         problem,
         feature_contract,
+        chain_runtime,
     )

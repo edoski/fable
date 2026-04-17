@@ -8,13 +8,11 @@ from pathlib import Path
 from ..core.rendering import metric_bundle_string, window_metric_fields
 from ..features import FeaturePrerequisites
 from ..modeling.artifacts import TrainingArtifactManifest
-from ..modeling.results import LoadedSimulationSummary, LoadedTrainingSummary, TrainingEpochRecord
-from ..modeling.simulation import SimulationRunSummary
+from ..modeling.results import LoadedEvaluationSummary, LoadedTrainingSummary, TrainingEpochRecord
 from .artifact import (
-    list_simulation_runs,
+    list_evaluation_summaries,
     list_training_epochs,
     load_artifact_manifest,
-    load_simulation_summary,
     load_training_summary,
 )
 from .catalog import CatalogArtifactRecord
@@ -24,9 +22,9 @@ from .catalog import CatalogArtifactRecord
 class ArtifactRootDescription:
     manifest: TrainingArtifactManifest
     training: LoadedTrainingSummary | None = None
-    simulation: LoadedSimulationSummary | None = None
+    evaluations: list[LoadedEvaluationSummary] | None = None
     epochs: list[TrainingEpochRecord] | None = None
-    runs: list[SimulationRunSummary] | None = None
+    show_runs: bool = False
 
 
 def artifact_list_sections(
@@ -61,19 +59,19 @@ def describe_artifact_root(
     detail: str | None = None,
 ) -> ArtifactRootDescription:
     training = load_training_summary(root_db_path)
-    simulation = load_simulation_summary(root_db_path)
+    evaluations = list_evaluation_summaries(root_db_path)
     return ArtifactRootDescription(
         manifest=(
             training.manifest
             if training is not None
-            else simulation.manifest
-            if simulation is not None
+            else evaluations[0].manifest
+            if evaluations
             else load_artifact_manifest(root_db_path)
         ),
         training=training,
-        simulation=simulation,
+        evaluations=evaluations or None,
         epochs=list_training_epochs(root_db_path) if detail == "epochs" else None,
-        runs=list_simulation_runs(root_db_path) if detail == "runs" else None,
+        show_runs=detail == "runs",
     )
 
 
@@ -145,37 +143,47 @@ def artifact_sections(
                 ],
             )
         )
-    if description.simulation is not None:
-        simulation = description.simulation
-        runtime = simulation.runtime
-        sections.append(
-            (
-                "simulation",
-                [
-                    ("requested", f"{runtime.delay_seconds}s"),
-                    ("window", f"{runtime.simulation_window_seconds}s"),
-                    ("repetitions", str(runtime.repetitions)),
-                    ("events", str(runtime.total_events)),
-                    (
-                        "metrics",
-                        metric_bundle_string(
-                            simulation.manifest.simulation_metric_descriptors,
-                            runtime.metrics.values,
-                        ),
-                    ),
-                ],
+    if description.evaluations:
+        multiple_evaluations = len(description.evaluations) > 1
+        for evaluation in description.evaluations:
+            runtime = evaluation.runtime
+            evaluation_title = (
+                "evaluation"
+                if not multiple_evaluations
+                else f"evaluation {runtime.evaluator_id} {runtime.delay_seconds}s"
             )
-        )
-        if runtime.window_metrics:
             sections.append(
                 (
-                    "simulation windows",
-                    window_metric_fields(
-                        simulation.manifest.simulation_metric_descriptors,
-                        runtime.window_metrics,
-                    ),
+                    evaluation_title,
+                    [
+                        ("evaluation id", evaluation.evaluation_id),
+                        ("requested", f"{runtime.delay_seconds}s"),
+                        ("evaluator", runtime.evaluator_id),
+                        ("events", str(runtime.total_events)),
+                        (
+                            "metrics",
+                            metric_bundle_string(
+                                runtime.metric_descriptors,
+                                runtime.metrics.values,
+                            ),
+                        ),
+                    ],
                 )
             )
+            if runtime.window_metrics:
+                sections.append(
+                    (
+                        (
+                            "evaluation windows"
+                            if not multiple_evaluations
+                            else f"{evaluation_title} windows"
+                        ),
+                        window_metric_fields(
+                            runtime.metric_descriptors,
+                            runtime.window_metrics,
+                        ),
+                    )
+                )
     if description.epochs:
         sections.append(
             (
@@ -183,16 +191,25 @@ def artifact_sections(
                 [(f"epoch {record.epoch}", epoch_string(record)) for record in description.epochs],
             )
         )
-    if description.runs:
-        sections.append(
-            (
-                "runs",
-                [
-                    (f"run {index}", simulation_run_string(run))
-                    for index, run in enumerate(description.runs, start=1)
-                ],
+    if description.show_runs and description.evaluations:
+        multiple_evaluations = len(description.evaluations) > 1
+        for evaluation in description.evaluations:
+            if not evaluation.runtime.runs:
+                continue
+            runtime = evaluation.runtime
+            sections.append(
+                (
+                    (
+                        "runs"
+                        if not multiple_evaluations
+                        else f"runs {runtime.evaluator_id} {runtime.delay_seconds}s"
+                    ),
+                    [
+                        (f"run {index}", evaluation_run_string(run))
+                        for index, run in enumerate(evaluation.runtime.runs, start=1)
+                    ],
+                )
             )
-        )
     return sections
 
 
@@ -207,5 +224,7 @@ def epoch_string(record: TrainingEpochRecord) -> str:
     )
 
 
-def simulation_run_string(run: SimulationRunSummary) -> str:
-    return f"events={run.n_events} metrics={metric_bundle_string([], run.metrics)}"
+def evaluation_run_string(run) -> str:
+    metadata = " ".join(f"{key}={value}" for key, value in run.metadata.items())
+    prefix = f"{metadata} " if metadata else ""
+    return f"{prefix}events={run.n_events} metrics={metric_bundle_string([], run.metrics)}"

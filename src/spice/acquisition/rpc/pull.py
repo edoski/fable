@@ -55,15 +55,23 @@ async def pull_block_range(
     chunk_size: int,
     rpc_controller: RpcController,
     reporter: Reporter | None = None,
+    progress_total: int | None = None,
+    progress_completed: int = 0,
 ) -> BlockPullPlan:
     reporter = reporter or NullReporter()
     if plan.expected_rows == 0:
         raise ValueError(f"No blocks found inside requested block range: {plan.block_range}")
+    if progress_completed < 0:
+        raise ValueError("progress_completed must be non-negative")
+    reported_total = plan.expected_rows if progress_total is None else progress_total
+    if reported_total < progress_completed + plan.expected_rows:
+        raise ValueError("progress_total must cover the completed offset and requested plan")
 
     task_id = reporter.start_task(
         f"pull {block_client.chain.name} blocks",
-        total=plan.expected_rows,
+        total=reported_total,
         unit="blocks",
+        completed=progress_completed,
     )
     pending_rows: list[CanonicalBlockRow] = []
     pending_requests: list[_BatchRequest] = []
@@ -76,7 +84,7 @@ async def pull_block_range(
     try:
         reporter.update_task(
             task_id,
-            completed=0,
+            completed=progress_completed,
             metrics=_progress_metrics(
                 batch_size=rpc_controller.current_batch_size,
                 concurrency=rpc_controller.current_concurrency,
@@ -106,6 +114,7 @@ async def pull_block_range(
                 in_flight,
                 return_when=asyncio.FIRST_COMPLETED,
             )
+            completed_this_tick = 0
             for task in done:
                 request = in_flight.pop(task)
                 try:
@@ -120,7 +129,7 @@ async def pull_block_range(
                             ) from exc
                         reporter.update_task(
                             task_id,
-                            completed=completed,
+                            completed=progress_completed + completed,
                             message="oversize backoff",
                             metrics=_progress_metrics(
                                 batch_size=next_batch_size,
@@ -140,7 +149,7 @@ async def pull_block_range(
                             ) from exc
                         reporter.update_task(
                             task_id,
-                            completed=completed,
+                            completed=progress_completed + completed,
                             message="transient retry",
                             metrics=_progress_metrics(
                                 batch_size=rpc_controller.current_batch_size,
@@ -166,14 +175,7 @@ async def pull_block_range(
                     rows=rows,
                 )
                 completed += len(rows)
-                reporter.update_task(
-                    task_id,
-                    completed=completed,
-                    metrics=_progress_metrics(
-                        batch_size=request.size,
-                        concurrency=rpc_controller.current_concurrency,
-                    ),
-                )
+                completed_this_tick += len(rows)
 
                 while next_write_start in completed_results:
                     finished_batch = completed_results.pop(next_write_start)
@@ -186,6 +188,15 @@ async def pull_block_range(
                             rows=pending_rows[:chunk_size],
                         )
                         pending_rows = pending_rows[chunk_size:]
+            if completed_this_tick > 0:
+                reporter.update_task(
+                    task_id,
+                    completed=progress_completed + completed,
+                    metrics=_progress_metrics(
+                        batch_size=rpc_controller.current_batch_size,
+                        concurrency=rpc_controller.current_concurrency,
+                    ),
+                )
 
         if pending_rows:
             _write_chunk(output_dir, chain_name=block_client.chain.name, rows=pending_rows)
@@ -262,6 +273,7 @@ def _is_transient_error(exc: BaseException) -> bool:
             asyncio.TimeoutError,
             TimeoutError,
             OSError,
+            aiohttp.ClientPayloadError,
             aiohttp.ClientConnectionError,
             aiohttp.ServerTimeoutError,
         ),
@@ -285,6 +297,8 @@ def _is_transient_error(exc: BaseException) -> bool:
             "connection reset",
             "connection aborted",
             "server disconnected",
+            "response payload is not completed",
+            "not enough data to satisfy transfer length header",
             "status:429",
             "status:500",
             "status:502",

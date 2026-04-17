@@ -6,7 +6,7 @@ import lightning as L
 import torch
 
 from ..config import TrainingConfig
-from ..prediction import CompiledPredictionContract, MetricSet
+from ..prediction import CompiledPredictionContract, EpochMetricAccumulator, MetricSet
 from .models import ModelOutputs, TemporalModel
 
 
@@ -28,8 +28,8 @@ class TemporalLightningModule(L.LightningModule):
         self.prediction_training_state = prediction_training_state
         self.train_history: list[MetricSet] = []
         self.validation_history: list[MetricSet] = []
-        self._train_batches: list[object] = []
-        self._validation_batches: list[object] = []
+        self._train_accumulator: EpochMetricAccumulator | None = None
+        self._validation_accumulator: EpochMetricAccumulator | None = None
 
     def forward(self, **model_kwargs: torch.Tensor) -> ModelOutputs:
         return self.model(**model_kwargs)
@@ -42,10 +42,12 @@ class TemporalLightningModule(L.LightningModule):
         )
 
     def on_train_epoch_start(self) -> None:
-        self._train_batches = []
+        self._train_accumulator = self.prediction_contract.create_epoch_accumulator("train")
 
     def on_validation_epoch_start(self) -> None:
-        self._validation_batches = []
+        self._validation_accumulator = self.prediction_contract.create_epoch_accumulator(
+            "validation"
+        )
 
     def _log_metric_set(self, stage: str, metrics: MetricSet) -> None:
         for descriptor in self.prediction_contract.training_metric_descriptors:
@@ -74,27 +76,14 @@ class TemporalLightningModule(L.LightningModule):
             batch.targets,
             training_state=self.prediction_training_state,
         )
-        metric_set = self.prediction_contract.summarize_epoch_metrics([batch_state])
-        self.log(
-            f"{stage}/loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-        )
-        self.log(
-            f"{stage}_loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-        )
-        self._log_metric_set(stage, metric_set)
-
         if stage == "train":
-            self._train_batches.append(batch_state)
+            if self._train_accumulator is None:
+                raise RuntimeError("train accumulator is not initialized")
+            self._train_accumulator.update(batch_state)
         else:
-            self._validation_batches.append(batch_state)
+            if self._validation_accumulator is None:
+                raise RuntimeError("validation accumulator is not initialized")
+            self._validation_accumulator.update(batch_state)
         return loss
 
     def training_step(self, batch, _batch_idx: int) -> torch.Tensor:
@@ -104,13 +93,20 @@ class TemporalLightningModule(L.LightningModule):
         return self._shared_step(batch, stage="validation")
 
     def on_train_epoch_end(self) -> None:
-        if self._train_batches:
-            metrics = self.prediction_contract.summarize_epoch_metrics(self._train_batches)
+        if self._train_accumulator is not None:
+            metrics = self._train_accumulator.finalize()
             self.train_history.append(metrics)
             self._log_metric_set("train", metrics)
+            self._train_accumulator = None
 
     def on_validation_epoch_end(self) -> None:
-        if self._validation_batches:
-            metrics = self.prediction_contract.summarize_epoch_metrics(self._validation_batches)
+        if self._validation_accumulator is not None:
+            metrics = self._validation_accumulator.finalize()
             self.validation_history.append(metrics)
             self._log_metric_set("validation", metrics)
+            self._validation_accumulator = None
+
+    def train_progress_snapshot(self) -> MetricSet | None:
+        if self._train_accumulator is None:
+            return None
+        return self._train_accumulator.snapshot()

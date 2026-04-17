@@ -19,14 +19,14 @@ from .models import (
     ChainSpec,
     ConfigModel,
     DatasetSpec,
+    EvaluationConfig,
+    EvaluateConfig,
     FeatureSetConfig,
     ModelConfig,
     PredictionConfig,
     PresetSpec,
     ProblemSpec,
     ProviderSpec,
-    SimulateConfig,
-    SimulationConfig,
     SplitConfig,
     StorageSpec,
     StudyConfig,
@@ -50,7 +50,7 @@ _KNOWN_TOP_LEVEL_CONFIG_KEYS = frozenset(PresetSpec.model_fields)
 _NAMED_GROUP_KEYS = frozenset(named_group_keys())
 
 ModelT = TypeVar("ModelT", bound=ConfigModel)
-WorkflowConfig = AcquireConfig | TrainConfig | TuneConfig | SimulateConfig
+WorkflowConfig = AcquireConfig | TrainConfig | TuneConfig | EvaluateConfig
 
 
 def _load_named_model(name: str) -> ModelConfig[str]:
@@ -95,9 +95,17 @@ def _deep_merge_mappings(
     for key, override_value in override.items():
         base_value = merged.get(key)
         if isinstance(base_value, Mapping) and isinstance(override_value, Mapping):
+            base_mapping = _mapping_copy(cast(Mapping[object, object], base_value), label=key)
+            override_mapping = _mapping_copy(
+                cast(Mapping[object, object], override_value),
+                label=key,
+            )
+            if _replace_component_mapping(base_mapping, override_mapping):
+                merged[key] = override_mapping
+                continue
             merged[key] = _deep_merge_mappings(
-                _mapping_copy(cast(Mapping[object, object], base_value), label=key),
-                _mapping_copy(cast(Mapping[object, object], override_value), label=key),
+                base_mapping,
+                override_mapping,
             )
             continue
         merged[key] = _mapping_copy(
@@ -117,16 +125,29 @@ def _merge_workflow_payload(
         base_value = merged.get(key)
         if isinstance(override_value, Mapping):
             if isinstance(base_value, Mapping):
+                base_mapping = _mapping_copy(cast(Mapping[object, object], base_value), label=key)
+                override_mapping = _mapping_copy(
+                    cast(Mapping[object, object], override_value),
+                    label=key,
+                )
+                if _replace_component_mapping(base_mapping, override_mapping):
+                    merged[key] = override_mapping
+                    continue
                 merged[key] = _deep_merge_mappings(
-                    _mapping_copy(cast(Mapping[object, object], base_value), label=key),
-                    _mapping_copy(cast(Mapping[object, object], override_value), label=key),
+                    base_mapping,
+                    override_mapping,
                 )
                 continue
             if isinstance(base_value, str) and key in _NAMED_GROUP_KEYS:
-                merged[key] = _deep_merge_mappings(
-                    load_named_group(base_value, key),
-                    _mapping_copy(cast(Mapping[object, object], override_value), label=key),
+                named_group = load_named_group(base_value, key)
+                override_mapping = _mapping_copy(
+                    cast(Mapping[object, object], override_value),
+                    label=key,
                 )
+                if _replace_component_mapping(named_group, override_mapping):
+                    merged[key] = override_mapping
+                    continue
+                merged[key] = _deep_merge_mappings(named_group, override_mapping)
                 continue
             merged[key] = _mapping_copy(
                 cast(Mapping[object, object], override_value), label=key
@@ -134,6 +155,19 @@ def _merge_workflow_payload(
             continue
         merged[key] = override_value
     return merged
+
+
+def _replace_component_mapping(
+    base: Mapping[str, object],
+    override: Mapping[str, object],
+) -> bool:
+    base_id = base.get("id")
+    override_id = override.get("id")
+    return (
+        isinstance(base_id, str)
+        and isinstance(override_id, str)
+        and base_id != override_id
+    )
 
 
 def _mapping_copy(value: Mapping[object, object], *, label: str) -> dict[str, object]:
@@ -173,9 +207,9 @@ def resolve_workflow_config(
 
 @overload
 def resolve_workflow_config(
-    workflow_kind: Literal[WorkflowTask.SIMULATE],
+    workflow_kind: Literal[WorkflowTask.EVALUATE],
     selections: WorkflowSelections,
-) -> SimulateConfig: ...
+) -> EvaluateConfig: ...
 
 
 def resolve_workflow_config(
@@ -200,8 +234,8 @@ def resolve_workflow_config(
             return _resolve_train_config(payload)
         if workflow is WorkflowTask.TUNE:
             return _resolve_tune_config(payload)
-        if workflow is WorkflowTask.SIMULATE:
-            return _resolve_simulate_config(payload)
+        if workflow is WorkflowTask.EVALUATE:
+            return _resolve_evaluate_config(payload)
         raise ConfigResolutionError(f"Unsupported workflow: {workflow.value}")
     except ConfigResolutionError:
         raise
@@ -226,14 +260,14 @@ def _workflow_request(
                 "chain": selections.chain,
                 "provider": selections.provider if workflow is WorkflowTask.ACQUIRE else None,
                 "model": selections.model
-                if workflow in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.SIMULATE}
+                if workflow in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.EVALUATE}
                 else None,
                 "feature_set": selections.feature_set,
                 "prediction": selections.prediction
-                if workflow in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.SIMULATE}
+                if workflow in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.EVALUATE}
                 else None,
                 "study": selections.study
-                if workflow in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.SIMULATE}
+                if workflow in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.EVALUATE}
                 else None,
                 "artifact": {"variant": selections.variant}
                 if selections.variant is not None
@@ -248,7 +282,7 @@ def _workflow_request(
                 if workflow is WorkflowTask.TUNE and selections.trial_count is not None
                 else None,
                 "delay_seconds": selections.delay_seconds
-                if workflow is WorkflowTask.SIMULATE
+                if workflow is WorkflowTask.EVALUATE
                 else None,
             }
         ),
@@ -517,7 +551,7 @@ def _resolve_tune_config(payload: dict[str, object]) -> TuneConfig:
     )
 
 
-def _resolve_simulate_config(payload: dict[str, object]) -> SimulateConfig:
+def _resolve_evaluate_config(payload: dict[str, object]) -> EvaluateConfig:
     (
         dataset_spec,
         chain_spec,
@@ -534,16 +568,16 @@ def _resolve_simulate_config(payload: dict[str, object]) -> SimulateConfig:
         label="training",
         model_type=TrainingConfig,
     )
-    simulation_spec = resolve_inline(
-        _require_payload_key(payload, "simulation"),
-        label="simulation",
-        model_type=SimulationConfig,
+    evaluation_spec = resolve_inline(
+        _require_payload_key(payload, "evaluation"),
+        label="evaluation",
+        model_type=EvaluationConfig,
     )
     delay_raw = _require_payload_key(payload, "delay_seconds")
     if not isinstance(delay_raw, int):
         raise ConfigResolutionError("delay_seconds must be an integer")
     delay_seconds = delay_raw
-    return SimulateConfig(
+    return EvaluateConfig(
         chain=chain_spec,
         dataset=dataset_spec,
         storage=storage_spec,
@@ -554,6 +588,6 @@ def _resolve_simulate_config(payload: dict[str, object]) -> SimulateConfig:
         study=study_spec,
         artifact=artifact_spec,
         training=training_spec,
-        simulation=simulation_spec,
+        evaluation=evaluation_spec,
         delay_seconds=delay_seconds,
     )

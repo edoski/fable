@@ -11,7 +11,7 @@ from pydantic import field_validator
 from ...modeling.families.base import ConfigModel
 
 if TYPE_CHECKING:
-    from ...config.models import ProblemSpec
+    from ...config.models import ChainRuntimeSpec, ProblemSpec
     from ...features import CompiledFeatureContract
     from ..contracts import CompiledProblemContract
 
@@ -38,4 +38,7 @@ ProblemCompilerConfigT = TypeVar("ProblemCompilerConfigT", bound=ProblemCompiler
 class ProblemCompilerSpec(Generic[ProblemCompilerConfigT]):
     id: str
     config_type: type[ProblemCompilerConfigT]
-    compile_problem: Callable[[ProblemSpec, CompiledFeatureContract], CompiledProblemContract]
+    compile_problem: Callable[
+        [ProblemSpec, CompiledFeatureContract, ChainRuntimeSpec | None],
+        CompiledProblemContract,
+    ]

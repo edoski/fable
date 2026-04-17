@@ -53,23 +53,6 @@ class WindowMetricSummary:
 
 
 @dataclass(frozen=True, slots=True)
-class PredictionSimulationRun:
-    window_start_timestamp: float
-    window_end_timestamp: float
-    n_arrivals: int
-    n_events: int
-    metrics: dict[str, float]
-
-
-@dataclass(frozen=True, slots=True)
-class PredictionSimulationSummary:
-    metrics: MetricSet
-    window_metrics: dict[str, WindowMetricSummary]
-    total_events: int
-    runs: list[PredictionSimulationRun]
-
-
-@dataclass(frozen=True, slots=True)
 class PredictionHeadSpec:
     id: str
     size: int

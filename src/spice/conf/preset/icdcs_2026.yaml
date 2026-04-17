@@ -5,7 +5,7 @@ provider: publicnode
 
 problem: icdcs_2026
 feature_set: icdcs_2026
-prediction: icdcs_2026_paper
+prediction: icdcs_2026
 model: lstm
 tuning_space: lstm_default
 
@@ -36,16 +36,16 @@ training:
   seed: 2026
   deterministic: true
   log_every_n_steps: 10
+  input_normalization:
+    id: row_standard
   precision: auto
   compile: auto
 split:
   train_fraction: 0.8
   validation_fraction: 0.1
-simulation:
-  window_seconds: 7200
-  arrival_rate_per_second: 0.05
-  repetitions: 50
-  seed: 2026
+evaluation:
+  evaluator:
+    id: paper_fullset
 delay_seconds: 36
 
 tuning:

@@ -4,3 +4,6 @@ sample_count: 400000
 max_delay_seconds: 36
 compiler:
   id: estimated_block
+  lookback_interval_source: nominal_chain_runtime
+  candidate_interval_source: calibrated
+  calibrated_interval_statistic: mean

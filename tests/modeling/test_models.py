@@ -3,13 +3,15 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import torch
+from torch import nn
 
 from spice.modeling.families.lstm import LstmModelConfig
+from spice.modeling.families.transformer import TransformerModelConfig
 from spice.modeling.families.transformer_lstm import TransformerLstmModelConfig
 from spice.modeling.models import (
     LSTMBaseline,
+    TransformerBaseline,
     TransformerLSTMBaseline,
-    packed_lstm_last_state_reference,
     take_last_valid,
 )
 from spice.modeling.representations import build_sequence_input_batch
@@ -49,7 +51,7 @@ def _test_store() -> CompiledProblemStore:
     )
 
 
-def test_lstm_baseline_matches_packed_reference() -> None:
+def test_lstm_baseline_uses_last_valid_dense_timestep() -> None:
     torch.manual_seed(7)
     store = _test_store()
     batch = build_sequence_input_batch(store, sample_indices=np.array([0, 1, 2, 3]))
@@ -68,17 +70,51 @@ def test_lstm_baseline_matches_packed_reference() -> None:
 
     with torch.no_grad():
         projected = model.input_projection(batch.inputs)
-        reference_last = packed_lstm_last_state_reference(
-            model.backbone,
-            projected,
-            batch.input_mask,
-        )
         recurrent, _ = model.backbone(projected)
         dense_last = take_last_valid(recurrent, batch.input_mask)
 
-        assert torch.allclose(dense_last, reference_last, atol=1e-6, rtol=1e-6)
         assert torch.allclose(
             model.output_head(dense_last).head(CANDIDATE_LOGITS_HEAD_ID),
+            model(batch.inputs, batch.input_mask).head(CANDIDATE_LOGITS_HEAD_ID),
+            atol=1e-6,
+            rtol=1e-6,
+        )
+        first_head = next(iter(model.output_head.heads.values()))
+        assert any(isinstance(layer, nn.Dropout) for layer in first_head.layers)
+
+
+@pytest.mark.filterwarnings(
+    "ignore:"
+    "The PyTorch API of nested tensors is in prototype stage and will change "
+    "in the near future.*:UserWarning"
+)
+def test_transformer_baseline_uses_last_valid_timestep_representation() -> None:
+    torch.manual_seed(5)
+    store = _test_store()
+    batch = build_sequence_input_batch(store, sample_indices=np.array([0, 1, 2, 3]))
+    model = TransformerBaseline(
+        n_features=batch.inputs.shape[-1],
+        output_spec=build_output_spec(store.max_candidate_slots),
+        config=TransformerModelConfig(
+            dropout=0.0,
+            d_model=4,
+            nhead=2,
+            transformer_layers=1,
+            feedforward_dim=16,
+            head_hidden_dim=4,
+        ),
+    )
+    model.eval()
+
+    with torch.no_grad():
+        projected = model.input_projection(batch.inputs)
+        encoded = model.encoder(
+            model.position_encoding(projected),
+            src_key_padding_mask=~batch.input_mask.bool(),
+        )
+        last_state = take_last_valid(encoded, batch.input_mask)
+        assert torch.allclose(
+            model.output_head(last_state).head(CANDIDATE_LOGITS_HEAD_ID),
             model(batch.inputs, batch.input_mask).head(CANDIDATE_LOGITS_HEAD_ID),
             atol=1e-6,
             rtol=1e-6,
@@ -90,7 +126,7 @@ def test_lstm_baseline_matches_packed_reference() -> None:
     "The PyTorch API of nested tensors is in prototype stage and will change "
     "in the near future.*:UserWarning"
 )
-def test_transformer_lstm_baseline_matches_packed_reference() -> None:
+def test_transformer_lstm_baseline_uses_last_valid_dense_timestep() -> None:
     torch.manual_seed(11)
     store = _test_store()
     batch = build_sequence_input_batch(store, sample_indices=np.array([0, 1, 2, 3]))
@@ -109,6 +145,9 @@ def test_transformer_lstm_baseline_matches_packed_reference() -> None:
         ),
     )
     model.eval()
+    assert model.lstm.bidirectional is False
+    assert model.lstm.num_layers == 2
+    assert not hasattr(model, "raw_skip")
 
     with torch.no_grad():
         projected = model.input_projection(batch.inputs)
@@ -116,15 +155,9 @@ def test_transformer_lstm_baseline_matches_packed_reference() -> None:
             model.position_encoding(projected),
             src_key_padding_mask=~batch.input_mask.bool(),
         )
-        reference_last = packed_lstm_last_state_reference(
-            model.lstm,
-            encoded,
-            batch.input_mask,
-        )
         recurrent, _ = model.lstm(encoded)
         dense_last = take_last_valid(recurrent, batch.input_mask)
 
-        assert torch.allclose(dense_last, reference_last, atol=1e-6, rtol=1e-6)
         assert torch.allclose(
             model.output_head(dense_last).head(CANDIDATE_LOGITS_HEAD_ID),
             model(batch.inputs, batch.input_mask).head(CANDIDATE_LOGITS_HEAD_ID),

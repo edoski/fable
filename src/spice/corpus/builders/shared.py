@@ -132,6 +132,8 @@ async def pull_plan_to_frame(
     chunk_size: int,
     rpc_controller: RpcController,
     reporter: Reporter,
+    progress_total: int | None = None,
+    progress_completed: int = 0,
 ) -> pl.DataFrame:
     await pull_block_range(
         block_client,
@@ -140,6 +142,8 @@ async def pull_plan_to_frame(
         chunk_size=chunk_size,
         rpc_controller=rpc_controller,
         reporter=reporter,
+        progress_total=progress_total,
+        progress_completed=progress_completed,
     )
     return load_block_frame(output_dir)
 

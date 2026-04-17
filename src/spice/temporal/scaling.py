@@ -38,7 +38,18 @@ def window_row_multiplicities(
     return np.cumsum(counts[:-1], dtype=np.int64)
 
 
-def fit_standard_scaler(
+def _scaler_stats_from_estimator(scaler: StandardScaler) -> ScalerStats:
+    if scaler.mean_ is None or scaler.scale_ is None:
+        raise RuntimeError("StandardScaler did not produce mean and scale statistics")
+    means = np.asarray(scaler.mean_, dtype=np.float64)
+    scales = np.asarray(scaler.scale_, dtype=np.float64)
+    return ScalerStats(
+        means=means.tolist(),
+        scales=scales.tolist(),
+    )
+
+
+def fit_window_weighted_standard_scaler(
     feature_matrix: FloatMatrix,
     *,
     context_start_rows: IntVector,
@@ -58,13 +69,44 @@ def fit_standard_scaler(
         raise ValueError("training windows did not cover any feature rows")
     scaler = StandardScaler()
     scaler.fit(feature_matrix.astype(np.float64, copy=False), sample_weight=weights)
-    if scaler.mean_ is None or scaler.scale_ is None:
-        raise RuntimeError("StandardScaler did not produce mean and scale statistics")
-    means = np.asarray(scaler.mean_, dtype=np.float64)
-    scales = np.asarray(scaler.scale_, dtype=np.float64)
-    return ScalerStats(
-        means=means.tolist(),
-        scales=scales.tolist(),
+    return _scaler_stats_from_estimator(scaler)
+
+
+def fit_row_standard_scaler(
+    feature_matrix: FloatMatrix,
+    *,
+    context_start_rows: IntVector,
+    anchor_rows: IntVector,
+    sample_indices: IntVector,
+) -> ScalerStats:
+    if feature_matrix.size == 0:
+        raise ValueError("feature_matrix must be non-empty")
+    multiplicities = window_row_multiplicities(
+        context_start_rows=context_start_rows,
+        anchor_rows=anchor_rows,
+        sample_indices=sample_indices,
+        n_rows=int(feature_matrix.shape[0]),
+    )
+    covered_rows = multiplicities > 0
+    if not np.any(covered_rows):
+        raise ValueError("training windows did not cover any feature rows")
+    scaler = StandardScaler()
+    scaler.fit(feature_matrix[covered_rows].astype(np.float64, copy=False))
+    return _scaler_stats_from_estimator(scaler)
+
+
+def fit_standard_scaler(
+    feature_matrix: FloatMatrix,
+    *,
+    context_start_rows: IntVector,
+    anchor_rows: IntVector,
+    sample_indices: IntVector,
+) -> ScalerStats:
+    return fit_window_weighted_standard_scaler(
+        feature_matrix,
+        context_start_rows=context_start_rows,
+        anchor_rows=anchor_rows,
+        sample_indices=sample_indices,
     )
 
 

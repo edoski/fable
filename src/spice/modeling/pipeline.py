@@ -33,6 +33,10 @@ from ..temporal.contracts import (
     ProblemRuntimeMetadata,
     compile_problem_contract,
 )
+from ..temporal.input_normalization import (
+    CompiledInputNormalizationContract,
+    compile_input_normalization_contract,
+)
 from ..temporal.problem_store import (
     CompiledProblemStore,
     DatasetSplitIndices,
@@ -41,7 +45,7 @@ from ..temporal.problem_store import (
     filter_sample_indices_by_timestamp_window,
     tail_sample_indices,
 )
-from ..temporal.scaling import ScalerStats, fit_standard_scaler, transform_feature_matrix
+from ..temporal.scaling import ScalerStats, transform_feature_matrix
 from ._runtime import CompiledRepresentationContract
 from .families.registry import build_model, resolve_model_representation_id
 from .models import TemporalModel
@@ -61,6 +65,7 @@ class TrainingSpec:
     feature_set: FeatureSetConfig
     prediction: PredictionConfig
     prediction_contract: CompiledPredictionContract
+    input_normalization_contract: CompiledInputNormalizationContract
     representation_contract: CompiledRepresentationContract
     model: ModelConfig
     split: SplitConfig
@@ -76,10 +81,14 @@ def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
     contract = compile_problem_contract(
         problem=config.problem,
         feature_contract=feature_contract,
+        chain_runtime=config.chain.runtime,
     )
     prediction_contract = compile_prediction_contract(
         prediction_id=config.prediction.id,
         family_config=config.prediction.family,
+    )
+    input_normalization_contract = compile_input_normalization_contract(
+        config.training.input_normalization
     )
     if config.workflow.value not in prediction_contract.supported_workflows:
         raise ValueError(
@@ -101,6 +110,7 @@ def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
         feature_set=config.feature_set,
         prediction=config.prediction,
         prediction_contract=prediction_contract,
+        input_normalization_contract=input_normalization_contract,
         representation_contract=compile_representation_contract(
             resolve_model_representation_id(config.model)
         ),
@@ -207,7 +217,7 @@ def prepare_training_dataset(
         validation=selected_sample_indices[split_positions.validation],
         test=selected_sample_indices[split_positions.test],
     )
-    scaler = fit_standard_scaler(
+    scaler = spec.input_normalization_contract.fit_scaler(
         store.feature_matrix,
         context_start_rows=store.context_start_rows,
         anchor_rows=store.anchor_rows,

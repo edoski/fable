@@ -1,6 +1,6 @@
 # pyright: strict
 
-"""Typed training and simulation summary envelopes."""
+"""Typed training and evaluation summary envelopes."""
 
 from __future__ import annotations
 
@@ -15,12 +15,8 @@ from ..config import (
     ProblemSpec,
     StudyConfig,
 )
-from ..prediction import (
-    MetricSet,
-    PredictionSimulationRun,
-    PredictionSimulationSummary,
-    WindowMetricSummary,
-)
+from ..evaluation import EvaluationRun, EvaluationSummary
+from ..prediction import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..semantics import ArtifactSemantics
 from ..temporal.scaling import ScalerStats
 from .pipeline import PreparedInferenceDataset, PreparedTrainingDataset, TrainingRunResult
@@ -103,12 +99,12 @@ class TrainingArtifactManifest:
         return self.semantics.prediction.training_metric_descriptors
 
     @property
-    def simulation_metric_descriptors(self):
-        return self.semantics.prediction.simulation_metric_descriptors
-
-    @property
     def representation_id(self) -> str:
         return self.semantics.representation.representation_id
+
+    @property
+    def input_normalization_id(self) -> str:
+        return self.semantics.input_normalization.input_normalization_id
 
     @property
     def n_features(self) -> int:
@@ -155,28 +151,30 @@ class TrainingEpochRecord:
 
 
 @dataclass(frozen=True, slots=True)
-class SimulationRuntimeSummary:
-    """Runtime-only simulation outcomes stored separately from manifest provenance."""
+class EvaluationRuntimeSummary:
+    """Runtime-only evaluation outcomes stored separately from manifest provenance."""
 
     delay_seconds: int
-    simulation_window_seconds: int
-    arrival_rate_per_second: float
-    repetitions: int
+    evaluator_id: str
+    evaluator_config: dict[str, object]
+    metric_descriptors: tuple[MetricDescriptor, ...]
     n_history_rows: int
     n_evaluation_rows: int
     sample_count: int
     metrics: MetricSet
     window_metrics: dict[str, WindowMetricSummary]
     total_events: int
-    runs: list[PredictionSimulationRun]
+    runs: list[EvaluationRun]
 
 
 @dataclass(frozen=True, slots=True)
-class LoadedSimulationSummary:
-    """Read model that pairs artifact provenance with one simulation runtime summary."""
+class LoadedEvaluationSummary:
+    """Read model that pairs artifact provenance with one evaluation runtime summary."""
 
+    evaluation_id: str
+    recorded_at: int
     manifest: TrainingArtifactManifest
-    runtime: SimulationRuntimeSummary
+    runtime: EvaluationRuntimeSummary
 
 
 def iter_epoch_records(result: TrainingRunResult) -> Iterator[TrainingEpochRecord]:
@@ -221,25 +219,25 @@ def build_training_runtime_summary(
     )
 
 
-def build_simulation_runtime_summary(
+def build_evaluation_runtime_summary(
     *,
     prepared: PreparedInferenceDataset,
-    simulation: PredictionSimulationSummary,
+    evaluation: EvaluationSummary,
     delay_seconds: int,
-    window_seconds: int,
-    arrival_rate_per_second: float,
-    repetitions: int,
-) -> SimulationRuntimeSummary:
-    return SimulationRuntimeSummary(
+    evaluator_id: str,
+    evaluator_config: dict[str, object],
+    metric_descriptors: tuple[MetricDescriptor, ...],
+) -> EvaluationRuntimeSummary:
+    return EvaluationRuntimeSummary(
         delay_seconds=delay_seconds,
-        simulation_window_seconds=window_seconds,
-        arrival_rate_per_second=arrival_rate_per_second,
-        repetitions=repetitions,
+        evaluator_id=evaluator_id,
+        evaluator_config=dict(evaluator_config),
+        metric_descriptors=metric_descriptors,
         n_history_rows=prepared.n_history_rows,
         n_evaluation_rows=prepared.n_evaluation_rows,
         sample_count=prepared.sample_count,
-        metrics=simulation.metrics,
-        window_metrics=dict(simulation.window_metrics),
-        total_events=simulation.total_events,
-        runs=list(simulation.runs),
+        metrics=evaluation.metrics,
+        window_metrics=dict(evaluation.window_metrics),
+        total_events=evaluation.total_events,
+        runs=list(evaluation.runs),
     )

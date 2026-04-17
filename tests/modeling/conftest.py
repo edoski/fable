@@ -27,7 +27,7 @@ def model_workflow_override():
         compiler_id: str = "estimated_block",
     ) -> dict[str, object]:
         feature_set_name = (
-            "icdcs_2026_time_native" if compiler_id == "timestamp_native" else "icdcs_2026"
+            "time_native_baseline" if compiler_id == "timestamp_native" else "icdcs_2026"
         )
         return {
             "chain": "ethereum",
@@ -56,11 +56,14 @@ def model_workflow_override():
                     "min_delta": 0.0,
                 },
             },
-            "simulation": {
-                "window_seconds": 600,
-                "arrival_rate_per_second": 0.02,
-                "repetitions": 3,
-                "seed": 2026,
+            "evaluation": {
+                "evaluator": {
+                    "id": "poisson_replay",
+                    "window_seconds": 600,
+                    "arrival_rate_per_second": 0.02,
+                    "repetitions": 3,
+                    "seed": 2026,
+                }
             },
             "tuning": {
                 "trial_count": 2,
@@ -113,6 +116,7 @@ def required_dataset_blocks(config: TrainConfig) -> int:
     contract = compile_problem_contract(
         problem=config.problem,
         feature_contract=feature_contract,
+        chain_runtime=config.chain.runtime,
     )
     block_interval_seconds = synthetic_block_interval_seconds(config.chain.name)
     required_blocks = (

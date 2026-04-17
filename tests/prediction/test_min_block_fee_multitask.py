@@ -51,12 +51,13 @@ def _build_store() -> CompiledProblemStore:
 def _contract():
     prediction = coerce_prediction_config(
         {
-            "id": "icdcs_2026_paper",
+            "id": "icdcs_2026",
             "family": {
                 "id": "min_block_fee_multitask",
                 "classification_loss_weight": 1.0,
-                "regression_loss_weight": 1.0,
+                "regression_loss_weight": 0.5,
                 "class_weighting": "inverse_frequency",
+                "fee_target_normalization": "zscore_train_split",
             },
         }
     )
@@ -86,6 +87,7 @@ def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
     class_weights = training_state.class_weights.cpu().numpy()
     assert class_weights[0] < class_weights[1]
     assert class_weights[1] == pytest_approx(class_weights[2])
+    assert training_state.fee_std > 0.0
 
     outputs = ModelOutputs(
         heads={
@@ -98,7 +100,11 @@ def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
                 ],
                 dtype=torch.float32,
             ),
-            MIN_LOG_FEE_HEAD_ID: batch.min_block_log_fees.unsqueeze(-1).clone(),
+            MIN_LOG_FEE_HEAD_ID: (
+                (batch.min_block_log_fees - training_state.fee_mean) / training_state.fee_std
+            )
+            .unsqueeze(-1)
+            .clone(),
         }
     )
 
@@ -107,13 +113,15 @@ def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
         batch,
         training_state=training_state,
     )
-    metrics = contract.summarize_epoch_metrics([state])
+    accumulator = contract.create_epoch_accumulator("train")
+    accumulator.update(state)
+    metrics = accumulator.finalize()
     assert loss.item() < 0.5
     assert metrics.require("offset_accuracy") == pytest_approx(1.0)
     assert metrics.require("regression_loss") == pytest_approx(0.0)
 
-    predictions = contract.allocate_prediction_buffer(store.n_samples)
-    contract.decode_into(
+    predictions = contract.allocate_decoded_offsets(store.n_samples)
+    contract.decode_selected_offsets_into(
         predictions,
         torch.arange(store.n_samples, dtype=torch.int64),
         outputs,

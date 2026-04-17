@@ -6,17 +6,17 @@ from dataclasses import dataclass
 
 import torch
 
-from ....core.reporting import Reporter, StageMetricDescriptor
+from ....core.reporting import StageMetricDescriptor
 from ....modeling.models import ModelOutputs
 from ....temporal.problem_store import CompiledProblemStore
-from ...base import MetricSet, PredictionOutputSpec, PredictionSimulationSummary
+from ...base import MetricSet, PredictionOutputSpec
 from ...contracts import (
     CompiledPredictionContract,
+    EpochMetricAccumulator,
     IntVector,
     PredictionTargetBatch,
     PreparedPredictionTargets,
 )
-from ...offset_selection.replay import SIMULATION_METRIC_DESCRIPTORS
 from ...registry import PredictionFamilySpec, register_prediction_family_spec
 from .batch import CandidateSlateTargetBatch
 from .config import CandidateOffsetSelectionFamilyConfig
@@ -24,10 +24,14 @@ from .metrics import (
     TRAINING_METRIC_DESCRIPTORS,
     best_epoch,
     compute_batch_loss_and_state,
-    summarize_epoch_metrics,
+    create_epoch_accumulator,
 )
-from .outputs import CANDIDATE_LOGITS_HEAD_ID, build_output_spec
-from .replay import allocate_prediction_buffer, decode_into, run_replay
+from .outputs import (
+    CANDIDATE_LOGITS_HEAD_ID,
+    build_output_spec,
+    candidate_logits,
+    masked_candidate_logits,
+)
 from .targets import prepare_candidate_slate_targets
 
 PROGRESS_METRIC_DESCRIPTORS: tuple[StageMetricDescriptor, ...] = (
@@ -62,16 +66,17 @@ class CandidateOffsetSelectionPredictionContract(CompiledPredictionContract):
             raise TypeError("candidate_offset_selection expects CandidateSlateTargetBatch targets")
         return compute_batch_loss_and_state(outputs.head(CANDIDATE_LOGITS_HEAD_ID), targets)
 
-    def summarize_epoch_metrics(self, batch_states: list[object]) -> MetricSet:
-        return summarize_epoch_metrics(batch_states)
+    def create_epoch_accumulator(self, stage: str) -> EpochMetricAccumulator:
+        del stage
+        return create_epoch_accumulator()
 
     def best_epoch(self, history: list[MetricSet]) -> int:
         return best_epoch(history)
 
-    def allocate_prediction_buffer(self, sample_count: int) -> object:
-        return allocate_prediction_buffer(sample_count)
+    def allocate_decoded_offsets(self, sample_count: int) -> object:
+        return [0] * sample_count
 
-    def decode_into(
+    def decode_selected_offsets_into(
         self,
         predictions: object,
         sample_positions,
@@ -80,29 +85,13 @@ class CandidateOffsetSelectionPredictionContract(CompiledPredictionContract):
     ) -> None:
         if not isinstance(targets, CandidateSlateTargetBatch):
             raise TypeError("candidate_offset_selection expects CandidateSlateTargetBatch targets")
-        decode_into(predictions, sample_positions, outputs, targets)
-
-    def simulate(
-        self,
-        store: CompiledProblemStore,
-        predictions: object,
-        sample_indices: IntVector,
-        window_seconds: int,
-        arrival_rate_per_second: float,
-        repetitions: int,
-        seed: int,
-        reporter: Reporter | None,
-    ) -> PredictionSimulationSummary:
-        return run_replay(
-            store,
-            predictions,
-            sample_indices,
-            window_seconds,
-            arrival_rate_per_second,
-            repetitions,
-            seed,
-            reporter,
-        )
+        if not isinstance(predictions, list):
+            raise TypeError("candidate_offset_selection decoded_offsets buffer must be a list")
+        logits = masked_candidate_logits(candidate_logits(outputs), targets.candidate_mask)
+        decoded = logits.argmax(dim=-1).cpu().tolist()
+        positions = sample_positions.tolist()
+        for sample_position, prediction in zip(positions, decoded, strict=True):
+            predictions[int(sample_position)] = int(prediction)
 
 
 def _compile(
@@ -115,10 +104,9 @@ def _compile(
         prediction_family_id="candidate_offset_selection",
         training_metric_descriptors=TRAINING_METRIC_DESCRIPTORS,
         progress_metric_descriptors=PROGRESS_METRIC_DESCRIPTORS,
-        simulation_metric_descriptors=SIMULATION_METRIC_DESCRIPTORS,
         primary_metric_id="profit_over_baseline",
         direction="maximize",
-        supported_workflows=frozenset({"train", "tune", "simulate"}),
+        supported_workflows=frozenset({"train", "tune", "evaluate"}),
     )
 
 

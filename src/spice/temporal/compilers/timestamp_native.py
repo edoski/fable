@@ -20,6 +20,7 @@ from .registry import register_problem_compiler_spec
 
 if TYPE_CHECKING:
     from ...config import ProblemSpec
+    from ...config.models import ChainRuntimeSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +103,9 @@ class TimestampNativeCompiledProblemContract(CompiledProblemContract):
 def compile_problem(
     problem: ProblemSpec,
     feature_contract: CompiledFeatureContract,
+    chain_runtime: ChainRuntimeSpec | None,
 ) -> CompiledProblemContract:
+    del chain_runtime
     return TimestampNativeCompiledProblemContract(
         compiler_id="timestamp_native",
         problem_id=problem.id,

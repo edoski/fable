@@ -17,6 +17,7 @@ def compute_multitask_loss(
     training_state: MinBlockFeeTrainingState,
     classification_loss_weight: float,
     regression_loss_weight: float,
+    fee_target_normalization: str,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     masked_logits = masked_offset_logits(offset_logits, targets.candidate_mask)
     class_weights = training_state.class_weights.to(
@@ -28,9 +29,24 @@ def compute_multitask_loss(
         targets.min_block_offsets,
         weight=class_weights,
     )
+    regression_targets = targets.min_block_log_fees
+    if fee_target_normalization == "zscore_train_split":
+        fee_mean = torch.tensor(
+            training_state.fee_mean,
+            device=fee_predictions.device,
+            dtype=fee_predictions.dtype,
+        )
+        fee_std = torch.tensor(
+            training_state.fee_std,
+            device=fee_predictions.device,
+            dtype=fee_predictions.dtype,
+        )
+        regression_targets = (regression_targets - fee_mean) / fee_std
+    elif fee_target_normalization != "none":
+        raise ValueError(f"Unsupported fee_target_normalization: {fee_target_normalization}")
     regression_loss = F.smooth_l1_loss(
         fee_predictions,
-        targets.min_block_log_fees,
+        regression_targets,
     )
     total_loss = (
         classification_loss_weight * classification_loss

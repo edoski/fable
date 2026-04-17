@@ -5,8 +5,10 @@ import math
 from concurrent.futures.thread import _threads_queues
 from io import StringIO
 
+import aiohttp
 import pytest
 from rich.console import Console
+from web3.providers.rpc.utils import ExceptionRetryConfiguration
 
 import spice.workflows.acquire as acquire_workflow
 from spice.acquisition.provider import ManagedAsyncHTTPProvider
@@ -31,6 +33,7 @@ class CaptureReporter(NullReporter):
     def __init__(self) -> None:
         self.messages: list[str | None] = []
         self.metrics: list[dict[str, str]] = []
+        self.completions: list[int | None] = []
 
     def start_task(
         self,
@@ -38,8 +41,9 @@ class CaptureReporter(NullReporter):
         *,
         total: int | None = None,
         unit: str | None = None,
+        completed: int | None = None,
     ) -> int:
-        del name, total, unit
+        del name, total, unit, completed
         return 1
 
     def update_task(
@@ -51,9 +55,10 @@ class CaptureReporter(NullReporter):
         message: str | None = None,
         metrics: tuple[StageMetricValue, ...] = (),
     ) -> None:
-        del problem_id, completed, advance
+        del problem_id, advance
         self.messages.append(message)
         self.metrics.append({metric.id: metric.value for metric in metrics})
+        self.completions.append(completed)
 
 
 def _plan_for_window(
@@ -302,7 +307,183 @@ def test_pull_block_range_emits_structured_progress_messages(
     assert ("oversize backoff", {"batch": "8", "conc": "8"}) in list(
         zip(reporter.messages, reporter.metrics, strict=True)
     )
-    assert reporter.metrics.count({"batch": "8", "conc": "8"}) == 3
+    assert reporter.metrics.count({"batch": "8", "conc": "8"}) == 2
+
+
+def test_pull_block_range_coalesces_simultaneous_success_updates(
+    tmp_path,
+    load_test_acquire_config,
+    acquire_override,
+    make_block_rows,
+) -> None:
+    config = load_test_acquire_config(tmp_path, override=acquire_override())
+    reporter = CaptureReporter()
+    controller = RpcController(
+        configured_batch_size=8,
+        min_batch_size=8,
+        concurrency_rungs=(2,),
+        configured_concurrency=2,
+    )
+    plan = BlockPullPlan(
+        window=TimestampRange(
+            start=config.evaluation_window_start_timestamp,
+            end=config.evaluation_window_start_timestamp + 16 * 12,
+        ),
+        block_range=BlockRange(start=100, end=116),
+        expected_rows=16,
+        expected_files=1,
+    )
+
+    class FakeClient(Web3BlockClient):
+        async def close(self) -> None:
+            return None
+
+        async def get_block_rows(self, block_numbers: list[int]):
+            return make_block_rows(
+                len(block_numbers),
+                start_block=block_numbers[0],
+                start_timestamp=(
+                    plan.window.start + (block_numbers[0] - plan.block_range.start) * 12
+                ),
+                chain_id=config.chain.runtime.chain_id,
+                block_interval_seconds=12,
+            )
+
+    client = FakeClient(config.provider, config.chain)
+
+    asyncio.run(
+        pull_block_range(
+            client,
+            tmp_path / "history",
+            plan=plan,
+            chunk_size=64,
+            rpc_controller=controller,
+            reporter=reporter,
+        )
+    )
+
+    assert reporter.completions == [0, 16]
+
+
+def test_acquire_workflow_reuses_temporary_history_between_expansions(
+    tmp_path,
+    monkeypatch,
+    load_test_acquire_config,
+    acquire_override,
+    make_block_rows,
+) -> None:
+    override = acquire_override()
+    override["acquisition"] = {
+        "chunk_size": 128,
+        "rpc": {
+            "batch_size": 128,
+            "concurrency": 1,
+            "min_batch_size": 128,
+            "concurrency_rungs": [1],
+        },
+    }
+    config = load_test_acquire_config(tmp_path, override=override)
+    evaluation_plan = _plan_for_window(
+        TimestampRange(
+            start=config.evaluation_window_start_timestamp,
+            end=config.evaluation_window_end_timestamp,
+        ),
+        start_block=10_000,
+        expected_rows=32,
+        chunk_size=config.acquisition.chunk_size,
+    )
+    history_plans = [
+        _plan_for_window(
+            TimestampRange(
+                start=config.history_window_end_timestamp - 50 * 12,
+                end=config.history_window_end_timestamp,
+            ),
+            start_block=1_000,
+            expected_rows=50,
+            chunk_size=config.acquisition.chunk_size,
+        ),
+        _plan_for_window(
+            TimestampRange(
+                start=config.history_window_end_timestamp - 100 * 12,
+                end=config.history_window_end_timestamp,
+            ),
+            start_block=950,
+            expected_rows=100,
+            chunk_size=config.acquisition.chunk_size,
+        ),
+    ]
+    partial_ranges: list[tuple[int, int]] = []
+    requested_ranges: list[tuple[int, int]] = []
+    valid_anchor_samples = iter([1, config.problem.sample_count])
+
+    class FakeAcquireClient:
+        def __init__(self, provider, chain) -> None:
+            del provider
+            self.chain = chain
+            self._history_plan_calls = 0
+
+        async def close(self) -> None:
+            return None
+
+        async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:
+            del sample_size
+            return 12.0
+
+        async def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
+            del chunk_size
+            if window == evaluation_plan.window:
+                return evaluation_plan
+            plan = history_plans[self._history_plan_calls]
+            self._history_plan_calls += 1
+            return plan
+
+        def plan_block_range(
+            self,
+            block_range: BlockRange,
+            *,
+            window: TimestampRange,
+            chunk_size: int,
+        ) -> BlockPullPlan:
+            partial_ranges.append((block_range.start, block_range.end))
+            return BlockPullPlan(
+                window=window,
+                block_range=block_range,
+                expected_rows=block_range.count,
+                expected_files=max(1, math.ceil(block_range.count / chunk_size)),
+            )
+
+        async def get_block_rows(self, block_numbers: list[int]):
+            first_block = block_numbers[0]
+            end_block = block_numbers[-1] + 1
+            requested_ranges.append((first_block, end_block))
+            if first_block >= evaluation_plan.block_range.start:
+                plan = evaluation_plan
+            else:
+                plan = (
+                    history_plans[0]
+                    if first_block >= history_plans[0].block_range.start
+                    else history_plans[1]
+                )
+            return make_block_rows(
+                len(block_numbers),
+                start_block=first_block,
+                start_timestamp=plan.window.start + (first_block - plan.block_range.start) * 12,
+                chain_id=config.chain.runtime.chain_id,
+                block_interval_seconds=12,
+            )
+
+    monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", FakeAcquireClient)
+    monkeypatch.setattr(
+        "spice.workflows.acquire._count_valid_history_samples",
+        lambda **_: next(valid_anchor_samples),
+    )
+
+    run_acquire(config, reporter=NullReporter())
+
+    assert partial_ranges == [(950, 1_000)]
+    assert (1_000, 1_050) in requested_ranges
+    assert (950, 1_000) in requested_ranges
+    assert (950, 1_050) not in requested_ranges
 
 
 def test_acquire_executor_threads_skip_python_exit_registry() -> None:
@@ -330,3 +511,39 @@ def test_managed_async_http_provider_disconnect_closes_managed_session() -> None
     before_closed, after_closed = asyncio.run(_exercise())
     assert before_closed is False
     assert after_closed is True
+
+
+def test_managed_async_http_provider_retries_batch_transport_errors(monkeypatch) -> None:
+    provider = ManagedAsyncHTTPProvider(
+        "http://localhost:8545",
+        exception_retry_configuration=ExceptionRetryConfiguration(
+            errors=[aiohttp.ClientError],
+            retries=2,
+            backoff_factor=0.0,
+        ),
+    )
+    attempts = 0
+
+    async def _fake_post_request(endpoint_uri: str, data: bytes, **kwargs) -> bytes:
+        del endpoint_uri, data, kwargs
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise aiohttp.ClientPayloadError(
+                "Response payload is not completed: "
+                "<TransferEncodingError: 400, "
+                "message='Not enough data to satisfy transfer length header.'>"
+            )
+        return b'[{"jsonrpc":"2.0","id":1,"result":"ok"}]'
+
+    monkeypatch.setattr(
+        provider._request_session_manager,
+        "async_make_post_request",
+        _fake_post_request,
+    )
+    monkeypatch.setattr(provider, "encode_batch_rpc_request", lambda requests: b"[]")
+
+    response = asyncio.run(provider.make_batch_request([("eth_test", [])]))
+
+    assert attempts == 2
+    assert response == [{"jsonrpc": "2.0", "id": 1, "result": "ok"}]

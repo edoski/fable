@@ -43,10 +43,16 @@ class PredictionSemantics:
     prediction_family_id: str
     training_metric_descriptors: tuple[MetricDescriptor, ...]
     progress_metric_descriptors: tuple[StageMetricDescriptor, ...]
-    simulation_metric_descriptors: tuple[MetricDescriptor, ...]
     primary_metric_id: str
     direction: Literal["maximize", "minimize"]
     supported_workflows: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
+class InputNormalizationSemantics:
+    """Resolved input-normalization identity for persisted provenance."""
+
+    input_normalization_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +77,7 @@ class StudySemantics:
     problem: ProblemSemantics
     feature: FeatureSemantics
     prediction: PredictionSemantics
+    input_normalization: InputNormalizationSemantics
     representation: RepresentationSemantics
 
 
@@ -81,5 +88,6 @@ class ArtifactSemantics:
     problem: ProblemSemantics
     feature: FeatureSemantics
     prediction: PredictionSemantics
+    input_normalization: InputNormalizationSemantics
     representation: RepresentationSemantics
     max_candidate_slots: int

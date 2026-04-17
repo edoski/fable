@@ -8,7 +8,13 @@ import yaml
 from typer.testing import CliRunner
 
 from spice.cli import app
-from spice.config import SimulateConfig, WorkflowSelections, WorkflowTask, resolve_workflow_config
+from spice.config import (
+    EvaluateConfig,
+    TrainConfig,
+    WorkflowSelections,
+    WorkflowTask,
+    resolve_workflow_config,
+)
 from spice.core.errors import ConfigResolutionError
 
 runner = CliRunner()
@@ -81,14 +87,14 @@ def test_removed_group_is_gone_and_legacy_task_key_is_rejected(tmp_path, isolate
         )
 
 
-def test_simulate_loader_uses_delay_seconds_and_named_override(
+def test_evaluate_loader_uses_delay_seconds_and_named_override(
     tmp_path,
     load_workflow_config,
 ) -> None:
     config = cast(
-        SimulateConfig,
+        EvaluateConfig,
         load_workflow_config(
-            WorkflowTask.SIMULATE,
+            WorkflowTask.EVALUATE,
             workspace=tmp_path,
             preset="icdcs_2026",
             override={
@@ -99,8 +105,17 @@ def test_simulate_loader_uses_delay_seconds_and_named_override(
                     "max_delay_seconds": 24,
                     "compiler": {"id": "timestamp_native"},
                 },
-                "feature_set": "icdcs_2026_time_native",
+                "feature_set": "time_native_baseline",
                 "delay_seconds": 12,
+                "evaluation": {
+                    "evaluator": {
+                        "id": "poisson_replay",
+                        "window_seconds": 600,
+                        "arrival_rate_per_second": 0.02,
+                        "repetitions": 3,
+                        "seed": 2026,
+                    }
+                },
             },
             chain="ethereum",
             model="lstm",
@@ -110,4 +125,42 @@ def test_simulate_loader_uses_delay_seconds_and_named_override(
     assert config.problem.id == "test_problem"
     assert config.problem.max_delay_seconds == 24
     assert config.delay_seconds == 12
-    assert config.feature_set.id == "icdcs_2026_time_native"
+    assert config.feature_set.id == "time_native_baseline"
+    assert config.evaluation.evaluator.id == "poisson_replay"
+
+
+def test_train_loader_resolves_paper_benchmark_preset(
+    tmp_path,
+    load_workflow_config,
+) -> None:
+    config = cast(
+        TrainConfig,
+        load_workflow_config(
+            WorkflowTask.TRAIN,
+            workspace=tmp_path,
+            preset="icdcs_2026_paper",
+            override={
+                "dataset": {"evaluation_date": "2025-11-09"},
+                "training": {
+                    "device": "cpu",
+                    "batch_size": 8,
+                    "max_epochs": 1,
+                    "log_every_n_steps": 1,
+                    "precision": "fp32",
+                    "compile": "off",
+                    "early_stopping": {"patience": 1, "min_delta": 0.0},
+                },
+                "split": {
+                    "train_fraction": 0.8,
+                    "validation_fraction": 0.1,
+                },
+            },
+        ),
+    )
+
+    assert config.problem.id == "icdcs_2026_paper"
+    assert config.problem.compiler.id == "timestamp_native"
+    assert config.feature_set.id == "icdcs_2026_paper"
+    assert config.prediction.id == "icdcs_2026_paper"
+    assert config.model.id == "lstm"
+    assert config.model.hidden_size == 256

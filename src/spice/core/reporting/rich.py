@@ -14,10 +14,13 @@ from .metrics import (
     _PROGRESS_BAR_STYLES,
     _STAGE_STATUS_STYLES,
     _active_stage_metric_descriptors,
+    _count_column_label,
+    _display_progress_completed,
     _panel_body_width,
     _render_elapsed,
     _render_eta,
     _render_rate,
+    _render_stage_counts,
     _render_stage_detail,
     _render_stage_metric,
     _stage_layout,
@@ -124,6 +127,13 @@ class RichReporter(_BaseWorkflowReporter):
             overflow="ellipsis",
         )
         table.add_column("progress", width=layout.progress_width, no_wrap=True)
+        if layout.show_counts:
+            table.add_column(
+                _count_column_label(self._stages.values()),
+                width=13,
+                no_wrap=True,
+                justify="right",
+            )
         for descriptor in layout.metric_columns:
             table.add_column(
                 descriptor.label,
@@ -144,6 +154,8 @@ class RichReporter(_BaseWorkflowReporter):
                 Text(stage.status, style=_STAGE_STATUS_STYLES.get(stage.status, "")),
                 self._render_progress(stage, bar_width=layout.progress_bar_width),
             ]
+            if layout.show_counts:
+                row.append(_render_stage_counts(stage))
             for descriptor in layout.metric_columns:
                 row.append(_render_stage_metric(stage.metric_values.get(descriptor.id)))
             if layout.show_rate:
@@ -169,7 +181,7 @@ class RichReporter(_BaseWorkflowReporter):
         progress.add_row(
             ProgressBar(
                 total=max(float(stage.total), 1.0),
-                completed=float(min(stage.completed, stage.total)),
+                completed=_display_progress_completed(stage),
                 width=bar_width,
                 style=style,
                 complete_style=complete_style,
@@ -184,5 +196,5 @@ class RichReporter(_BaseWorkflowReporter):
 def _format_progress_percent(stage: _StageState) -> str:
     if stage.total is None or stage.total <= 0:
         return "--"
-    percent = int((min(stage.completed, stage.total) * 100) / stage.total)
+    percent = int((_display_progress_completed(stage) * 100) / stage.total)
     return f"{percent:>3d}%"

@@ -6,12 +6,11 @@ from .base import (
     PredictionFamilyConfig,
     PredictionHeadSpec,
     PredictionOutputSpec,
-    PredictionSimulationRun,
-    PredictionSimulationSummary,
     WindowMetricSummary,
 )
 from .contracts import (
     CompiledPredictionContract,
+    EpochMetricAccumulator,
     ModelInputBatch,
     PredictionBatch,
     PredictionTargetBatch,
@@ -26,6 +25,7 @@ from .registry import (
 
 __all__ = [
     "CompiledPredictionContract",
+    "EpochMetricAccumulator",
     "MetricDescriptor",
     "MetricSet",
     "ModelInputBatch",
@@ -34,8 +34,6 @@ __all__ = [
     "PredictionFamilySpec",
     "PredictionHeadSpec",
     "PredictionOutputSpec",
-    "PredictionSimulationRun",
-    "PredictionSimulationSummary",
     "PredictionTargetBatch",
     "WindowMetricSummary",
     "bind_prediction_representation",

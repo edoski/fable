@@ -83,12 +83,20 @@ class ManagedAsyncHTTPProvider(AsyncHTTPProvider):
             raise ValueError("ManagedAsyncHTTPProvider requires an endpoint URI")
         return str(endpoint_uri)
 
-    async def _make_request(self, method, request_data: bytes) -> bytes:
+    async def _request_with_retries(
+        self,
+        request_data: bytes,
+        *,
+        method: str | None = None,
+    ) -> bytes:
         if (
             self.exception_retry_configuration is not None
-            and check_if_retry_on_failure(
-                method,
-                self.exception_retry_configuration.method_allowlist,
+            and (
+                method is None
+                or check_if_retry_on_failure(
+                    method,
+                    self.exception_retry_configuration.method_allowlist,
+                )
             )
         ):
             for attempt in range(self.exception_retry_configuration.retries):
@@ -112,13 +120,12 @@ class ManagedAsyncHTTPProvider(AsyncHTTPProvider):
             **self._request_kwargs_mapping(),
         )
 
+    async def _make_request(self, method, request_data: bytes) -> bytes:
+        return await self._request_with_retries(request_data, method=method)
+
     async def make_batch_request(self, batch_requests):
         request_data = self.encode_batch_rpc_request(batch_requests)
-        raw_response = await self._request_session_manager.async_make_post_request(
-            self._endpoint_uri(),
-            request_data,
-            **self._request_kwargs_mapping(),
-        )
+        raw_response = await self._request_with_retries(request_data)
         response = self.decode_rpc_response(raw_response)
         if not isinstance(response, list):
             return response

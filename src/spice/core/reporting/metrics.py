@@ -91,18 +91,18 @@ def _stage_layout(
 ) -> _StageLayout:
     if has_detail:
         if available_width >= 132:
-            return _StageLayout(10, 8, 18, True, True, True, metric_columns)
+            return _StageLayout(10, 8, 18, True, True, True, True, metric_columns)
         if available_width >= 112:
-            return _StageLayout(10, 8, 16, True, True, False, metric_columns)
+            return _StageLayout(10, 8, 16, False, True, True, False, metric_columns)
         if available_width >= 92:
-            return _StageLayout(9, 8, 12, False, False, True, ())
-        return _StageLayout(8, 7, 12, False, False, False, ())
+            return _StageLayout(9, 8, 12, False, False, False, True, ())
+        return _StageLayout(8, 7, 12, False, False, False, False, ())
 
     if available_width >= 96:
-        return _StageLayout(10, 8, 20, True, True, False, metric_columns)
+        return _StageLayout(10, 8, 20, True, True, True, False, metric_columns)
     if available_width >= 78:
-        return _StageLayout(9, 8, 16, True, False, False, ())
-    return _StageLayout(8, 7, 12, False, False, False, ())
+        return _StageLayout(9, 8, 16, False, True, False, False, ())
+    return _StageLayout(8, 7, 12, False, False, False, False, ())
 
 
 def _progress_bucket(stage: _StageState) -> int | None:
@@ -112,10 +112,12 @@ def _progress_bucket(stage: _StageState) -> int | None:
         return 10
     bucket_count = min(10, stage.total)
     return min(bucket_count, (stage.completed * bucket_count) // stage.total)
+
+
 def _format_progress_percent(stage: _StageState) -> str:
     if stage.total is None or stage.total <= 0:
         return "--"
-    percent = int((min(stage.completed, stage.total) * 100) / stage.total)
+    percent = int((_display_progress_completed(stage) * 100) / stage.total)
     return f"{percent:>3d}%"
 
 
@@ -195,6 +197,37 @@ def _render_rate(stage: _StageState) -> Text:
     suffix = _unit_rate_suffix(stage.unit)
     value = _format_rate_value(stage.smoothed_rate)
     return Text(f"{value} {suffix}", style="bright_cyan")
+
+
+def _count_column_label(stages: Iterable[_StageState]) -> str:
+    units = {
+        stage.unit
+        for stage in stages
+        if stage.total is not None and stage.unit is not None
+    }
+    if len(units) != 1:
+        return "count"
+    unit = next(iter(units))
+    aliases = {
+        "block": "blocks",
+        "blocks": "blocks",
+        "batch": "batches",
+        "batches": "batches",
+        "trial": "trials",
+        "trials": "trials",
+        "repetition": "reps",
+        "repetitions": "reps",
+    }
+    return aliases.get(unit, "count")
+
+
+def _render_stage_counts(stage: _StageState) -> Text:
+    if stage.total is None:
+        return Text("--", style="dim")
+    return Text(
+        f"{format_compact_count(stage.completed)}/{format_compact_count(stage.total)}",
+        style="bright_white",
+    )
 
 
 def _render_stage_metric(value: str | None) -> Text:
@@ -287,3 +320,28 @@ def format_compact_number(value: float) -> str:
 
 def _format_rate_value(rate: float) -> str:
     return format_compact_number(rate)
+
+
+def format_compact_count(value: int) -> str:
+    absolute = abs(value)
+    sign = "-" if value < 0 else ""
+    if absolute >= 1_000_000:
+        return f"{sign}{absolute / 1_000_000:.2f}M"
+    if absolute >= 100_000:
+        return f"{sign}{absolute / 1_000:.0f}k"
+    if absolute >= 10_000:
+        return f"{sign}{absolute / 1_000:.1f}k"
+    if absolute >= 1_000:
+        return f"{sign}{absolute / 1_000:.2f}k"
+    return f"{value:d}"
+
+
+def _display_progress_completed(stage: _StageState) -> float:
+    if stage.total is None or stage.total <= 0:
+        return 0.0
+    bounded_completed = float(min(stage.completed, stage.total))
+    if stage.progress_finalized or stage.status in _FINAL_STAGE_STATUSES:
+        return bounded_completed
+    if bounded_completed < float(stage.total):
+        return bounded_completed
+    return max(0.0, float(stage.total) - 0.01)

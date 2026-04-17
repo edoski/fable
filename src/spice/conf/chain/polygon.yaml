@@ -2,3 +2,4 @@ name: polygon
 runtime:
   chain_id: 137
   uses_poa_extra_data: true
+  nominal_block_time_seconds: 2.0

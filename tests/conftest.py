@@ -9,7 +9,7 @@ import pytest
 from spice.config import (
     AcquireConfig,
     PresetSpec,
-    SimulateConfig,
+    EvaluateConfig,
     TrainConfig,
     TuneConfig,
     WorkflowSelections,
@@ -33,6 +33,15 @@ def _deep_merge(base: dict[str, object], override: Mapping[str, object]) -> dict
     for key, value in override.items():
         existing = merged.get(key)
         if isinstance(existing, dict) and isinstance(value, Mapping):
+            existing_id = existing.get("id")
+            override_id = value.get("id")
+            if (
+                isinstance(existing_id, str)
+                and isinstance(override_id, str)
+                and existing_id != override_id
+            ):
+                merged[key] = dict(value)
+                continue
             merged[key] = _deep_merge(existing, dict(value))
             continue
         merged[key] = dict(value) if isinstance(value, Mapping) else value
@@ -85,7 +94,7 @@ def load_workflow_config(tmp_path: Path, isolate_conf_root):
         delay_seconds: int | None = None,
         trial_count: int | None = None,
         dry_run: bool | None = None,
-    ) -> AcquireConfig | TrainConfig | TuneConfig | SimulateConfig:
+    ) -> AcquireConfig | TrainConfig | TuneConfig | EvaluateConfig:
         conf_root = isolate_conf_root()
         workspace_root = tmp_path if workspace is None else workspace
         preset_payload = load_named_group(preset, "preset")

@@ -10,19 +10,13 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 
-from ..core.reporting import (
-    Reporter,
-    StageMetricDescriptor,
-    StageMetricValue,
-    format_compact_number,
-)
+from ..core.reporting import StageMetricDescriptor, StageMetricValue, format_compact_number
 from ..semantics import PredictionSemantics
 from ..temporal.problem_store import CompiledProblemStore
 from .base import (
     MetricDescriptor,
     MetricSet,
     PredictionOutputSpec,
-    PredictionSimulationSummary,
 )
 
 if TYPE_CHECKING:
@@ -47,6 +41,14 @@ class PredictionTargetBatch(Protocol):
 
 class PreparedPredictionTargets(Protocol):
     def build_batch(self, sample_positions: torch.Tensor) -> PredictionTargetBatch: ...
+
+
+class EpochMetricAccumulator(Protocol):
+    def update(self, batch_state: object) -> None: ...
+
+    def snapshot(self) -> MetricSet: ...
+
+    def finalize(self) -> MetricSet: ...
 
 
 @dataclass(slots=True)
@@ -112,7 +114,6 @@ class CompiledPredictionContract:
     prediction_family_id: str
     training_metric_descriptors: tuple[MetricDescriptor, ...]
     progress_metric_descriptors: tuple[StageMetricDescriptor, ...]
-    simulation_metric_descriptors: tuple[MetricDescriptor, ...]
     primary_metric_id: str
     direction: Literal["maximize", "minimize"]
     supported_workflows: frozenset[str]
@@ -124,7 +125,6 @@ class CompiledPredictionContract:
             prediction_family_id=self.prediction_family_id,
             training_metric_descriptors=self.training_metric_descriptors,
             progress_metric_descriptors=self.progress_metric_descriptors,
-            simulation_metric_descriptors=self.simulation_metric_descriptors,
             primary_metric_id=self.primary_metric_id,
             direction=self.direction,
             supported_workflows=self.supported_workflows,
@@ -165,7 +165,7 @@ class CompiledPredictionContract:
     ) -> tuple[torch.Tensor, object]:
         raise NotImplementedError
 
-    def summarize_epoch_metrics(self, batch_states: list[object]) -> MetricSet:
+    def create_epoch_accumulator(self, stage: str) -> EpochMetricAccumulator:
         raise NotImplementedError
 
     def best_epoch(self, history: list[MetricSet]) -> int:
@@ -184,29 +184,16 @@ class CompiledPredictionContract:
             if descriptor.id in metrics.values
         )
 
-    def allocate_prediction_buffer(self, sample_count: int) -> object:
+    def allocate_decoded_offsets(self, sample_count: int) -> object:
         raise NotImplementedError
 
-    def decode_into(
+    def decode_selected_offsets_into(
         self,
         predictions: object,
         sample_positions: torch.Tensor,
         outputs: ModelOutputs,
         targets: PredictionTargetBatch,
     ) -> None:
-        raise NotImplementedError
-
-    def simulate(
-        self,
-        store: CompiledProblemStore,
-        predictions: object,
-        sample_indices: IntVector,
-        window_seconds: int,
-        arrival_rate_per_second: float,
-        repetitions: int,
-        seed: int,
-        reporter: Reporter | None,
-    ) -> PredictionSimulationSummary:
         raise NotImplementedError
 
 

@@ -8,7 +8,7 @@ from .commands.config import app as config_app
 from .commands.storage import delete_app, show_app
 from .commands.workflows import (
     acquire_command,
-    simulate_command,
+    evaluate_command,
     train_command,
     tune_command,
 )
@@ -49,14 +49,14 @@ app.command(
     epilog="Example:\n  spice tune --preset icdcs_2026 --trial-count 20",
 )(tune_command)
 app.command(
-    "simulate",
-    short_help="Simulate a model artifact.",
-    help="Simulate one trained artifact on evaluation data.",
+    "evaluate",
+    short_help="Evaluate a model artifact.",
+    help="Evaluate one trained artifact on historical evaluation data.",
     epilog=(
         "Example:\n"
-        "  spice simulate --preset icdcs_2026 --study default --variant baseline"
+        "  spice evaluate --preset icdcs_2026 --study default --variant baseline"
     ),
-)(simulate_command)
+)(evaluate_command)
 
 
 def main(argv: list[str] | None = None) -> None:

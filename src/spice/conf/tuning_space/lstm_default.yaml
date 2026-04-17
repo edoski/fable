@@ -3,5 +3,5 @@ training:
   weight_decay: [0.0, 0.01, 0.05]
 model:
   id: lstm
-  hidden_size: [64, 128, 256]
-  dropout: [0.0, 0.1, 0.2]
+  hidden_size: [128, 256, 384]
+  dropout: [0.1, 0.2, 0.3]

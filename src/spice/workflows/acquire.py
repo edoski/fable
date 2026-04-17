@@ -158,6 +158,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
     contract = compile_problem_contract(
         problem=config.problem,
         feature_contract=feature_contract,
+        chain_runtime=config.chain.runtime,
     )
     evaluation_window = evaluation_range(
         config.evaluation_window_start_timestamp,
@@ -175,6 +176,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
             label="history",
             status="pending",
             running_status="pulling",
+            done_status="planning",
             metric_descriptors=_RPC_STAGE_METRICS,
         )
         evaluation_reporter = session.runtime.stage_reporter(
@@ -182,6 +184,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
             label="evaluation",
             status="pending",
             running_status="pulling",
+            done_status="planning",
             metric_descriptors=_RPC_STAGE_METRICS,
         )
 
@@ -220,6 +223,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
             session.runtime.set_stage_state(
                 "history",
                 status="planning",
+                progress_finalized=False,
                 total=history_plan.expected_rows,
                 completed=0,
                 unit="blocks",
@@ -254,12 +258,15 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                 prefix=f".{config.paths.corpus_id}.acquire.",
             ) as temp_root_name:
                 temp_root = Path(temp_root_name)
+                history_source_dir = history_dir
+                history_iteration = 0
                 while True:
+                    history_work_dir = temp_root / f"history-pass-{history_iteration:02d}"
                     history_result = await ensure_history_dataset(
                         config=config,
                         block_client=block_client,
-                        output_dir=history_dir,
-                        working_dir=temp_root,
+                        output_dir=history_source_dir,
+                        working_dir=history_work_dir,
                         history_plan=history_plan,
                         rpc_controller=rpc_controller,
                         reporter=history_reporter,
@@ -272,6 +279,8 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                     )
                     if valid_anchor_samples >= contract.sample_count:
                         break
+                    history_source_dir = history_result.path
+                    history_iteration += 1
                     history_window_seconds *= 2
                     history_start_timestamp = max(
                         0,
@@ -283,6 +292,18 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                             end=config.history_window_end_timestamp,
                         ),
                         chunk_size=config.acquisition.chunk_size,
+                    )
+                    session.runtime.set_stage_state(
+                        "history",
+                        status="planning",
+                        progress_finalized=False,
+                        total=history_plan.expected_rows,
+                        completed=history_result.validation.row_count,
+                        unit="blocks",
+                        message=(
+                            f"anchors={valid_anchor_samples:,}/{contract.sample_count:,}; "
+                            "extending history window"
+                        ),
                     )
                 session.runtime.set_stage_state(
                     "history",

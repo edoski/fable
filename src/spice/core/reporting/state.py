@@ -30,6 +30,7 @@ class _StageState:
     key: str
     label: str
     status: str = "pending"
+    progress_finalized: bool = True
     metric_descriptors: tuple[StageMetricDescriptor, ...] = ()
     metric_values: dict[str, str] = field(default_factory=dict)
     total: int | None = None
@@ -53,6 +54,7 @@ class _StageLayout:
     stage_width: int
     status_width: int
     progress_bar_width: int
+    show_counts: bool
     show_rate: bool
     show_eta: bool
     show_detail: bool

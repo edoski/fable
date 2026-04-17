@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
+from pydantic import Field
 
 from ...features import (
     CompiledFeatureContract,
@@ -20,29 +22,67 @@ from .registry import register_problem_compiler_spec
 
 if TYPE_CHECKING:
     from ...config import ProblemSpec
+    from ...config.models import ChainRuntimeSpec
 
-_INTERVAL_KEY = "effective_block_interval_seconds"
+_LEGACY_INTERVAL_KEY = "effective_block_interval_seconds"
+_CALIBRATED_INTERVAL_KEY = "calibrated_block_interval_seconds"
+_LOOKBACK_INTERVAL_KEY = "lookback_interval_seconds"
+_CANDIDATE_INTERVAL_KEY = "candidate_interval_seconds"
 _LOOKBACK_STEPS_KEY = "lookback_steps"
 _CAPABILITY_CANDIDATE_COUNT_KEY = "capability_candidate_count"
 
 
+class EstimatedBlockIntervalSource(StrEnum):
+    CALIBRATED = "calibrated"
+    NOMINAL_CHAIN_RUNTIME = "nominal_chain_runtime"
+
+
+class EstimatedBlockCalibratedStatistic(StrEnum):
+    MEDIAN = "median"
+    MEAN = "mean"
+
+
 class EstimatedBlockCompilerConfig(ProblemCompilerConfig):
     id: str = "estimated_block"
+    lookback_interval_source: EstimatedBlockIntervalSource = (
+        EstimatedBlockIntervalSource.CALIBRATED
+    )
+    candidate_interval_source: EstimatedBlockIntervalSource = (
+        EstimatedBlockIntervalSource.CALIBRATED
+    )
+    calibrated_interval_statistic: EstimatedBlockCalibratedStatistic = Field(
+        default=EstimatedBlockCalibratedStatistic.MEDIAN
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
+    lookback_interval_source: EstimatedBlockIntervalSource
+    candidate_interval_source: EstimatedBlockIntervalSource
+    calibrated_interval_statistic: EstimatedBlockCalibratedStatistic
+    nominal_block_time_seconds: float | None
+
     def initial_history_window_seconds(self, recent_block_interval_seconds: float | None) -> int:
         minimum_window = self.required_history_seconds + self.max_delay_seconds
-        if recent_block_interval_seconds is None or recent_block_interval_seconds <= 0:
+        lookback_interval_seconds = _resolve_bootstrap_interval_seconds(
+            source=self.lookback_interval_source,
+            recent_block_interval_seconds=recent_block_interval_seconds,
+            nominal_block_time_seconds=self.nominal_block_time_seconds,
+        )
+        candidate_interval_seconds = _resolve_bootstrap_interval_seconds(
+            source=self.candidate_interval_source,
+            recent_block_interval_seconds=recent_block_interval_seconds,
+            nominal_block_time_seconds=self.nominal_block_time_seconds,
+        )
+        if lookback_interval_seconds is None or candidate_interval_seconds is None:
             return minimum_window
         bootstrap_lookback_steps = _lookback_steps_for_seconds(
             self.lookback_seconds,
-            recent_block_interval_seconds,
+            lookback_interval_seconds,
         )
         bootstrap_candidate_count = _candidate_count_for_delay(
             self.max_delay_seconds,
-            recent_block_interval_seconds,
+            candidate_interval_seconds,
         )
         return self.feature_prerequisites.history_seconds + math.ceil(
             (
@@ -51,7 +91,7 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
                 + self.sample_count
                 + bootstrap_candidate_count
             )
-            * recent_block_interval_seconds
+            * candidate_interval_seconds
         )
 
     def count_valid_capability_samples(self, feature_table: ResolvedFeatureTable) -> int:
@@ -62,16 +102,29 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
         self,
         feature_table: ResolvedFeatureTable,
     ) -> tuple[CompiledProblemStore, ProblemRuntimeMetadata]:
-        effective_block_interval_seconds = _calibrate_effective_block_interval_seconds(
-            feature_table
+        calibrated_interval_seconds = _calibrate_observed_block_interval_seconds(
+            feature_table,
+            statistic=self.calibrated_interval_statistic,
+        )
+        lookback_interval_seconds = _resolve_runtime_interval_seconds(
+            source=self.lookback_interval_source,
+            calibrated_interval_seconds=calibrated_interval_seconds,
+            nominal_block_time_seconds=self.nominal_block_time_seconds,
+            label="lookback",
+        )
+        candidate_interval_seconds = _resolve_runtime_interval_seconds(
+            source=self.candidate_interval_source,
+            calibrated_interval_seconds=calibrated_interval_seconds,
+            nominal_block_time_seconds=self.nominal_block_time_seconds,
+            label="candidate",
         )
         lookback_steps = _lookback_steps_for_seconds(
             self.lookback_seconds,
-            effective_block_interval_seconds,
+            lookback_interval_seconds,
         )
         capability_candidate_count = _candidate_count_for_delay(
             self.max_delay_seconds,
-            effective_block_interval_seconds,
+            candidate_interval_seconds,
         )
         store = _build_estimated_block_problem_store(
             feature_table,
@@ -82,7 +135,9 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
         return (
             store,
             {
-                _INTERVAL_KEY: effective_block_interval_seconds,
+                _CALIBRATED_INTERVAL_KEY: calibrated_interval_seconds,
+                _LOOKBACK_INTERVAL_KEY: lookback_interval_seconds,
+                _CANDIDATE_INTERVAL_KEY: candidate_interval_seconds,
                 _LOOKBACK_STEPS_KEY: lookback_steps,
                 _CAPABILITY_CANDIDATE_COUNT_KEY: capability_candidate_count,
             },
@@ -103,14 +158,13 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
                 "delay_seconds exceeds problem capability: "
                 f"{delay_seconds} > {self.max_delay_seconds}"
             )
-        effective_block_interval_seconds = _runtime_float(
-            compiler_runtime_metadata,
-            _INTERVAL_KEY,
+        candidate_interval_seconds = _runtime_candidate_interval_seconds(
+            compiler_runtime_metadata
         )
         lookback_steps = _runtime_int(compiler_runtime_metadata, _LOOKBACK_STEPS_KEY)
         candidate_count = _candidate_count_for_delay(
             delay_seconds,
-            effective_block_interval_seconds,
+            candidate_interval_seconds,
         )
         return _build_estimated_block_problem_store(
             feature_table,
@@ -124,7 +178,25 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
 def compile_problem(
     problem: ProblemSpec,
     feature_contract: CompiledFeatureContract,
+    chain_runtime: ChainRuntimeSpec | None,
 ) -> CompiledProblemContract:
+    compiler_config = cast(EstimatedBlockCompilerConfig, problem.compiler)
+    nominal_block_time_seconds = (
+        None if chain_runtime is None else float(chain_runtime.nominal_block_time_seconds)
+    )
+    if (
+        nominal_block_time_seconds is None
+        and (
+            compiler_config.lookback_interval_source
+            is EstimatedBlockIntervalSource.NOMINAL_CHAIN_RUNTIME
+            or compiler_config.candidate_interval_source
+            is EstimatedBlockIntervalSource.NOMINAL_CHAIN_RUNTIME
+        )
+    ):
+        raise ValueError(
+            "estimated_block compiler requires chain.runtime.nominal_block_time_seconds "
+            "for nominal interval resolution"
+        )
     return EstimatedBlockCompiledProblemContract(
         compiler_id="estimated_block",
         problem_id=problem.id,
@@ -134,6 +206,10 @@ def compile_problem(
         sample_count=problem.sample_count,
         max_delay_seconds=problem.max_delay_seconds,
         feature_prerequisites=feature_contract.feature_prerequisites,
+        lookback_interval_source=compiler_config.lookback_interval_source,
+        candidate_interval_source=compiler_config.candidate_interval_source,
+        calibrated_interval_statistic=compiler_config.calibrated_interval_statistic,
+        nominal_block_time_seconds=nominal_block_time_seconds,
     )
 
 
@@ -190,12 +266,47 @@ def _build_estimated_block_problem_store(
     )
 
 
-def _calibrate_effective_block_interval_seconds(feature_table: ResolvedFeatureTable) -> float:
+def _calibrate_observed_block_interval_seconds(
+    feature_table: ResolvedFeatureTable,
+    *,
+    statistic: EstimatedBlockCalibratedStatistic,
+) -> float:
     deltas = np.diff(feature_table.series.timestamps.astype(np.int64, copy=False))
     positive_deltas = deltas[deltas > 0]
     if positive_deltas.size == 0:
         raise ValueError("Estimated-block compiler requires positive timestamp deltas")
+    if statistic is EstimatedBlockCalibratedStatistic.MEAN:
+        return float(np.mean(positive_deltas))
     return float(np.median(positive_deltas))
+
+
+def _resolve_runtime_interval_seconds(
+    *,
+    source: EstimatedBlockIntervalSource,
+    calibrated_interval_seconds: float,
+    nominal_block_time_seconds: float | None,
+    label: str,
+) -> float:
+    if source is EstimatedBlockIntervalSource.CALIBRATED:
+        return calibrated_interval_seconds
+    if nominal_block_time_seconds is None or nominal_block_time_seconds <= 0:
+        raise ValueError(
+            f"estimated_block compiler requires nominal block time for {label} interval resolution"
+        )
+    return nominal_block_time_seconds
+
+
+def _resolve_bootstrap_interval_seconds(
+    *,
+    source: EstimatedBlockIntervalSource,
+    recent_block_interval_seconds: float | None,
+    nominal_block_time_seconds: float | None,
+) -> float | None:
+    if source is EstimatedBlockIntervalSource.NOMINAL_CHAIN_RUNTIME:
+        return nominal_block_time_seconds
+    if recent_block_interval_seconds is None or recent_block_interval_seconds <= 0:
+        return None
+    return recent_block_interval_seconds
 
 
 def _lookback_steps_for_seconds(
@@ -230,6 +341,12 @@ def _runtime_int(metadata: ProblemRuntimeMetadata, key: str) -> int:
     except KeyError as exc:
         raise ValueError(f"Missing compiler runtime metadata: {key}") from exc
     return int(cast(int | float | str, value))
+
+
+def _runtime_candidate_interval_seconds(metadata: ProblemRuntimeMetadata) -> float:
+    if _CANDIDATE_INTERVAL_KEY in metadata:
+        return _runtime_float(metadata, _CANDIDATE_INTERVAL_KEY)
+    return _runtime_float(metadata, _LEGACY_INTERVAL_KEY)
 
 
 register_problem_compiler_spec(

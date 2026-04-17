@@ -17,7 +17,6 @@ from ..core.reporting import (
     NullReporter,
     Reporter,
     StageMetricValue,
-    format_compact_number,
 )
 from ..prediction import CompiledPredictionContract, MetricSet
 from ..temporal.problem_store import CompiledProblemStore
@@ -64,20 +63,20 @@ class ReporterProgressCallback(L.Callback):
         reporter: Reporter,
         *,
         max_epochs: int,
+        log_every_n_steps: int,
         prediction_contract: CompiledPredictionContract,
     ) -> None:
         super().__init__()
         self._reporter = reporter
         self._max_epochs = max_epochs
+        self._log_every_n_steps = log_every_n_steps
         self._prediction_contract = prediction_contract
         self._task_id: int | None = None
         self._total_batches = 0
         self._train_batches_per_epoch = 0
-        self._smoothed_loss: float | None = None
 
     def on_train_start(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
         del pl_module
-        self._smoothed_loss = None
         train_batches = trainer.num_training_batches
         if not isinstance(train_batches, int) or train_batches <= 0:
             self._task_id = self._reporter.start_task("train epochs")
@@ -98,10 +97,25 @@ class ReporterProgressCallback(L.Callback):
         batch,
         batch_idx: int,
     ) -> None:
-        del batch, pl_module
+        del batch, outputs
         if self._task_id is None:
             return
-        loss_value = _loss_value(outputs)
+        if (batch_idx + 1) % self._log_every_n_steps != 0 and batch_idx + 1 < max(
+            1,
+            self._train_batches_per_epoch,
+        ):
+            return
+        if not isinstance(pl_module, TemporalLightningModule):
+            return
+        snapshot = pl_module.train_progress_snapshot()
+        if snapshot is None:
+            return
+        completed = None
+        if self._train_batches_per_epoch > 0:
+            completed = min(
+                self._total_batches,
+                trainer.current_epoch * self._train_batches_per_epoch + batch_idx + 1,
+            )
         metrics = [
             StageMetricValue(
                 id=_EPOCH_STAGE_METRIC_ID,
@@ -112,17 +126,10 @@ class ReporterProgressCallback(L.Callback):
             batch_idx + 1,
             max(1, self._train_batches_per_epoch),
         )
-        if loss_value is not None:
-            self._smoothed_loss = _smooth_value(self._smoothed_loss, loss_value, alpha=0.12)
-            metrics.append(
-                StageMetricValue(
-                    id="total_loss",
-                    value=format_compact_number(self._smoothed_loss),
-                )
-            )
+        metrics.extend(self._prediction_contract.format_progress_metrics(snapshot))
         self._reporter.update_task(
             self._task_id,
-            advance=1,
+            completed=completed,
             message=message,
             metrics=metrics,
         )
@@ -164,22 +171,6 @@ class ReporterProgressCallback(L.Callback):
             message=f"best epoch {_best_epoch(validation_history, self._prediction_contract)}",
         )
         self._task_id = None
-
-
-def _loss_value(outputs: object) -> float | None:
-    if isinstance(outputs, torch.Tensor):
-        return float(outputs.detach().item())
-    if isinstance(outputs, dict):
-        loss = outputs.get("loss")
-        if isinstance(loss, torch.Tensor):
-            return float(loss.detach().item())
-    return None
-
-
-def _smooth_value(previous: float | None, current: float, *, alpha: float) -> float:
-    if previous is None:
-        return current
-    return previous + alpha * (current - previous)
 
 
 def _format_compact_count(value: int) -> str:
@@ -306,6 +297,7 @@ def train_model(
         ReporterProgressCallback(
             reporter,
             max_epochs=training_config.max_epochs,
+            log_every_n_steps=training_config.log_every_n_steps,
             prediction_contract=prediction_contract,
         ),
     ]
@@ -383,7 +375,7 @@ def evaluate_model(
         seed=training_config.seed,
     )
     task_id = reporter.start_task("evaluate model", total=len(loader), unit="batches")
-    batch_states: list[object] = []
+    accumulator = prediction_contract.create_epoch_accumulator("evaluation")
     with torch.no_grad():
         for batch in loader:
             device_batch = batch.to_device(device)
@@ -393,7 +385,7 @@ def evaluate_model(
                 device_batch.targets,
                 training_state=prediction_training_state,
             )
-            batch_states.append(batch_state)
+            accumulator.update(batch_state)
             reporter.update_task(task_id, advance=1)
     reporter.finish_task(task_id)
-    return prediction_contract.summarize_epoch_metrics(batch_states)
+    return accumulator.finalize()

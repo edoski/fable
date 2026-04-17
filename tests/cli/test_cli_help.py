@@ -18,7 +18,7 @@ def test_root_help_lists_commands() -> None:
     assert "acquire" in result.stdout
     assert "train" in result.stdout
     assert "tune" in result.stdout
-    assert "simulate" in result.stdout
+    assert "evaluate" in result.stdout
 
 
 def test_acquire_help_includes_panels_and_example() -> None:
@@ -37,7 +37,7 @@ def test_acquire_help_includes_panels_and_example() -> None:
 
 
 def test_main_workflow_help_stays_operator_focused() -> None:
-    for command in ("train", "tune", "simulate", "show"):
+    for command in ("train", "tune", "evaluate", "show"):
         result = runner.invoke(app, [command, "--help"])
 
         assert result.exit_code == 0, result.stdout

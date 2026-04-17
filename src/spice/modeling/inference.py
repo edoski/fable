@@ -51,12 +51,12 @@ def predict_with_model(
         seed=0,
     )
     task_id = reporter.start_task("predict", total=len(loader), unit="batches")
-    predictions = prediction_contract.allocate_prediction_buffer(int(sample_indices.shape[0]))
+    predictions = prediction_contract.allocate_decoded_offsets(int(sample_indices.shape[0]))
     with torch.no_grad():
         for batch in loader:
             device_batch = batch.to_device(resolved_device)
             outputs = model(**device_batch.model_kwargs())
-            prediction_contract.decode_into(
+            prediction_contract.decode_selected_offsets_into(
                 predictions,
                 batch.sample_positions,
                 outputs,

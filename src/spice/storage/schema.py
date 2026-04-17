@@ -51,16 +51,18 @@ training_epochs = Table(
     Column("payload", JSON, nullable=False),
 )
 
-simulation_summary = Table(
-    "simulation_summary",
+evaluation_summary = Table(
+    "evaluation_summary",
     metadata,
-    Column("singleton", Integer, primary_key=True),
+    Column("evaluation_id", String, primary_key=True),
+    Column("recorded_at", Integer, nullable=False),
     Column("payload", JSON, nullable=False),
 )
 
-simulation_runs = Table(
-    "simulation_runs",
+evaluation_runs = Table(
+    "evaluation_runs",
     metadata,
+    Column("evaluation_id", String, primary_key=True),
     Column("ordinal", Integer, primary_key=True),
     Column("payload", JSON, nullable=False),
 )
@@ -78,6 +80,6 @@ ARTIFACT_TABLES = (
     artifact_manifest,
     training_summary,
     training_epochs,
-    simulation_summary,
-    simulation_runs,
+    evaluation_summary,
+    evaluation_runs,
 )

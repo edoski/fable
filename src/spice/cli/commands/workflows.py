@@ -11,7 +11,7 @@ import typer
 
 from ...config import (
     AcquireConfig,
-    SimulateConfig,
+    EvaluateConfig,
     TrainConfig,
     TuneConfig,
     WorkflowSelections,
@@ -118,7 +118,7 @@ def _resolve_tune_config(
     )
 
 
-def _resolve_simulate_config(
+def _resolve_evaluate_config(
     *,
     preset: str | None,
     dataset: str | None,
@@ -131,9 +131,9 @@ def _resolve_simulate_config(
     variant: str | None,
     delay_seconds: int | None,
     storage_root: Path | None,
-) -> SimulateConfig:
+) -> EvaluateConfig:
     return resolve_workflow_config(
-        WorkflowTask.SIMULATE,
+        WorkflowTask.EVALUATE,
         WorkflowSelections(
             preset=preset,
             dataset=dataset,
@@ -372,7 +372,7 @@ def tune_command(
     )
 
 
-def simulate_command(
+def evaluate_command(
     preset: Annotated[
         str | None,
         _selection_option(
@@ -426,7 +426,7 @@ def simulate_command(
         _execution_option(
             "--delay-seconds",
             metavar="SECONDS",
-            help="Override the simulation delay in seconds.",
+            help="Override the evaluation delay in seconds.",
         ),
     ] = None,
     storage_root: Annotated[
@@ -438,10 +438,10 @@ def simulate_command(
         ),
     ] = None,
 ) -> None:
-    from ...workflows import simulate
+    from ...workflows import evaluate
 
-    simulate.run(
-        _resolve_simulate_config(
+    evaluate.run(
+        _resolve_evaluate_config(
             preset=preset,
             dataset=dataset,
             problem=problem,

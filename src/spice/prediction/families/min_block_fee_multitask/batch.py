@@ -39,3 +39,5 @@ class PreparedMinBlockFeeTargets:
 @dataclass(frozen=True, slots=True)
 class MinBlockFeeTrainingState:
     class_weights: torch.Tensor
+    fee_mean: float = 0.0
+    fee_std: float = 1.0

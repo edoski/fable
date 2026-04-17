@@ -2,3 +2,4 @@ name: ethereum
 runtime:
   chain_id: 1
   uses_poa_extra_data: false
+  nominal_block_time_seconds: 12.0

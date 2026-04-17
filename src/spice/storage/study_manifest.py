@@ -34,6 +34,7 @@ from ..modeling.result_codecs import study_semantics_from_payload, study_semanti
 from ..prediction import compile_prediction_contract
 from ..semantics import StudySemantics
 from ..temporal.contracts import compile_problem_contract
+from ..temporal.input_normalization import compile_input_normalization_contract
 from .engine import STUDY_ROOT_KIND, create_state_engine, ensure_state_db
 from .payloads import PayloadCodec, SingletonPayloadStore
 from .schema import STUDY_TABLES, study_manifest
@@ -60,10 +61,14 @@ def manifest_from_tune_config(config: TuneConfig) -> StudyManifest:
     problem_contract = compile_problem_contract(
         problem=config.problem,
         feature_contract=feature_contract,
+        chain_runtime=config.chain.runtime,
     )
     prediction_contract = compile_prediction_contract(
         prediction_id=config.prediction.id,
         family_config=config.prediction.family,
+    )
+    input_normalization_contract = compile_input_normalization_contract(
+        config.training.input_normalization
     )
     representation_contract = compile_representation_contract(
         resolve_model_representation_id(config.model)
@@ -89,6 +94,7 @@ def manifest_from_tune_config(config: TuneConfig) -> StudyManifest:
             problem=problem_contract.semantics,
             feature=feature_contract.semantics,
             prediction=prediction_contract.semantics,
+            input_normalization=input_normalization_contract.semantics,
             representation=representation_contract.semantics,
         ),
     )

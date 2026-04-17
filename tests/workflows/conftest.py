@@ -9,7 +9,7 @@ import polars as pl
 import pytest
 
 from spice.config import (
-    SimulateConfig,
+    EvaluateConfig,
     TrainConfig,
     TuneConfig,
     WorkflowTask,
@@ -47,7 +47,7 @@ def model_workflow_override():
         compiler_id: str = "estimated_block",
     ) -> dict[str, object]:
         feature_set_name = (
-            "icdcs_2026_time_native" if compiler_id == "timestamp_native" else "icdcs_2026"
+            "time_native_baseline" if compiler_id == "timestamp_native" else "icdcs_2026"
         )
         return {
             "chain": "ethereum",
@@ -76,11 +76,14 @@ def model_workflow_override():
                     "min_delta": 0.0,
                 },
             },
-            "simulation": {
-                "window_seconds": 600,
-                "arrival_rate_per_second": 0.02,
-                "repetitions": 3,
-                "seed": 2026,
+            "evaluation": {
+                "evaluator": {
+                    "id": "poisson_replay",
+                    "window_seconds": 600,
+                    "arrival_rate_per_second": 0.02,
+                    "repetitions": 3,
+                    "seed": 2026,
+                }
             },
             "tuning": {
                 "trial_count": 2,
@@ -154,17 +157,17 @@ def load_test_tune_config(tmp_path: Path, load_workflow_config):
 
 
 @pytest.fixture
-def load_test_simulate_config(tmp_path: Path, load_workflow_config):
+def load_test_evaluate_config(tmp_path: Path, load_workflow_config):
     def _load(
         tmp_path_arg: Path | None = None,
         *,
         override: dict[str, object] | None = None,
-    ) -> SimulateConfig:
+    ) -> EvaluateConfig:
         workspace = tmp_path if tmp_path_arg is None else tmp_path_arg
         return cast(
-            SimulateConfig,
+            EvaluateConfig,
             load_workflow_config(
-                WorkflowTask.SIMULATE,
+                WorkflowTask.EVALUATE,
                 workspace=workspace,
                 preset=PRESET,
                 override=override,
@@ -176,7 +179,7 @@ def load_test_simulate_config(tmp_path: Path, load_workflow_config):
 
 @pytest.fixture
 def seed_history_dataset():
-    def _seed(config: TrainConfig | TuneConfig | SimulateConfig) -> Path:
+    def _seed(config: TrainConfig | TuneConfig | EvaluateConfig) -> Path:
         return _write_dataset_dir(config.paths.history_dir, make_history_rows(config))
 
     return _seed
@@ -184,7 +187,7 @@ def seed_history_dataset():
 
 @pytest.fixture
 def seed_evaluation_dataset():
-    def _seed(config: SimulateConfig) -> Path:
+    def _seed(config: EvaluateConfig) -> Path:
         return _write_dataset_dir(config.paths.evaluation_dir, make_evaluation_rows(config))
 
     return _seed
@@ -198,11 +201,12 @@ def synthetic_block_interval_seconds(chain_name: str) -> int:
     }.get(chain_name, 12)
 
 
-def required_dataset_blocks(config: TrainConfig | TuneConfig | SimulateConfig) -> int:
+def required_dataset_blocks(config: TrainConfig | TuneConfig | EvaluateConfig) -> int:
     feature_contract = compile_feature_contract(feature_set=config.feature_set)
     contract = compile_problem_contract(
         problem=config.problem,
         feature_contract=feature_contract,
+        chain_runtime=config.chain.runtime,
     )
     block_interval_seconds = synthetic_block_interval_seconds(config.chain.name)
     required_blocks = (
@@ -252,7 +256,7 @@ def make_block_rows(
     return rows
 
 
-def make_history_rows(config: TrainConfig | TuneConfig | SimulateConfig) -> list[dict[str, int]]:
+def make_history_rows(config: TrainConfig | TuneConfig | EvaluateConfig) -> list[dict[str, int]]:
     block_interval_seconds = synthetic_block_interval_seconds(config.chain.name)
     count = required_dataset_blocks(config)
     return make_block_rows(
@@ -265,7 +269,7 @@ def make_history_rows(config: TrainConfig | TuneConfig | SimulateConfig) -> list
 
 
 def make_evaluation_rows(
-    config: SimulateConfig,
+    config: EvaluateConfig,
     *,
     count: int | None = None,
     start_block: int = 10_001,
@@ -276,6 +280,7 @@ def make_evaluation_rows(
         contract = compile_problem_contract(
             problem=config.problem,
             feature_contract=feature_contract,
+            chain_runtime=config.chain.runtime,
         )
         block_interval_seconds = synthetic_block_interval_seconds(config.chain.name)
         resolved_count = max(
@@ -298,6 +303,8 @@ def make_evaluation_rows(
         chain_id=config.chain.runtime.chain_id,
         block_interval_seconds=synthetic_block_interval_seconds(config.chain.name),
     )
+
+
 def _write_dataset_dir(dataset_dir: Path, rows: list[dict[str, int]]) -> Path:
     dataset_dir.mkdir(parents=True, exist_ok=True)
     path = dataset_dir / "blocks.parquet"

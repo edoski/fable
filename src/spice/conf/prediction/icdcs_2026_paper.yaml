@@ -4,3 +4,4 @@ family:
   classification_loss_weight: 1.0
   regression_loss_weight: 1.0
   class_weighting: inverse_frequency
+  fee_target_normalization: none

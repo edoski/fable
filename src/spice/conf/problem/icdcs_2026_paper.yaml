@@ -1,0 +1,6 @@
+id: icdcs_2026_paper
+lookback_seconds: 600
+sample_count: 400000
+max_delay_seconds: 36
+compiler:
+  id: timestamp_native

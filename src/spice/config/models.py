@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from ..core.errors import ConfigResolutionError
+from ..evaluation import EvaluatorConfig, coerce_evaluator_config
 from ..features import FeatureFamilyConfig, validate_feature_selection
 from ..modeling.families.base import (
     ConfigModel,
@@ -25,6 +26,7 @@ from ..modeling.families.base import (
 )
 from ..prediction import PredictionFamilyConfig
 from ..temporal.compilers import ProblemCompilerConfig
+from ..temporal.input_normalization import InputNormalizationConfig
 
 if TYPE_CHECKING:
     from ..storage.layout import PathLayout
@@ -34,7 +36,7 @@ class WorkflowTask(StrEnum):
     ACQUIRE = "acquire"
     TUNE = "tune"
     TRAIN = "train"
-    SIMULATE = "simulate"
+    EVALUATE = "evaluate"
 
 
 class TrainingPrecision(StrEnum):
@@ -68,6 +70,7 @@ def _utc_midnight_timestamp(value: date) -> int:
 class ChainRuntimeSpec(ConfigModel):
     chain_id: int = Field(gt=0)
     uses_poa_extra_data: bool
+    nominal_block_time_seconds: float = Field(gt=0.0)
 
 
 class ChainSpec(ConfigModel):
@@ -152,8 +155,31 @@ class TrainingConfig(ConfigModel):
     seed: int = Field(ge=0)
     deterministic: bool
     log_every_n_steps: int = Field(gt=0)
+    input_normalization: SerializeAsAny["InputNormalizationConfig"] = Field(
+        default_factory=lambda: _default_input_normalization_config()
+    )
     precision: TrainingPrecision
     compile: CompileMode
+
+    @field_validator("input_normalization", mode="before")
+    @classmethod
+    def validate_input_normalization(
+        cls,
+        value: object,
+    ) -> "InputNormalizationConfig":
+        from ..temporal.input_normalization import coerce_input_normalization_config
+
+        if value is None:
+            return _default_input_normalization_config()
+        if isinstance(value, Mapping):
+            return coerce_input_normalization_config(value)
+        return coerce_input_normalization_config(value)
+
+
+def _default_input_normalization_config() -> "InputNormalizationConfig":
+    from ..temporal.input_normalization import coerce_input_normalization_config
+
+    return coerce_input_normalization_config({"id": "window_weighted_standard"})
 
 
 class AcquisitionRpcConfig(ConfigModel):
@@ -183,11 +209,15 @@ class AcquisitionConfig(ConfigModel):
     rpc: AcquisitionRpcConfig
 
 
-class SimulationConfig(ConfigModel):
-    window_seconds: int = Field(gt=0)
-    arrival_rate_per_second: float = Field(gt=0.0)
-    repetitions: int = Field(gt=0)
-    seed: int = Field(ge=0)
+class EvaluationConfig(ConfigModel):
+    evaluator: SerializeAsAny[EvaluatorConfig]
+
+    @field_validator("evaluator", mode="before")
+    @classmethod
+    def validate_evaluator(cls, value: object) -> EvaluatorConfig:
+        if isinstance(value, Mapping):
+            return coerce_evaluator_config(value)
+        return coerce_evaluator_config(value)
 
 
 class FeatureSetConfig(ConfigModel):
@@ -541,10 +571,10 @@ class TuneConfig(ModelWorkflowConfig):
         return self
 
 
-class SimulateConfig(ModelWorkflowConfig):
-    workflow: WorkflowTask = WorkflowTask.SIMULATE
+class EvaluateConfig(ModelWorkflowConfig):
+    workflow: WorkflowTask = WorkflowTask.EVALUATE
     training: TrainingConfig
-    simulation: SimulationConfig
+    evaluation: EvaluationConfig
     delay_seconds: int = Field(gt=0)
 
     @model_validator(mode="after")
@@ -566,7 +596,7 @@ class PresetSpec(ConfigModel):
     acquisition: AcquisitionConfig | None = None
     training: TrainingConfig | None = None
     split: SplitConfig | None = None
-    simulation: SimulationConfig | None = None
+    evaluation: EvaluationConfig | None = None
     tuning: TuningConfig | None = None
     tuning_space: str | TuningSpaceConfig | None = None
     storage: StorageSpec | None = None

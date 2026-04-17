@@ -14,3 +14,4 @@ class MinBlockFeeMultitaskFamilyConfig(PredictionFamilyConfig):
     classification_loss_weight: float = Field(default=1.0, gt=0.0)
     regression_loss_weight: float = Field(default=1.0, gt=0.0)
     class_weighting: Literal["inverse_frequency"] = "inverse_frequency"
+    fee_target_normalization: Literal["none", "zscore_train_split"] = "none"

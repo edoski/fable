@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from ..core.rendering import metric_fields, window_metric_fields
-from .results import LoadedSimulationSummary, LoadedTrainingSummary
+from .results import LoadedEvaluationSummary, LoadedTrainingSummary
 
 
 def training_summary_sections(
@@ -77,8 +77,8 @@ def training_summary_sections(
     ]
 
 
-def simulation_summary_sections(
-    summary: LoadedSimulationSummary,
+def evaluation_summary_sections(
+    summary: LoadedEvaluationSummary,
 ) -> list[tuple[str, list[tuple[str, str]]]]:
     manifest = summary.manifest
     runtime = summary.runtime
@@ -98,6 +98,7 @@ def simulation_summary_sections(
             "provenance",
             [
                 ("artifact id", manifest.artifact_id),
+                ("evaluation id", summary.evaluation_id),
                 ("variant", manifest.variant.value),
                 *([] if manifest.study is None else [("study", manifest.study.name)]),
                 ("capability", f"{manifest.max_delay_seconds}s"),
@@ -105,16 +106,15 @@ def simulation_summary_sections(
             ],
         ),
         (
-            "simulation",
+            "evaluation",
             [
-                ("window", f"{runtime.simulation_window_seconds}s"),
-                ("repetitions", str(runtime.repetitions)),
+                ("evaluator", runtime.evaluator_id),
                 ("events", f"{runtime.total_events:,}"),
             ],
         ),
         (
             "results",
-            metric_fields(manifest.simulation_metric_descriptors, runtime.metrics.values),
+            metric_fields(runtime.metric_descriptors, runtime.metrics.values),
         ),
         *(
             []
@@ -123,7 +123,7 @@ def simulation_summary_sections(
                 (
                     "window metrics",
                     window_metric_fields(
-                        summary.manifest.simulation_metric_descriptors,
+                        runtime.metric_descriptors,
                         runtime.window_metrics,
                     ),
                 )

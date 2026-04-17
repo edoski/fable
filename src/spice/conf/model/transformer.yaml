@@ -1,7 +1,7 @@
 id: transformer
-dropout: 0.1
-d_model: 128
+dropout: 0.2
+d_model: 256
 nhead: 4
-transformer_layers: 2
+transformer_layers: 4
 feedforward_dim: 512
-head_hidden_dim: 64
+head_hidden_dim: 256
