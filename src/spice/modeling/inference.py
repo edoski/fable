@@ -13,6 +13,7 @@ from ._runtime import (
     CompiledRepresentationContract,
     build_prediction_loader,
     build_representation_runtime_context,
+    ensure_device_runtime_ready,
     resolve_device,
 )
 from .models import TemporalModel
@@ -36,6 +37,10 @@ def predict_with_model(
         raise ValueError("sample_indices must be non-empty")
 
     resolved_device = resolve_device(device)
+    ensure_device_runtime_ready(
+        requested_device=device,
+        resolved_device=resolved_device,
+    )
     model.to(resolved_device)
     model.eval()
     runtime_context = build_representation_runtime_context(

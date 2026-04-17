@@ -24,6 +24,7 @@ from ._runtime import (
     CompiledRepresentationContract,
     build_prediction_loader,
     build_representation_runtime_context,
+    ensure_device_runtime_ready,
     prepare_prediction_representation,
     resolve_compile_enabled,
     resolve_device,
@@ -227,6 +228,10 @@ def train_model(
     set_global_seed(training_config.seed)
     L.seed_everything(training_config.seed, workers=True)
     device = resolve_device(training_config.device)
+    ensure_device_runtime_ready(
+        requested_device=training_config.device,
+        resolved_device=device,
+    )
     precision = resolve_trainer_precision(
         training_config,
         device=device,
@@ -360,6 +365,10 @@ def evaluate_model(
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
     device = resolve_device(training_config.device)
+    ensure_device_runtime_ready(
+        requested_device=training_config.device,
+        resolved_device=device,
+    )
     model.to(device)
     model.eval()
     runtime_context = build_representation_runtime_context(

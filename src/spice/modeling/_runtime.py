@@ -11,6 +11,7 @@ import torch
 from numpy.typing import NDArray
 
 from ..config import CompileMode, ModelConfig, TrainingConfig, TrainingPrecision
+from ..core.errors import SpiceOperatorError
 from ..prediction import (
     CompiledPredictionContract,
     PredictionBatch,
@@ -46,6 +47,24 @@ def resolve_device(device: str) -> torch.device:
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
+
+
+def ensure_device_runtime_ready(*, requested_device: str, resolved_device: torch.device) -> None:
+    if resolved_device.type == "cuda":
+        _ensure_cuda_runtime_ready(resolved_device)
+        return
+    if requested_device != "auto" or torch.version.cuda is None:
+        return
+    try:
+        cuda_device_count = torch.cuda.device_count()
+        cuda_available = torch.cuda.is_available()
+    except Exception as exc:  # pragma: no cover - covered through _ensure_cuda_runtime_ready
+        raise _cuda_runtime_error(exc) from exc
+    if cuda_device_count > 0 and not cuda_available:
+        raise SpiceOperatorError(
+            "CUDA devices are visible but the PyTorch CUDA runtime is unusable. "
+            + _cuda_runtime_details()
+        )
 
 
 def set_global_seed(seed: int) -> None:
@@ -205,3 +224,38 @@ def _sysconf_int(name: str) -> int | None:
         return int(os.sysconf(name))
     except (AttributeError, OSError, ValueError):
         return None
+
+
+def _ensure_cuda_runtime_ready(device: torch.device) -> None:
+    try:
+        if not torch.cuda.is_available():
+            raise SpiceOperatorError(
+                "Resolved CUDA device, but torch.cuda.is_available() is False. "
+                + _cuda_runtime_details()
+            )
+        device_index = torch.cuda.current_device() if device.index is None else device.index
+        torch.cuda.get_device_properties(device_index)
+    except SpiceOperatorError:
+        raise
+    except Exception as exc:
+        raise _cuda_runtime_error(exc) from exc
+
+
+def _cuda_runtime_error(exc: Exception) -> SpiceOperatorError:
+    return SpiceOperatorError(
+        "CUDA runtime initialization failed. "
+        + _cuda_runtime_details()
+        + f" Root cause: {exc}"
+    )
+
+
+def _cuda_runtime_details() -> str:
+    try:
+        cuda_device_count = str(torch.cuda.device_count())
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        cuda_device_count = f"error:{exc}"
+    return (
+        f"torch={torch.__version__}; "
+        f"torch.version.cuda={torch.version.cuda}; "
+        f"cuda_device_count={cuda_device_count}"
+    )
