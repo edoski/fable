@@ -4,7 +4,12 @@ import numpy as np
 import torch
 
 from spice.config import coerce_prediction_config
-from spice.modeling._runtime import build_prediction_loader
+from spice.modeling._runtime import build_prediction_batch_source
+from spice.modeling.batch_sources import (
+    DeviceResidentBatchSource,
+    _PositionBatchSampler,
+    plan_batch_source,
+)
 from spice.modeling.families.lstm import LstmModelConfig
 from spice.modeling.families.registry import resolve_model_representation_id
 from spice.modeling.inference import predict_with_model
@@ -109,7 +114,7 @@ def test_sequence_input_storage_modes_yield_identical_batches() -> None:
         runtime_context=RepresentationRuntimeContext(
             device_type="cpu",
             batch_size=2,
-            available_memory_bytes=1,
+            available_host_memory_bytes=1,
         ),
     )
     materialized = prepare_representation(
@@ -119,29 +124,33 @@ def test_sequence_input_storage_modes_yield_identical_batches() -> None:
         runtime_context=RepresentationRuntimeContext(
             device_type="cpu",
             batch_size=2,
-            available_memory_bytes=10**12,
+            available_host_memory_bytes=10**12,
         ),
     )
 
-    streaming_batches = list(streaming.iter_batches(epoch=0, seed=2026, shuffle=False))
-    materialized_batches = list(materialized.iter_batches(epoch=0, seed=2026, shuffle=False))
+    sample_positions = (
+        torch.as_tensor([0, 2], dtype=torch.int64),
+        torch.as_tensor([1, 3], dtype=torch.int64),
+    )
 
     assert streaming.representation_id == SEQUENCE_INPUT_REPRESENTATION_ID
     assert materialized.representation_id == SEQUENCE_INPUT_REPRESENTATION_ID
-    assert len(streaming_batches) == len(materialized_batches) == 2
-    for left, right in zip(streaming_batches, materialized_batches, strict=True):
+    assert streaming.sample_count == materialized.sample_count == 4
+    for positions in sample_positions:
+        left = streaming.build_batch(positions)
+        right = materialized.build_batch(positions)
         assert torch.equal(left.sample_positions, right.sample_positions)
         assert torch.equal(left.inputs, right.inputs)
         assert torch.equal(left.input_mask, right.input_mask)
 
 
-def test_prediction_loader_binds_current_family_targets() -> None:
+def test_prediction_batch_source_binds_current_family_targets() -> None:
     store = _test_store()
     sample_indices = np.array([0, 1, 2, 3], dtype=np.int64)
     representation_contract = compile_representation_contract(
         resolve_model_representation_id(_model_config())
     )
-    loader = build_prediction_loader(
+    batch_source_plan = build_prediction_batch_source(
         store,
         sample_indices,
         representation_contract=representation_contract,
@@ -149,13 +158,16 @@ def test_prediction_loader_binds_current_family_targets() -> None:
         runtime_context=RepresentationRuntimeContext(
             device_type="cpu",
             batch_size=2,
-            available_memory_bytes=10**12,
+            available_host_memory_bytes=10**12,
         ),
+        resolved_device=torch.device("cpu"),
         seed=2026,
     )
+    loader = batch_source_plan.source
 
     first_batch = next(iter(loader))
 
+    assert batch_source_plan.loader_strategy_id == "host_dataloader"
     assert first_batch.inputs.sample_positions.tolist() == [0, 1]
     assert tuple(first_batch.targets.candidate_log_fees.shape) == (2, 3)
     assert tuple(first_batch.targets.candidate_mask.shape) == (2, 3)
@@ -163,6 +175,66 @@ def test_prediction_loader_binds_current_family_targets() -> None:
         [True, True, False],
         [True, True, True],
     ]
+
+
+def test_host_and_device_batch_sources_yield_identical_batches() -> None:
+    store = _test_store()
+    sample_indices = np.array([0, 1, 2, 3], dtype=np.int64)
+    representation_contract = compile_representation_contract(
+        resolve_model_representation_id(_model_config())
+    )
+    prepared = representation_contract.prepare(
+        store,
+        sample_indices,
+        runtime_context=RepresentationRuntimeContext(
+            device_type="cuda",
+            batch_size=2,
+            available_host_memory_bytes=10**12,
+            available_device_memory_bytes=10**12,
+        ),
+    )
+    prepared_prediction = _prediction_contract().prepare_targets(store, sample_indices)
+    from spice.prediction.contracts import bind_prediction_representation
+
+    bound = bind_prediction_representation(prepared, targets=prepared_prediction)
+    host_plan = plan_batch_source(
+        bound,
+        runtime_context=RepresentationRuntimeContext(
+            device_type="cpu",
+            batch_size=2,
+            available_host_memory_bytes=10**12,
+        ),
+        resolved_device=torch.device("cpu"),
+        seed=2026,
+        shuffle=False,
+    )
+    device_prepared = bound.to_device_storage(torch.device("cpu"))
+    assert device_prepared is not None
+    device_source = DeviceResidentBatchSource(
+        prepared=device_prepared,
+        batch_sampler=_PositionBatchSampler(
+            batch_signatures=device_prepared.batch_signatures,
+            batch_size=2,
+            seed=2026,
+            shuffle=False,
+        ),
+        input_storage_mode_id=device_prepared.input_storage_mode_id,
+        target_storage_mode_id=device_prepared.target_storage_mode_id,
+        batch_planner_id=device_prepared.batch_planner_id,
+    )
+
+    host_batches = list(host_plan.source)
+    device_batches = list(device_source)
+
+    assert host_plan.loader_strategy_id == "host_dataloader"
+    assert device_source.loader_strategy_id == "device_resident"
+    assert len(host_batches) == len(device_batches) == 2
+    for left, right in zip(host_batches, device_batches, strict=True):
+        assert torch.equal(left.inputs.sample_positions, right.inputs.sample_positions)
+        assert torch.equal(left.inputs.inputs, right.inputs.inputs)
+        assert torch.equal(left.inputs.input_mask, right.inputs.input_mask)
+        assert torch.equal(left.targets.candidate_log_fees, right.targets.candidate_log_fees)
+        assert torch.equal(left.targets.candidate_mask, right.targets.candidate_mask)
 
 
 def test_predict_with_model_decodes_candidate_offsets() -> None:

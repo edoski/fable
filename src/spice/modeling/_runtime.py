@@ -14,11 +14,15 @@ from ..config import CompileMode, ModelConfig, TrainingConfig, TrainingPrecision
 from ..core.errors import SpiceOperatorError
 from ..prediction import (
     CompiledPredictionContract,
-    PredictionBatch,
     bind_prediction_representation,
 )
 from ..prediction.contracts import PredictionPreparedRepresentation
 from ..temporal.problem_store import CompiledProblemStore
+from .batch_sources import (
+    BatchSourcePlan,
+    plan_batch_source,
+    resolve_available_device_memory_budget,
+)
 from .families.registry import (
     resolve_auto_compile,
     resolve_default_precision,
@@ -26,7 +30,6 @@ from .families.registry import (
 from .representations import (
     CompiledRepresentationContract,
     PreparedRepresentation,
-    PreparedRepresentationLoader,
     RepresentationRuntimeContext,
 )
 
@@ -100,15 +103,15 @@ def resolve_compile_enabled(
     model_config: ModelConfig,
 ) -> bool:
     compile_mode = training_config.compile
-    if compile_mode is CompileMode.AUTO:
-        enabled = device.type in {"mps", "cuda"}
-    else:
-        enabled = compile_mode is CompileMode.ON
-    if not enabled:
+    if compile_mode is CompileMode.OFF:
+        return False
+    if compile_mode is CompileMode.ON:
+        return True
+    if device.type not in {"mps", "cuda"}:
         return False
     if not resolve_auto_compile(model_config.id, device, precision):
         return False
-    if compile_mode is CompileMode.AUTO and not _device_supports_auto_compile(device):
+    if not _device_supports_auto_compile(device):
         return False
     return True
 
@@ -133,7 +136,8 @@ def build_representation_runtime_context(
     return RepresentationRuntimeContext(
         device_type=device.type,
         batch_size=batch_size,
-        available_memory_bytes=_available_system_memory_bytes(),
+        available_host_memory_bytes=_available_system_memory_bytes(),
+        available_device_memory_bytes=resolve_available_device_memory_budget(device),
     )
 
 
@@ -169,16 +173,17 @@ def prepare_prediction_representation(
     return bind_prediction_representation(prepared, targets=targets)
 
 
-def build_prediction_loader(
+def build_prediction_batch_source(
     store: CompiledProblemStore,
     sample_indices: IntVector,
     *,
     representation_contract: CompiledRepresentationContract,
     prediction_contract: CompiledPredictionContract,
     runtime_context: RepresentationRuntimeContext,
+    resolved_device: torch.device,
     seed: int,
     shuffle: bool = False,
-) -> PreparedRepresentationLoader[PredictionBatch]:
+) -> BatchSourcePlan:
     prepared = prepare_prediction_representation(
         store,
         sample_indices,
@@ -186,8 +191,10 @@ def build_prediction_loader(
         prediction_contract=prediction_contract,
         runtime_context=runtime_context,
     )
-    return PreparedRepresentationLoader(
+    return plan_batch_source(
         prepared,
+        runtime_context=runtime_context,
+        resolved_device=resolved_device,
         seed=seed,
         shuffle=shuffle,
     )

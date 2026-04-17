@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import math
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, NamedTuple, Protocol, TypeVar
 
@@ -28,10 +27,13 @@ class SequenceInputBatch(NamedTuple):
     input_mask: torch.Tensor
 
     def to_device(self, device: torch.device) -> SequenceInputBatch:
+        if self.inputs.device == device and self.input_mask.device == device:
+            return self
+        non_blocking = device.type == "cuda"
         return SequenceInputBatch(
             sample_positions=self.sample_positions,
-            inputs=self.inputs.to(device),
-            input_mask=self.input_mask.to(device),
+            inputs=self.inputs.to(device, non_blocking=non_blocking),
+            input_mask=self.input_mask.to(device, non_blocking=non_blocking),
         )
 
     def model_kwargs(self) -> dict[str, torch.Tensor]:
@@ -40,12 +42,22 @@ class SequenceInputBatch(NamedTuple):
             "input_mask": self.input_mask,
         }
 
+    def pin_memory(self) -> SequenceInputBatch:
+        if self.inputs.device.type != "cpu":
+            return self
+        return SequenceInputBatch(
+            sample_positions=self.sample_positions.pin_memory(),
+            inputs=self.inputs.pin_memory(),
+            input_mask=self.input_mask.pin_memory(),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class RepresentationRuntimeContext:
     device_type: str
     batch_size: int
-    available_memory_bytes: int
+    available_host_memory_bytes: int
+    available_device_memory_bytes: int | None = None
 
 
 class PreparedRepresentation(Protocol[BatchT]):
@@ -58,15 +70,21 @@ class PreparedRepresentation(Protocol[BatchT]):
     @property
     def batch_planner_id(self) -> str: ...
 
-    def __len__(self) -> int: ...
+    @property
+    def sample_count(self) -> int: ...
 
-    def iter_batches(
+    @property
+    def batch_signatures(self) -> IntVector: ...
+
+    @property
+    def estimated_storage_bytes(self) -> int: ...
+
+    def build_batch(self, sample_positions: torch.Tensor) -> BatchT: ...
+
+    def to_device_storage(
         self,
-        *,
-        epoch: int,
-        seed: int,
-        shuffle: bool,
-    ) -> Iterator[BatchT]: ...
+        device: torch.device,
+    ) -> PreparedRepresentation[BatchT] | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,66 +122,6 @@ class CompiledRepresentationContract:
             sample_indices,
             runtime_context=runtime_context,
         )
-
-    def build_loader(
-        self,
-        store: CompiledProblemStore,
-        sample_indices: IntVector,
-        *,
-        runtime_context: RepresentationRuntimeContext,
-        seed: int,
-        shuffle: bool = False,
-    ) -> PreparedRepresentationLoader[ModelInputBatch]:
-        prepared = self.prepare(
-            store,
-            sample_indices,
-            runtime_context=runtime_context,
-        )
-        return PreparedRepresentationLoader(
-            prepared,
-            seed=seed,
-            shuffle=shuffle,
-        )
-
-
-class PreparedRepresentationLoader(Generic[BatchT]):
-    def __init__(
-        self,
-        prepared: PreparedRepresentation[BatchT],
-        *,
-        seed: int,
-        shuffle: bool,
-    ) -> None:
-        self.prepared = prepared
-        self.seed = seed
-        self.shuffle = shuffle
-        self._epoch = 0
-
-    @property
-    def representation_id(self) -> str:
-        return self.prepared.representation_id
-
-    @property
-    def storage_mode_id(self) -> str:
-        return self.prepared.storage_mode_id
-
-    @property
-    def batch_planner_id(self) -> str:
-        return self.prepared.batch_planner_id
-
-    def __len__(self) -> int:
-        return len(self.prepared)
-
-    def __iter__(self) -> Iterator[BatchT]:
-        epoch = self._epoch if self.shuffle else 0
-        iterator = self.prepared.iter_batches(
-            epoch=epoch,
-            seed=self.seed,
-            shuffle=self.shuffle,
-        )
-        if self.shuffle:
-            self._epoch += 1
-        return iterator
 
 
 _REPRESENTATIONS = ComponentCatalog[InputRepresentationSpec](
@@ -205,7 +163,7 @@ def build_sequence_input_batch(
     store: CompiledProblemStore,
     sample_indices: IntVector,
     *,
-    sample_positions: IntVector | None = None,
+    sample_positions: IntVector | torch.Tensor | None = None,
     max_context_length: int | None = None,
 ) -> SequenceInputBatch:
     if sample_indices.size == 0:
@@ -215,11 +173,12 @@ def build_sequence_input_batch(
     context_starts = store.context_start_rows[sample_indices]
     input_lengths = anchor_rows - context_starts + 1
     batch_size = int(sample_indices.shape[0])
-    resolved_positions = (
-        np.arange(batch_size, dtype=np.int64)
-        if sample_positions is None
-        else sample_positions.astype(np.int64, copy=False)
-    )
+    if sample_positions is None:
+        resolved_positions = np.arange(batch_size, dtype=np.int64)
+    elif isinstance(sample_positions, torch.Tensor):
+        resolved_positions = sample_positions.detach().cpu().numpy().astype(np.int64, copy=False)
+    else:
+        resolved_positions = sample_positions.astype(np.int64, copy=False)
     if resolved_positions.shape[0] != batch_size:
         raise ValueError("sample_positions must match sample_indices length")
     resolved_max_context = (
@@ -257,34 +216,37 @@ class _StreamingSequenceInputRepresentation:
     layout: _SequenceInputLayout
     batch_size: int
     representation_id: str = SEQUENCE_INPUT_REPRESENTATION_ID
-    storage_mode_id: str = "streaming"
+    storage_mode_id: str = "streaming_host"
     batch_planner_id: str = "signature_bucketed"
 
-    def __len__(self) -> int:
-        return math.ceil(int(self.layout.sample_indices.shape[0]) / self.batch_size)
+    @property
+    def sample_count(self) -> int:
+        return int(self.layout.sample_indices.shape[0])
 
-    def iter_batches(
-        self,
-        *,
-        epoch: int,
-        seed: int,
-        shuffle: bool,
-    ) -> Iterator[ModelInputBatch]:
-        order = _sequence_input_order(
-            self.layout,
-            epoch=epoch,
-            seed=seed,
-            shuffle=shuffle,
+    @property
+    def batch_signatures(self) -> IntVector:
+        return self.layout.context_lengths
+
+    @property
+    def estimated_storage_bytes(self) -> int:
+        return _dense_sequence_input_storage_bytes(self.layout, self.store.n_features)
+
+    def build_batch(self, sample_positions: torch.Tensor) -> ModelInputBatch:
+        positions = sample_positions.detach().cpu().numpy().astype(np.int64, copy=False)
+        batch_sample_indices = self.layout.sample_indices[positions]
+        return build_sequence_input_batch(
+            self.store,
+            batch_sample_indices,
+            sample_positions=sample_positions,
+            max_context_length=self.layout.max_context_length,
         )
-        for offset in range(0, int(order.shape[0]), self.batch_size):
-            batch_positions = order[offset : offset + self.batch_size]
-            batch_sample_indices = self.layout.sample_indices[batch_positions]
-            yield build_sequence_input_batch(
-                self.store,
-                batch_sample_indices,
-                sample_positions=batch_positions,
-                max_context_length=self.layout.max_context_length,
-            )
+
+    def to_device_storage(
+        self,
+        device: torch.device,
+    ) -> PreparedRepresentation[ModelInputBatch] | None:
+        del device
+        return None
 
 
 @dataclass(slots=True)
@@ -294,33 +256,48 @@ class _MaterializedSequenceInputRepresentation:
     layout: _SequenceInputLayout
     batch_size: int
     representation_id: str = SEQUENCE_INPUT_REPRESENTATION_ID
-    storage_mode_id: str = "materialized_dense"
+    storage_mode_id: str = "materialized_host"
     batch_planner_id: str = "signature_bucketed"
 
-    def __len__(self) -> int:
-        return math.ceil(int(self.layout.sample_indices.shape[0]) / self.batch_size)
+    @property
+    def sample_count(self) -> int:
+        return int(self.layout.sample_indices.shape[0])
 
-    def iter_batches(
-        self,
-        *,
-        epoch: int,
-        seed: int,
-        shuffle: bool,
-    ) -> Iterator[ModelInputBatch]:
-        order = _sequence_input_order(
-            self.layout,
-            epoch=epoch,
-            seed=seed,
-            shuffle=shuffle,
+    @property
+    def batch_signatures(self) -> IntVector:
+        return self.layout.context_lengths
+
+    @property
+    def estimated_storage_bytes(self) -> int:
+        return (
+            self.inputs.element_size() * self.inputs.numel()
+            + self.input_mask.element_size() * self.input_mask.numel()
         )
-        for offset in range(0, int(order.shape[0]), self.batch_size):
-            batch_positions = order[offset : offset + self.batch_size]
-            index = torch.from_numpy(np.ascontiguousarray(batch_positions))
-            yield SequenceInputBatch(
-                sample_positions=index,
-                inputs=self.inputs.index_select(0, index),
-                input_mask=self.input_mask.index_select(0, index),
-            )
+
+    def build_batch(self, sample_positions: torch.Tensor) -> ModelInputBatch:
+        positions = sample_positions.detach().cpu().to(dtype=torch.int64, copy=False)
+        index = positions.to(device=self.inputs.device)
+        return SequenceInputBatch(
+            sample_positions=positions,
+            inputs=self.inputs.index_select(0, index),
+            input_mask=self.input_mask.index_select(0, index),
+        )
+
+    def to_device_storage(
+        self,
+        device: torch.device,
+    ) -> PreparedRepresentation[ModelInputBatch] | None:
+        if self.inputs.device == device and self.input_mask.device == device:
+            return self
+        non_blocking = device.type == "cuda"
+        return _MaterializedSequenceInputRepresentation(
+            inputs=self.inputs.to(device, non_blocking=non_blocking),
+            input_mask=self.input_mask.to(device, non_blocking=non_blocking),
+            layout=self.layout,
+            batch_size=self.batch_size,
+            storage_mode_id="materialized_device",
+            batch_planner_id=self.batch_planner_id,
+        )
 
 
 def _prepare_sequence_input(
@@ -335,7 +312,7 @@ def _prepare_sequence_input(
     dense_storage_bytes = _dense_sequence_input_storage_bytes(layout, store.n_features)
     materialization_budget = min(
         _MAX_AUTOMATIC_MATERIALIZATION_BYTES,
-        max(0, runtime_context.available_memory_bytes // 5),
+        max(0, runtime_context.available_host_memory_bytes // 5),
     )
     if dense_storage_bytes <= materialization_budget:
         return _materialize_sequence_input(store, layout, batch_size=runtime_context.batch_size)

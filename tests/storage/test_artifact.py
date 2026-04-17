@@ -199,7 +199,9 @@ def test_training_artifact_summary_round_trip(tmp_path) -> None:
         resolved_device="cpu",
         resolved_precision="32-true",
         compiled=False,
-        storage_mode_id="materialized_dense",
+        loader_strategy_id="host_dataloader",
+        input_storage_mode_id="materialized_host",
+        target_storage_mode_id="materialized_host",
         batch_planner_id="signature_bucketed",
         best_validation_metrics=MetricSet(
             values={

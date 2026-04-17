@@ -22,15 +22,16 @@ from ..prediction import CompiledPredictionContract, MetricSet
 from ..temporal.problem_store import CompiledProblemStore
 from ._runtime import (
     CompiledRepresentationContract,
-    build_prediction_loader,
+    build_prediction_batch_source,
     build_representation_runtime_context,
-    ensure_device_runtime_ready,
     prepare_prediction_representation,
     resolve_compile_enabled,
     resolve_device,
     resolve_trainer_precision,
     set_global_seed,
+    ensure_device_runtime_ready,
 )
+from .batch_sources import BatchSourcePlan
 from .datamodule import TemporalDataModule
 from .lightning_module import TemporalLightningModule
 from .models import TemporalModel
@@ -49,7 +50,9 @@ class TrainingResult:
     compiled: bool
     resolved_device: str
     representation_id: str
-    storage_mode_id: str
+    loader_strategy_id: str
+    input_storage_mode_id: str
+    target_storage_mode_id: str
     batch_planner_id: str
     prediction_training_state: object | None
 
@@ -262,11 +265,24 @@ def train_model(
         prediction_contract=prediction_contract,
         runtime_context=runtime_context,
     )
+    train_batch_source_plan = _plan_training_batch_source(
+        train_representation,
+        runtime_context=runtime_context,
+        device=device,
+        seed=training_config.seed,
+        shuffle=True,
+    )
+    validation_batch_source_plan = _plan_training_batch_source(
+        validation_representation,
+        runtime_context=runtime_context,
+        device=device,
+        seed=training_config.seed,
+        shuffle=False,
+    )
 
     data_module = TemporalDataModule(
-        train_representation=train_representation,
-        validation_representation=validation_representation,
-        seed=training_config.seed,
+        train_batch_source=train_batch_source_plan.source,
+        validation_batch_source=validation_batch_source_plan.source,
     )
     prediction_training_state = prediction_contract.fit_training_state(
         store,
@@ -343,9 +359,11 @@ def train_model(
         resolved_precision=precision,
         compiled=compile_enabled,
         resolved_device=device.type,
-        representation_id=data_module.train_dataloader().representation_id,
-        storage_mode_id=data_module.train_dataloader().storage_mode_id,
-        batch_planner_id=data_module.train_dataloader().batch_planner_id,
+        representation_id=train_representation.representation_id,
+        loader_strategy_id=train_batch_source_plan.loader_strategy_id,
+        input_storage_mode_id=train_batch_source_plan.input_storage_mode_id,
+        target_storage_mode_id=train_batch_source_plan.target_storage_mode_id,
+        batch_planner_id=train_batch_source_plan.batch_planner_id,
         prediction_training_state=prediction_training_state,
     )
 
@@ -375,14 +393,16 @@ def evaluate_model(
         device=device,
         batch_size=training_config.batch_size,
     )
-    loader = build_prediction_loader(
+    batch_source_plan = build_prediction_batch_source(
         store,
         sample_indices,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
         runtime_context=runtime_context,
+        resolved_device=device,
         seed=training_config.seed,
     )
+    loader = batch_source_plan.source
     task_id = reporter.start_task("evaluate model", total=len(loader), unit="batches")
     accumulator = prediction_contract.create_epoch_accumulator("evaluation")
     with torch.no_grad():
@@ -398,3 +418,22 @@ def evaluate_model(
             reporter.update_task(task_id, advance=1)
     reporter.finish_task(task_id)
     return accumulator.finalize()
+
+
+def _plan_training_batch_source(
+    prepared,
+    *,
+    runtime_context,
+    device,
+    seed,
+    shuffle,
+) -> BatchSourcePlan:
+    from .batch_sources import plan_batch_source
+
+    return plan_batch_source(
+        prepared,
+        runtime_context=runtime_context,
+        resolved_device=device,
+        seed=seed,
+        shuffle=shuffle,
+    )

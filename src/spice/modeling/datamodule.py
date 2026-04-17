@@ -5,61 +5,40 @@ from __future__ import annotations
 import lightning as L
 
 from ..prediction import PredictionBatch
-from .representations import PreparedRepresentation, PreparedRepresentationLoader
+from .batch_sources import PreparedBatchSource
 
 
 class TemporalDataModule(L.LightningDataModule):
     def __init__(
         self,
         *,
-        train_representation: PreparedRepresentation[PredictionBatch],
-        validation_representation: PreparedRepresentation[PredictionBatch],
-        seed: int,
-        test_representation: PreparedRepresentation[PredictionBatch] | None = None,
-        predict_representation: PreparedRepresentation[PredictionBatch] | None = None,
+        train_batch_source: PreparedBatchSource,
+        validation_batch_source: PreparedBatchSource,
+        test_batch_source: PreparedBatchSource | None = None,
+        predict_batch_source: PreparedBatchSource | None = None,
     ) -> None:
         super().__init__()
-        self._train_loader = PreparedRepresentationLoader(
-            train_representation,
-            seed=seed,
-            shuffle=True,
-        )
-        self._validation_loader = PreparedRepresentationLoader(
-            validation_representation,
-            seed=seed,
-            shuffle=False,
-        )
-        self._test_loader = (
-            None
-            if test_representation is None
-            else PreparedRepresentationLoader(
-                test_representation,
-                seed=seed,
-                shuffle=False,
-            )
-        )
+        self._train_loader = train_batch_source
+        self._validation_loader = validation_batch_source
+        self._test_loader = test_batch_source
         self._predict_loader = (
             None
-            if predict_representation is None
-            else PreparedRepresentationLoader(
-                predict_representation,
-                seed=seed,
-                shuffle=False,
-            )
+            if predict_batch_source is None
+            else predict_batch_source
         )
 
-    def train_dataloader(self) -> PreparedRepresentationLoader[PredictionBatch]:
+    def train_dataloader(self) -> PreparedBatchSource:
         return self._train_loader
 
-    def val_dataloader(self) -> PreparedRepresentationLoader[PredictionBatch]:
+    def val_dataloader(self) -> PreparedBatchSource:
         return self._validation_loader
 
-    def test_dataloader(self) -> PreparedRepresentationLoader[PredictionBatch]:
+    def test_dataloader(self) -> PreparedBatchSource:
         if self._test_loader is None:
-            raise RuntimeError("test_representation was not configured")
+            raise RuntimeError("test_batch_source was not configured")
         return self._test_loader
 
-    def predict_dataloader(self) -> PreparedRepresentationLoader[PredictionBatch]:
+    def predict_dataloader(self) -> PreparedBatchSource:
         if self._predict_loader is None:
-            raise RuntimeError("predict_representation was not configured")
+            raise RuntimeError("predict_batch_source was not configured")
         return self._predict_loader

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -34,13 +34,28 @@ class ModelInputBatch(Protocol):
 
     def model_kwargs(self) -> Mapping[str, torch.Tensor]: ...
 
+    def pin_memory(self) -> ModelInputBatch: ...
+
 
 class PredictionTargetBatch(Protocol):
     def to_device(self, device: torch.device) -> PredictionTargetBatch: ...
 
+    def pin_memory(self) -> PredictionTargetBatch: ...
+
 
 class PreparedPredictionTargets(Protocol):
+    @property
+    def storage_mode_id(self) -> str: ...
+
+    @property
+    def estimated_storage_bytes(self) -> int: ...
+
     def build_batch(self, sample_positions: torch.Tensor) -> PredictionTargetBatch: ...
+
+    def to_device_storage(
+        self,
+        device: torch.device,
+    ) -> PreparedPredictionTargets | None: ...
 
 
 class EpochMetricAccumulator(Protocol):
@@ -61,13 +76,20 @@ class PredictionBatch:
         return self.inputs.sample_positions
 
     def to_device(self, device: torch.device) -> PredictionBatch:
-        return PredictionBatch(
-            inputs=self.inputs.to_device(device),
-            targets=self.targets.to_device(device),
-        )
+        inputs = self.inputs.to_device(device)
+        targets = self.targets.to_device(device)
+        if inputs is self.inputs and targets is self.targets:
+            return self
+        return PredictionBatch(inputs=inputs, targets=targets)
 
     def model_kwargs(self) -> Mapping[str, torch.Tensor]:
         return self.inputs.model_kwargs()
+
+    def pin_memory(self) -> PredictionBatch:
+        return PredictionBatch(
+            inputs=self.inputs.pin_memory(),
+            targets=self.targets.pin_memory(),
+        )
 
 
 @dataclass(slots=True)
@@ -80,32 +102,49 @@ class PredictionPreparedRepresentation:
         return self.prepared.representation_id
 
     @property
-    def storage_mode_id(self) -> str:
+    def input_storage_mode_id(self) -> str:
         return self.prepared.storage_mode_id
+
+    @property
+    def target_storage_mode_id(self) -> str:
+        return self.targets.storage_mode_id
 
     @property
     def batch_planner_id(self) -> str:
         return self.prepared.batch_planner_id
 
-    def __len__(self) -> int:
-        return len(self.prepared)
+    @property
+    def sample_count(self) -> int:
+        return self.prepared.sample_count
 
-    def iter_batches(
+    @property
+    def batch_signatures(self) -> IntVector:
+        return self.prepared.batch_signatures
+
+    @property
+    def estimated_input_storage_bytes(self) -> int:
+        return self.prepared.estimated_storage_bytes
+
+    @property
+    def estimated_target_storage_bytes(self) -> int:
+        return self.targets.estimated_storage_bytes
+
+    def build_batch(self, sample_positions: torch.Tensor) -> PredictionBatch:
+        input_batch = self.prepared.build_batch(sample_positions)
+        return PredictionBatch(
+            inputs=input_batch,
+            targets=self.targets.build_batch(input_batch.sample_positions),
+        )
+
+    def to_device_storage(
         self,
-        *,
-        epoch: int,
-        seed: int,
-        shuffle: bool,
-    ) -> Iterator[PredictionBatch]:
-        for input_batch in self.prepared.iter_batches(
-            epoch=epoch,
-            seed=seed,
-            shuffle=shuffle,
-        ):
-            yield PredictionBatch(
-                inputs=input_batch,
-                targets=self.targets.build_batch(input_batch.sample_positions),
-            )
+        device: torch.device,
+    ) -> PredictionPreparedRepresentation | None:
+        prepared = self.prepared.to_device_storage(device)
+        targets = self.targets.to_device_storage(device)
+        if prepared is None or targets is None:
+            return None
+        return PredictionPreparedRepresentation(prepared=prepared, targets=targets)
 
 
 @dataclass(frozen=True, slots=True)

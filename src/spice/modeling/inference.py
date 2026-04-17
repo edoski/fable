@@ -11,7 +11,7 @@ from ..prediction import CompiledPredictionContract
 from ..temporal.problem_store import CompiledProblemStore
 from ._runtime import (
     CompiledRepresentationContract,
-    build_prediction_loader,
+    build_prediction_batch_source,
     build_representation_runtime_context,
     ensure_device_runtime_ready,
     resolve_device,
@@ -47,14 +47,16 @@ def predict_with_model(
         device=resolved_device,
         batch_size=batch_size,
     )
-    loader = build_prediction_loader(
+    batch_source_plan = build_prediction_batch_source(
         store,
         sample_indices,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
         runtime_context=runtime_context,
+        resolved_device=resolved_device,
         seed=0,
     )
+    loader = batch_source_plan.source
     task_id = reporter.start_task("predict", total=len(loader), unit="batches")
     predictions = prediction_contract.allocate_decoded_offsets(int(sample_indices.shape[0]))
     with torch.no_grad():

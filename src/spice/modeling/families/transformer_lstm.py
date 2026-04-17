@@ -91,8 +91,10 @@ def _default_precision(device: torch.device) -> TrainingPrecision:
 
 
 def _auto_compile(device: torch.device, precision: str) -> bool:
+    if device.type == "cuda":
+        return False
     del precision
-    return device.type in {"cpu", "cuda"}
+    return device.type == "cpu"
 
 
 def _validate_tuning_space(

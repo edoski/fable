@@ -6,7 +6,12 @@ import lightning as L
 import torch
 
 from ..config import TrainingConfig
-from ..prediction import CompiledPredictionContract, EpochMetricAccumulator, MetricSet
+from ..prediction import (
+    CompiledPredictionContract,
+    EpochMetricAccumulator,
+    MetricSet,
+    PredictionBatch,
+)
 from .models import ModelOutputs, TemporalModel
 
 
@@ -91,6 +96,16 @@ class TemporalLightningModule(L.LightningModule):
 
     def validation_step(self, batch, _batch_idx: int) -> torch.Tensor:
         return self._shared_step(batch, stage="validation")
+
+    def transfer_batch_to_device(
+        self,
+        batch: object,
+        device: torch.device,
+        dataloader_idx: int,
+    ) -> object:
+        if isinstance(batch, PredictionBatch):
+            return batch.to_device(device)
+        return super().transfer_batch_to_device(batch, device, dataloader_idx)
 
     def on_train_epoch_end(self) -> None:
         if self._train_accumulator is not None:

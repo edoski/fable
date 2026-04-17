@@ -135,7 +135,9 @@ class TrainingRuntimeSummary:
     resolved_device: str
     resolved_precision: str
     compiled: bool
-    storage_mode_id: str
+    loader_strategy_id: str
+    input_storage_mode_id: str
+    target_storage_mode_id: str
     batch_planner_id: str
     best_validation_metrics: MetricSet
     test_metrics: MetricSet
@@ -218,7 +220,9 @@ def build_training_runtime_summary(
         resolved_device=result.training_result.resolved_device,
         resolved_precision=result.training_result.resolved_precision,
         compiled=result.training_result.compiled,
-        storage_mode_id=result.training_result.storage_mode_id,
+        loader_strategy_id=result.training_result.loader_strategy_id,
+        input_storage_mode_id=result.training_result.input_storage_mode_id,
+        target_storage_mode_id=result.training_result.target_storage_mode_id,
         batch_planner_id=result.training_result.batch_planner_id,
         best_validation_metrics=best_validation_metrics,
         test_metrics=test_metrics,

@@ -115,7 +115,9 @@ def artifact_sections(
                 [
                     ("best epoch", str(runtime.best_epoch)),
                     ("representation", training.manifest.representation_id),
-                    ("storage mode", runtime.storage_mode_id),
+                    ("loader", runtime.loader_strategy_id),
+                    ("input storage", runtime.input_storage_mode_id),
+                    ("target storage", runtime.target_storage_mode_id),
                     ("batch planner", runtime.batch_planner_id),
                     (
                         "split",
