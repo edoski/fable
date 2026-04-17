@@ -23,35 +23,49 @@ class _InterruptState:
 
 
 @contextmanager
-def _capture_sigint() -> Iterator[_InterruptState]:
+def _capture_interrupts() -> Iterator[_InterruptState]:
     state = _InterruptState()
-    if not hasattr(signal, "SIGINT"):
+    signal_ids = [
+        getattr(signal, name)
+        for name in ("SIGINT", "SIGTERM")
+        if hasattr(signal, name)
+    ]
+    if not signal_ids:
         yield state
         return
-    previous_handler = signal.getsignal(signal.SIGINT)
+    previous_handlers: dict[int, object] = {
+        signum: signal.getsignal(signum) for signum in signal_ids
+    }
 
-    def _handle_sigint(signum, frame) -> None:
+    def _handle_interrupt(signum, frame) -> None:
         state.interrupted = True
+        previous_handler = previous_handlers.get(signum, signal.SIG_DFL)
         if previous_handler == signal.SIG_IGN:
             return
         if previous_handler == signal.SIG_DFL:
-            signal.default_int_handler(signum, frame)
+            raise KeyboardInterrupt
             return
         if callable(previous_handler):
             previous_handler(signum, frame)
+            return
+        raise KeyboardInterrupt
 
+    registered: list[int] = []
     try:
-        signal.signal(signal.SIGINT, _handle_sigint)
+        for signum in signal_ids:
+            signal.signal(signum, _handle_interrupt)
+            registered.append(signum)
     except ValueError:
         yield state
         return
     try:
         yield state
     finally:
-        try:
-            signal.signal(signal.SIGINT, previous_handler)
-        except ValueError:
-            pass
+        for signum in registered:
+            try:
+                signal.signal(signum, previous_handlers[signum])
+            except ValueError:
+                pass
 
 
 def _cleanup_after_interrupt(
@@ -72,7 +86,7 @@ def abort_cleanup(
     label: str,
     cleanup: Callable[[], None],
 ) -> Iterator[None]:
-    with _capture_sigint() as interrupt_state:
+    with _capture_interrupts() as interrupt_state:
         try:
             yield
         except BaseException as exc:

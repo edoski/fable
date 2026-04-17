@@ -8,6 +8,7 @@ from spice.modeling._runtime import build_prediction_batch_source
 from spice.modeling.batch_sources import (
     DeviceResidentBatchSource,
     _PositionBatchSampler,
+    _should_use_device_resident,
     plan_batch_source,
 )
 from spice.modeling.families.lstm import LstmModelConfig
@@ -127,6 +128,7 @@ def test_sequence_input_storage_modes_yield_identical_batches() -> None:
             available_host_memory_bytes=10**12,
         ),
     )
+    materialized_from_streaming = streaming.to_device_storage(torch.device("cpu"))
 
     sample_positions = (
         torch.as_tensor([0, 2], dtype=torch.int64),
@@ -135,13 +137,74 @@ def test_sequence_input_storage_modes_yield_identical_batches() -> None:
 
     assert streaming.representation_id == SEQUENCE_INPUT_REPRESENTATION_ID
     assert materialized.representation_id == SEQUENCE_INPUT_REPRESENTATION_ID
+    assert materialized_from_streaming is not None
     assert streaming.sample_count == materialized.sample_count == 4
     for positions in sample_positions:
         left = streaming.build_batch(positions)
         right = materialized.build_batch(positions)
+        replay = materialized_from_streaming.build_batch(positions)
         assert torch.equal(left.sample_positions, right.sample_positions)
+        assert torch.equal(replay.sample_positions, right.sample_positions)
         assert torch.equal(left.inputs, right.inputs)
+        assert torch.equal(replay.inputs, right.inputs)
         assert torch.equal(left.input_mask, right.input_mask)
+        assert torch.equal(replay.input_mask, right.input_mask)
+
+
+def test_device_resident_planner_accepts_streaming_inputs_when_cuda_budget_fits() -> None:
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "input_storage_mode_id": "streaming_host",
+            "estimated_input_storage_bytes": 1024,
+            "estimated_target_storage_bytes": 128,
+        },
+    )()
+
+    assert _should_use_device_resident(
+        prepared,
+        runtime_context=RepresentationRuntimeContext(
+            device_type="cuda",
+            batch_size=2,
+            available_host_memory_bytes=1,
+            available_device_memory_bytes=10**9,
+        ),
+        resolved_device=torch.device("cuda"),
+    )
+
+
+def test_plan_batch_source_selects_device_resident_for_streaming_origin_when_cuda_fits() -> None:
+    class _Prepared:
+        sample_count = 4
+        batch_signatures = np.array([2, 1, 2, 1], dtype=np.int64)
+        input_storage_mode_id = "streaming_host"
+        target_storage_mode_id = "materialized_host"
+        batch_planner_id = "signature_bucketed"
+        estimated_input_storage_bytes = 1024
+        estimated_target_storage_bytes = 128
+
+        def to_device_storage(self, device: torch.device):
+            del device
+            return self
+
+        def build_batch(self, sample_positions: torch.Tensor):
+            raise AssertionError(f"build_batch should not run during planning: {sample_positions}")
+
+    plan = plan_batch_source(
+        _Prepared(),
+        runtime_context=RepresentationRuntimeContext(
+            device_type="cuda",
+            batch_size=2,
+            available_host_memory_bytes=1,
+            available_device_memory_bytes=10**9,
+        ),
+        resolved_device=torch.device("cuda"),
+        seed=2026,
+        shuffle=True,
+    )
+
+    assert plan.loader_strategy_id == "device_resident"
 
 
 def test_prediction_batch_source_binds_current_family_targets() -> None:

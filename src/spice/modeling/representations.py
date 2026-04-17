@@ -17,6 +17,7 @@ from ..temporal.problem_store import CompiledProblemStore
 
 IntVector = NDArray[np.int64]
 _MAX_AUTOMATIC_MATERIALIZATION_BYTES = 8 * 1024**3
+_CUDA_DEVICE_MATERIALIZATION_STAGING_BYTES = 256 * 1024**2
 SEQUENCE_INPUT_REPRESENTATION_ID = "sequence_inputs"
 BatchT = TypeVar("BatchT", bound=ModelInputBatch, covariant=True)
 
@@ -245,8 +246,18 @@ class _StreamingSequenceInputRepresentation:
         self,
         device: torch.device,
     ) -> PreparedRepresentation[ModelInputBatch] | None:
-        del device
-        return None
+        if device.type == "cuda":
+            return _materialize_sequence_input_to_device(
+                self.store,
+                self.layout,
+                batch_size=self.batch_size,
+                device=device,
+            )
+        return _materialize_sequence_input(
+            self.store,
+            self.layout,
+            batch_size=self.batch_size,
+        ).to_device_storage(device)
 
 
 @dataclass(slots=True)
@@ -379,12 +390,14 @@ def _materialize_sequence_input(
         dtype=np.float32,
     )
     input_mask = np.zeros((sample_count, layout.max_context_length), dtype=np.bool_)
-    for row, sample_index in enumerate(layout.sample_indices):
-        anchor_row = int(store.anchor_rows[sample_index])
-        context_start = int(store.context_start_rows[sample_index])
-        sequence = store.feature_matrix[context_start : anchor_row + 1]
-        inputs[row, : sequence.shape[0], :] = sequence
-        input_mask[row, : sequence.shape[0]] = True
+    _fill_dense_sequence_input_rows(
+        store,
+        layout,
+        row_start=0,
+        row_stop=sample_count,
+        inputs=inputs,
+        input_mask=input_mask,
+    )
 
     return _MaterializedSequenceInputRepresentation(
         inputs=torch.from_numpy(inputs),
@@ -392,6 +405,89 @@ def _materialize_sequence_input(
         layout=layout,
         batch_size=batch_size,
     )
+
+
+def _materialize_sequence_input_to_device(
+    store: CompiledProblemStore,
+    layout: _SequenceInputLayout,
+    *,
+    batch_size: int,
+    device: torch.device,
+) -> _MaterializedSequenceInputRepresentation:
+    if device.type != "cuda":
+        return _materialize_sequence_input(
+            store,
+            layout,
+            batch_size=batch_size,
+        ).to_device_storage(device)
+    sample_count = int(layout.sample_indices.shape[0])
+    inputs = torch.zeros(
+        (sample_count, layout.max_context_length, store.n_features),
+        dtype=torch.float32,
+        device=device,
+    )
+    input_mask = torch.zeros(
+        (sample_count, layout.max_context_length),
+        dtype=torch.bool,
+        device=device,
+    )
+    row_bytes = (
+        layout.max_context_length * store.n_features * np.dtype(np.float32).itemsize
+        + layout.max_context_length * np.dtype(np.bool_).itemsize
+    )
+    chunk_rows = max(
+        1,
+        min(
+            sample_count,
+            _CUDA_DEVICE_MATERIALIZATION_STAGING_BYTES // max(1, row_bytes),
+        ),
+    )
+    for row_start in range(0, sample_count, chunk_rows):
+        row_stop = min(sample_count, row_start + chunk_rows)
+        chunk_inputs = np.zeros(
+            (row_stop - row_start, layout.max_context_length, store.n_features),
+            dtype=np.float32,
+        )
+        chunk_input_mask = np.zeros(
+            (row_stop - row_start, layout.max_context_length),
+            dtype=np.bool_,
+        )
+        _fill_dense_sequence_input_rows(
+            store,
+            layout,
+            row_start=row_start,
+            row_stop=row_stop,
+            inputs=chunk_inputs,
+            input_mask=chunk_input_mask,
+        )
+        chunk_inputs_tensor = torch.from_numpy(chunk_inputs).pin_memory()
+        chunk_mask_tensor = torch.from_numpy(chunk_input_mask).pin_memory()
+        inputs[row_start:row_stop].copy_(chunk_inputs_tensor, non_blocking=True)
+        input_mask[row_start:row_stop].copy_(chunk_mask_tensor, non_blocking=True)
+    return _MaterializedSequenceInputRepresentation(
+        inputs=inputs,
+        input_mask=input_mask,
+        layout=layout,
+        batch_size=batch_size,
+        storage_mode_id="materialized_device",
+    )
+
+
+def _fill_dense_sequence_input_rows(
+    store: CompiledProblemStore,
+    layout: _SequenceInputLayout,
+    *,
+    row_start: int,
+    row_stop: int,
+    inputs: np.ndarray,
+    input_mask: np.ndarray,
+) -> None:
+    for output_row, sample_index in enumerate(layout.sample_indices[row_start:row_stop]):
+        anchor_row = int(store.anchor_rows[sample_index])
+        context_start = int(store.context_start_rows[sample_index])
+        sequence = store.feature_matrix[context_start : anchor_row + 1]
+        inputs[output_row, : sequence.shape[0], :] = sequence
+        input_mask[output_row, : sequence.shape[0]] = True
 
 
 register_input_representation(

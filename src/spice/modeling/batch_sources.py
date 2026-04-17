@@ -256,8 +256,6 @@ def _should_use_device_resident(
     available_device_memory_bytes = runtime_context.available_device_memory_bytes
     if available_device_memory_bytes is None or available_device_memory_bytes <= 0:
         return False
-    if prepared.input_storage_mode_id.startswith("streaming"):
-        return False
     required_bytes = (
         prepared.estimated_input_storage_bytes + prepared.estimated_target_storage_bytes
     )
