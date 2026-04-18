@@ -15,22 +15,13 @@ from ...features import (
     FeaturePrerequisites,
     ResolvedFeatureTable,
 )
-from ..contracts import CompiledProblemContract, ProblemRuntimeMetadata
+from ..contracts import CompiledProblemContract, EstimatedBlockRuntimeMetadata
 from ..problem_store import CompiledProblemStore
-from .base import ProblemCompilerConfig, ProblemCompilerSpec
-from .registry import register_problem_compiler_spec
+from .base import ProblemCompilerConfig
 
 if TYPE_CHECKING:
     from ...config import ProblemSpec
     from ...config.models import ChainRuntimeSpec
-
-_LEGACY_INTERVAL_KEY = "effective_block_interval_seconds"
-_CALIBRATED_INTERVAL_KEY = "calibrated_block_interval_seconds"
-_LOOKBACK_INTERVAL_KEY = "lookback_interval_seconds"
-_CANDIDATE_INTERVAL_KEY = "candidate_interval_seconds"
-_LOOKBACK_STEPS_KEY = "lookback_steps"
-_CAPABILITY_CANDIDATE_COUNT_KEY = "capability_candidate_count"
-
 
 class EstimatedBlockIntervalSource(StrEnum):
     CALIBRATED = "calibrated"
@@ -101,7 +92,7 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
     def build_capability_store(
         self,
         feature_table: ResolvedFeatureTable,
-    ) -> tuple[CompiledProblemStore, ProblemRuntimeMetadata]:
+    ) -> tuple[CompiledProblemStore, EstimatedBlockRuntimeMetadata]:
         calibrated_interval_seconds = _calibrate_observed_block_interval_seconds(
             feature_table,
             statistic=self.calibrated_interval_statistic,
@@ -134,13 +125,13 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
         )
         return (
             store,
-            {
-                _CALIBRATED_INTERVAL_KEY: calibrated_interval_seconds,
-                _LOOKBACK_INTERVAL_KEY: lookback_interval_seconds,
-                _CANDIDATE_INTERVAL_KEY: candidate_interval_seconds,
-                _LOOKBACK_STEPS_KEY: lookback_steps,
-                _CAPABILITY_CANDIDATE_COUNT_KEY: capability_candidate_count,
-            },
+            EstimatedBlockRuntimeMetadata(
+                calibrated_interval_seconds=calibrated_interval_seconds,
+                lookback_interval_seconds=lookback_interval_seconds,
+                candidate_interval_seconds=candidate_interval_seconds,
+                lookback_steps=lookback_steps,
+                capability_candidate_count=capability_candidate_count,
+            ),
         )
 
     def build_delay_store(
@@ -148,7 +139,7 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
         feature_table: ResolvedFeatureTable,
         delay_seconds: int,
         *,
-        compiler_runtime_metadata: ProblemRuntimeMetadata,
+        compiler_runtime_metadata: EstimatedBlockRuntimeMetadata,
         max_candidate_slots: int,
     ) -> CompiledProblemStore:
         if delay_seconds <= 0:
@@ -158,10 +149,8 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
                 "delay_seconds exceeds problem capability: "
                 f"{delay_seconds} > {self.max_delay_seconds}"
             )
-        candidate_interval_seconds = _runtime_candidate_interval_seconds(
-            compiler_runtime_metadata
-        )
-        lookback_steps = _runtime_int(compiler_runtime_metadata, _LOOKBACK_STEPS_KEY)
+        candidate_interval_seconds = compiler_runtime_metadata.candidate_interval_seconds
+        lookback_steps = compiler_runtime_metadata.lookback_steps
         candidate_count = _candidate_count_for_delay(
             delay_seconds,
             candidate_interval_seconds,
@@ -325,34 +314,3 @@ def _candidate_count_for_delay(
     if effective_block_interval_seconds <= 0:
         raise ValueError("effective_block_interval_seconds must be positive")
     return max(1, math.floor(max_delay_seconds / effective_block_interval_seconds)) + 1
-
-
-def _runtime_float(metadata: ProblemRuntimeMetadata, key: str) -> float:
-    try:
-        value = metadata[key]
-    except KeyError as exc:
-        raise ValueError(f"Missing compiler runtime metadata: {key}") from exc
-    return float(cast(int | float | str, value))
-
-
-def _runtime_int(metadata: ProblemRuntimeMetadata, key: str) -> int:
-    try:
-        value = metadata[key]
-    except KeyError as exc:
-        raise ValueError(f"Missing compiler runtime metadata: {key}") from exc
-    return int(cast(int | float | str, value))
-
-
-def _runtime_candidate_interval_seconds(metadata: ProblemRuntimeMetadata) -> float:
-    if _CANDIDATE_INTERVAL_KEY in metadata:
-        return _runtime_float(metadata, _CANDIDATE_INTERVAL_KEY)
-    return _runtime_float(metadata, _LEGACY_INTERVAL_KEY)
-
-
-register_problem_compiler_spec(
-    ProblemCompilerSpec(
-        id="estimated_block",
-        config_type=EstimatedBlockCompilerConfig,
-        compile_problem=compile_problem,
-    )
-)

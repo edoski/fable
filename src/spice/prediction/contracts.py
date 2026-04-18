@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import numpy as np
 import torch
@@ -64,6 +64,22 @@ class EpochMetricAccumulator(Protocol):
     def snapshot(self) -> MetricSet: ...
 
     def finalize(self) -> MetricSet: ...
+
+
+BuildOutputSpecFn = Callable[[int], PredictionOutputSpec]
+FitTrainingStateFn = Callable[[CompiledProblemStore, IntVector], object | None]
+PrepareTargetsFn = Callable[[CompiledProblemStore, IntVector], PreparedPredictionTargets]
+ComputeBatchLossAndStateFn = Callable[
+    [Any, PredictionTargetBatch, object | None],
+    tuple[torch.Tensor, object],
+]
+CreateEpochAccumulatorFn = Callable[[str], EpochMetricAccumulator]
+SelectBestEpochFn = Callable[[list[MetricSet]], int]
+AllocateDecodedOffsetsFn = Callable[[int], object]
+DecodeSelectedOffsetsIntoFn = Callable[
+    [object, torch.Tensor, Any, PredictionTargetBatch],
+    None,
+]
 
 
 @dataclass(slots=True)
@@ -156,6 +172,14 @@ class CompiledPredictionContract:
     primary_metric_id: str
     direction: Literal["maximize", "minimize"]
     supported_workflows: frozenset[str]
+    build_output_spec_fn: BuildOutputSpecFn
+    prepare_targets_fn: PrepareTargetsFn
+    compute_batch_loss_and_state_fn: ComputeBatchLossAndStateFn
+    create_epoch_accumulator_fn: CreateEpochAccumulatorFn
+    select_best_epoch_fn: SelectBestEpochFn
+    allocate_decoded_offsets_fn: AllocateDecodedOffsetsFn
+    decode_selected_offsets_into_fn: DecodeSelectedOffsetsIntoFn
+    fit_training_state_fn: FitTrainingStateFn | None = None
 
     @property
     def semantics(self) -> PredictionSemantics:
@@ -178,22 +202,23 @@ class CompiledPredictionContract:
         return self.checkpoint_monitor
 
     def build_output_spec(self, max_candidate_slots: int) -> PredictionOutputSpec:
-        raise NotImplementedError
+        return self.build_output_spec_fn(max_candidate_slots)
 
     def fit_training_state(
         self,
         store: CompiledProblemStore,
         train_sample_indices: IntVector,
     ) -> object | None:
-        del store, train_sample_indices
-        return None
+        if self.fit_training_state_fn is None:
+            return None
+        return self.fit_training_state_fn(store, train_sample_indices)
 
     def prepare_targets(
         self,
         store: CompiledProblemStore,
         sample_indices: IntVector,
     ) -> PreparedPredictionTargets:
-        raise NotImplementedError
+        return self.prepare_targets_fn(store, sample_indices)
 
     def compute_batch_loss_and_state(
         self,
@@ -202,13 +227,13 @@ class CompiledPredictionContract:
         *,
         training_state: object | None,
     ) -> tuple[torch.Tensor, object]:
-        raise NotImplementedError
+        return self.compute_batch_loss_and_state_fn(outputs, targets, training_state)
 
     def create_epoch_accumulator(self, stage: str) -> EpochMetricAccumulator:
-        raise NotImplementedError
+        return self.create_epoch_accumulator_fn(stage)
 
     def best_epoch(self, history: list[MetricSet]) -> int:
-        raise NotImplementedError
+        return self.select_best_epoch_fn(history)
 
     def optimization_value(self, metrics: MetricSet) -> float:
         return metrics.require(self.primary_metric_id)
@@ -224,7 +249,7 @@ class CompiledPredictionContract:
         )
 
     def allocate_decoded_offsets(self, sample_count: int) -> object:
-        raise NotImplementedError
+        return self.allocate_decoded_offsets_fn(sample_count)
 
     def decode_selected_offsets_into(
         self,
@@ -233,7 +258,7 @@ class CompiledPredictionContract:
         outputs: ModelOutputs,
         targets: PredictionTargetBatch,
     ) -> None:
-        raise NotImplementedError
+        self.decode_selected_offsets_into_fn(predictions, sample_positions, outputs, targets)
 
 
 def bind_prediction_representation(

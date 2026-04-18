@@ -2,18 +2,34 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING, Mapping
 
 from ..config.models import ChainRuntimeSpec, ProblemSpec
+from ..core.errors import ConfigResolutionError
 from ..features import CompiledFeatureContract, FeaturePrerequisites
 from ..semantics import ProblemSemantics
-
-ProblemRuntimeMetadata = dict[str, object]
 
 if TYPE_CHECKING:
     from ..features import ResolvedFeatureTable
     from .problem_store import CompiledProblemStore
+
+
+@dataclass(frozen=True, slots=True)
+class TimestampRuntimeMetadata:
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class EstimatedBlockRuntimeMetadata:
+    calibrated_interval_seconds: float
+    lookback_interval_seconds: float
+    candidate_interval_seconds: float
+    lookback_steps: int
+    capability_candidate_count: int
+
+
+ProblemRuntimeMetadata = TimestampRuntimeMetadata | EstimatedBlockRuntimeMetadata
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,10 +90,37 @@ def compile_problem_contract(
     feature_contract: CompiledFeatureContract,
     chain_runtime: ChainRuntimeSpec | None = None,
 ) -> CompiledProblemContract:
-    from .compilers.registry import problem_compiler_spec
+    from .compilers import problem_compiler_spec
 
     return problem_compiler_spec(problem.compiler.id).compile_problem(
         problem,
         feature_contract,
         chain_runtime,
     )
+
+
+def problem_runtime_metadata_payload(metadata: ProblemRuntimeMetadata) -> dict[str, object]:
+    return asdict(metadata)
+
+
+def problem_runtime_metadata_from_payload(
+    problem: ProblemSpec,
+    payload: Mapping[str, object],
+) -> ProblemRuntimeMetadata:
+    compiler_id = problem.compiler.id
+    raw_payload = dict(payload)
+    if compiler_id == "timestamp_native":
+        if raw_payload:
+            raise ConfigResolutionError(
+                "timestamp_native runtime metadata must be empty in artifact manifests"
+            )
+        return TimestampRuntimeMetadata()
+    if compiler_id == "estimated_block":
+        return EstimatedBlockRuntimeMetadata(
+            calibrated_interval_seconds=float(raw_payload["calibrated_interval_seconds"]),
+            lookback_interval_seconds=float(raw_payload["lookback_interval_seconds"]),
+            candidate_interval_seconds=float(raw_payload["candidate_interval_seconds"]),
+            lookback_steps=int(raw_payload["lookback_steps"]),
+            capability_candidate_count=int(raw_payload["capability_candidate_count"]),
+        )
+    raise ConfigResolutionError(f"Unsupported problem.compiler.id: {compiler_id}")

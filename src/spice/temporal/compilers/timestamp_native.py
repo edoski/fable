@@ -13,10 +13,9 @@ from ...features import (
     FeaturePrerequisites,
     ResolvedFeatureTable,
 )
-from ..contracts import CompiledProblemContract, ProblemRuntimeMetadata
+from ..contracts import CompiledProblemContract, TimestampRuntimeMetadata
 from ..problem_store import CompiledProblemStore
-from .base import ProblemCompilerConfig, ProblemCompilerSpec
-from .registry import register_problem_compiler_spec
+from .base import ProblemCompilerConfig
 
 if TYPE_CHECKING:
     from ...config import ProblemSpec
@@ -60,7 +59,7 @@ class TimestampNativeCompiledProblemContract(CompiledProblemContract):
     def build_capability_store(
         self,
         feature_table: ResolvedFeatureTable,
-    ) -> tuple[CompiledProblemStore, ProblemRuntimeMetadata]:
+    ) -> tuple[CompiledProblemStore, TimestampRuntimeMetadata]:
         return (
             _build_timestamp_problem_store(
                 feature_table,
@@ -70,7 +69,7 @@ class TimestampNativeCompiledProblemContract(CompiledProblemContract):
                     feature_prerequisites=self.feature_prerequisites,
                 ),
             ),
-            {},
+            TimestampRuntimeMetadata(),
         )
 
     def build_delay_store(
@@ -78,7 +77,7 @@ class TimestampNativeCompiledProblemContract(CompiledProblemContract):
         feature_table: ResolvedFeatureTable,
         delay_seconds: int,
         *,
-        compiler_runtime_metadata: ProblemRuntimeMetadata,
+        compiler_runtime_metadata: TimestampRuntimeMetadata,
         max_candidate_slots: int,
     ) -> CompiledProblemStore:
         del compiler_runtime_metadata
@@ -179,12 +178,3 @@ def _build_timestamp_problem_store(
         candidate_end_rows=selected_candidate_ends,
         max_candidate_slots=resolved_max_candidate_slots,
     )
-
-
-register_problem_compiler_spec(
-    ProblemCompilerSpec(
-        id="timestamp_native",
-        config_type=TimestampNativeCompilerConfig,
-        compile_problem=compile_problem,
-    )
-)

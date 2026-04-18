@@ -106,7 +106,7 @@ Shipped families:
   - one-head offset selection over the candidate slate
   - primary training and tuning metric: `profit_over_baseline`
 - `min_block_fee_multitask`
-  - paper-faithful offset classification plus min-fee regression
+  - min-block offset classification plus min-fee regression
   - primary training and tuning metric: `total_loss`
 
 Replay remains economic for both families:
@@ -115,8 +115,8 @@ Replay remains economic for both families:
 - `cost_over_optimum`
 - `baseline_cost_over_optimum`
 
-The shipped `icdcs_2026` preset targets the paper path with `prediction: icdcs_2026`.
-The paper leaves the exact trend-feature formula underspecified; SPICE uses
+The shipped `icdcs_2026` preset uses `prediction: icdcs_2026`.
+The original ICDCS description leaves the exact trend-feature formula underspecified; SPICE uses
 `trend_slope_200` as the operational ICDCS implementation.
 
 ## Output Layout

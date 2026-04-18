@@ -22,7 +22,6 @@ from ..pipeline import (
     selected_row_span,
 )
 from .base import CompiledDatasetBuilderContract, StandardTemporalDatasetBuilderConfig
-from .registry import DatasetBuilderSpec, register_dataset_builder_spec
 
 
 def prepare_training_dataset(blocks: pl.DataFrame, spec: TrainingSpec) -> PreparedTrainingDataset:
@@ -104,7 +103,9 @@ def prepare_inference_dataset(
     )
 
 
-def _compile(config: StandardTemporalDatasetBuilderConfig) -> CompiledDatasetBuilderContract:
+def compile_dataset_builder(
+    config: StandardTemporalDatasetBuilderConfig,
+) -> CompiledDatasetBuilderContract:
     if config.id != "standard_temporal":
         raise ConfigResolutionError("dataset_builder.id must be standard_temporal")
     return CompiledDatasetBuilderContract(
@@ -113,12 +114,3 @@ def _compile(config: StandardTemporalDatasetBuilderConfig) -> CompiledDatasetBui
         prepare_training_fn=prepare_training_dataset,
         prepare_inference_fn=prepare_inference_dataset,
     )
-
-
-register_dataset_builder_spec(
-    DatasetBuilderSpec(
-        id="standard_temporal",
-        config_type=StandardTemporalDatasetBuilderConfig,
-        compile=_compile,
-    )
-)

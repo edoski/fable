@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -14,6 +15,10 @@ from ..temporal.problem_store import CompiledProblemStore
 from .base import EvaluationSummary, EvaluatorSemantics
 
 IntVector = NDArray[np.int64]
+RunEvaluatorFn = Callable[
+    [CompiledProblemStore, object, IntVector, Reporter | None],
+    EvaluationSummary,
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +28,7 @@ class CompiledEvaluatorContract:
     primary_metric_id: str
     direction: Literal["maximize", "minimize"]
     config_payload: dict[str, object]
+    run_fn: RunEvaluatorFn
 
     @property
     def semantics(self) -> EvaluatorSemantics:
@@ -40,4 +46,4 @@ class CompiledEvaluatorContract:
         sample_indices: IntVector,
         reporter: Reporter | None,
     ) -> EvaluationSummary:
-        raise NotImplementedError
+        return self.run_fn(store, decoded_offsets, sample_indices, reporter)

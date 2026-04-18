@@ -45,29 +45,6 @@ class StandardTemporalDatasetBuilderConfig(
     id: Literal["standard_temporal"] = Field(default="standard_temporal")
 
 
-class PaperClassificationTemporalDatasetBuilderConfig(
-    DatasetBuilderConfig[Literal["paper_classification_temporal"]]
-):
-    id: Literal["paper_classification_temporal"] = Field(default="paper_classification_temporal")
-    n_lags: int = Field(default=6, gt=0)
-    roll_windows: tuple[int, ...] = (10, 50, 200)
-    min_sequence_length: int = Field(default=64, gt=0)
-    max_sequence_length: int = Field(default=4096, gt=0)
-
-    @field_validator("roll_windows")
-    @classmethod
-    def validate_roll_windows(cls, value: tuple[int, ...]) -> tuple[int, ...]:
-        if not value:
-            raise ValueError("dataset_builder.roll_windows must not be empty")
-        if tuple(sorted(value)) != value:
-            raise ValueError("dataset_builder.roll_windows must be sorted ascending")
-        if len(set(value)) != len(value):
-            raise ValueError("dataset_builder.roll_windows must not contain duplicates")
-        if any(window <= 0 for window in value):
-            raise ValueError("dataset_builder.roll_windows values must be positive")
-        return value
-
-
 PrepareTrainingFn = Callable[[pl.DataFrame, "TrainingSpec"], "PreparedTrainingDataset"]
 PrepareInferenceFn = Callable[
     [pl.DataFrame, pl.DataFrame, "InferencePreparationSpec"],

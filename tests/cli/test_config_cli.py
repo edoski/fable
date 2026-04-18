@@ -129,7 +129,7 @@ def test_evaluate_loader_uses_delay_seconds_and_named_override(
     assert config.evaluation.evaluator.id == "poisson_replay"
 
 
-def test_train_loader_resolves_paper_benchmark_preset(
+def test_train_loader_resolves_production_preset(
     tmp_path,
     load_workflow_config,
 ) -> None:
@@ -138,7 +138,7 @@ def test_train_loader_resolves_paper_benchmark_preset(
         load_workflow_config(
             WorkflowTask.TRAIN,
             workspace=tmp_path,
-            preset="icdcs_2026_paper",
+            preset="icdcs_2026",
             override={
                 "dataset": {"evaluation_date": "2025-11-09"},
                 "training": {
@@ -158,10 +158,10 @@ def test_train_loader_resolves_paper_benchmark_preset(
         ),
     )
 
-    assert config.problem.id == "icdcs_2026_paper"
-    assert config.problem.compiler.id == "timestamp_native"
-    assert config.dataset_builder.id == "paper_classification_temporal"
-    assert config.feature_set.id == "icdcs_2026_paper"
-    assert config.prediction.id == "icdcs_2026_paper"
+    assert config.problem.id == "icdcs_2026"
+    assert config.problem.compiler.id == "estimated_block"
+    assert config.dataset_builder.id == "standard_temporal"
+    assert config.feature_set.id == "icdcs_2026"
+    assert config.prediction.id == "icdcs_2026"
     assert config.model.id == "lstm"
     assert config.model.hidden_size == 256

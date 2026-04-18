@@ -112,7 +112,7 @@ Current shipped families:
   - one-head candidate-offset selection
   - primary metric: `profit_over_baseline`
 - `min_block_fee_multitask`
-  - paper-faithful min-block classification plus min-fee regression
+  - min-block classification plus min-fee regression
   - primary metric: `total_loss`
 
 Family-owned responsibilities:

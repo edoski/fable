@@ -1,6 +1,0 @@
-id: lstm
-input_projection_dim: 256
-hidden_size: 256
-num_layers: 2
-dropout: 0.2
-head_hidden_dim: 256

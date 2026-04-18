@@ -150,14 +150,18 @@ def _format_compact_progress(completed: int, total: int) -> str:
 
 
 def _is_improvement(
-    current_value: float,
-    best_value: float | None,
     *,
+    current_epoch: int,
+    best_epoch: int,
+    history: list[MetricSet],
     direction: str,
+    primary_metric_id: str,
     min_delta: float,
 ) -> bool:
-    if best_value is None:
+    if current_epoch == best_epoch:
         return True
+    current_value = history[current_epoch - 1].require(primary_metric_id)
+    best_value = history[best_epoch - 1].require(primary_metric_id)
     if direction == "maximize":
         return current_value > best_value + min_delta
     return current_value < best_value - min_delta
@@ -366,7 +370,6 @@ def train_model(
     train_history: list[MetricSet] = []
     validation_history: list[MetricSet] = []
     best_state: dict[str, torch.Tensor] | None = None
-    best_value: float | None = None
     best_epoch = 0
     epochs_without_improvement = 0
 
@@ -405,16 +408,17 @@ def train_model(
             validation_history.append(validation_metrics)
             progress.on_validation_epoch_end(epoch=epoch, metrics=validation_metrics)
 
-            current_value = prediction_contract.optimization_value(validation_metrics)
+            current_best_epoch = prediction_contract.best_epoch(validation_history)
             if _is_improvement(
-                current_value,
-                best_value,
+                current_epoch=epoch,
+                best_epoch=current_best_epoch,
+                history=validation_history,
                 direction=prediction_contract.direction,
+                primary_metric_id=prediction_contract.primary_metric_id,
                 min_delta=training_config.early_stopping.min_delta,
             ):
-                best_value = current_value
                 best_state = _clone_cpu_state(_unwrap_compiled_model(fit_model))
-                best_epoch = epoch
+                best_epoch = current_best_epoch
                 epochs_without_improvement = 0
             else:
                 epochs_without_improvement += 1
@@ -425,14 +429,9 @@ def train_model(
     if best_state is None:
         best_epoch = prediction_contract.best_epoch(validation_history)
         best_state = _clone_cpu_state(_unwrap_compiled_model(fit_model))
-        best_value = prediction_contract.optimization_value(
-            validation_history[best_epoch - 1]
-        )
     else:
         best_epoch = prediction_contract.best_epoch(validation_history)
-        best_value = prediction_contract.optimization_value(
-            validation_history[best_epoch - 1]
-        )
+    best_value = prediction_contract.optimization_value(validation_history[best_epoch - 1])
     model.load_state_dict(best_state)
     best_checkpoint_path = _checkpoint_path(
         artifact_dir,

@@ -1,4 +1,4 @@
-"""Open registry for evaluator specs."""
+"""Closed dispatch for supported evaluators."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar, cast
 
-from ..core.components import ComponentCatalog
 from ..core.errors import ConfigResolutionError
 from .base import EvaluatorConfig
 from .contracts import CompiledEvaluatorContract
@@ -21,30 +20,36 @@ class EvaluatorSpec(Generic[EvaluatorConfigT]):
     compile: Callable[[EvaluatorConfigT], CompiledEvaluatorContract]
 
 
-_EVALUATOR_SPECS = ComponentCatalog[EvaluatorSpec[Any]](
-    kind_label="evaluator",
-    entry_point_group="spice.evaluators",
-)
+_KNOWN_EVALUATORS = ("paper_fullset", "poisson_replay")
 
 
-def register_evaluator_spec(spec: EvaluatorSpec[Any]) -> None:
-    _EVALUATOR_SPECS.register(spec.id, spec)
+def evaluator_spec(evaluator_id: str) -> EvaluatorSpec[EvaluatorConfig]:
+    if evaluator_id == "paper_fullset":
+        from .evaluators.paper_fullset import (
+            PaperFullsetEvaluatorConfig,
+            compile_evaluator as compile_paper_fullset,
+        )
 
+        return EvaluatorSpec(
+            id="paper_fullset",
+            config_type=PaperFullsetEvaluatorConfig,
+            compile=compile_paper_fullset,
+        )
+    if evaluator_id == "poisson_replay":
+        from .evaluators.poisson_replay import (
+            PoissonReplayEvaluatorConfig,
+            compile_evaluator as compile_poisson_replay,
+        )
 
-def _load_builtin_evaluators() -> None:
-    from .evaluators import paper_fullset, poisson_replay  # noqa: F401
-
-
-_EVALUATOR_SPECS.configure_builtin_loader(_load_builtin_evaluators)
-
-
-def evaluator_spec(evaluator_id: str) -> EvaluatorSpec[Any]:
-    try:
-        return _EVALUATOR_SPECS.get(evaluator_id)
-    except ConfigResolutionError as exc:
-        raise ConfigResolutionError(
-            str(exc).replace("evaluator", "evaluation.evaluator.id")
-        ) from exc
+        return EvaluatorSpec(
+            id="poisson_replay",
+            config_type=PoissonReplayEvaluatorConfig,
+            compile=compile_poisson_replay,
+        )
+    known = ", ".join(_KNOWN_EVALUATORS)
+    raise ConfigResolutionError(
+        f"Unknown evaluation.evaluator.id: {evaluator_id}. Known values: {known}"
+    )
 
 
 def coerce_evaluator_config(

@@ -128,8 +128,8 @@ def test_render_sbatch_script_execs_spice_command(tmp_path: Path) -> None:
             memory_gb=24,
             time_limit="00:10:00",
         ),
-        cli_args=["--preset", "icdcs_2026_paper"],
+        cli_args=["--preset", "icdcs_2026"],
         log_path_template=tmp_path / "spice-train-%j.out",
     )
 
-    assert "\nexec /venv/bin/spice train --preset icdcs_2026_paper --storage-root /storage\n" in script
+    assert "\nexec /venv/bin/spice train --preset icdcs_2026 --storage-root /storage\n" in script

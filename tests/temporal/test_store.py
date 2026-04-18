@@ -91,9 +91,9 @@ def test_estimated_block_store_uses_corpus_calibration_for_row_geometry() -> Non
 
     store, runtime_metadata = contract.build_capability_store(feature_table)
 
-    assert runtime_metadata["calibrated_block_interval_seconds"] == 8.0
-    assert runtime_metadata["lookback_interval_seconds"] == 8.0
-    assert runtime_metadata["candidate_interval_seconds"] == 8.0
+    assert runtime_metadata.calibrated_interval_seconds == 8.0
+    assert runtime_metadata.lookback_interval_seconds == 8.0
+    assert runtime_metadata.candidate_interval_seconds == 8.0
     np.testing.assert_array_equal(store.anchor_rows, np.array([1, 2, 3, 4], dtype=np.int64))
     np.testing.assert_array_equal(store.context_start_rows, np.array([0, 1, 2, 3], dtype=np.int64))
     np.testing.assert_array_equal(store.candidate_end_rows, np.array([5, 6, 7, 8], dtype=np.int64))
@@ -147,9 +147,9 @@ def test_estimated_block_supports_nominal_lookback_and_mean_calibrated_candidate
 
     store, runtime_metadata = contract.build_capability_store(feature_table)
 
-    assert runtime_metadata["lookback_interval_seconds"] == 12.0
-    assert runtime_metadata["lookback_steps"] == 2
-    assert runtime_metadata["candidate_interval_seconds"] == np.mean(
+    assert runtime_metadata.lookback_interval_seconds == 12.0
+    assert runtime_metadata.lookback_steps == 2
+    assert runtime_metadata.candidate_interval_seconds == np.mean(
         np.array([7, 8, 11, 8, 11, 8, 12, 9], dtype=np.float64)
     )
     np.testing.assert_array_equal(store.context_start_rows, store.anchor_rows - 1)

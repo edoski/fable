@@ -1,41 +1,42 @@
-"""Dataset-builder registry."""
+"""Closed dispatch for supported dataset builders."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import cast
 
-from ...core.components import ComponentCatalog
 from ...core.errors import ConfigResolutionError
 from .base import (
     CompiledDatasetBuilderContract,
     DatasetBuilderConfig,
     DatasetBuilderSpec,
-)
-
-_DATASET_BUILDERS = ComponentCatalog[DatasetBuilderSpec[Any]](
-    kind_label="dataset builder",
-    entry_point_group="spice.dataset_builders",
+    StandardTemporalDatasetBuilderConfig,
 )
 
 
-def register_dataset_builder_spec(spec: DatasetBuilderSpec[Any]) -> None:
-    _DATASET_BUILDERS.register(spec.id, spec)
+def _compile_standard_temporal(
+    config: StandardTemporalDatasetBuilderConfig,
+) -> CompiledDatasetBuilderContract:
+    from .standard_temporal import compile_dataset_builder
+
+    return compile_dataset_builder(config)
+
+_DATASET_BUILDERS: dict[str, DatasetBuilderSpec[DatasetBuilderConfig]] = {
+    "standard_temporal": DatasetBuilderSpec(
+        id="standard_temporal",
+        config_type=StandardTemporalDatasetBuilderConfig,
+        compile=_compile_standard_temporal,
+    ),
+}
 
 
-def _load_builtin_dataset_builders() -> None:
-    from . import paper_classification_temporal, standard_temporal  # noqa: F401
-
-
-_DATASET_BUILDERS.configure_builtin_loader(_load_builtin_dataset_builders)
-
-
-def dataset_builder_spec(builder_id: str) -> DatasetBuilderSpec[Any]:
+def dataset_builder_spec(builder_id: str) -> DatasetBuilderSpec[DatasetBuilderConfig]:
     try:
-        return _DATASET_BUILDERS.get(builder_id)
-    except ConfigResolutionError as exc:
+        return _DATASET_BUILDERS[builder_id]
+    except KeyError as exc:
+        known = ", ".join(sorted(_DATASET_BUILDERS))
         raise ConfigResolutionError(
-            str(exc).replace("dataset builder", "dataset_builder.id")
+            f"Unknown dataset_builder.id: {builder_id}. Known values: {known}"
         ) from exc
 
 

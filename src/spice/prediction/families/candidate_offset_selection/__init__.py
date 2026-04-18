@@ -2,22 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import torch
 
 from ....core.reporting import StageMetricDescriptor
 from ....modeling.models import ModelOutputs
 from ....temporal.problem_store import CompiledProblemStore
-from ...base import MetricSet, PredictionOutputSpec
 from ...contracts import (
     CompiledPredictionContract,
-    EpochMetricAccumulator,
     IntVector,
     PredictionTargetBatch,
     PreparedPredictionTargets,
 )
-from ...registry import PredictionFamilySpec, register_prediction_family_spec
 from .batch import CandidateSlateTargetBatch
 from .config import CandidateOffsetSelectionFamilyConfig
 from .metrics import (
@@ -26,12 +21,7 @@ from .metrics import (
     compute_batch_loss_and_state,
     create_epoch_accumulator,
 )
-from .outputs import (
-    CANDIDATE_LOGITS_HEAD_ID,
-    build_output_spec,
-    candidate_logits,
-    masked_candidate_logits,
-)
+from .outputs import CANDIDATE_LOGITS_HEAD_ID, build_output_spec, candidate_logits, masked_candidate_logits
 from .targets import prepare_candidate_slate_targets
 
 PROGRESS_METRIC_DESCRIPTORS: tuple[StageMetricDescriptor, ...] = (
@@ -42,64 +32,56 @@ PROGRESS_METRIC_DESCRIPTORS: tuple[StageMetricDescriptor, ...] = (
 )
 
 
-@dataclass(frozen=True, slots=True)
-class CandidateOffsetSelectionPredictionContract(CompiledPredictionContract):
-    def build_output_spec(self, max_candidate_slots: int) -> PredictionOutputSpec:
-        return build_output_spec(max_candidate_slots)
-
-    def prepare_targets(
-        self,
-        store: CompiledProblemStore,
-        sample_indices: IntVector,
-    ) -> PreparedPredictionTargets:
-        return prepare_candidate_slate_targets(store, sample_indices)
-
-    def compute_batch_loss_and_state(
-        self,
-        outputs: ModelOutputs,
-        targets: PredictionTargetBatch,
-        *,
-        training_state: object | None,
-    ) -> tuple[torch.Tensor, object]:
-        del training_state
-        if not isinstance(targets, CandidateSlateTargetBatch):
-            raise TypeError("candidate_offset_selection expects CandidateSlateTargetBatch targets")
-        return compute_batch_loss_and_state(outputs.head(CANDIDATE_LOGITS_HEAD_ID), targets)
-
-    def create_epoch_accumulator(self, stage: str) -> EpochMetricAccumulator:
-        del stage
-        return create_epoch_accumulator()
-
-    def best_epoch(self, history: list[MetricSet]) -> int:
-        return best_epoch(history)
-
-    def allocate_decoded_offsets(self, sample_count: int) -> object:
-        return [0] * sample_count
-
-    def decode_selected_offsets_into(
-        self,
-        predictions: object,
-        sample_positions,
-        outputs: ModelOutputs,
-        targets: PredictionTargetBatch,
-    ) -> None:
-        if not isinstance(targets, CandidateSlateTargetBatch):
-            raise TypeError("candidate_offset_selection expects CandidateSlateTargetBatch targets")
-        if not isinstance(predictions, list):
-            raise TypeError("candidate_offset_selection decoded_offsets buffer must be a list")
-        logits = masked_candidate_logits(candidate_logits(outputs), targets.candidate_mask)
-        decoded = logits.argmax(dim=-1).cpu().tolist()
-        positions = sample_positions.tolist()
-        for sample_position, prediction in zip(positions, decoded, strict=True):
-            predictions[int(sample_position)] = int(prediction)
+def _prepare_targets(
+    store: CompiledProblemStore,
+    sample_indices: IntVector,
+) -> PreparedPredictionTargets:
+    return prepare_candidate_slate_targets(store, sample_indices)
 
 
-def _compile(
+def _compute_batch_loss_and_state(
+    outputs: ModelOutputs,
+    targets: PredictionTargetBatch,
+    training_state: object | None,
+) -> tuple[torch.Tensor, object]:
+    del training_state
+    if not isinstance(targets, CandidateSlateTargetBatch):
+        raise TypeError("candidate_offset_selection expects CandidateSlateTargetBatch targets")
+    return compute_batch_loss_and_state(outputs.head(CANDIDATE_LOGITS_HEAD_ID), targets)
+
+
+def _create_epoch_accumulator(stage: str):
+    del stage
+    return create_epoch_accumulator()
+
+
+def _allocate_decoded_offsets(sample_count: int) -> object:
+    return [0] * sample_count
+
+
+def _decode_selected_offsets_into(
+    predictions: object,
+    sample_positions: torch.Tensor,
+    outputs: ModelOutputs,
+    targets: PredictionTargetBatch,
+) -> None:
+    if not isinstance(targets, CandidateSlateTargetBatch):
+        raise TypeError("candidate_offset_selection expects CandidateSlateTargetBatch targets")
+    if not isinstance(predictions, list):
+        raise TypeError("candidate_offset_selection decoded_offsets buffer must be a list")
+    logits = masked_candidate_logits(candidate_logits(outputs), targets.candidate_mask)
+    decoded = logits.argmax(dim=-1).cpu().tolist()
+    positions = sample_positions.tolist()
+    for sample_position, prediction in zip(positions, decoded, strict=True):
+        predictions[int(sample_position)] = int(prediction)
+
+
+def compile_prediction_family(
     prediction_id: str,
     family: CandidateOffsetSelectionFamilyConfig,
 ) -> CompiledPredictionContract:
     del family
-    return CandidateOffsetSelectionPredictionContract(
+    return CompiledPredictionContract(
         prediction_id=prediction_id,
         prediction_family_id="candidate_offset_selection",
         training_metric_descriptors=TRAINING_METRIC_DESCRIPTORS,
@@ -107,13 +89,11 @@ def _compile(
         primary_metric_id="profit_over_baseline",
         direction="maximize",
         supported_workflows=frozenset({"train", "tune", "evaluate"}),
+        build_output_spec_fn=build_output_spec,
+        prepare_targets_fn=_prepare_targets,
+        compute_batch_loss_and_state_fn=_compute_batch_loss_and_state,
+        create_epoch_accumulator_fn=_create_epoch_accumulator,
+        select_best_epoch_fn=best_epoch,
+        allocate_decoded_offsets_fn=_allocate_decoded_offsets,
+        decode_selected_offsets_into_fn=_decode_selected_offsets_into,
     )
-
-
-register_prediction_family_spec(
-    PredictionFamilySpec(
-        id="candidate_offset_selection",
-        config_type=CandidateOffsetSelectionFamilyConfig,
-        compile=_compile,
-    )
-)

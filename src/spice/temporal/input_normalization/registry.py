@@ -1,41 +1,46 @@
-"""Open registry for input-normalization specs."""
+"""Closed dispatch for supported input-normalization modes."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import cast
 
-from ...core.components import ComponentCatalog
 from ...core.errors import ConfigResolutionError
 from .base import (
     CompiledInputNormalizationContract,
     InputNormalizationConfig,
     InputNormalizationSpec,
 )
-
-_INPUT_NORMALIZATION_SPECS = ComponentCatalog[InputNormalizationSpec[Any]](
-    kind_label="input normalization",
-    entry_point_group="spice.input_normalizations",
+from .row_standard import RowStandardConfig, compile_input_normalization as compile_row_standard
+from .window_weighted_standard import (
+    WindowWeightedStandardConfig,
+    compile_input_normalization as compile_window_weighted_standard,
 )
 
+_INPUT_NORMALIZATION_SPECS: dict[str, InputNormalizationSpec[InputNormalizationConfig]] = {
+    "row_standard": InputNormalizationSpec(
+        id="row_standard",
+        config_type=RowStandardConfig,
+        compile=compile_row_standard,
+    ),
+    "window_weighted_standard": InputNormalizationSpec(
+        id="window_weighted_standard",
+        config_type=WindowWeightedStandardConfig,
+        compile=compile_window_weighted_standard,
+    ),
+}
 
-def register_input_normalization_spec(spec: InputNormalizationSpec[Any]) -> None:
-    _INPUT_NORMALIZATION_SPECS.register(spec.id, spec)
 
-
-def _load_builtin_input_normalizations() -> None:
-    from . import row_standard, window_weighted_standard  # noqa: F401
-
-
-_INPUT_NORMALIZATION_SPECS.configure_builtin_loader(_load_builtin_input_normalizations)
-
-
-def input_normalization_spec(normalization_id: str) -> InputNormalizationSpec[Any]:
+def input_normalization_spec(
+    normalization_id: str,
+) -> InputNormalizationSpec[InputNormalizationConfig]:
     try:
-        return _INPUT_NORMALIZATION_SPECS.get(normalization_id)
-    except ConfigResolutionError as exc:
+        return _INPUT_NORMALIZATION_SPECS[normalization_id]
+    except KeyError as exc:
+        known = ", ".join(sorted(_INPUT_NORMALIZATION_SPECS))
         raise ConfigResolutionError(
-            str(exc).replace("input normalization", "training.input_normalization.id")
+            "Unknown training.input_normalization.id: "
+            f"{normalization_id}. Known values: {known}"
         ) from exc
 
 

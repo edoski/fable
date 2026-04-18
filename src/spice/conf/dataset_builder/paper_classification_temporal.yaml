@@ -1,8 +1,0 @@
-id: paper_classification_temporal
-min_sequence_length: 64
-max_sequence_length: 4096
-n_lags: 6
-roll_windows:
-  - 10
-  - 50
-  - 200

@@ -1,7 +1,0 @@
-id: icdcs_2026_paper
-family:
-  id: min_block_fee_multitask
-  classification_loss_weight: 1.0
-  regression_loss_weight: 0.5
-  class_weighting: inverse_frequency
-  fee_target_normalization: zscore_train_split

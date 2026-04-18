@@ -19,6 +19,7 @@ from ..config import (
 from ..evaluation import EvaluationRun, EvaluationSummary
 from ..prediction import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..semantics import ArtifactSemantics
+from ..temporal.contracts import ProblemRuntimeMetadata
 from ..temporal.scaling import ScalerStats
 from .pipeline import PreparedInferenceDataset, PreparedTrainingDataset, TrainingRunResult
 
@@ -45,7 +46,7 @@ class TrainingArtifactManifest:
     feature_set: FeatureSetConfig
     model: ModelConfig[str]
     scaler: ScalerStats
-    builder_runtime_metadata: dict[str, object]
+    builder_runtime_metadata: ProblemRuntimeMetadata
     semantics: ArtifactSemantics
 
     @property

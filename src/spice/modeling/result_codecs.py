@@ -27,6 +27,10 @@ from ..semantics import (
     RepresentationSemantics,
     StudySemantics,
 )
+from ..temporal.contracts import (
+    problem_runtime_metadata_from_payload,
+    problem_runtime_metadata_payload,
+)
 from ..temporal.scaling import ScalerStats
 from .families.registry import coerce_model_config
 
@@ -116,7 +120,9 @@ def artifact_manifest_payload(manifest: TrainingArtifactManifest) -> dict[str, o
         "feature_set": manifest.feature_set.model_dump(mode="json", exclude_none=True),
         "model": manifest.model.model_dump(mode="json", exclude_none=True),
         "scaler": manifest.scaler.model_dump(mode="json", exclude_none=True),
-        "builder_runtime_metadata": dict(manifest.builder_runtime_metadata),
+        "builder_runtime_metadata": problem_runtime_metadata_payload(
+            manifest.builder_runtime_metadata
+        ),
         "semantics": artifact_semantics_payload(manifest.semantics),
     }
 
@@ -140,7 +146,10 @@ def artifact_manifest_from_payload(payload: dict[str, object]):
         feature_set=coerce_feature_set_config(mapping_payload(payload["feature_set"])),
         model=coerce_model_config(mapping_payload(payload["model"])),
         scaler=ScalerStats.model_validate(mapping_payload(payload["scaler"])),
-        builder_runtime_metadata=mapping_payload(payload["builder_runtime_metadata"]),
+        builder_runtime_metadata=problem_runtime_metadata_from_payload(
+            coerce_problem_spec(mapping_payload(payload["problem"])),
+            mapping_payload(payload["builder_runtime_metadata"]),
+        ),
         semantics=artifact_semantics_from_payload(mapping_payload(payload["semantics"])),
     )
 

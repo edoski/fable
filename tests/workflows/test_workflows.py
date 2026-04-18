@@ -90,28 +90,14 @@ def test_train_configs_with_distinct_semantic_bundles_get_distinct_artifact_ids(
         load_workflow_config(
             WorkflowTask.TRAIN,
             workspace=tmp_path,
-            preset="icdcs_2026_paper",
-            override=deep_merge(
-                model_workflow_override(compiler_id="timestamp_native"),
-                {
-                    "feature_set": "icdcs_2026_paper",
-                    "problem": {
-                        "id": "icdcs_2026_paper",
-                        "lookback_seconds": 120,
-                        "sample_count": 24,
-                        "max_delay_seconds": 36,
-                        "compiler": {"id": "timestamp_native"},
-                    },
-                    "prediction": "icdcs_2026_paper",
-                    "model": "lstm_paper",
-                },
-            ),
+            preset="icdcs_2026",
+            override=model_workflow_override(compiler_id="timestamp_native"),
         ),
     )
 
     assert prod_config.paths.artifact_id != repro_config.paths.artifact_id
     assert prod_config.paths.artifact_root != repro_config.paths.artifact_root
-    assert prod_config.dataset_builder.id != repro_config.dataset_builder.id
+    assert prod_config.problem.compiler.id != repro_config.problem.compiler.id
 
 
 def test_tune_then_train_tuned_smoke(
@@ -352,67 +338,6 @@ def test_evaluate_workflow_supports_both_prediction_families(
     assert summary is not None
     assert summary.manifest.prediction_family_id == expected_family_id
     assert summary.runtime.metric_descriptors
-
-
-def test_evaluate_workflow_smoke_paper_preset(
-    tmp_path,
-    load_workflow_config,
-    seed_evaluation_dataset,
-    seed_history_dataset,
-) -> None:
-    override = {
-        "chain": "ethereum",
-        "dataset": {"evaluation_date": "2025-11-09"},
-        "dataset_builder": "paper_classification_temporal",
-        "feature_set": "icdcs_2026_paper",
-        "problem": {
-            "id": "icdcs_2026_paper",
-            "lookback_seconds": 600,
-            "sample_count": 8192,
-            "max_delay_seconds": 36,
-            "compiler": {"id": "timestamp_native"},
-        },
-        "prediction": "icdcs_2026_paper",
-        "model": "lstm_paper",
-        "training": {
-            "device": "cpu",
-            "batch_size": 8,
-            "max_epochs": 1,
-            "log_every_n_steps": 1,
-            "precision": "fp32",
-            "compile": "off",
-            "early_stopping": {
-                "patience": 1,
-                "min_delta": 0.0,
-            },
-        },
-        "evaluation": {"evaluator": {"id": "paper_fullset"}},
-    }
-    train_config = cast(
-        TrainConfig,
-        load_workflow_config(
-            WorkflowTask.TRAIN,
-            workspace=tmp_path,
-            preset="icdcs_2026_paper",
-            override=override,
-        ),
-    )
-    evaluate_config = load_workflow_config(
-        WorkflowTask.EVALUATE,
-        workspace=tmp_path,
-        preset="icdcs_2026_paper",
-        override=override,
-    )
-    seed_history_dataset(train_config)
-    seed_evaluation_dataset(evaluate_config)
-
-    run_train(train_config, reporter=NullReporter())
-    run_evaluate(evaluate_config, reporter=NullReporter())
-
-    summary = load_evaluation_summary(evaluate_config.paths.artifact_state_db)
-    assert summary is not None
-    assert summary.manifest.dataset_builder_id == "paper_classification_temporal"
-    assert summary.runtime.evaluator_id == "paper_fullset"
 
 
 def test_evaluate_rejects_delay_request_above_capability(

@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
-from sklearn.preprocessing import StandardScaler
 
 FloatMatrix = NDArray[np.float32]
 IntVector = NDArray[np.int64]
@@ -38,15 +37,17 @@ def window_row_multiplicities(
     return np.cumsum(counts[:-1], dtype=np.int64)
 
 
-def _scaler_stats_from_estimator(scaler: StandardScaler) -> ScalerStats:
-    if scaler.mean_ is None or scaler.scale_ is None:
-        raise RuntimeError("StandardScaler did not produce mean and scale statistics")
-    means = np.asarray(scaler.mean_, dtype=np.float64)
-    scales = np.asarray(scaler.scale_, dtype=np.float64)
+def _scaler_stats(means: NDArray[np.float64], scales: NDArray[np.float64]) -> ScalerStats:
     return ScalerStats(
         means=means.tolist(),
         scales=scales.tolist(),
     )
+
+
+def _safe_scales(variances: NDArray[np.float64]) -> NDArray[np.float64]:
+    scales = np.sqrt(np.maximum(variances, 0.0), dtype=np.float64)
+    scales[variances <= 0.0] = 1.0
+    return scales
 
 
 def fit_window_weighted_standard_scaler(
@@ -67,9 +68,14 @@ def fit_window_weighted_standard_scaler(
     weights = multiplicities.astype(np.float64, copy=False)
     if float(weights.sum()) <= 0.0:
         raise ValueError("training windows did not cover any feature rows")
-    scaler = StandardScaler()
-    scaler.fit(feature_matrix.astype(np.float64, copy=False), sample_weight=weights)
-    return _scaler_stats_from_estimator(scaler)
+    features = feature_matrix.astype(np.float64, copy=False)
+    means = np.average(features, axis=0, weights=weights).astype(np.float64, copy=False)
+    centered = features - means
+    variances = np.average(centered * centered, axis=0, weights=weights).astype(
+        np.float64,
+        copy=False,
+    )
+    return _scaler_stats(means, _safe_scales(variances))
 
 
 def fit_row_standard_scaler(
@@ -90,9 +96,10 @@ def fit_row_standard_scaler(
     covered_rows = multiplicities > 0
     if not np.any(covered_rows):
         raise ValueError("training windows did not cover any feature rows")
-    scaler = StandardScaler()
-    scaler.fit(feature_matrix[covered_rows].astype(np.float64, copy=False))
-    return _scaler_stats_from_estimator(scaler)
+    covered = feature_matrix[covered_rows].astype(np.float64, copy=False)
+    means = covered.mean(axis=0, dtype=np.float64)
+    variances = covered.var(axis=0, ddof=0, dtype=np.float64)
+    return _scaler_stats(means, _safe_scales(variances))
 
 
 def fit_standard_scaler(
