@@ -1,8 +1,8 @@
-"""Shared dataset build helpers."""
+"""Shared helpers for canonical acquisition dataset builders."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -12,19 +12,20 @@ import polars as pl
 from ...acquisition.rpc import (
     BlockPullPlan,
     BlockRange,
+    BlockRpcClient,
     RpcController,
     TimestampRange,
-    Web3BlockClient,
     pull_block_range,
 )
+from ...config import AcquireConfig
 from ...core.reporting import Reporter
 from ...corpus.io import iter_block_files, load_block_frame, write_block_file
+from ...corpus.metadata import has_block_files
 from ...corpus.validation import (
     BlockDatasetValidationReport,
     validate_contiguous_block_frame,
     validate_exact_window_frame,
 )
-from ..metadata import has_block_files
 
 
 @dataclass(slots=True)
@@ -48,11 +49,11 @@ class DatasetBuildResult:
     validation: BlockDatasetValidationReport
     file_count: int
     promote_dir: Path | None
-    pulled_blocks: bool
     outcome: DatasetBuildOutcome
 
 
 StageUpdateCallback = Callable[[str, str | None], None]
+ValidationCallback = Callable[[BlockDatasetValidationReport, Path], None]
 
 
 def noop_stage_update(status: str, message: str | None = None) -> None:
@@ -66,12 +67,8 @@ def validate_block_dataset(
 ) -> BlockDatasetValidationReport:
     try:
         frame = load_block_frame(path)
-    except Exception as exc:  # pragma: no cover - surfaced in workflow smoke tests
-        return BlockDatasetValidationReport(
-            dataset_path=path,
-            status="error",
-            errors=[str(exc)],
-        )
+    except Exception as exc:  # pragma: no cover - workflow smoke tests cover this path
+        return BlockDatasetValidationReport(dataset_path=path, status="error", errors=[str(exc)])
     return validate_contiguous_block_frame(
         frame,
         dataset_path=path,
@@ -99,15 +96,14 @@ def load_existing_dataset(
             ),
             file_count=len(iter_block_files(path)),
         )
-    validation = validate_contiguous_block_frame(
-        frame,
-        dataset_path=path,
-        expected_chain_id=expected_chain_id,
-    )
     return ExistingDatasetState(
         path=path,
         frame=frame,
-        validation=validation,
+        validation=validate_contiguous_block_frame(
+            frame,
+            dataset_path=path,
+            expected_chain_id=expected_chain_id,
+        ),
         file_count=len(iter_block_files(path)),
     )
 
@@ -124,9 +120,57 @@ def block_range_end(validation: BlockDatasetValidationReport) -> int:
     return validation.last_block_number + 1
 
 
+def reused_result(
+    existing: ExistingDatasetState,
+    *,
+    validation: BlockDatasetValidationReport | None = None,
+) -> DatasetBuildResult:
+    return DatasetBuildResult(
+        path=existing.path,
+        validation=existing.validation if validation is None else validation,
+        file_count=existing.file_count,
+        promote_dir=None,
+        outcome=DatasetBuildOutcome.REUSED,
+    )
+
+
+def materialize_dataset(
+    *,
+    mode: str,
+    config: AcquireConfig,
+    working_dir: Path,
+    expected_chain_id: int,
+    stage_update: StageUpdateCallback,
+    validate_result: ValidationCallback,
+    frames: Sequence[pl.DataFrame] | None = None,
+    outcome: DatasetBuildOutcome,
+) -> DatasetBuildResult:
+    dataset_dir = working_dir / mode
+    if frames is not None:
+        stage_update("planning", "writing merged dataset")
+        file_count = write_block_dataset_dir(
+            dataset_dir,
+            frame=combined_frame(*frames),
+            chunk_size=config.acquisition.chunk_size,
+            chain_name=config.chain.name,
+        )
+    else:
+        file_count = len(iter_block_files(dataset_dir))
+    stage_update("planning", "validating dataset")
+    validation = validate_block_dataset(dataset_dir, expected_chain_id=expected_chain_id)
+    validate_result(validation, dataset_dir)
+    return DatasetBuildResult(
+        path=dataset_dir,
+        validation=validation,
+        file_count=file_count,
+        promote_dir=dataset_dir,
+        outcome=outcome,
+    )
+
+
 async def pull_plan_to_frame(
     *,
-    block_client: Web3BlockClient,
+    block_client: BlockRpcClient,
     plan: BlockPullPlan,
     output_dir: Path,
     chunk_size: int,
@@ -225,14 +269,13 @@ def validate_evaluation_result(
 
 
 def combined_frame(*frames: pl.DataFrame) -> pl.DataFrame:
-    return pl.concat(
-        [frame for frame in frames if frame.height > 0],
-        how="vertical",
-    ).sort("block_number")
+    return pl.concat([frame for frame in frames if frame.height > 0], how="vertical").sort(
+        "block_number"
+    )
 
 
 def partial_plan(
-    block_client: Web3BlockClient,
+    block_client: BlockRpcClient,
     *,
     start_block: int,
     end_block: int,

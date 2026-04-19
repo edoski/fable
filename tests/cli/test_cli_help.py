@@ -13,6 +13,7 @@ def test_root_help_lists_commands() -> None:
     assert result.exit_code == 0, result.stdout
     assert "SPICE workflow CLI." in result.stdout
     assert "config" in result.stdout
+    assert "remote" in result.stdout
     assert "show" in result.stdout
     assert "delete" in result.stdout
     assert "acquire" in result.stdout
@@ -54,3 +55,15 @@ def test_config_help_lists_core_authoring_commands() -> None:
     assert "create" not in result.stdout
     assert "update" not in result.stdout
     assert "delete" not in result.stdout
+
+
+def test_remote_help_lists_remote_operator_commands() -> None:
+    result = runner.invoke(app, ["remote", "--help"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "train" in result.stdout
+    assert "tune" in result.stdout
+    assert "evaluate" in result.stdout
+    assert "config" in result.stdout
+    assert "show" in result.stdout
+    assert "refresh" in result.stdout

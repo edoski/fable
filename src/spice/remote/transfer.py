@@ -4,29 +4,35 @@ from __future__ import annotations
 
 import json
 import shlex
+from collections.abc import Callable
+from dataclasses import fields
 from pathlib import Path
+from typing import Any, TypeVar, cast
 from uuid import uuid4
 
 from ..core.errors import SpiceOperatorError, StateConflictError
 from ..core.files import promote_paths_atomic, remove_path
 from ..storage.catalog import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
-from ..storage.query import (
+from ..storage.roots import (
     ArtifactSelector,
     DatasetSelector,
     StudySelector,
+    reindex_root,
     resolve_dataset_record,
     resolve_study_record,
 )
-from ..storage.reindex import reindex_root
 from .shell import (
     RemoteExecutionTarget,
     ensure_remote_success,
     resolve_remote_target,
     run_remote_command,
-    run_remote_python_snippet,
+    run_remote_module,
     run_rsync_from_remote,
     run_rsync_to_remote,
 )
+
+RecordT = TypeVar("RecordT", CatalogDatasetRecord, CatalogStudyRecord)
+RemoteRecordT = TypeVar("RemoteRecordT", CatalogStudyRecord, CatalogArtifactRecord)
 
 
 def push_dataset_to_remote(
@@ -35,16 +41,16 @@ def push_dataset_to_remote(
     selector: DatasetSelector,
     replace: bool,
 ) -> CatalogDatasetRecord:
-    target = resolve_remote_target()
-    record = resolve_dataset_record(storage_root, selector=selector)
-    _push_root_to_remote(
-        local_root=record.root_path,
-        remote_storage_root=target.spec.paths.storage_root,
-        destination_root=_remote_dataset_root(target.spec.paths.storage_root, record),
+    return _push_record_to_remote(
+        storage_root=storage_root,
+        selector=selector,
+        resolve_record=lambda root, selected: resolve_dataset_record(
+            root,
+            selector=cast(DatasetSelector, selected),
+        ),
+        destination_root=_remote_dataset_root,
         replace=replace,
-        target=target,
     )
-    return record
 
 
 def push_study_to_remote(
@@ -53,16 +59,16 @@ def push_study_to_remote(
     selector: StudySelector,
     replace: bool,
 ) -> CatalogStudyRecord:
-    target = resolve_remote_target()
-    record = resolve_study_record(storage_root, selector=selector)
-    _push_root_to_remote(
-        local_root=record.root_path,
-        remote_storage_root=target.spec.paths.storage_root,
-        destination_root=_remote_study_root(target.spec.paths.storage_root, record),
+    return _push_record_to_remote(
+        storage_root=storage_root,
+        selector=selector,
+        resolve_record=lambda root, selected: resolve_study_record(
+            root,
+            selector=cast(StudySelector, selected),
+        ),
+        destination_root=_remote_study_root,
         replace=replace,
-        target=target,
     )
-    return record
 
 
 def pull_artifact_from_remote(
@@ -132,6 +138,26 @@ def _push_root_to_remote(
         raise
 
 
+def _push_record_to_remote(
+    *,
+    storage_root: Path,
+    selector: object,
+    resolve_record: Callable[[Path, object], RecordT],
+    destination_root: Callable[[Path, RecordT], Path],
+    replace: bool,
+) -> RecordT:
+    target = resolve_remote_target()
+    record = resolve_record(storage_root, selector)
+    _push_root_to_remote(
+        local_root=record.root_path,
+        remote_storage_root=target.spec.paths.storage_root,
+        destination_root=destination_root(target.spec.paths.storage_root, record),
+        replace=replace,
+        target=target,
+    )
+    return record
+
+
 def _pull_root_from_remote(
     *,
     target: RemoteExecutionTarget,
@@ -162,24 +188,19 @@ def _prepare_remote_stage(
     staged_root: Path,
     replace: bool,
 ) -> None:
-    code = "\n".join(
-        [
-            "from pathlib import Path",
-            "from spice.core.errors import StateConflictError",
-            f"destination_root = Path({str(destination_root)!r})",
-            f"staged_root = Path({str(staged_root)!r})",
-            f"replace = {replace!r}",
-            "if destination_root.exists() and not replace:",
-            "    raise StateConflictError(f'Destination already exists: {destination_root}')",
-            "staged_root.parent.mkdir(parents=True, exist_ok=True)",
-            "if staged_root.exists():",
-            "    import shutil",
-            "    shutil.rmtree(staged_root)",
-            "staged_root.mkdir(parents=True, exist_ok=True)",
-        ]
-    )
     ensure_remote_success(
-        run_remote_python_snippet(target, _wrap_python_snippet(code)),
+        run_remote_module(
+            target,
+            "spice.remote.actions",
+            [
+                "prepare-stage",
+                "--destination-root",
+                str(destination_root),
+                "--staged-root",
+                str(staged_root),
+                *(["--replace"] if replace else []),
+            ],
+        ),
         action=f"prepare remote stage {destination_root}",
     )
 
@@ -192,24 +213,21 @@ def _finalize_remote_stage(
     staged_root: Path,
     replace: bool,
 ) -> None:
-    code = "\n".join(
-        [
-            "from pathlib import Path",
-            "from spice.core.errors import StateConflictError",
-            "from spice.core.files import promote_paths_atomic",
-            "from spice.storage.reindex import reindex_root",
-            f"storage_root = Path({str(remote_storage_root)!r})",
-            f"destination_root = Path({str(destination_root)!r})",
-            f"staged_root = Path({str(staged_root)!r})",
-            f"replace = {replace!r}",
-            "if destination_root.exists() and not replace:",
-            "    raise StateConflictError(f'Destination already exists: {destination_root}')",
-            "promote_paths_atomic([(destination_root, staged_root)])",
-            "reindex_root(storage_root, root_path=destination_root)",
-        ]
-    )
     ensure_remote_success(
-        run_remote_python_snippet(target, _wrap_python_snippet(code)),
+        run_remote_module(
+            target,
+            "spice.remote.actions",
+            [
+                "finalize-stage",
+                "--storage-root",
+                str(remote_storage_root),
+                "--destination-root",
+                str(destination_root),
+                "--staged-root",
+                str(staged_root),
+                *(["--replace"] if replace else []),
+            ],
+        ),
         action=f"finalize remote transfer {destination_root}",
     )
 
@@ -223,32 +241,12 @@ def _resolve_remote_study_record(
     *,
     selector: StudySelector,
 ) -> CatalogStudyRecord:
-    payload = _resolve_remote_record_payload(
+    return _resolve_remote_record(
         target,
-        selector_type="StudySelector",
-        resolve_fn="resolve_study_record",
-        selector_payload={
-            "chain_name": selector.chain_name,
-            "dataset_name": selector.dataset_name,
-            "feature_set_id": selector.feature_set_id,
-            "prediction_id": selector.prediction_id,
-            "model_id": selector.model_id,
-            "problem_id": selector.problem_id,
-            "study_name": selector.study_name,
-        },
-    )
-    return CatalogStudyRecord(
-        study_id=str(payload["study_id"]),
-        study_name=str(payload["study_name"]),
-        dataset_id=str(payload["dataset_id"]),
-        dataset_name=str(payload["dataset_name"]),
-        chain_name=str(payload["chain_name"]),
-        feature_set_id=str(payload["feature_set_id"]),
-        prediction_id=str(payload["prediction_id"]),
-        model_id=str(payload["model_id"]),
-        problem_id=str(payload["problem_id"]),
-        root_path=Path(str(payload["root_path"])),
-        state_db_path=Path(str(payload["state_db_path"])),
+        command="resolve-study-record",
+        action_label="StudySelector",
+        selector_payload=_selector_payload(selector),
+        record_type=CatalogStudyRecord,
     )
 
 
@@ -257,65 +255,63 @@ def _resolve_remote_artifact_record(
     *,
     selector: ArtifactSelector,
 ) -> CatalogArtifactRecord:
+    return _resolve_remote_record(
+        target,
+        command="resolve-artifact-record",
+        action_label="ArtifactSelector",
+        selector_payload=_selector_payload(selector),
+        record_type=CatalogArtifactRecord,
+        nullable_fields=frozenset({"study_id", "study_name"}),
+    )
+
+
+def _resolve_remote_record(
+    target: RemoteExecutionTarget,
+    *,
+    command: str,
+    action_label: str,
+    selector_payload: dict[str, object | None],
+    record_type: type[RemoteRecordT],
+    nullable_fields: frozenset[str] = frozenset(),
+) -> RemoteRecordT:
     payload = _resolve_remote_record_payload(
         target,
-        selector_type="ArtifactSelector",
-        resolve_fn="resolve_artifact_record",
-        selector_payload={
-            "chain_name": selector.chain_name,
-            "dataset_name": selector.dataset_name,
-            "feature_set_id": selector.feature_set_id,
-            "prediction_id": selector.prediction_id,
-            "model_id": selector.model_id,
-            "problem_id": selector.problem_id,
-            "variant": selector.variant,
-            "study_name": selector.study_name,
-        },
+        command=command,
+        action_label=action_label,
+        selector_payload=selector_payload,
     )
-    return CatalogArtifactRecord(
-        artifact_id=str(payload["artifact_id"]),
-        dataset_id=str(payload["dataset_id"]),
-        dataset_name=str(payload["dataset_name"]),
-        chain_name=str(payload["chain_name"]),
-        feature_set_id=str(payload["feature_set_id"]),
-        prediction_id=str(payload["prediction_id"]),
-        model_id=str(payload["model_id"]),
-        problem_id=str(payload["problem_id"]),
-        variant=str(payload["variant"]),
-        study_id=None if payload["study_id"] is None else str(payload["study_id"]),
-        study_name=None if payload["study_name"] is None else str(payload["study_name"]),
-        root_path=Path(str(payload["root_path"])),
-        state_db_path=Path(str(payload["state_db_path"])),
-    )
+    record_payload: dict[str, object] = {}
+    for field in fields(record_type):
+        value = payload[field.name]
+        if field.name in {"root_path", "state_db_path"}:
+            record_payload[field.name] = Path(str(value))
+        elif field.name in nullable_fields and value is None:
+            record_payload[field.name] = None
+        else:
+            record_payload[field.name] = str(value)
+    return cast(RemoteRecordT, record_type(**cast(Any, record_payload)))
 
 
 def _resolve_remote_record_payload(
     target: RemoteExecutionTarget,
     *,
-    selector_type: str,
-    resolve_fn: str,
+    command: str,
+    action_label: str,
     selector_payload: dict[str, object | None],
 ) -> dict[str, object | None]:
-    code = "\n".join(
-        [
-            "from pathlib import Path",
-            "import json",
-            (
-                "from spice.storage.query import "
-                f"{selector_type}, {resolve_fn}"
-            ),
-            f"storage_root = Path({str(target.spec.paths.storage_root)!r})",
-            f"selector_payload = json.loads({json.dumps(selector_payload)!r})",
-            f"record = {resolve_fn}(storage_root, selector={selector_type}(**selector_payload))",
-            "from dataclasses import asdict",
-            "payload = asdict(record)",
-            "print(json.dumps({key: (str(value) if isinstance(value, Path) else value) "
-            "for key, value in payload.items()}))",
-        ]
-    )
     result = ensure_remote_success(
-        run_remote_python_snippet(target, _wrap_python_snippet(code)),
-        action=f"resolve remote {selector_type}",
+        run_remote_module(
+            target,
+            "spice.remote.actions",
+            [
+                command,
+                "--storage-root",
+                str(target.spec.paths.storage_root),
+                "--selector-json",
+                json.dumps(selector_payload),
+            ],
+        ),
+        action=f"resolve remote {action_label}",
     )
     payload = json.loads(result.stdout)
     if not isinstance(payload, dict):
@@ -323,16 +319,11 @@ def _resolve_remote_record_payload(
     return payload
 
 
-def _wrap_python_snippet(code: str) -> str:
-    return "\n".join(
-        [
-            "try:",
-            *(f"    {line}" for line in code.splitlines()),
-            "except Exception as exc:",
-            "    raise SystemExit(str(exc)) from exc",
-            "",
-        ]
-    )
+def _selector_payload(selector: StudySelector | ArtifactSelector) -> dict[str, object | None]:
+    return {
+        field.name: cast(object | None, getattr(selector, field.name))
+        for field in fields(selector)
+    }
 
 
 def _remote_dataset_root(remote_storage_root: Path, record: CatalogDatasetRecord) -> Path:

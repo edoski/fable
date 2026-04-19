@@ -9,6 +9,7 @@ from spice.modeling.pipeline import build_training_spec, prepare_training_datase
 from spice.modeling.representations import SEQUENCE_INPUT_REPRESENTATION_ID
 from spice.modeling.training import evaluate_model
 from spice.storage.artifact import list_training_epochs, load_training_summary
+from spice.storage.layout import resolve_workflow_paths
 from spice.workflows.train import run as run_train
 
 
@@ -19,16 +20,17 @@ def test_training_summary_metrics_match_replayed_saved_artifact(
     seed_history_dataset,
 ) -> None:
     config = load_test_train_config(tmp_path, override=model_workflow_override())
+    paths = resolve_workflow_paths(config)
     seed_history_dataset(config)
 
     run_train(config, reporter=NullReporter())
 
-    summary = load_training_summary(config.paths.artifact_state_db)
+    summary = load_training_summary(paths.artifact_state_db)
     assert summary is not None
 
-    loaded_artifact = load_training_artifact(config.paths.artifact_root)
+    loaded_artifact = load_training_artifact(paths.artifact_root)
     spec = build_training_spec(config)
-    prepared = prepare_training_dataset(load_block_frame(config.paths.history_dir), spec=spec)
+    prepared = prepare_training_dataset(load_block_frame(paths.history_dir), spec=spec)
     prediction_training_state = spec.prediction_contract.fit_training_state(
         prepared.store,
         prepared.split_indices.train,
@@ -65,7 +67,7 @@ def test_training_summary_metrics_match_replayed_saved_artifact(
     )
     assert summary.runtime.test_metrics.values == pytest.approx(test_metrics.values)
 
-    epochs = list_training_epochs(config.paths.artifact_state_db)
+    epochs = list_training_epochs(paths.artifact_state_db)
     assert epochs
     assert epochs[summary.runtime.best_epoch - 1].epoch == summary.runtime.best_epoch
     primary_metric_id = spec.prediction_contract.primary_metric_id

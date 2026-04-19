@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import SupportsInt, TypedDict, cast
 
-import pandera.polars as pa
 import polars as pl
 from polars.datatypes.classes import DataTypeClass
 
@@ -31,7 +30,7 @@ class CanonicalBlockFieldSpec:
 
 
 def _as_int(value: object) -> int:
-    return int(cast(SupportsInt | str | bytes | bytearray, value))
+    return int(cast(SupportsInt, value))
 
 
 CANONICAL_BLOCK_FIELDS = (
@@ -64,27 +63,6 @@ CANONICAL_BLOCK_FIELDS = (
 BLOCK_SCHEMA = {field.name: field.dtype for field in CANONICAL_BLOCK_FIELDS}
 BLOCK_COLUMNS = tuple(BLOCK_SCHEMA)
 
-BLOCK_FRAME_SCHEMA = pa.DataFrameSchema(
-    {
-        column: pa.Column(dtype, nullable=False)
-        for column, dtype in BLOCK_SCHEMA.items()
-    },
-    strict=True,
-    unique="block_number",
-    checks=[
-        pa.Check(
-            lambda data: data.lazyframe.collect().height > 0,
-            error="Block dataset is empty",
-        ),
-        pa.Check(
-            lambda data: (
-                data.lazyframe.select(pl.col("chain_id").n_unique()).collect().item() == 1
-            ),
-            error="Block dataset must contain exactly one chain_id",
-        ),
-    ],
-)
-
 
 def _validate_contract() -> None:
     field_names = tuple(field.name for field in CANONICAL_BLOCK_FIELDS)
@@ -109,12 +87,37 @@ def build_canonical_block_row(block: RpcBlock, chain: ChainSpec) -> CanonicalBlo
 
 
 def canonicalize_block_frame(frame: pl.DataFrame) -> pl.DataFrame:
+    return _select_canonical_columns(frame, strict_columns=False)
+
+
+def validate_block_frame(frame: pl.DataFrame) -> None:
+    if frame.height == 0:
+        raise ValueError("Block dataset is empty")
+    canonical = _select_canonical_columns(frame, strict_columns=True)
+    if canonical["block_number"].n_unique() != canonical.height:
+        raise ValueError("Block dataset must have unique block_number values")
+    if canonical["chain_id"].n_unique() != 1:
+        raise ValueError("Block dataset must contain exactly one chain_id")
+
+
+def _select_canonical_columns(
+    frame: pl.DataFrame,
+    *,
+    strict_columns: bool,
+) -> pl.DataFrame:
     missing = [column for column in BLOCK_COLUMNS if column not in frame.columns]
     if missing:
         raise ValueError(
             "Block dataset is missing required columns for canonical output: "
             + ", ".join(missing)
         )
+    if strict_columns:
+        unexpected = [column for column in frame.columns if column not in BLOCK_COLUMNS]
+        if unexpected:
+            raise ValueError(
+                "Block dataset contains unexpected columns for canonical output: "
+                + ", ".join(unexpected)
+            )
 
     return frame.select(
         [
@@ -122,10 +125,6 @@ def canonicalize_block_frame(frame: pl.DataFrame) -> pl.DataFrame:
             for column, dtype in BLOCK_SCHEMA.items()
         ]
     )
-
-
-def validate_block_frame(frame: pl.DataFrame) -> None:
-    BLOCK_FRAME_SCHEMA.validate(frame)
 
 
 _validate_contract()

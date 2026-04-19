@@ -7,7 +7,7 @@ import torch
 from numpy.typing import NDArray
 
 from ..core.reporting import NullReporter, Reporter
-from ..prediction import CompiledPredictionContract
+from ..prediction import CompiledPredictionContract, DecodedOffsets
 from ..temporal.problem_store import CompiledProblemStore
 from ._runtime import (
     CompiledRepresentationContract,
@@ -32,7 +32,7 @@ def predict_with_model(
     batch_size: int,
     device: str,
     reporter: Reporter | None = None,
-) -> object:
+) -> DecodedOffsets:
     reporter = reporter or NullReporter()
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")

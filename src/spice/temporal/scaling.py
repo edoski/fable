@@ -102,21 +102,6 @@ def fit_row_standard_scaler(
     return _scaler_stats(means, _safe_scales(variances))
 
 
-def fit_standard_scaler(
-    feature_matrix: FloatMatrix,
-    *,
-    context_start_rows: IntVector,
-    anchor_rows: IntVector,
-    sample_indices: IntVector,
-) -> ScalerStats:
-    return fit_window_weighted_standard_scaler(
-        feature_matrix,
-        context_start_rows=context_start_rows,
-        anchor_rows=anchor_rows,
-        sample_indices=sample_indices,
-    )
-
-
 def transform_feature_matrix(feature_matrix: FloatMatrix, scaler: ScalerStats) -> FloatMatrix:
     means = np.asarray(scaler.means, dtype=np.float32)
     scales = np.asarray(scaler.scales, dtype=np.float32)

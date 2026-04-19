@@ -6,7 +6,7 @@ import math
 import os
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 import numpy as np
 import torch
@@ -216,21 +216,27 @@ def _build_host_dataloader_source(
         shuffle=shuffle,
     )
     num_workers = _resolve_host_dataloader_workers(resolved_device)
-    loader_kwargs: dict[str, object] = {
-        "batch_sampler": batch_sampler,
-        "collate_fn": _HostPredictionBatchCollator(prepared),
-        "num_workers": num_workers,
-        "pin_memory": resolved_device.type == "cuda",
-    }
+    collate_fn = _HostPredictionBatchCollator(prepared)
     if num_workers > 0:
-        loader_kwargs["persistent_workers"] = True
-        loader_kwargs["prefetch_factor"] = _CUDA_HOST_DATALOADER_PREFETCH_FACTOR
-    loader = DataLoader(
-        _SamplePositionDataset(prepared.sample_count),
-        **loader_kwargs,
-    )
+        loader = DataLoader(
+            _SamplePositionDataset(prepared.sample_count),
+            batch_sampler=batch_sampler,
+            collate_fn=collate_fn,
+            num_workers=num_workers,
+            pin_memory=resolved_device.type == "cuda",
+            persistent_workers=True,
+            prefetch_factor=_CUDA_HOST_DATALOADER_PREFETCH_FACTOR,
+        )
+    else:
+        loader = DataLoader(
+            _SamplePositionDataset(prepared.sample_count),
+            batch_sampler=batch_sampler,
+            collate_fn=collate_fn,
+            num_workers=0,
+            pin_memory=resolved_device.type == "cuda",
+        )
     return HostDataLoaderBatchSource(
-        _loader=loader,
+        _loader=cast(DataLoader[PredictionBatch], loader),
         _batch_sampler=batch_sampler,
         input_storage_mode_id=prepared.input_storage_mode_id,
         target_storage_mode_id=prepared.target_storage_mode_id,

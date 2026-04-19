@@ -87,7 +87,7 @@ def artifact_sections(
                 ("prediction", manifest.prediction_id),
                 ("dataset", manifest.dataset_name),
                 ("dataset id", manifest.dataset_id),
-                ("chain", manifest.chain.name),
+                ("chain", manifest.chain_name),
                 ("problem", manifest.problem_id),
                 ("dataset builder", manifest.dataset_builder_id),
                 ("feature set", manifest.feature_set_id),

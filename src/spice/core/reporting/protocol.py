@@ -67,7 +67,6 @@ class Reporter(Protocol):
         *,
         label: str | None = None,
         status: str | None = None,
-        progress_finalized: bool | None = None,
         total: int | None = None,
         unit: str | None = None,
         completed: int | None = None,

@@ -14,6 +14,7 @@ from ..corpus.io import iter_block_files
 from ..corpus.validation import BlockDatasetValidationReport
 from ..features import CompiledFeatureContract
 from ..semantics import CorpusSemantics
+from ..storage.layout import resolve_workflow_paths
 from ..temporal.contracts import CompiledProblemContract
 
 
@@ -228,9 +229,10 @@ def build_dataset_manifest(
     history_validation: BlockDatasetValidationReport,
     evaluation_validation: BlockDatasetValidationReport,
 ) -> DatasetManifest:
+    paths = resolve_workflow_paths(config)
     return DatasetManifest(
         dataset=DatasetIdentity(
-            id=config.paths.corpus_id,
+            id=paths.corpus_id,
             name=config.dataset.name,
         ),
         chain=ChainMetadata(

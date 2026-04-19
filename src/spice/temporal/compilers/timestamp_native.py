@@ -13,7 +13,7 @@ from ...features import (
     FeaturePrerequisites,
     ResolvedFeatureTable,
 )
-from ..contracts import CompiledProblemContract, TimestampRuntimeMetadata
+from ..contracts import CompiledProblemContract, ProblemRuntimeMetadata, TimestampRuntimeMetadata
 from ..problem_store import CompiledProblemStore
 from .base import ProblemCompilerConfig
 
@@ -77,10 +77,11 @@ class TimestampNativeCompiledProblemContract(CompiledProblemContract):
         feature_table: ResolvedFeatureTable,
         delay_seconds: int,
         *,
-        compiler_runtime_metadata: TimestampRuntimeMetadata,
+        compiler_runtime_metadata: ProblemRuntimeMetadata,
         max_candidate_slots: int,
     ) -> CompiledProblemStore:
-        del compiler_runtime_metadata
+        if not isinstance(compiler_runtime_metadata, TimestampRuntimeMetadata):
+            raise TypeError("timestamp_native requires TimestampRuntimeMetadata")
         if delay_seconds <= 0:
             raise ValueError("delay_seconds must be positive")
         if delay_seconds > self.max_delay_seconds:

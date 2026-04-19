@@ -110,7 +110,6 @@ def compile_dataset_builder(
         raise ConfigResolutionError("dataset_builder.id must be standard_temporal")
     return CompiledDatasetBuilderContract(
         dataset_builder_id="standard_temporal",
-        config_payload=config.model_dump(mode="json", exclude_none=True),
         prepare_training_fn=prepare_training_dataset,
         prepare_inference_fn=prepare_inference_dataset,
     )

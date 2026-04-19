@@ -18,12 +18,10 @@ dependencies = [
   "torch>=2.5",
   "pydantic>=2.12",
   "PyYAML>=6.0",
-  "sf-hamilton>=1.89",
   "typer>=0.16",
   "optuna>=4.8",
   "SQLAlchemy>=2.0",
   "web3>=7.15",
-  "pandera>=0.30",
 ]
 
 [tool.uv.sources]

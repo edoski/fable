@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import torch
 import pytest
+import torch
 
-from spice.core.errors import SpiceOperatorError
 from spice.config import CompileMode, TrainingPrecision
+from spice.core.errors import SpiceOperatorError
+from spice.modeling._runtime import ensure_device_runtime_ready, resolve_compile_enabled
 from spice.modeling.families.lstm import LstmModelConfig
+from spice.modeling.families.registry import resolve_default_precision
 from spice.modeling.families.transformer import TransformerModelConfig
 from spice.modeling.families.transformer_lstm import TransformerLstmModelConfig
-from spice.modeling._runtime import ensure_device_runtime_ready, resolve_compile_enabled
-from spice.modeling.families.registry import resolve_default_precision
 
 
 def test_resolve_compile_enabled_skips_auto_compile_on_small_cuda_gpu(

@@ -16,7 +16,6 @@ from ..config import (
     PredictionConfig,
     ProblemSpec,
     SplitConfig,
-    TrainConfig,
     TrainingConfig,
     TunedParameterSet,
     TuningSpaceConfig,
@@ -188,18 +187,3 @@ def trial_params_payload(params: TunedParameterSet) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise TypeError("TunedParameterSet did not serialize to a mapping payload")
     return payload
-
-
-def tuned_train_request_identity(config: TrainConfig) -> dict[str, object]:
-    return {
-        "study_name": config.study.name,
-        "study_id": config.paths.study_id,
-        "dataset_builder": config.dataset_builder.model_dump(mode="json", exclude_none=True),
-        "prediction": config.prediction.model_dump(mode="json"),
-        "chain_name": config.chain.name,
-        "dataset_id": config.paths.corpus_id,
-        "dataset_name": config.dataset.name,
-        "problem": config.problem.model_dump(mode="json"),
-        "feature_set": config.feature_set.model_dump(mode="json"),
-        "model": config.model.model_dump(mode="json", exclude_none=True),
-    }

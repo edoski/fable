@@ -1,6 +1,6 @@
 # pyright: strict
 
-"""Config registry helpers for query and direct file editing."""
+"""Config query and file-edit helpers for the fixed YAML spec set."""
 
 from __future__ import annotations
 
@@ -15,15 +15,14 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from ..core.errors import ConfigResolutionError
-from ..modeling.dataset_builders import coerce_dataset_builder_config
 from ..modeling.families.registry import coerce_model_config
 from .models import (
     ChainSpec,
-    ConfigModel,
     DatasetSpec,
     ExecutionSpec,
     PresetSpec,
     ProviderSpec,
+    coerce_dataset_builder_config,
     coerce_feature_set_config,
     coerce_prediction_config,
     coerce_problem_spec,
@@ -47,115 +46,111 @@ class ConfigGroup(StrEnum):
     TUNING_SPACE = "tuning-space"
 
 
-Validator = Callable[[dict[str, object]], BaseModel | dict[str, object]]
+ValidateGroupPayload = Callable[[dict[str, object]], BaseModel | dict[str, object]]
 
 
 @dataclass(frozen=True, slots=True)
-class ConfigGroupDefinition:
+class GroupSpec:
     token: str
     directory: str
+    seed_name: str
+    validate: ValidateGroupPayload
     identity_field: str | None = None
-    validator: Validator | None = None
-    seed_template_name: str | None = None
     seed_from_requested_name: bool = False
 
 
-def _identity_validator(model_type: type[ConfigModel]) -> Validator:
-    def _validate(payload: dict[str, object]) -> BaseModel:
-        return model_type.model_validate(payload)
-
-    return _validate
-
-
-_GROUP_DEFINITIONS = (
-    ConfigGroupDefinition(
+_GROUP_SPECS = (
+    GroupSpec(
         token=ConfigGroup.CHAIN.value,
         directory="chain",
+        seed_name="ethereum",
+        validate=ChainSpec.model_validate,
         identity_field="name",
-        validator=_identity_validator(ChainSpec),
-        seed_template_name="ethereum",
         seed_from_requested_name=True,
     ),
-    ConfigGroupDefinition(
+    GroupSpec(
         token=ConfigGroup.DATASET.value,
         directory="dataset",
+        seed_name="icdcs_2026",
+        validate=DatasetSpec.model_validate,
         identity_field="name",
-        validator=_identity_validator(DatasetSpec),
-        seed_template_name="icdcs_2026",
         seed_from_requested_name=True,
     ),
-    ConfigGroupDefinition(
+    GroupSpec(
         token=ConfigGroup.DATASET_BUILDER.value,
         directory="dataset_builder",
+        seed_name="standard_temporal",
+        validate=coerce_dataset_builder_config,
         identity_field="id",
-        validator=lambda payload: coerce_dataset_builder_config(payload),
-        seed_template_name="standard_temporal",
         seed_from_requested_name=True,
     ),
-    ConfigGroupDefinition(
+    GroupSpec(
         token=ConfigGroup.EXECUTION.value,
         directory="execution",
+        seed_name="disi_l40",
+        validate=ExecutionSpec.model_validate,
         identity_field="id",
-        validator=_identity_validator(ExecutionSpec),
-        seed_template_name="disi_l40",
         seed_from_requested_name=True,
     ),
-    ConfigGroupDefinition(
+    GroupSpec(
         token=ConfigGroup.FEATURE_SET.value,
         directory="feature_set",
+        seed_name="icdcs_2026",
+        validate=coerce_feature_set_config,
         identity_field="id",
-        validator=lambda payload: coerce_feature_set_config(payload),
-        seed_template_name="icdcs_2026",
         seed_from_requested_name=True,
     ),
-    ConfigGroupDefinition(
+    GroupSpec(
         token=ConfigGroup.MODEL.value,
         directory="model",
+        seed_name="lstm",
+        validate=coerce_model_config,
         identity_field="id",
-        validator=lambda payload: coerce_model_config(payload),
-        seed_template_name="lstm",
         seed_from_requested_name=True,
     ),
-    ConfigGroupDefinition(
+    GroupSpec(
         token=ConfigGroup.PREDICTION.value,
         directory="prediction",
+        seed_name="candidate_offset_selection",
+        validate=coerce_prediction_config,
         identity_field="id",
-        validator=lambda payload: coerce_prediction_config(payload),
-        seed_template_name="candidate_offset_selection",
         seed_from_requested_name=True,
     ),
-    ConfigGroupDefinition(
+    GroupSpec(
         token=ConfigGroup.PRESET.value,
         directory="preset",
-        validator=_identity_validator(PresetSpec),
-        seed_template_name="icdcs_2026",
+        seed_name="icdcs_2026",
+        validate=PresetSpec.model_validate,
     ),
-    ConfigGroupDefinition(
+    GroupSpec(
         token=ConfigGroup.PROBLEM.value,
         directory="problem",
+        seed_name="icdcs_2026",
+        validate=coerce_problem_spec,
         identity_field="id",
-        validator=lambda payload: coerce_problem_spec(payload),
-        seed_template_name="icdcs_2026",
         seed_from_requested_name=True,
     ),
-    ConfigGroupDefinition(
+    GroupSpec(
         token=ConfigGroup.PROVIDER.value,
         directory="provider",
+        seed_name="publicnode",
+        validate=ProviderSpec.model_validate,
         identity_field="name",
-        validator=_identity_validator(ProviderSpec),
-        seed_template_name="publicnode",
         seed_from_requested_name=True,
     ),
-    ConfigGroupDefinition(
+    GroupSpec(
         token=ConfigGroup.TUNING_SPACE.value,
         directory="tuning_space",
-        validator=None,
-        seed_template_name="lstm_default",
+        seed_name="lstm_default",
+        validate=lambda payload: _canonicalize_mapping(payload),
         seed_from_requested_name=True,
     ),
 )
-_GROUP_BY_TOKEN = {definition.token: definition for definition in _GROUP_DEFINITIONS}
-_GROUP_BY_DIRECTORY = {definition.directory: definition for definition in _GROUP_DEFINITIONS}
+_GROUP_SPEC_BY_TOKEN = {spec.token: spec for spec in _GROUP_SPECS}
+_GROUP_SPEC_BY_DIRECTORY = {spec.directory: spec for spec in _GROUP_SPECS}
+_NAMED_GROUP_KEYS = tuple(
+    spec.directory for spec in _GROUP_SPECS if spec.directory != "preset"
+)
 
 
 def config_root() -> Path:
@@ -163,26 +158,19 @@ def config_root() -> Path:
 
 
 def named_group_keys() -> tuple[str, ...]:
-    return tuple(
-        definition.directory
-        for definition in _GROUP_DEFINITIONS
-        if definition.directory != ConfigGroup.PRESET.value
-    )
+    return _NAMED_GROUP_KEYS
+
+
+def _group_spec(group: str) -> GroupSpec:
+    if group in _GROUP_SPEC_BY_TOKEN:
+        return _GROUP_SPEC_BY_TOKEN[group]
+    if group in _GROUP_SPEC_BY_DIRECTORY:
+        return _GROUP_SPEC_BY_DIRECTORY[group]
+    raise ConfigResolutionError(f"Unsupported config group: {group}")
 
 
 def normalize_group_name(group: str) -> str:
-    if group in _GROUP_BY_TOKEN:
-        return _GROUP_BY_TOKEN[group].directory
-    if group in _GROUP_BY_DIRECTORY:
-        return group
-    raise ConfigResolutionError(f"Unsupported config group: {group}")
-
-
-def group_definition(group: str) -> ConfigGroupDefinition:
-    normalized = normalize_group_name(group)
-    if normalized in _GROUP_BY_DIRECTORY:
-        return _GROUP_BY_DIRECTORY[normalized]
-    raise ConfigResolutionError(f"Unsupported config group: {group}")
+    return _group_spec(group).directory
 
 
 def group_path(group: str) -> Path:
@@ -213,23 +201,22 @@ def load_named_group(name: str, group: str) -> dict[str, object]:
 
 
 def list_group_names(group: str) -> list[str]:
-    directory = group_path(group)
-    return sorted(path.stem for path in directory.glob("*.yaml"))
+    return sorted(path.stem for path in group_path(group).glob("*.yaml"))
 
 
-def show_named_group(group_token: str, name: str) -> str:
-    definition = group_definition(group_token)
-    payload = load_named_group(name, definition.directory)
-    validated = _validate_payload(definition, name=name, payload=payload)
+def show_named_group(group: str, name: str) -> str:
+    normalized_group = normalize_group_name(group)
+    payload = load_named_group(name, normalized_group)
+    validated = _validate_payload(normalized_group, name=name, payload=payload)
     return dump_canonical_yaml(validated)
 
 
-def ensure_named_group_file(group_token: str, name: str) -> Path:
-    definition = group_definition(group_token)
-    path = spec_path(definition.directory, name)
+def ensure_named_group_file(group: str, name: str) -> Path:
+    normalized_group = normalize_group_name(group)
+    path = spec_path(normalized_group, name)
     if path.is_file():
         return path
-    payload = _seed_payload(definition, name=name)
+    payload = _seed_payload(normalized_group, name=name)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(dump_canonical_yaml(payload), encoding="utf-8")
     return path
@@ -242,74 +229,57 @@ def dump_canonical_yaml(value: BaseModel | dict[str, object]) -> str:
     return yaml.safe_dump(payload, sort_keys=False, allow_unicode=False)
 
 
-def _seed_payload(definition: ConfigGroupDefinition, *, name: str) -> dict[str, object]:
-    template = _seed_template(definition, name=name)
-    if definition.identity_field is not None:
-        template[definition.identity_field] = name
-    validated = _validate_payload(definition, name=name, payload=template)
+def _seed_payload(group: str, *, name: str) -> dict[str, object]:
+    spec = _group_spec(group)
+    template = _seed_template(group, name=name)
+    identity_field = spec.identity_field
+    if identity_field is not None:
+        template[identity_field] = name
+    validated = _validate_payload(group, name=name, payload=template)
     if isinstance(validated, BaseModel):
         return _canonicalize_model(validated)
     return _canonicalize_mapping(validated)
 
 
-def _seed_template(definition: ConfigGroupDefinition, *, name: str) -> dict[str, object]:
-    for candidate in _seed_candidate_paths(definition, name=name):
+def _seed_template(group: str, *, name: str) -> dict[str, object]:
+    spec = _group_spec(group)
+    package_group_root = _PACKAGE_CONF_ROOT / spec.directory
+    candidates: list[Path] = []
+    if spec.seed_from_requested_name:
+        candidates.append(package_group_root / f"{name}.yaml")
+    candidates.append(package_group_root / f"{spec.seed_name}.yaml")
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
         if candidate.is_file():
             return load_yaml_mapping(candidate)
-    raise ConfigResolutionError(f"Missing seed template for config group: {definition.directory}")
-
-
-def _seed_candidate_paths(definition: ConfigGroupDefinition, *, name: str) -> tuple[Path, ...]:
-    package_group_root = _PACKAGE_CONF_ROOT / definition.directory
-    candidates: list[Path] = []
-    if definition.seed_from_requested_name:
-        candidates.append(package_group_root / f"{name}.yaml")
-    if definition.seed_template_name is not None:
-        candidates.append(package_group_root / f"{definition.seed_template_name}.yaml")
-    unique: list[Path] = []
-    seen: set[Path] = set()
-    for path in candidates:
-        if path in seen:
-            continue
-        seen.add(path)
-        unique.append(path)
-    return tuple(unique)
+    raise ConfigResolutionError(f"Missing seed template for config group: {group}")
 
 
 def _validate_payload(
-    definition: ConfigGroupDefinition,
+    group: str,
     *,
     name: str,
     payload: dict[str, object],
 ) -> BaseModel | dict[str, object]:
-    if definition.validator is None:
-        return _canonicalize_mapping(payload)
+    spec = _group_spec(group)
     try:
-        validated = definition.validator(dict(payload))
+        validated = spec.validate(payload)
     except ConfigResolutionError:
         raise
     except (ValidationError, ValueError, TypeError) as exc:
         raise ConfigResolutionError(str(exc)) from exc
-    _validate_identity(definition, name=name, value=validated)
-    return validated
-
-
-def _validate_identity(
-    definition: ConfigGroupDefinition,
-    *,
-    name: str,
-    value: BaseModel | dict[str, object],
-) -> None:
-    if definition.identity_field is None:
-        return
-    if isinstance(value, BaseModel):
-        identity_value = getattr(value, definition.identity_field)
+    if spec.identity_field is None:
+        return validated
+    if isinstance(validated, BaseModel):
+        identity_value = getattr(validated, spec.identity_field)
     else:
-        identity_value = value.get(definition.identity_field)
+        identity_value = validated.get(spec.identity_field)
     if identity_value != name:
-        raise ConfigResolutionError(
-            f"{definition.token} {definition.identity_field} must match spec name: {name}"
-        )
+        raise ConfigResolutionError(f"{group} {spec.identity_field} must match spec name: {name}")
+    return validated
 
 
 def _canonicalize_model(model: BaseModel) -> dict[str, object]:
@@ -324,7 +294,9 @@ def _canonicalize_model(model: BaseModel) -> dict[str, object]:
 
 def _canonicalize_mapping(payload: dict[str, object]) -> dict[str, object]:
     return {
-        str(key): _canonicalize_value(value) for key, value in payload.items() if value is not None
+        str(key): _canonicalize_value(value)
+        for key, value in payload.items()
+        if value is not None
     }
 
 
@@ -351,9 +323,8 @@ def _mapping_payload(payload: Mapping[object, object]) -> dict[str, object]:
 
 
 def _canonicalize_unknown_mapping(payload: Mapping[object, object]) -> dict[str, object]:
-    items = sorted(payload.items(), key=lambda item: str(item[0]))
     return {
         str(key): _canonicalize_value(value)
-        for key, value in items
+        for key, value in sorted(payload.items(), key=lambda item: str(item[0]))
         if value is not None
     }

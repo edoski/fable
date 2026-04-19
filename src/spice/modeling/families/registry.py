@@ -1,10 +1,10 @@
-"""Open registry for model-family specs."""
+"""Closed dispatch for supported model families."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
+from typing import Any, Generic, TypeVar, cast
 
 import optuna
 import torch
@@ -16,14 +16,10 @@ from ...config.models import (
     TuningSpaceConfig,
     TuningTrainingSearchSpace,
 )
-from ...core.components import ComponentCatalog
 from ...core.errors import ConfigResolutionError
 from ...prediction import PredictionOutputSpec
 from ..models import TemporalModel
 from .base import ModelConfig, ModelTuningSpaceConfig, TunedModelParams
-
-if TYPE_CHECKING:
-    pass
 
 ModelConfigT = TypeVar("ModelConfigT", bound=ModelConfig)
 ModelTuningSpaceT = TypeVar("ModelTuningSpaceT", bound=ModelTuningSpaceConfig)
@@ -48,28 +44,24 @@ class ModelSpec(Generic[ModelConfigT, ModelTuningSpaceT, ModelTunedParamsT]):
         return self.resolve_representation_id(config)
 
 
-_MODEL_SPECS = ComponentCatalog[ModelSpec[Any, Any, Any]](
-    kind_label="model",
-    entry_point_group="spice.models",
-)
-
-
-def register_model_spec(spec: ModelSpec[Any, Any, Any]) -> None:
-    _MODEL_SPECS.register(spec.id, spec)
-
-
-def _load_builtin_model_specs() -> None:
-    from . import lstm, transformer, transformer_lstm  # noqa: F401
-
-
-_MODEL_SPECS.configure_builtin_loader(_load_builtin_model_specs)
+_KNOWN_MODEL_IDS = ("lstm", "transformer", "transformer_lstm")
 
 
 def model_spec(model_id: str) -> ModelSpec[Any, Any, Any]:
-    try:
-        return _MODEL_SPECS.get(model_id)
-    except ConfigResolutionError as exc:
-        raise ConfigResolutionError(str(exc).replace("Unknown model", "Unknown model.id")) from exc
+    if model_id == "lstm":
+        from .lstm import MODEL_SPEC
+
+        return MODEL_SPEC
+    if model_id == "transformer":
+        from .transformer import MODEL_SPEC
+
+        return MODEL_SPEC
+    if model_id == "transformer_lstm":
+        from .transformer_lstm import MODEL_SPEC
+
+        return MODEL_SPEC
+    known = ", ".join(_KNOWN_MODEL_IDS)
+    raise ConfigResolutionError(f"Unknown model.id: {model_id}. Known values: {known}")
 
 
 def coerce_model_config(payload: Mapping[str, object] | ModelConfig[str]) -> ModelConfig[str]:

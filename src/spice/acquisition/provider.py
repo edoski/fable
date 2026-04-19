@@ -11,7 +11,7 @@ from web3._utils.batching import sort_batch_response_by_response_ids
 from web3.middleware import ExtraDataToPOAMiddleware
 from web3.providers.rpc import AsyncHTTPProvider
 from web3.providers.rpc.utils import ExceptionRetryConfiguration, check_if_retry_on_failure
-from web3.types import RPCEndpoint
+from web3.types import RPCEndpoint, RPCResponse
 
 from ..config import ChainSpec, ProviderSpec
 from ..core.errors import ConfigResolutionError
@@ -52,7 +52,7 @@ class _ManagedAsyncSessionManager:
         self,
         endpoint_uri: str,
         data: bytes,
-        **kwargs,
+        **kwargs: Any,
     ) -> bytes:
         session = await self.async_cache_and_return_session(
             endpoint_uri,
@@ -71,7 +71,7 @@ class _ManagedAsyncSessionManager:
 
 
 class ManagedAsyncHTTPProvider(AsyncHTTPProvider):
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._request_session_manager = _ManagedAsyncSessionManager()
 
@@ -121,10 +121,13 @@ class ManagedAsyncHTTPProvider(AsyncHTTPProvider):
             **self._request_kwargs_mapping(),
         )
 
-    async def _make_request(self, method, request_data: bytes) -> bytes:
+    async def _make_request(self, method: RPCEndpoint, request_data: bytes) -> bytes:
         return await self._request_with_retries(request_data, method=method)
 
-    async def make_batch_request(self, batch_requests):
+    async def make_batch_request(
+        self,
+        batch_requests: list[tuple[RPCEndpoint, Any]],
+    ) -> list[RPCResponse] | RPCResponse:
         request_data = self.encode_batch_rpc_request(batch_requests)
         raw_response = await self._request_with_retries(request_data)
         response = self.decode_rpc_response(raw_response)
@@ -138,7 +141,6 @@ class ManagedAsyncHTTPProvider(AsyncHTTPProvider):
 
 def build_async_web3(provider: ProviderSpec, chain: ChainSpec) -> AsyncWeb3:
     endpoint = provider.endpoint_for(chain.name)
-
     if not endpoint.startswith(("http://", "https://")):
         raise ConfigResolutionError(
             f"Unsupported RPC endpoint format for provider {provider.name}: {endpoint}"
@@ -150,7 +152,6 @@ def build_async_web3(provider: ProviderSpec, chain: ChainSpec) -> AsyncWeb3:
             exception_retry_configuration=_retry_configuration(provider),
         )
     )
-
     if chain.runtime.uses_poa_extra_data:
         web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     return web3

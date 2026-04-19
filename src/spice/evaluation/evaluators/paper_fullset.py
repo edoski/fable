@@ -1,16 +1,12 @@
 """Deterministic full-set evaluator."""
 
-from __future__ import annotations
-
-from typing import Literal
-
 import numpy as np
 from numpy.typing import NDArray
 
 from ...core.reporting import NullReporter, Reporter
+from ...prediction.contracts import DecodedOffsets
 from ...temporal.problem_store import CompiledProblemStore
-from ..base import EvaluationSummary, EvaluatorConfig
-from ..contracts import CompiledEvaluatorContract
+from ..base import CompiledEvaluatorContract, EvaluationSummary, EvaluatorConfig
 from .shared import EVALUATION_METRIC_DESCRIPTORS, summarize_runs, summarize_selected_costs
 
 IntVector = NDArray[np.int64]
@@ -18,13 +14,11 @@ IntVector = NDArray[np.int64]
 
 def _run(
     store: CompiledProblemStore,
-    decoded_offsets: object,
+    decoded_offsets: DecodedOffsets,
     sample_indices: IntVector,
     reporter: Reporter | None,
 ) -> EvaluationSummary:
     reporter = reporter or NullReporter()
-    if not isinstance(decoded_offsets, list):
-        raise TypeError("paper_fullset decoded_offsets must be a list")
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
     task_id = reporter.start_task("evaluate full set")
@@ -39,8 +33,8 @@ def _run(
     return summarize_runs([run])
 
 
-class PaperFullsetEvaluatorConfig(EvaluatorConfig[Literal["paper_fullset"]]):
-    id: Literal["paper_fullset"] = "paper_fullset"
+class PaperFullsetEvaluatorConfig(EvaluatorConfig):
+    id: str = "paper_fullset"
 
 
 def compile_evaluator(config: PaperFullsetEvaluatorConfig) -> CompiledEvaluatorContract:

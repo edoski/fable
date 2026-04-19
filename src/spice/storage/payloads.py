@@ -41,7 +41,7 @@ class SingletonPayloadStore(Generic[T]):
         row = conn.execute(select(self.table.c.payload)).mappings().first()
         if row is None:
             return None
-        return self.codec.decode(_payload_mapping(row["payload"], table_name=self.table.name))
+        return self.codec.decode(mapping_payload(row["payload"], label=self.table.name))
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,13 +66,11 @@ class SequencePayloadStore(Generic[T]):
         rows = conn.execute(select(self.table.c.payload).order_by(order_by)).mappings().all()
         values: list[T] = []
         for row in rows:
-            values.append(
-                self.codec.decode(_payload_mapping(row["payload"], table_name=self.table.name))
-            )
+            values.append(self.codec.decode(mapping_payload(row["payload"], label=self.table.name)))
         return values
 
 
-def _payload_mapping(payload: object, *, table_name: str) -> dict[str, object]:
+def mapping_payload(payload: object, *, label: str) -> dict[str, object]:
     if not isinstance(payload, dict):
-        raise TypeError(f"{table_name}.payload must be a mapping")
+        raise TypeError(f"{label}.payload must be a mapping")
     return {str(key): value for key, value in cast(Mapping[object, object], payload).items()}

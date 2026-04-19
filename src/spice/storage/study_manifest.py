@@ -7,13 +7,13 @@ from pathlib import Path
 from sqlalchemy import select
 
 from ..config import (
-    coerce_dataset_builder_config,
     ModelConfig,
     SplitConfig,
     TrainConfig,
     TrainingConfig,
     TuneConfig,
     TuningSpaceConfig,
+    coerce_dataset_builder_config,
     coerce_feature_set_config,
     coerce_prediction_config,
     coerce_problem_spec,
@@ -38,9 +38,10 @@ from ..semantics import StudySemantics
 from ..temporal.contracts import compile_problem_contract
 from ..temporal.input_normalization import compile_input_normalization_contract
 from .engine import STUDY_ROOT_KIND, create_state_engine, ensure_state_db
-from .payloads import PayloadCodec, SingletonPayloadStore
+from .layout import resolve_workflow_paths
+from .payloads import PayloadCodec, SingletonPayloadStore, mapping_payload
 from .schema import STUDY_TABLES, study_manifest
-from .study_models import StudyManifest, tuned_train_request_identity
+from .study_models import StudyManifest
 
 STUDY_SAMPLER_NAME = "TPESampler"
 
@@ -57,7 +58,8 @@ _STUDY_MANIFEST_STORE = SingletonPayloadStore(
 def manifest_from_tune_config(config: TuneConfig) -> StudyManifest:
     """Build the canonical study manifest from one validated tuning request."""
 
-    if config.paths.study_id is None:
+    paths = resolve_workflow_paths(config)
+    if paths.study_id is None:
         raise ConfigResolutionError("study_id is required for study manifests")
     feature_contract = compile_feature_contract(feature_set=config.feature_set)
     problem_contract = compile_problem_contract(
@@ -77,12 +79,12 @@ def manifest_from_tune_config(config: TuneConfig) -> StudyManifest:
         resolve_model_representation_id(config.model)
     )
     return StudyManifest(
-        study_id=config.paths.study_id,
+        study_id=paths.study_id,
         dataset_builder=config.dataset_builder,
         prediction=config.prediction,
         study_name=config.study.name,
         chain_name=config.chain.name,
-        dataset_id=config.paths.corpus_id,
+        dataset_id=paths.corpus_id,
         dataset_name=config.dataset.name,
         problem=config.problem,
         feature_set=config.feature_set,
@@ -157,21 +159,15 @@ def diff_study_manifests(stored: StudyManifest, requested: StudyManifest) -> lis
 def validate_tuned_train_request(config: TrainConfig, *, manifest: StudyManifest) -> None:
     """Reject tuned-artifact requests whose identity diverges from the stored study."""
 
-    if config.paths.study_id is None:
+    paths = resolve_workflow_paths(config)
+    if paths.study_id is None:
         raise ConfigResolutionError("study_id is required for tuned artifacts")
-    stored_payload = {
-        "study_name": manifest.study_name,
-        "study_id": manifest.study_id,
-        "dataset_builder": manifest.dataset_builder.model_dump(mode="json", exclude_none=True),
-        "prediction": manifest.prediction.model_dump(mode="json"),
-        "chain_name": manifest.chain_name,
-        "dataset_id": manifest.dataset_id,
-        "dataset_name": manifest.dataset_name,
-        "problem": manifest.problem.model_dump(mode="json"),
-        "feature_set": manifest.feature_set.model_dump(mode="json"),
-        "model": manifest.model.model_dump(mode="json", exclude_none=True),
-    }
-    requested_payload = tuned_train_request_identity(config)
+    stored_payload = _study_manifest_request_payload(manifest)
+    requested_payload = _train_request_identity_payload(
+        config,
+        study_id=paths.study_id,
+        dataset_id=paths.corpus_id,
+    )
     mismatches = [key for key in stored_payload if stored_payload[key] != requested_payload[key]]
     if mismatches:
         raise StateConflictError(
@@ -181,16 +177,7 @@ def validate_tuned_train_request(config: TrainConfig, *, manifest: StudyManifest
 
 def study_manifest_identity_payload(manifest: StudyManifest) -> dict[str, object]:
     return {
-        "study_name": manifest.study_name,
-        "study_id": manifest.study_id,
-        "dataset_builder": manifest.dataset_builder.model_dump(mode="json", exclude_none=True),
-        "prediction": manifest.prediction.model_dump(mode="json"),
-        "chain_name": manifest.chain_name,
-        "dataset_id": manifest.dataset_id,
-        "dataset_name": manifest.dataset_name,
-        "problem": manifest.problem.model_dump(mode="json"),
-        "feature_set": manifest.feature_set.model_dump(mode="json"),
-        "model": manifest.model.model_dump(mode="json", exclude_none=True),
+        **_study_manifest_request_payload(manifest),
         "split": manifest.split.model_dump(mode="json"),
         "training": manifest.training.model_dump(mode="json"),
         "sampler_name": manifest.sampler_name,
@@ -201,6 +188,68 @@ def study_manifest_identity_payload(manifest: StudyManifest) -> dict[str, object
     }
 
 
+def _study_request_identity_payload(
+    *,
+    study_name: str,
+    study_id: str | None,
+    dataset_builder_payload: dict[str, object],
+    prediction_payload: dict[str, object],
+    chain_name: str,
+    dataset_id: str,
+    dataset_name: str,
+    problem_payload: dict[str, object],
+    feature_set_payload: dict[str, object],
+    model_payload: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "study_name": study_name,
+        "study_id": study_id,
+        "dataset_builder": dataset_builder_payload,
+        "prediction": prediction_payload,
+        "chain_name": chain_name,
+        "dataset_id": dataset_id,
+        "dataset_name": dataset_name,
+        "problem": problem_payload,
+        "feature_set": feature_set_payload,
+        "model": model_payload,
+    }
+
+
+def _study_manifest_request_payload(manifest: StudyManifest) -> dict[str, object]:
+    return _study_request_identity_payload(
+        study_name=manifest.study_name,
+        study_id=manifest.study_id,
+        dataset_builder_payload=manifest.dataset_builder.model_dump(mode="json", exclude_none=True),
+        prediction_payload=manifest.prediction.model_dump(mode="json"),
+        chain_name=manifest.chain_name,
+        dataset_id=manifest.dataset_id,
+        dataset_name=manifest.dataset_name,
+        problem_payload=manifest.problem.model_dump(mode="json"),
+        feature_set_payload=manifest.feature_set.model_dump(mode="json"),
+        model_payload=manifest.model.model_dump(mode="json", exclude_none=True),
+    )
+
+
+def _train_request_identity_payload(
+    config: TrainConfig,
+    *,
+    study_id: str,
+    dataset_id: str,
+) -> dict[str, object]:
+    return _study_request_identity_payload(
+        study_name=config.study.name,
+        study_id=study_id,
+        dataset_builder_payload=config.dataset_builder.model_dump(mode="json", exclude_none=True),
+        prediction_payload=config.prediction.model_dump(mode="json"),
+        chain_name=config.chain.name,
+        dataset_id=dataset_id,
+        dataset_name=config.dataset.name,
+        problem_payload=config.problem.model_dump(mode="json"),
+        feature_set_payload=config.feature_set.model_dump(mode="json"),
+        model_payload=config.model.model_dump(mode="json", exclude_none=True),
+    )
+
+
 def manifest_payload(manifest: StudyManifest) -> dict[str, object]:
     return {
         **study_manifest_identity_payload(manifest),
@@ -209,21 +258,29 @@ def manifest_payload(manifest: StudyManifest) -> dict[str, object]:
 
 
 def manifest_from_payload(payload: dict[str, object]) -> StudyManifest:
-    model = coerce_model_config(mapping(payload["model"]))
-    semantics_payload = mapping(payload["semantics"])
+    model = coerce_model_config(mapping_payload(payload["model"], label="study.model"))
+    semantics_payload = mapping_payload(payload["semantics"], label="study.semantics")
     return StudyManifest(
         study_id=str(payload["study_id"]),
-        dataset_builder=coerce_dataset_builder_config(mapping(payload["dataset_builder"])),
-        prediction=coerce_prediction_config(mapping(payload["prediction"])),
+        dataset_builder=coerce_dataset_builder_config(
+            mapping_payload(payload["dataset_builder"], label="study.dataset_builder")
+        ),
+        prediction=coerce_prediction_config(
+            mapping_payload(payload["prediction"], label="study.prediction")
+        ),
         study_name=str(payload["study_name"]),
         chain_name=str(payload["chain_name"]),
         dataset_id=str(payload["dataset_id"]),
         dataset_name=str(payload["dataset_name"]),
-        problem=coerce_problem_spec(mapping(payload["problem"])),
-        feature_set=coerce_feature_set_config(mapping(payload["feature_set"])),
+        problem=coerce_problem_spec(mapping_payload(payload["problem"], label="study.problem")),
+        feature_set=coerce_feature_set_config(
+            mapping_payload(payload["feature_set"], label="study.feature_set")
+        ),
         model=model,
-        split=SplitConfig.model_validate(mapping(payload["split"])),
-        training=TrainingConfig.model_validate(mapping(payload["training"])),
+        split=SplitConfig.model_validate(mapping_payload(payload["split"], label="study.split")),
+        training=TrainingConfig.model_validate(
+            mapping_payload(payload["training"], label="study.training")
+        ),
         sampler_name=str(payload["sampler_name"]),
         sampler_seed=coerce_int(payload["sampler_seed"], label="sampler_seed"),
         pruner_name=str(payload["pruner_name"]),
@@ -234,9 +291,10 @@ def manifest_from_payload(payload: dict[str, object]) -> StudyManifest:
 
 
 def coerce_study_tuning_space(payload: object, *, model: ModelConfig) -> TuningSpaceConfig:
-    if not isinstance(payload, dict):
-        raise TypeError("Study tuning_space payload must be a mapping")
-    tuning_space = coerce_tuning_space_config(payload, model_config=model)
+    tuning_space = coerce_tuning_space_config(
+        mapping_payload(payload, label="study.tuning_space"),
+        model_config=model,
+    )
     if tuning_space is None:
         raise StateLayoutError("Study tuning_space payload is required")
     return tuning_space
@@ -250,9 +308,3 @@ def coerce_int(value: object, *, label: str) -> int:
     if not isinstance(value, int):
         raise TypeError(f"{label} must be an integer")
     return value
-
-
-def mapping(payload: object) -> dict[str, object]:
-    if not isinstance(payload, dict):
-        raise TypeError("Expected mapping payload")
-    return dict(payload)

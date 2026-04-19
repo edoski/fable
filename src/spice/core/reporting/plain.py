@@ -11,7 +11,6 @@ from .metrics import (
     _ACTIVE_STAGE_STATUSES,
     _FINAL_STAGE_STATUSES,
     _progress_bucket,
-    _smooth_value,
     format_compact_count,
 )
 from .protocol import Reporter, ReporterTask
@@ -89,7 +88,6 @@ class NullReporter:
         *,
         label: str | None = None,
         status: str | None = None,
-        progress_finalized: bool | None = None,
         total: int | None = None,
         unit: str | None = None,
         completed: int | None = None,
@@ -101,7 +99,6 @@ class NullReporter:
             key,
             label,
             status,
-            progress_finalized,
             total,
             unit,
             completed,
@@ -145,7 +142,6 @@ class _BoundStageReporter(NullReporter):
         return self._owner._start_bound_task(
             self._key,
             label=self._label,
-            task_name=name,
             total=total,
             unit=unit,
             completed=completed,
@@ -217,7 +213,6 @@ class _BoundStageReporter(NullReporter):
         *,
         label: str | None = None,
         status: str | None = None,
-        progress_finalized: bool | None = None,
         total: int | None = None,
         unit: str | None = None,
         completed: int | None = None,
@@ -229,7 +224,6 @@ class _BoundStageReporter(NullReporter):
             key,
             label=label,
             status=status,
-            progress_finalized=progress_finalized,
             total=total,
             unit=unit,
             completed=completed,
@@ -267,7 +261,6 @@ class _BaseWorkflowReporter(NullReporter):
         return self._start_bound_task(
             f"task-{self._next_task_id}",
             label=name,
-            task_name=name,
             total=total,
             unit=unit,
             completed=completed,
@@ -292,15 +285,11 @@ class _BaseWorkflowReporter(NullReporter):
             return
         if stage.started_at is None:
             stage.started_at = time.monotonic()
-            stage.last_progress_at = stage.started_at
-            stage.last_progress_completed = stage.completed
         stage.finished_at = None
-        previous_completed = stage.completed
         if completed is not None:
             stage.completed = max(0, completed)
         if advance is not None:
             stage.completed = max(0, stage.completed + advance)
-        self._update_stage_rate(stage, previous_completed=previous_completed)
         stage.metric_values = {metric.id: metric.value for metric in metrics}
         stage.detail = message
         self._on_stage_change(stage)
@@ -321,13 +310,9 @@ class _BaseWorkflowReporter(NullReporter):
             return
         if stage.started_at is None:
             stage.started_at = time.monotonic()
-            stage.last_progress_at = stage.started_at
-            stage.last_progress_completed = stage.completed
         stage.finished_at = time.monotonic()
-        previous_completed = stage.completed
         if stage.total is not None:
             stage.completed = max(stage.completed, stage.total)
-        self._update_stage_rate(stage, previous_completed=previous_completed)
         stage.status = binding.done_status
         if not silent:
             stage.metric_values = {metric.id: metric.value for metric in metrics}
@@ -379,7 +364,6 @@ class _BaseWorkflowReporter(NullReporter):
         *,
         label: str | None = None,
         status: str | None = None,
-        progress_finalized: bool | None = None,
         total: int | None = None,
         unit: str | None = None,
         completed: int | None = None,
@@ -395,8 +379,6 @@ class _BaseWorkflowReporter(NullReporter):
         previous_status = stage.status
         if label is not None:
             stage.label = label
-        if progress_finalized is not None:
-            stage.progress_finalized = progress_finalized
         if metric_descriptors:
             stage.metric_descriptors = tuple(metric_descriptors)
         if total is not None:
@@ -409,31 +391,16 @@ class _BaseWorkflowReporter(NullReporter):
             if status == "pending":
                 stage.started_at = None
                 stage.finished_at = None
-                stage.last_progress_at = None
-                stage.last_progress_completed = stage.completed
-                stage.smoothed_rate = None
                 stage.metric_values = {}
             elif status in _ACTIVE_STAGE_STATUSES:
                 if previous_status in _FINAL_STAGE_STATUSES or stage.started_at is None:
-                    started_at = time.monotonic()
-                    stage.started_at = started_at
-                    stage.last_progress_at = started_at
-                    stage.last_progress_completed = stage.completed
-                    stage.smoothed_rate = None
+                    stage.started_at = time.monotonic()
                 stage.finished_at = None
             stage.status = status
         if completed is not None:
-            previous_completed = stage.completed
             stage.completed = max(0, completed)
-            if stage.status in _ACTIVE_STAGE_STATUSES:
-                if stage.started_at is None:
-                    started_at = time.monotonic()
-                    stage.started_at = started_at
-                    stage.last_progress_at = started_at
-                    stage.last_progress_completed = previous_completed
-                self._update_stage_rate(stage, previous_completed=previous_completed)
-            else:
-                stage.last_progress_completed = stage.completed
+            if stage.status in _ACTIVE_STAGE_STATUSES and stage.started_at is None:
+                stage.started_at = time.monotonic()
         stage.metric_values = {metric.id: metric.value for metric in metrics}
         if message is not None:
             stage.detail = message
@@ -451,7 +418,6 @@ class _BaseWorkflowReporter(NullReporter):
         stage_key: str,
         *,
         label: str,
-        task_name: str,
         total: int | None,
         unit: str | None,
         completed: int | None,
@@ -467,15 +433,11 @@ class _BaseWorkflowReporter(NullReporter):
         stage.unit = unit
         stage.completed = max(0, completed or 0)
         stage.metric_values = {}
-        stage.last_progress_at = started_at
-        stage.last_progress_completed = stage.completed
-        stage.smoothed_rate = None
         stage.detail = None
         task_id = self._next_task_id
         self._next_task_id += 1
         self._task_bindings[task_id] = _TaskBinding(
             stage_key=stage_key,
-            task_name=task_name,
             done_status=done_status,
         )
         self._on_stage_change(stage)
@@ -519,28 +481,6 @@ class _BaseWorkflowReporter(NullReporter):
 
     def _on_stage_change(self, stage: _StageState) -> None:
         raise NotImplementedError
-
-    def _update_stage_rate(self, stage: _StageState, *, previous_completed: int) -> None:
-        if stage.started_at is None or stage.unit is None:
-            return
-        now = time.monotonic()
-        elapsed = max(0.0, now - stage.started_at)
-        if elapsed <= 0.0:
-            return
-        if stage.completed <= previous_completed:
-            stage.last_progress_at = now
-            stage.last_progress_completed = stage.completed
-            return
-        checkpoint_at = stage.last_progress_at if stage.last_progress_at is not None else stage.started_at
-        delta_elapsed = max(0.0, now - checkpoint_at)
-        delta_completed = stage.completed - stage.last_progress_completed
-        if delta_elapsed > 0.0 and delta_completed > 0:
-            recent_rate = delta_completed / delta_elapsed
-            if recent_rate > 0.0:
-                stage.smoothed_rate = _smooth_value(stage.smoothed_rate, recent_rate, alpha=0.22)
-        stage.last_progress_at = now
-        stage.last_progress_completed = stage.completed
-
 
 class PlainReporter(_BaseWorkflowReporter):
     """Line-oriented reporter for local and remote workflows."""

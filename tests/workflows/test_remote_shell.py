@@ -4,8 +4,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from types import SimpleNamespace
 
-from spice.config.models import ExecutionWorkflowSpec
-from spice.config.models import WorkflowTask
+from spice.config.models import ExecutionWorkflowSpec, WorkflowTask
 from spice.remote.shell import build_remote_shell_argv, run_remote_command
 from spice.remote.workflows import (
     RemoteJobSubmission,

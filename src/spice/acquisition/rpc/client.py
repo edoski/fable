@@ -17,7 +17,7 @@ from .types import BlockHeader, BlockPullPlan, BlockRange, TimestampRange
 
 
 @dataclass(slots=True)
-class Web3BlockClient:
+class BlockRpcClient:
     provider: ProviderSpec
     chain: ChainSpec
     _web3: AsyncWeb3 = field(init=False, repr=False)
@@ -29,7 +29,6 @@ class Web3BlockClient:
         disconnect = getattr(self._web3.provider, "disconnect", None)
         if disconnect is None:
             return
-
         result = disconnect()
         if inspect.isawaitable(result):
             await result
@@ -115,7 +114,6 @@ class Web3BlockClient:
             raise RuntimeError(
                 f"Expected {len(block_numbers)} block responses, got {len(blocks)}"
             )
-
         return [build_canonical_block_row(block, self.chain) for block in blocks]
 
     @staticmethod
@@ -123,9 +121,7 @@ class Web3BlockClient:
         return int(cast(SupportsInt | str | bytes | bytearray, value))
 
     async def _raw_block_payload(self, block_number: int | Literal["latest"]) -> RpcBlock:
-        return self._raw_block_from_response(
-            await self._web3.eth.get_block(block_number, False)
-        )
+        return self._raw_block_from_response(await self._web3.eth.get_block(block_number, False))
 
     @staticmethod
     def _raw_block_from_response(response: object) -> RpcBlock:

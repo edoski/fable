@@ -8,6 +8,7 @@ from ..acquisition.rpc import BlockPullPlan
 from ..config import AcquireConfig
 from ..corpus.builders import DatasetBuildOutcome
 from ..features import FeaturePrerequisites
+from ..storage.layout import resolve_workflow_paths
 from ..temporal.contracts import CompiledProblemContract
 
 
@@ -19,12 +20,13 @@ def acquire_dry_run_sections(
     history_plan: BlockPullPlan,
     evaluation_plan: BlockPullPlan,
 ) -> list[tuple[str, list[tuple[str, str]]]]:
+    paths = resolve_workflow_paths(config)
     return [
         (
             "dataset",
             [
                 ("name", config.dataset.name),
-                ("storage id", config.paths.corpus_id),
+                ("storage id", paths.corpus_id),
                 ("chain", config.chain.name),
                 ("problem", config.problem.id),
                 ("compiler", contract.compiler_id),
@@ -71,12 +73,13 @@ def acquisition_summary_sections(
     evaluation_row_count: int,
     evaluation_file_count: int,
 ) -> list[tuple[str, list[tuple[str, str]]]]:
+    paths = resolve_workflow_paths(config)
     return [
         (
             "dataset",
             [
                 ("name", config.dataset.name),
-                ("storage id", config.paths.corpus_id),
+                ("storage id", paths.corpus_id),
                 ("chain", config.chain.name),
                 ("problem", config.problem.id),
                 ("feature set", config.feature_set.id),

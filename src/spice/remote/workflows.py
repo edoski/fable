@@ -33,6 +33,11 @@ _FINAL_JOB_STATES = frozenset(
         "NODE_FAIL",
     }
 )
+_WORKFLOW_SPEC_ATTRS = {
+    WorkflowTask.TRAIN: "train",
+    WorkflowTask.TUNE: "tune",
+    WorkflowTask.EVALUATE: "evaluate",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,12 +162,9 @@ def _workflow_spec(
     target: RemoteExecutionTarget,
     task: WorkflowTask,
 ) -> ExecutionWorkflowSpec:
-    if task is WorkflowTask.TRAIN:
-        return target.spec.workflows.train
-    if task is WorkflowTask.TUNE:
-        return target.spec.workflows.tune
-    if task is WorkflowTask.EVALUATE:
-        return target.spec.workflows.evaluate
+    workflow_attr = _WORKFLOW_SPEC_ATTRS.get(task)
+    if workflow_attr is not None:
+        return getattr(target.spec.workflows, workflow_attr)
     raise SpiceOperatorError(f"Remote execution is not supported for workflow: {task.value}")
 
 

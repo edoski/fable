@@ -1,6 +1,6 @@
 """Canonical block acquisition seam."""
 
-from .client import Web3BlockClient
+from .client import BlockRpcClient
 from .controller import RpcController
 from .pull import pull_block_range
 from .types import (
@@ -14,12 +14,12 @@ from .types import (
 
 __all__ = [
     "AcquisitionRuntimeSnapshot",
+    "BlockRpcClient",
     "BlockHeader",
     "BlockPullPlan",
     "BlockRange",
     "RpcController",
     "TimestampRange",
-    "Web3BlockClient",
     "evaluation_range",
     "pull_block_range",
 ]

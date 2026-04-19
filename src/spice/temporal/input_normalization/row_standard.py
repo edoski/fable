@@ -1,15 +1,11 @@
 """Unweighted train-row standardization."""
 
-from __future__ import annotations
-
-from typing import Literal
-
 from ..scaling import fit_row_standard_scaler
 from .base import CompiledInputNormalizationContract, InputNormalizationConfig
 
 
-class RowStandardConfig(InputNormalizationConfig[Literal["row_standard"]]):
-    id: Literal["row_standard"] = "row_standard"
+class RowStandardConfig(InputNormalizationConfig):
+    id: str = "row_standard"
 
 
 def compile_input_normalization(config: RowStandardConfig) -> CompiledInputNormalizationContract:

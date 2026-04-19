@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from sqlalchemy import Table, and_, create_engine, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -13,6 +15,64 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from .records import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
 from .schema import artifact_index, dataset_index, metadata, study_index
+
+RecordT = TypeVar("RecordT", CatalogDatasetRecord, CatalogStudyRecord, CatalogArtifactRecord)
+
+
+@dataclass(frozen=True, slots=True)
+class _CatalogRecordSpec(Generic[RecordT]):
+    table: Table
+    key_name: str
+    field_names: tuple[str, ...]
+    build: Callable[..., RecordT]
+    nullable_fields: frozenset[str] = frozenset()
+
+
+_DATASET_SPEC = _CatalogRecordSpec(
+    table=dataset_index,
+    key_name="dataset_id",
+    field_names=("dataset_id", "dataset_name", "chain_name", "root_path", "state_db_path"),
+    build=CatalogDatasetRecord,
+)
+_STUDY_SPEC = _CatalogRecordSpec(
+    table=study_index,
+    key_name="study_id",
+    field_names=(
+        "study_id",
+        "study_name",
+        "dataset_id",
+        "dataset_name",
+        "chain_name",
+        "feature_set_id",
+        "prediction_id",
+        "model_id",
+        "problem_id",
+        "root_path",
+        "state_db_path",
+    ),
+    build=CatalogStudyRecord,
+)
+_ARTIFACT_SPEC = _CatalogRecordSpec(
+    table=artifact_index,
+    key_name="artifact_id",
+    field_names=(
+        "artifact_id",
+        "dataset_id",
+        "dataset_name",
+        "chain_name",
+        "feature_set_id",
+        "prediction_id",
+        "model_id",
+        "problem_id",
+        "variant",
+        "study_id",
+        "study_name",
+        "root_path",
+        "state_db_path",
+    ),
+    build=CatalogArtifactRecord,
+    nullable_fields=frozenset({"study_id", "study_name"}),
+)
 
 
 def ensure_catalog_db(path: Path) -> None:
@@ -32,17 +92,17 @@ def upsert_dataset_record(
     root_path: Path,
     state_db_path: Path,
 ) -> None:
-    now = _now_timestamp()
-    values = {
-        "dataset_id": dataset_id,
-        "dataset_name": dataset_name,
-        "chain_name": chain_name,
-        "root_path": str(root_path),
-        "state_db_path": str(state_db_path),
-        "created_at": now,
-        "updated_at": now,
-    }
-    _upsert(path, dataset_index, values, key_column=dataset_index.c.dataset_id)
+    _upsert_record(
+        path,
+        spec=_DATASET_SPEC,
+        values={
+            "dataset_id": dataset_id,
+            "dataset_name": dataset_name,
+            "chain_name": chain_name,
+            "root_path": str(root_path),
+            "state_db_path": str(state_db_path),
+        },
+    )
 
 
 def upsert_study_record(
@@ -60,23 +120,23 @@ def upsert_study_record(
     root_path: Path,
     state_db_path: Path,
 ) -> None:
-    now = _now_timestamp()
-    values = {
-        "study_id": study_id,
-        "study_name": study_name,
-        "dataset_id": dataset_id,
-        "dataset_name": dataset_name,
-        "chain_name": chain_name,
-        "feature_set_id": feature_set_id,
-        "prediction_id": prediction_id,
-        "model_id": model_id,
-        "problem_id": problem_id,
-        "root_path": str(root_path),
-        "state_db_path": str(state_db_path),
-        "created_at": now,
-        "updated_at": now,
-    }
-    _upsert(path, study_index, values, key_column=study_index.c.study_id)
+    _upsert_record(
+        path,
+        spec=_STUDY_SPEC,
+        values={
+            "study_id": study_id,
+            "study_name": study_name,
+            "dataset_id": dataset_id,
+            "dataset_name": dataset_name,
+            "chain_name": chain_name,
+            "feature_set_id": feature_set_id,
+            "prediction_id": prediction_id,
+            "model_id": model_id,
+            "problem_id": problem_id,
+            "root_path": str(root_path),
+            "state_db_path": str(state_db_path),
+        },
+    )
 
 
 def upsert_artifact_record(
@@ -96,25 +156,25 @@ def upsert_artifact_record(
     root_path: Path,
     state_db_path: Path,
 ) -> None:
-    now = _now_timestamp()
-    values = {
-        "artifact_id": artifact_id,
-        "dataset_id": dataset_id,
-        "dataset_name": dataset_name,
-        "chain_name": chain_name,
-        "feature_set_id": feature_set_id,
-        "prediction_id": prediction_id,
-        "model_id": model_id,
-        "problem_id": problem_id,
-        "variant": variant,
-        "study_id": study_id,
-        "study_name": study_name,
-        "root_path": str(root_path),
-        "state_db_path": str(state_db_path),
-        "created_at": now,
-        "updated_at": now,
-    }
-    _upsert(path, artifact_index, values, key_column=artifact_index.c.artifact_id)
+    _upsert_record(
+        path,
+        spec=_ARTIFACT_SPEC,
+        values={
+            "artifact_id": artifact_id,
+            "dataset_id": dataset_id,
+            "dataset_name": dataset_name,
+            "chain_name": chain_name,
+            "feature_set_id": feature_set_id,
+            "prediction_id": prediction_id,
+            "model_id": model_id,
+            "problem_id": problem_id,
+            "variant": variant,
+            "study_id": study_id,
+            "study_name": study_name,
+            "root_path": str(root_path),
+            "state_db_path": str(state_db_path),
+        },
+    )
 
 
 def list_dataset_records(
@@ -123,18 +183,15 @@ def list_dataset_records(
     chain_name: str | None = None,
     dataset_name: str | None = None,
 ) -> list[CatalogDatasetRecord]:
-    return [
-        _dataset_record_from_row(row)
-        for row in _select_rows(
-            path,
-            table=dataset_index,
-            filters=[
-                _eq(dataset_index.c.chain_name, chain_name),
-                _eq(dataset_index.c.dataset_name, dataset_name),
-            ],
-            order_by=[dataset_index.c.chain_name, dataset_index.c.dataset_name],
-        )
-    ]
+    return _list_records(
+        path,
+        spec=_DATASET_SPEC,
+        filters={
+            "chain_name": chain_name,
+            "dataset_name": dataset_name,
+        },
+        order_by=("chain_name", "dataset_name"),
+    )
 
 
 def list_study_records(
@@ -148,31 +205,28 @@ def list_study_records(
     problem_id: str | None = None,
     study_name: str | None = None,
 ) -> list[CatalogStudyRecord]:
-    return [
-        _study_record_from_row(row)
-        for row in _select_rows(
-            path,
-            table=study_index,
-            filters=[
-                _eq(study_index.c.chain_name, chain_name),
-                _eq(study_index.c.dataset_name, dataset_name),
-                _eq(study_index.c.feature_set_id, feature_set_id),
-                _eq(study_index.c.prediction_id, prediction_id),
-                _eq(study_index.c.model_id, model_id),
-                _eq(study_index.c.problem_id, problem_id),
-                _eq(study_index.c.study_name, study_name),
-            ],
-            order_by=[
-                study_index.c.chain_name,
-                study_index.c.dataset_name,
-                study_index.c.feature_set_id,
-                study_index.c.prediction_id,
-                study_index.c.model_id,
-                study_index.c.problem_id,
-                study_index.c.study_name,
-            ],
-        )
-    ]
+    return _list_records(
+        path,
+        spec=_STUDY_SPEC,
+        filters={
+            "chain_name": chain_name,
+            "dataset_name": dataset_name,
+            "feature_set_id": feature_set_id,
+            "prediction_id": prediction_id,
+            "model_id": model_id,
+            "problem_id": problem_id,
+            "study_name": study_name,
+        },
+        order_by=(
+            "chain_name",
+            "dataset_name",
+            "feature_set_id",
+            "prediction_id",
+            "model_id",
+            "problem_id",
+            "study_name",
+        ),
+    )
 
 
 def list_artifact_records(
@@ -187,128 +241,67 @@ def list_artifact_records(
     variant: str | None = None,
     study_name: str | None = None,
 ) -> list[CatalogArtifactRecord]:
-    return [
-        _artifact_record_from_row(row)
-        for row in _select_rows(
-            path,
-            table=artifact_index,
-            filters=[
-                _eq(artifact_index.c.chain_name, chain_name),
-                _eq(artifact_index.c.dataset_name, dataset_name),
-                _eq(artifact_index.c.feature_set_id, feature_set_id),
-                _eq(artifact_index.c.prediction_id, prediction_id),
-                _eq(artifact_index.c.model_id, model_id),
-                _eq(artifact_index.c.problem_id, problem_id),
-                _eq(artifact_index.c.variant, variant),
-                _eq(artifact_index.c.study_name, study_name),
-            ],
-            order_by=[
-                artifact_index.c.chain_name,
-                artifact_index.c.dataset_name,
-                artifact_index.c.feature_set_id,
-                artifact_index.c.prediction_id,
-                artifact_index.c.model_id,
-                artifact_index.c.problem_id,
-                artifact_index.c.variant,
-            ],
-        )
-    ]
+    return _list_records(
+        path,
+        spec=_ARTIFACT_SPEC,
+        filters={
+            "chain_name": chain_name,
+            "dataset_name": dataset_name,
+            "feature_set_id": feature_set_id,
+            "prediction_id": prediction_id,
+            "model_id": model_id,
+            "problem_id": problem_id,
+            "variant": variant,
+            "study_name": study_name,
+        },
+        order_by=(
+            "chain_name",
+            "dataset_name",
+            "feature_set_id",
+            "prediction_id",
+            "model_id",
+            "problem_id",
+            "variant",
+        ),
+    )
 
 
 def delete_dataset_record(path: Path, *, dataset_id: str) -> None:
-    _delete_row(path, table=dataset_index, key_column=dataset_index.c.dataset_id, key=dataset_id)
+    _delete_record(path, spec=_DATASET_SPEC, key=dataset_id)
 
 
 def delete_study_record(path: Path, *, study_id: str) -> None:
-    _delete_row(path, table=study_index, key_column=study_index.c.study_id, key=study_id)
+    _delete_record(path, spec=_STUDY_SPEC, key=study_id)
 
 
 def delete_artifact_record(path: Path, *, artifact_id: str) -> None:
-    _delete_row(
-        path,
-        table=artifact_index,
-        key_column=artifact_index.c.artifact_id,
-        key=artifact_id,
-    )
+    _delete_record(path, spec=_ARTIFACT_SPEC, key=artifact_id)
 
 
 def list_studies_for_dataset(path: Path, *, dataset_id: str) -> list[CatalogStudyRecord]:
-    return [
-        _study_record_from_row(row)
-        for row in _select_rows(
-            path,
-            table=study_index,
-            filters=[study_index.c.dataset_id == dataset_id],
-            order_by=[study_index.c.study_name],
-        )
-    ]
+    return _list_records(
+        path,
+        spec=_STUDY_SPEC,
+        filters={"dataset_id": dataset_id},
+        order_by=("study_name",),
+    )
 
 
 def list_artifacts_for_dataset(path: Path, *, dataset_id: str) -> list[CatalogArtifactRecord]:
-    return [
-        _artifact_record_from_row(row)
-        for row in _select_rows(
-            path,
-            table=artifact_index,
-            filters=[artifact_index.c.dataset_id == dataset_id],
-            order_by=[artifact_index.c.variant, artifact_index.c.model_id],
-        )
-    ]
+    return _list_records(
+        path,
+        spec=_ARTIFACT_SPEC,
+        filters={"dataset_id": dataset_id},
+        order_by=("variant", "model_id"),
+    )
 
 
 def list_artifacts_for_study(path: Path, *, study_id: str) -> list[CatalogArtifactRecord]:
-    return [
-        _artifact_record_from_row(row)
-        for row in _select_rows(
-            path,
-            table=artifact_index,
-            filters=[artifact_index.c.study_id == study_id],
-            order_by=[artifact_index.c.variant, artifact_index.c.model_id],
-        )
-    ]
-
-
-def _dataset_record_from_row(row: RowMapping) -> CatalogDatasetRecord:
-    return CatalogDatasetRecord(
-        dataset_id=str(row["dataset_id"]),
-        dataset_name=str(row["dataset_name"]),
-        chain_name=str(row["chain_name"]),
-        root_path=Path(str(row["root_path"])),
-        state_db_path=Path(str(row["state_db_path"])),
-    )
-
-
-def _study_record_from_row(row: RowMapping) -> CatalogStudyRecord:
-    return CatalogStudyRecord(
-        study_id=str(row["study_id"]),
-        study_name=str(row["study_name"]),
-        dataset_id=str(row["dataset_id"]),
-        dataset_name=str(row["dataset_name"]),
-        chain_name=str(row["chain_name"]),
-        feature_set_id=str(row["feature_set_id"]),
-        prediction_id=str(row["prediction_id"]),
-        model_id=str(row["model_id"]),
-        problem_id=str(row["problem_id"]),
-        root_path=Path(str(row["root_path"])),
-        state_db_path=Path(str(row["state_db_path"])),
-    )
-
-
-def _artifact_record_from_row(row: RowMapping) -> CatalogArtifactRecord:
-    return CatalogArtifactRecord(
-        artifact_id=str(row["artifact_id"]),
-        dataset_id=str(row["dataset_id"]),
-        dataset_name=str(row["dataset_name"]),
-        chain_name=str(row["chain_name"]),
-        feature_set_id=str(row["feature_set_id"]),
-        prediction_id=str(row["prediction_id"]),
-        model_id=str(row["model_id"]),
-        problem_id=str(row["problem_id"]),
-        variant=str(row["variant"]),
-        study_id=None if row["study_id"] is None else str(row["study_id"]),
-        study_name=None if row["study_name"] is None else str(row["study_name"]),
-        root_path=Path(str(row["root_path"])),
-        state_db_path=Path(str(row["state_db_path"])),
+    return _list_records(
+        path,
+        spec=_ARTIFACT_SPEC,
+        filters={"study_id": study_id},
+        order_by=("variant", "model_id"),
     )
 
 
@@ -317,66 +310,98 @@ def _create_engine(path: Path):
     return create_engine(f"sqlite:///{path.resolve().as_posix()}", future=True)
 
 
-def _upsert(
+def _upsert_record(
     path: Path,
-    table: Table,
-    values: dict[str, object],
     *,
-    key_column: ColumnElement[Any],
+    spec: _CatalogRecordSpec[Any],
+    values: dict[str, object],
 ) -> None:
     ensure_catalog_db(path)
     engine = _create_engine(path)
+    now = _now_timestamp()
+    payload = {
+        **values,
+        "created_at": now,
+        "updated_at": now,
+    }
     try:
-        statement = sqlite_insert(table).values(**values)
+        key_column = spec.table.c[spec.key_name]
+        statement = sqlite_insert(spec.table).values(**payload)
         with engine.begin() as conn:
             conn.execute(
                 statement.on_conflict_do_update(
                     index_elements=[key_column],
-                    set_={key: value for key, value in values.items() if key != key_column.name},
+                    set_={key: value for key, value in payload.items() if key != key_column.name},
                 )
             )
     finally:
         engine.dispose()
 
 
-def _delete_row(path: Path, *, table: Table, key_column: ColumnElement[Any], key: str) -> None:
+def _delete_record(path: Path, *, spec: _CatalogRecordSpec[Any], key: str) -> None:
     ensure_catalog_db(path)
     engine = _create_engine(path)
     try:
         with engine.begin() as conn:
-            conn.execute(table.delete().where(key_column == key))
+            conn.execute(spec.table.delete().where(spec.table.c[spec.key_name] == key))
     finally:
         engine.dispose()
+
+
+def _list_records(
+    path: Path,
+    *,
+    spec: _CatalogRecordSpec[RecordT],
+    filters: dict[str, str | None],
+    order_by: tuple[str, ...],
+) -> list[RecordT]:
+    return [
+        _record_from_row(spec, row)
+        for row in _select_rows(
+            path,
+            table=spec.table,
+            filters=[
+                spec.table.c[name] == value
+                for name, value in filters.items()
+                if value is not None
+            ],
+            order_by=[spec.table.c[name] for name in order_by],
+        )
+    ]
+
+
+def _record_from_row(spec: _CatalogRecordSpec[RecordT], row: RowMapping) -> RecordT:
+    payload: dict[str, object] = {}
+    for field_name in spec.field_names:
+        value = row[field_name]
+        if field_name in {"root_path", "state_db_path"}:
+            payload[field_name] = Path(str(value))
+        elif value is None and field_name in spec.nullable_fields:
+            payload[field_name] = None
+        else:
+            payload[field_name] = str(value)
+    return spec.build(**payload)
 
 
 def _select_rows(
     path: Path,
     *,
     table: Table,
-    filters: list[ColumnElement[bool] | None],
+    filters: list[ColumnElement[bool]],
     order_by: list[ColumnElement[Any]],
 ) -> list[RowMapping]:
     ensure_catalog_db(path)
     engine = _create_engine(path)
     try:
         statement = select(table)
-        active_filters: list[ColumnElement[bool]] = [
-            condition for condition in filters if condition is not None
-        ]
-        if active_filters:
-            statement = statement.where(and_(*active_filters))
+        if filters:
+            statement = statement.where(and_(*filters))
         if order_by:
             statement = statement.order_by(*order_by)
         with engine.connect() as conn:
             return list(conn.execute(statement).mappings().all())
     finally:
         engine.dispose()
-
-
-def _eq(column: ColumnElement[Any], value: str | None) -> ColumnElement[bool] | None:
-    if value is None:
-        return None
-    return column == value
 
 
 def _now_timestamp() -> int:

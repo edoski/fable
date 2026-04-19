@@ -31,7 +31,7 @@ from .families.registry import build_model
 from .models import TemporalModel
 from .pipeline import PreparedTrainingDataset, TrainingSpec
 from .representations import compile_representation_contract
-from .results import ArtifactChainMetadata, TrainingArtifactManifest
+from .results import TrainingArtifactManifest
 
 
 @dataclass(slots=True)
@@ -101,7 +101,7 @@ def build_training_artifact_manifest(
         artifact_id=spec.artifact_id,
         dataset_builder=spec.dataset_builder,
         prediction=spec.prediction,
-        chain=ArtifactChainMetadata(name=spec.chain.name),
+        chain_name=spec.chain.name,
         dataset_id=spec.dataset_id,
         dataset_name=spec.dataset_name,
         problem=spec.problem,

@@ -19,7 +19,7 @@ def training_summary_sections(
             [
                 ("name", manifest.dataset_name),
                 ("storage id", manifest.dataset_id),
-                ("chain", manifest.chain.name),
+                ("chain", manifest.chain_name),
                 ("model", manifest.model.id),
                 ("problem", manifest.problem_id),
                 ("prediction", manifest.prediction_id),
@@ -90,7 +90,7 @@ def evaluation_summary_sections(
             [
                 ("name", manifest.dataset_name),
                 ("storage id", manifest.dataset_id),
-                ("chain", manifest.chain.name),
+                ("chain", manifest.chain_name),
                 ("model", manifest.model.id),
                 ("problem", manifest.problem_id),
                 ("prediction", manifest.prediction_id),

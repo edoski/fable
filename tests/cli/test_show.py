@@ -16,82 +16,13 @@ from spice.config import (
 from spice.core.reporting import NullReporter
 from spice.features import compile_feature_contract
 from spice.storage.catalog import CatalogStudyRecord
+from spice.storage.layout import resolve_workflow_paths
 from spice.temporal.contracts import compile_problem_contract
 from spice.workflows.evaluate import run as run_evaluate
 from spice.workflows.train import run as run_train
 from spice.workflows.tune import run as run_tune
 
 runner = CliRunner()
-
-
-def _model_workflow_override(
-    *,
-    sample_count: int = 24,
-    lookback_seconds: int = 120,
-    max_delay_seconds: int = 36,
-    delay_seconds: int | None = None,
-    compiler_id: str = "estimated_block",
-) -> dict[str, object]:
-    feature_set_name = (
-        "time_native_baseline" if compiler_id == "timestamp_native" else "icdcs_2026"
-    )
-    return {
-        "chain": "ethereum",
-        "model": "lstm",
-        "feature_set": feature_set_name,
-        "dataset": {
-            "evaluation_date": "2025-11-09",
-        },
-        "problem": {
-            "id": "test_problem",
-            "lookback_seconds": lookback_seconds,
-            "sample_count": sample_count,
-            "max_delay_seconds": max_delay_seconds,
-            "compiler": {"id": compiler_id},
-        },
-        "delay_seconds": max_delay_seconds if delay_seconds is None else delay_seconds,
-        "training": {
-            "device": "cpu",
-            "batch_size": 8,
-            "max_epochs": 1,
-            "log_every_n_steps": 1,
-            "precision": "fp32",
-            "compile": "off",
-            "early_stopping": {
-                "patience": 1,
-                "min_delta": 0.0,
-            },
-        },
-        "evaluation": {
-            "evaluator": {
-                "id": "poisson_replay",
-                "window_seconds": 600,
-                "arrival_rate_per_second": 0.02,
-                "repetitions": 3,
-                "seed": 2026,
-            }
-        },
-        "tuning": {
-            "trial_count": 2,
-            "enable_pruning": False,
-        },
-    }
-
-
-def _tune_override() -> dict[str, object]:
-    return {
-        "tuning_space": {
-            "training": {
-                "learning_rate": [0.0001, 0.0003],
-                "weight_decay": [0.0, 0.01],
-            },
-            "model": {
-                "id": "lstm",
-                "hidden_size": [64, 128],
-                "dropout": [0.0, 0.1],
-            },
-        }
-    }
 
 
 def _load_test_train_config(
@@ -153,6 +84,7 @@ def _seed_dataset(path: Path, rows: list[dict[str, int]]) -> Path:
 
 
 def _seed_history_dataset(config) -> Path:
+    paths = resolve_workflow_paths(config)
     feature_contract = compile_feature_contract(feature_set=config.feature_set)
     contract = compile_problem_contract(
         problem=config.problem,
@@ -178,10 +110,11 @@ def _seed_history_dataset(config) -> Path:
         }
         for index in range(1, row_count + 1)
     ]
-    return _seed_dataset(config.paths.history_dir, rows)
+    return _seed_dataset(paths.history_dir, rows)
 
 
 def _seed_evaluation_dataset(config) -> Path:
+    paths = resolve_workflow_paths(config)
     rows = [
         {
             "block_number": index,
@@ -193,11 +126,11 @@ def _seed_evaluation_dataset(config) -> Path:
         }
         for index in range(10_001, 10_065)
     ]
-    return _seed_dataset(config.paths.evaluation_dir, rows)
+    return _seed_dataset(paths.evaluation_dir, rows)
 
 
-def test_show_command_smoke(tmp_path, load_workflow_config) -> None:
-    override = _model_workflow_override()
+def test_show_command_smoke(tmp_path, load_workflow_config, model_workflow_override) -> None:
+    override = model_workflow_override()
     train_config = _load_test_train_config(tmp_path, load_workflow_config, override=override)
     evaluate_config = _load_test_evaluate_config(tmp_path, load_workflow_config, override=override)
     _seed_history_dataset(train_config)
@@ -233,11 +166,16 @@ def test_show_command_smoke(tmp_path, load_workflow_config) -> None:
     assert "evaluation" in result.stdout
 
 
-def test_show_study_config_detail_smoke(tmp_path, load_workflow_config) -> None:
+def test_show_study_config_detail_smoke(
+    tmp_path,
+    load_workflow_config,
+    model_workflow_override,
+    tune_override,
+) -> None:
     config = _load_test_tune_config(
         tmp_path,
         load_workflow_config,
-        override={**_model_workflow_override(), **_tune_override()},
+        override=model_workflow_override() | tune_override(),
     )
     _seed_history_dataset(config)
     run_tune(config, reporter=NullReporter())
@@ -350,12 +288,17 @@ def test_show_detail_guides_narrowing_flags(monkeypatch, tmp_path: Path) -> None
     assert "--study" in result.output
 
 
-def test_delete_artifact_command_smoke(tmp_path, load_workflow_config) -> None:
+def test_delete_artifact_command_smoke(
+    tmp_path,
+    load_workflow_config,
+    model_workflow_override,
+) -> None:
     config = _load_test_train_config(
         tmp_path,
         load_workflow_config,
-        override=_model_workflow_override(),
+        override=model_workflow_override(),
     )
+    paths = resolve_workflow_paths(config)
     _seed_history_dataset(config)
     run_train(config, reporter=NullReporter())
 
@@ -382,4 +325,4 @@ def test_delete_artifact_command_smoke(tmp_path, load_workflow_config) -> None:
     )
 
     assert result.exit_code == 0, result.stdout
-    assert not config.paths.artifact_root.exists()
+    assert not paths.artifact_root.exists()

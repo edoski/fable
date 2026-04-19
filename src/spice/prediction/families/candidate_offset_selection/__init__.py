@@ -9,6 +9,7 @@ from ....modeling.models import ModelOutputs
 from ....temporal.problem_store import CompiledProblemStore
 from ...contracts import (
     CompiledPredictionContract,
+    DecodedOffsets,
     IntVector,
     PredictionTargetBatch,
     PreparedPredictionTargets,
@@ -21,14 +22,19 @@ from .metrics import (
     compute_batch_loss_and_state,
     create_epoch_accumulator,
 )
-from .outputs import CANDIDATE_LOGITS_HEAD_ID, build_output_spec, candidate_logits, masked_candidate_logits
+from .outputs import (
+    CANDIDATE_LOGITS_HEAD_ID,
+    build_output_spec,
+    candidate_logits,
+    masked_candidate_logits,
+)
 from .targets import prepare_candidate_slate_targets
 
 PROGRESS_METRIC_DESCRIPTORS: tuple[StageMetricDescriptor, ...] = (
-    StageMetricDescriptor(id="profit_over_baseline", label="profit", width=8),
-    StageMetricDescriptor(id="cost_over_optimum", label="cost", width=8),
-    StageMetricDescriptor(id="total_loss", label="loss", width=7),
-    StageMetricDescriptor(id="exact_optimum_hit_rate", label="hit", width=6),
+    StageMetricDescriptor(id="profit_over_baseline", label="profit"),
+    StageMetricDescriptor(id="cost_over_optimum", label="cost"),
+    StageMetricDescriptor(id="total_loss", label="loss"),
+    StageMetricDescriptor(id="exact_optimum_hit_rate", label="hit"),
 )
 
 
@@ -55,20 +61,18 @@ def _create_epoch_accumulator(stage: str):
     return create_epoch_accumulator()
 
 
-def _allocate_decoded_offsets(sample_count: int) -> object:
+def _allocate_decoded_offsets(sample_count: int) -> DecodedOffsets:
     return [0] * sample_count
 
 
 def _decode_selected_offsets_into(
-    predictions: object,
+    predictions: DecodedOffsets,
     sample_positions: torch.Tensor,
     outputs: ModelOutputs,
     targets: PredictionTargetBatch,
 ) -> None:
     if not isinstance(targets, CandidateSlateTargetBatch):
         raise TypeError("candidate_offset_selection expects CandidateSlateTargetBatch targets")
-    if not isinstance(predictions, list):
-        raise TypeError("candidate_offset_selection decoded_offsets buffer must be a list")
     logits = masked_candidate_logits(candidate_logits(outputs), targets.candidate_mask)
     decoded = logits.argmax(dim=-1).cpu().tolist()
     positions = sample_positions.tolist()

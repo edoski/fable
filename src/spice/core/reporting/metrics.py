@@ -19,12 +19,6 @@ def _progress_bucket(stage: _StageState) -> int | None:
     return min(bucket_count, (stage.completed * bucket_count) // stage.total)
 
 
-def _smooth_value(previous: float | None, current: float, *, alpha: float) -> float:
-    if previous is None:
-        return current
-    return previous + alpha * (current - previous)
-
-
 def format_compact_number(value: float) -> str:
     if value >= 1_000_000:
         return f"{value / 1_000_000:.2f}M"

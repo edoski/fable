@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import polars as pl
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from .validation_base import ValidationModel, ValidationStatus, finalize_validation_status
+ValidationStatus = Literal["clean", "error"]
 
 VALIDATION_COLUMNS = ("block_number", "timestamp", "chain_id")
 
@@ -37,7 +38,9 @@ class BlockFrameAssessment:
     errors: tuple[str, ...]
 
 
-class BlockDatasetValidationReport(ValidationModel):
+class BlockDatasetValidationReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     dataset_path: Path
     expected_start_timestamp: int | None = None
     expected_end_timestamp: int | None = None
@@ -55,6 +58,10 @@ class BlockDatasetValidationReport(ValidationModel):
     errors: list[str] = Field(default_factory=list)
 
 
+def _finalize_validation_status(report: BlockDatasetValidationReport) -> None:
+    report.status = "error" if report.errors else "clean"
+
+
 def _coerce_validation_frame(frame: pl.DataFrame) -> pl.DataFrame:
     missing = [column for column in VALIDATION_COLUMNS if column not in frame.columns]
     if missing:
@@ -70,8 +77,7 @@ def _coerce_validation_frame(frame: pl.DataFrame) -> pl.DataFrame:
     ).sort("block_number")
 
 
-def summarize_block_frame(frame: pl.DataFrame) -> BlockFrameSummary:
-    validation_frame = _coerce_validation_frame(frame)
+def _summarize_validation_frame(validation_frame: pl.DataFrame) -> BlockFrameSummary:
     if validation_frame.height == 0:
         raise ValueError("Block dataset is empty")
 
@@ -125,8 +131,6 @@ def assess_block_frame_summary(
 
 
 def exact_window_counts(
-    summary: BlockFrameSummary,
-    *,
     frame: pl.DataFrame,
     expected_start_timestamp: int,
     expected_end_timestamp: int,
@@ -169,16 +173,11 @@ def validate_contiguous_block_frame(
     expected_chain_id: int,
 ) -> BlockDatasetValidationReport:
     report = BlockDatasetValidationReport(dataset_path=dataset_path)
-    try:
-        summary = summarize_block_frame(frame)
-    except Exception as exc:
-        report.errors.append(str(exc))
-        finalize_validation_status(report)
-        return report
-
-    _apply_summary(report, summary, expected_chain_id=expected_chain_id)
-    finalize_validation_status(report)
-    return report
+    return _validate_block_frame(
+        frame,
+        report=report,
+        expected_chain_id=expected_chain_id,
+    )
 
 
 def validate_exact_window_frame(
@@ -194,27 +193,44 @@ def validate_exact_window_frame(
         expected_start_timestamp=expected_start_timestamp,
         expected_end_timestamp=expected_end_timestamp,
     )
-    try:
-        validation_frame = _coerce_validation_frame(frame)
-        summary = summarize_block_frame(validation_frame)
-    except Exception as exc:
-        report.errors.append(str(exc))
-        finalize_validation_status(report)
-        return report
-
-    _apply_summary(report, summary, expected_chain_id=expected_chain_id)
-    counts = exact_window_counts(
-        summary,
-        frame=validation_frame,
+    return _validate_block_frame(
+        frame,
+        report=report,
+        expected_chain_id=expected_chain_id,
         expected_start_timestamp=expected_start_timestamp,
         expected_end_timestamp=expected_end_timestamp,
     )
-    report.below_start_count = counts.below_start_count
-    report.above_end_count = counts.above_end_count
-    if report.below_start_count or report.above_end_count:
-        report.errors.append(
-            f"Detected out-of-range timestamps: below_start={report.below_start_count}, "
-            f"above_end={report.above_end_count}"
+
+
+def _validate_block_frame(
+    frame: pl.DataFrame,
+    *,
+    report: BlockDatasetValidationReport,
+    expected_chain_id: int,
+    expected_start_timestamp: int | None = None,
+    expected_end_timestamp: int | None = None,
+) -> BlockDatasetValidationReport:
+    try:
+        validation_frame = _coerce_validation_frame(frame)
+        summary = _summarize_validation_frame(validation_frame)
+    except Exception as exc:
+        report.errors.append(str(exc))
+        _finalize_validation_status(report)
+        return report
+
+    _apply_summary(report, summary, expected_chain_id=expected_chain_id)
+    if expected_start_timestamp is not None and expected_end_timestamp is not None:
+        counts = exact_window_counts(
+            frame=validation_frame,
+            expected_start_timestamp=expected_start_timestamp,
+            expected_end_timestamp=expected_end_timestamp,
         )
-    finalize_validation_status(report)
+        report.below_start_count = counts.below_start_count
+        report.above_end_count = counts.above_end_count
+        if report.below_start_count or report.above_end_count:
+            report.errors.append(
+                f"Detected out-of-range timestamps: below_start={report.below_start_count}, "
+                f"above_end={report.above_end_count}"
+            )
+    _finalize_validation_status(report)
     return report

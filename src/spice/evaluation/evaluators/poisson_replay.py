@@ -1,18 +1,14 @@
 """Stochastic replay evaluator."""
 
-from __future__ import annotations
-
-from typing import Literal
-
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import Field
 
 from ...core.errors import SpiceOperatorError
 from ...core.reporting import NullReporter, Reporter
+from ...prediction.contracts import DecodedOffsets
 from ...temporal.problem_store import CompiledProblemStore
-from ..base import EvaluationSummary, EvaluatorConfig
-from ..contracts import CompiledEvaluatorContract
+from ..base import CompiledEvaluatorContract, EvaluationSummary, EvaluatorConfig
 from .shared import (
     EVALUATION_METRIC_DESCRIPTORS,
     sample_poisson_arrivals,
@@ -26,7 +22,7 @@ IntVector = NDArray[np.int64]
 
 def _run(
     store: CompiledProblemStore,
-    decoded_offsets: object,
+    decoded_offsets: DecodedOffsets,
     sample_indices: IntVector,
     reporter: Reporter | None,
     *,
@@ -36,8 +32,6 @@ def _run(
     seed: int,
 ) -> EvaluationSummary:
     reporter = reporter or NullReporter()
-    if not isinstance(decoded_offsets, list):
-        raise TypeError("poisson_replay decoded_offsets must be a list")
     if len(decoded_offsets) != int(sample_indices.shape[0]):
         raise ValueError("decoded_offsets must align with sample_indices")
     if sample_indices.size == 0:
@@ -101,8 +95,8 @@ def _run(
     return summary
 
 
-class PoissonReplayEvaluatorConfig(EvaluatorConfig[Literal["poisson_replay"]]):
-    id: Literal["poisson_replay"] = "poisson_replay"
+class PoissonReplayEvaluatorConfig(EvaluatorConfig):
+    id: str = "poisson_replay"
     window_seconds: int = Field(gt=0)
     arrival_rate_per_second: float = Field(gt=0.0)
     repetitions: int = Field(gt=0)

@@ -1,6 +1,4 @@
 """Public configuration API."""
-
-from ..storage.layout import PathLayout, build_path_layout
 from .loader import resolve_workflow_config
 from .models import (
     AcquireConfig,
@@ -10,10 +8,10 @@ from .models import (
     ChainRuntimeSpec,
     ChainSpec,
     CompileMode,
+    DatasetBuilderConfig,
     DatasetSpec,
     EvaluateConfig,
     EvaluationConfig,
-    DatasetBuilderConfig,
     ExecutionBackend,
     ExecutionPathsSpec,
     ExecutionSpec,
@@ -43,8 +41,8 @@ from .models import (
     WorkflowSelections,
     WorkflowTask,
     apply_provider_acquisition_overrides,
-    coerce_feature_set_config,
     coerce_dataset_builder_config,
+    coerce_feature_set_config,
     coerce_prediction_config,
     coerce_problem_spec,
 )
@@ -71,7 +69,6 @@ __all__ = [
     "FeatureSetConfig",
     "ModelConfig",
     "ModelTuningSpaceConfig",
-    "PathLayout",
     "PredictionConfig",
     "PresetSpec",
     "ProviderSpec",
@@ -92,7 +89,6 @@ __all__ = [
     "WorkflowSelections",
     "WorkflowTask",
     "apply_provider_acquisition_overrides",
-    "build_path_layout",
     "coerce_feature_set_config",
     "coerce_dataset_builder_config",
     "coerce_prediction_config",

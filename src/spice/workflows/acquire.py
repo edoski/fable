@@ -14,7 +14,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, cast
 
-from ..acquisition.rpc import RpcController, TimestampRange, Web3BlockClient, evaluation_range
+from ..acquisition.rpc import BlockRpcClient, RpcController, TimestampRange, evaluation_range
 from ..config import AcquireConfig
 from ..core.files import promote_paths_atomic, prune_empty_directories
 from ..core.reporting import Reporter, StageMetricDescriptor
@@ -32,12 +32,13 @@ from ..corpus.summary import acquire_dry_run_sections, acquisition_summary_secti
 from ..features import CompiledFeatureContract, compile_feature_contract
 from ..storage.catalog import upsert_dataset_record
 from ..storage.corpus import write_dataset_state
+from ..storage.layout import resolve_workflow_paths
 from ..temporal.contracts import CompiledProblemContract, compile_problem_contract
 from ._shared import managed_workflow
 
 _RPC_STAGE_METRICS: tuple[StageMetricDescriptor, ...] = (
-    StageMetricDescriptor(id="batch", label="batch", width=7),
-    StageMetricDescriptor(id="conc", label="conc", width=5),
+    StageMetricDescriptor(id="batch", label="batch"),
+    StageMetricDescriptor(id="conc", label="conc"),
 )
 
 
@@ -150,9 +151,10 @@ def run(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
 
 
 async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
-    history_dir = config.paths.history_dir
-    evaluation_dir = config.paths.evaluation_dir
-    state_db_path = config.paths.corpus_state_db
+    paths = resolve_workflow_paths(config)
+    history_dir = paths.history_dir
+    evaluation_dir = paths.evaluation_dir
+    state_db_path = paths.corpus_state_db
     rpc_controller = RpcController.from_config(config.acquisition)
     feature_contract = compile_feature_contract(feature_set=config.feature_set)
     contract = compile_problem_contract(
@@ -165,11 +167,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
         config.evaluation_window_end_timestamp,
     )
 
-    with managed_workflow(
-        config,
-        run_name=f"acquire-{config.chain.name}-{config.problem.id}-{config.provider.name}",
-        reporter=reporter,
-    ) as session:
+    with managed_workflow(reporter=reporter) as session:
         session.runtime.configure_workflow("acquire", _workflow_facts(config))
         history_reporter = session.runtime.stage_reporter(
             "history",
@@ -197,7 +195,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
         def _update_evaluation_stage(status: str, message: str | None = None) -> None:
             _update_stage("evaluation", status, message)
 
-        block_client = Web3BlockClient(config.provider, config.chain)
+        block_client = BlockRpcClient(config.provider, config.chain)
         try:
             _update_history_stage("planning", "resolving window")
             _update_evaluation_stage("planning", "resolving window")
@@ -223,7 +221,6 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
             session.runtime.set_stage_state(
                 "history",
                 status="planning",
-                progress_finalized=False,
                 total=history_plan.expected_rows,
                 completed=0,
                 unit="blocks",
@@ -252,10 +249,10 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                 return
 
             current_provider = provider_metadata(config)
-            config.paths.corpus_root.parent.mkdir(parents=True, exist_ok=True)
+            paths.corpus_root.parent.mkdir(parents=True, exist_ok=True)
             with TemporaryDirectory(
-                dir=config.paths.corpus_root.parent,
-                prefix=f".{config.paths.corpus_id}.acquire.",
+                dir=paths.corpus_root.parent,
+                prefix=f".{paths.corpus_id}.acquire.",
             ) as temp_root_name:
                 temp_root = Path(temp_root_name)
                 history_source_dir = history_dir
@@ -296,7 +293,6 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                     session.runtime.set_stage_state(
                         "history",
                         status="planning",
-                        progress_finalized=False,
                         total=history_plan.expected_rows,
                         completed=history_result.validation.row_count,
                         unit="blocks",
@@ -366,11 +362,11 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                 promotions.append((state_db_path, temp_state_db))
                 promote_paths_atomic(promotions)
                 upsert_dataset_record(
-                    config.paths.catalog_db,
-                    dataset_id=config.paths.corpus_id,
+                    paths.catalog_db,
+                    dataset_id=paths.corpus_id,
                     dataset_name=config.dataset.name,
                     chain_name=config.chain.name,
-                    root_path=config.paths.corpus_root,
+                    root_path=paths.corpus_root,
                     state_db_path=state_db_path,
                 )
             session.runtime.log_sectioned_summary(
@@ -389,8 +385,8 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
         except (KeyboardInterrupt, asyncio.CancelledError):
             session.reporter.close()
             prune_empty_directories(
-                config.paths.corpus_root,
-                stop_at=config.paths.corpus_root.parent.parent,
+                paths.corpus_root,
+                stop_at=paths.corpus_root.parent.parent,
             )
             session.reporter.log(
                 "acquire cancelled; partial download removed",

@@ -42,7 +42,11 @@ class _ReporterLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         message = self.format(record)
-        level = "error" if record.levelno >= logging.ERROR else "warning" if record.levelno >= logging.WARNING else "info"
+        level = (
+            "error"
+            if record.levelno >= logging.ERROR
+            else "warning" if record.levelno >= logging.WARNING else "info"
+        )
         self._reporter.log(message, level=level)
 
 
@@ -125,7 +129,6 @@ class WorkflowRuntime:
         *,
         label: str | None = None,
         status: str | None = None,
-        progress_finalized: bool | None = None,
         total: int | None = None,
         unit: str | None = None,
         completed: int | None = None,
@@ -137,7 +140,6 @@ class WorkflowRuntime:
             key,
             label=label,
             status=status,
-            progress_finalized=progress_finalized,
             total=total,
             unit=unit,
             completed=completed,

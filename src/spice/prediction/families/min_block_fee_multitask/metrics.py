@@ -105,19 +105,6 @@ def compute_batch_loss_and_state(
     )
 
 
-def summarize_epoch_metrics(batch_states: list[object]) -> MetricSet:
-    states = [state for state in batch_states if isinstance(state, MinBlockFeeBatchState)]
-    if not states:
-        raise ValueError("Cannot summarize an empty batch-state collection")
-    return _metric_set_from_totals(
-        count=sum(item.count for item in states),
-        total_loss_sum=sum(item.total_loss_sum for item in states),
-        classification_loss_sum=sum(item.classification_loss_sum for item in states),
-        regression_loss_sum=sum(item.regression_loss_sum for item in states),
-        correct_offset_count=sum(item.correct_offset_count for item in states),
-    )
-
-
 def create_epoch_accumulator() -> MinBlockFeeEpochAccumulator:
     return MinBlockFeeEpochAccumulator()
 

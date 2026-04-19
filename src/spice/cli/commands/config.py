@@ -11,7 +11,6 @@ import typer
 
 from ...config.registry import ConfigGroup
 from ...core.errors import SpiceOperatorError
-from ...remote import resolve_remote_target, run_remote_cli
 
 app = typer.Typer(
     help="Query and edit saved YAML config specs.",
@@ -46,18 +45,7 @@ def config_list_command(
         ConfigGroup,
         typer.Argument(metavar="GROUP", help=_CONFIG_GROUP_HELP),
     ],
-    remote: Annotated[
-        bool,
-        typer.Option("--remote", help="Query config from the remote university cluster."),
-    ] = False,
 ) -> None:
-    if remote:
-        result = run_remote_cli(resolve_remote_target(), ["config", "list", group.value])
-        if result.returncode != 0:
-            message = (result.stderr or result.stdout).strip()
-            raise SpiceOperatorError(message or "remote config list failed")
-        typer.echo(result.stdout, nl=False)
-        return
     from ...config.registry import list_group_names
 
     _print_config_names(list_group_names(group.value))
@@ -77,18 +65,7 @@ def config_show_command(
         str,
         typer.Argument(metavar="NAME", help="Saved spec name."),
     ],
-    remote: Annotated[
-        bool,
-        typer.Option("--remote", help="Query config from the remote university cluster."),
-    ] = False,
 ) -> None:
-    if remote:
-        result = run_remote_cli(resolve_remote_target(), ["config", "show", group.value, name])
-        if result.returncode != 0:
-            message = (result.stderr or result.stdout).strip()
-            raise SpiceOperatorError(message or "remote config show failed")
-        typer.echo(result.stdout, nl=False)
-        return
     from ...config.registry import show_named_group
 
     typer.echo(show_named_group(group.value, name), nl=False)

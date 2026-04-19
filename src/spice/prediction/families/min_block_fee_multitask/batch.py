@@ -107,7 +107,11 @@ class MinBlockFeeTrainingState:
             return resolved
         non_blocking = device.type == "cuda"
         resolved = ResolvedMinBlockFeeTrainingState(
-            class_weights=self.class_weights.to(device=device, dtype=dtype, non_blocking=non_blocking),
+            class_weights=self.class_weights.to(
+                device=device,
+                dtype=dtype,
+                non_blocking=non_blocking,
+            ),
             fee_mean=torch.tensor(self.fee_mean, device=device, dtype=dtype),
             fee_std=torch.tensor(self.fee_std, device=device, dtype=dtype),
         )

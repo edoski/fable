@@ -2,37 +2,36 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Generic, Literal, TypeVar
+from typing import Literal
 
+import numpy as np
+from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from ..core.closed_dispatch import validate_path_segment
+from ..core.reporting import Reporter
 from ..prediction.base import MetricDescriptor, MetricSet, WindowMetricSummary
-
-
-def _validate_path_segment(value: str, *, label: str) -> str:
-    if not value or "/" in value or "\\" in value:
-        raise ValueError(f"{label} must be a non-empty path segment")
-    return value
+from ..prediction.contracts import DecodedOffsets
+from ..temporal.problem_store import CompiledProblemStore
 
 
 class EvaluationConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
-EvaluatorIdT = TypeVar("EvaluatorIdT", bound=str)
-
-
-class EvaluatorConfig(EvaluationConfigModel, Generic[EvaluatorIdT]):
-    id: EvaluatorIdT
+class EvaluatorConfig(EvaluationConfigModel):
+    id: str
 
     @field_validator("id")
     @classmethod
     def validate_id(cls, value: str) -> str:
-        return _validate_path_segment(value, label="evaluation.evaluator.id")
+        return validate_path_segment(value, label="evaluation.evaluator.id")
 
 
 EvaluationMetadataValue = str | int | float
+IntVector = NDArray[np.int64]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,9 +49,26 @@ class EvaluationSummary:
     runs: list[EvaluationRun]
 
 
+RunEvaluatorFn = Callable[
+    [CompiledProblemStore, DecodedOffsets, IntVector, Reporter | None],
+    EvaluationSummary,
+]
+
+
 @dataclass(frozen=True, slots=True)
-class EvaluatorSemantics:
+class CompiledEvaluatorContract:
     evaluator_id: str
     metric_descriptors: tuple[MetricDescriptor, ...]
     primary_metric_id: str
     direction: Literal["maximize", "minimize"]
+    config_payload: dict[str, object]
+    run_fn: RunEvaluatorFn
+
+    def run(
+        self,
+        store: CompiledProblemStore,
+        decoded_offsets: DecodedOffsets,
+        sample_indices: IntVector,
+        reporter: Reporter | None,
+    ) -> EvaluationSummary:
+        return self.run_fn(store, decoded_offsets, sample_indices, reporter)

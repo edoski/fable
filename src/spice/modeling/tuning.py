@@ -14,12 +14,16 @@ from ..config import (
     coerce_problem_spec,
 )
 from ..core.errors import ConfigResolutionError, MissingStateError
+from ..storage.layout import resolve_workflow_paths
 from ..storage.study_manifest import load_study_manifest, validate_tuned_train_request
 from ..storage.study_optuna import load_best_params
 from .families.registry import (
     apply_tuned_parameters as apply_model_tuned_parameters,
 )
-from .families.registry import coerce_model_config, coerce_tuning_space_config
+from .families.registry import (
+    coerce_model_config,
+    coerce_tuning_space_config,
+)
 
 
 @overload
@@ -63,7 +67,7 @@ def apply_tuned_parameters(
 
 
 def apply_study_best_params(config: TrainConfig) -> TrainConfig:
-    path = config.paths.study_state_db
+    path = resolve_workflow_paths(config).study_state_db
     if path is None:
         raise ConfigResolutionError("study_state_db is required for tuned artifacts")
     try:

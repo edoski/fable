@@ -2,74 +2,66 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
-from typing import Any, Generic, TypeVar, cast
+from collections.abc import Mapping
 
-from ..core.errors import ConfigResolutionError
-from .base import EvaluatorConfig
-from .contracts import CompiledEvaluatorContract
-
-EvaluatorConfigT = TypeVar("EvaluatorConfigT", bound=EvaluatorConfig)
+from ..core.closed_dispatch import config_payload_and_id, unknown_id_error
+from .base import CompiledEvaluatorContract, EvaluatorConfig
 
 
-@dataclass(frozen=True, slots=True)
-class EvaluatorSpec(Generic[EvaluatorConfigT]):
-    id: str
-    config_type: type[EvaluatorConfigT]
-    compile: Callable[[EvaluatorConfigT], CompiledEvaluatorContract]
-
-
-_KNOWN_EVALUATORS = ("paper_fullset", "poisson_replay")
-
-
-def evaluator_spec(evaluator_id: str) -> EvaluatorSpec[EvaluatorConfig]:
+def _coerce_known_evaluator_config(
+    evaluator_id: str,
+    payload: Mapping[str, object],
+) -> EvaluatorConfig:
     if evaluator_id == "paper_fullset":
-        from .evaluators.paper_fullset import (
-            PaperFullsetEvaluatorConfig,
-            compile_evaluator as compile_paper_fullset,
-        )
+        from .evaluators.paper_fullset import PaperFullsetEvaluatorConfig
 
-        return EvaluatorSpec(
-            id="paper_fullset",
-            config_type=PaperFullsetEvaluatorConfig,
-            compile=compile_paper_fullset,
-        )
+        return PaperFullsetEvaluatorConfig.model_validate(payload)
     if evaluator_id == "poisson_replay":
-        from .evaluators.poisson_replay import (
-            PoissonReplayEvaluatorConfig,
-            compile_evaluator as compile_poisson_replay,
-        )
+        from .evaluators.poisson_replay import PoissonReplayEvaluatorConfig
 
-        return EvaluatorSpec(
-            id="poisson_replay",
-            config_type=PoissonReplayEvaluatorConfig,
-            compile=compile_poisson_replay,
-        )
-    known = ", ".join(_KNOWN_EVALUATORS)
-    raise ConfigResolutionError(
-        f"Unknown evaluation.evaluator.id: {evaluator_id}. Known values: {known}"
+        return PoissonReplayEvaluatorConfig.model_validate(payload)
+    raise unknown_id_error(
+        field_name="evaluation.evaluator.id",
+        component_id=evaluator_id,
+        known_ids=("paper_fullset", "poisson_replay"),
     )
 
 
 def coerce_evaluator_config(
     raw_config: Mapping[str, object] | EvaluatorConfig,
 ) -> EvaluatorConfig:
-    if isinstance(raw_config, EvaluatorConfig):
-        evaluator_id = raw_config.id
-        payload = raw_config.model_dump(mode="json")
-    elif isinstance(raw_config, Mapping):
-        if "id" not in raw_config:
-            raise ConfigResolutionError("evaluation.evaluator.id is required")
-        evaluator_id = str(raw_config["id"])
-        payload = dict(raw_config)
-    else:
-        raise ConfigResolutionError("evaluation.evaluator must be a mapping")
-    return evaluator_spec(evaluator_id).config_type.model_validate(payload)
+    payload, evaluator_id = config_payload_and_id(
+        raw_config,
+        config_type=EvaluatorConfig,
+        field_name="evaluation.evaluator.id",
+        mapping_label="evaluation.evaluator",
+    )
+    return _coerce_known_evaluator_config(evaluator_id, payload)
 
 
 def compile_evaluator_contract(
     evaluator_config: EvaluatorConfig,
 ) -> CompiledEvaluatorContract:
-    spec = evaluator_spec(evaluator_config.id)
-    return spec.compile(cast(Any, evaluator_config))
+    if evaluator_config.id == "paper_fullset":
+        from .evaluators.paper_fullset import (
+            PaperFullsetEvaluatorConfig,
+            compile_evaluator,
+        )
+
+        if not isinstance(evaluator_config, PaperFullsetEvaluatorConfig):
+            raise TypeError("paper_fullset evaluator config has unexpected type")
+        return compile_evaluator(evaluator_config)
+    if evaluator_config.id == "poisson_replay":
+        from .evaluators.poisson_replay import (
+            PoissonReplayEvaluatorConfig,
+            compile_evaluator,
+        )
+
+        if not isinstance(evaluator_config, PoissonReplayEvaluatorConfig):
+            raise TypeError("poisson_replay evaluator config has unexpected type")
+        return compile_evaluator(evaluator_config)
+    raise unknown_id_error(
+        field_name="evaluation.evaluator.id",
+        component_id=evaluator_config.id,
+        known_ids=("paper_fullset", "poisson_replay"),
+    )

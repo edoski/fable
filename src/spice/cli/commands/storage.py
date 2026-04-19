@@ -10,17 +10,14 @@ from typing import Annotated, NoReturn
 import typer
 
 from ...core.errors import SpiceOperatorError
-from ...remote import resolve_remote_target, run_remote_cli
 from ...storage.inspect import describe_root, sectioned_summary
 from ...storage.inspect_artifact import artifact_list_sections
 from ...storage.inspect_dataset import dataset_list_sections
 from ...storage.inspect_study import study_list_sections
-from ...storage.query import (
-    ArtifactSelector,
+from ...storage.roots import (
     DatasetSelector,
     DeleteBlockedError,
     SelectorResolutionError,
-    StudySelector,
     delete_artifact_record,
     delete_dataset_record,
     delete_study_record,
@@ -38,7 +35,6 @@ from ..options import (
     ModelFilterOption,
     PredictionFilterOption,
     ProblemFilterOption,
-    RemoteOption,
     StorageRootDeleteOption,
     StorageRootReadOption,
     StudyFilterOption,
@@ -46,6 +42,7 @@ from ..options import (
     print_sections,
     resolve_storage_root,
 )
+from ._selectors import artifact_selector, study_selector
 
 show_app = typer.Typer(
     help="Query stored datasets, studies, and artifacts.",
@@ -124,6 +121,10 @@ _SELECTOR_FLAGS: dict[str, dict[str, str]] = {
 }
 
 
+def _dataset_selector(*, chain: str | None, dataset: str | None) -> DatasetSelector:
+    return DatasetSelector(chain_name=chain, dataset_name=dataset)
+
+
 def _show_root_detail(root_path: Path, *, detail: str | None) -> None:
     description = describe_root(root_path, detail=detail)
     title, sections = sectioned_summary(description)
@@ -191,24 +192,6 @@ def _handle_delete_blocked(error: DeleteBlockedError) -> NoReturn:
     raise SpiceOperatorError(str(error))
 
 
-def _show_remote(args: list[str], *, storage_root: Path | None) -> None:
-    if storage_root is not None:
-        raise SpiceOperatorError("--storage-root is not supported with --remote")
-    target = resolve_remote_target()
-    result = run_remote_cli(
-        target,
-        [
-            *args,
-            "--storage-root",
-            str(target.spec.paths.storage_root),
-        ],
-    )
-    if result.returncode != 0:
-        message = (result.stderr or result.stdout).strip()
-        raise SpiceOperatorError(message or "remote show failed")
-    typer.echo(result.stdout, nl=False)
-
-
 @show_app.command(
     "dataset",
     short_help="Show datasets.",
@@ -219,20 +202,9 @@ def show_dataset_command(
     dataset: DatasetFilterOption = None,
     storage_root: StorageRootReadOption = None,
     detail: DatasetDetailOption = None,
-    remote: RemoteOption = False,
 ) -> None:
-    if remote:
-        args = ["show", "dataset"]
-        if chain is not None:
-            args.extend(["--chain", chain])
-        if dataset is not None:
-            args.extend(["--dataset", dataset])
-        if detail is not None:
-            args.extend(["--detail", detail.value])
-        _show_remote(args, storage_root=storage_root)
-        return
     root = resolve_storage_root(storage_root)
-    selector = DatasetSelector(chain_name=chain, dataset_name=dataset)
+    selector = _dataset_selector(chain=chain, dataset=dataset)
     records = list_dataset_records(
         root,
         selector=selector,
@@ -262,37 +234,16 @@ def show_study_command(
     study: StudyFilterOption = None,
     storage_root: StorageRootReadOption = None,
     detail: StudyDetailOption = None,
-    remote: RemoteOption = False,
 ) -> None:
-    if remote:
-        args = ["show", "study"]
-        if chain is not None:
-            args.extend(["--chain", chain])
-        if dataset is not None:
-            args.extend(["--dataset", dataset])
-        if feature_set is not None:
-            args.extend(["--feature-set", feature_set])
-        if prediction is not None:
-            args.extend(["--prediction", prediction])
-        if model is not None:
-            args.extend(["--model", model])
-        if problem is not None:
-            args.extend(["--problem", problem])
-        if study is not None:
-            args.extend(["--study", study])
-        if detail is not None:
-            args.extend(["--detail", detail.value])
-        _show_remote(args, storage_root=storage_root)
-        return
     root = resolve_storage_root(storage_root)
-    selector = StudySelector(
-        chain_name=chain,
-        dataset_name=dataset,
-        feature_set_id=feature_set,
-        prediction_id=prediction,
-        model_id=model,
-        problem_id=problem,
-        study_name=study,
+    selector = study_selector(
+        chain=chain,
+        dataset=dataset,
+        feature_set=feature_set,
+        prediction=prediction,
+        model=model,
+        problem=problem,
+        study=study,
     )
     records = list_study_records(
         root,
@@ -327,40 +278,17 @@ def show_artifact_command(
     study: StudyFilterOption = None,
     storage_root: StorageRootReadOption = None,
     detail: ArtifactDetailOption = None,
-    remote: RemoteOption = False,
 ) -> None:
-    if remote:
-        args = ["show", "artifact"]
-        if chain is not None:
-            args.extend(["--chain", chain])
-        if dataset is not None:
-            args.extend(["--dataset", dataset])
-        if feature_set is not None:
-            args.extend(["--feature-set", feature_set])
-        if prediction is not None:
-            args.extend(["--prediction", prediction])
-        if model is not None:
-            args.extend(["--model", model])
-        if problem is not None:
-            args.extend(["--problem", problem])
-        if variant is not None:
-            args.extend(["--variant", variant])
-        if study is not None:
-            args.extend(["--study", study])
-        if detail is not None:
-            args.extend(["--detail", detail.value])
-        _show_remote(args, storage_root=storage_root)
-        return
     root = resolve_storage_root(storage_root)
-    selector = ArtifactSelector(
-        chain_name=chain,
-        dataset_name=dataset,
-        feature_set_id=feature_set,
-        prediction_id=prediction,
-        model_id=model,
-        problem_id=problem,
+    selector = artifact_selector(
+        chain=chain,
+        dataset=dataset,
+        feature_set=feature_set,
+        prediction=prediction,
+        model=model,
+        problem=problem,
         variant=variant,
-        study_name=study,
+        study=study,
     )
     records = list_artifact_records(
         root,
@@ -396,15 +324,15 @@ def delete_artifact_command(
     storage_root: StorageRootDeleteOption = None,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    selector = ArtifactSelector(
-        chain_name=chain,
-        dataset_name=dataset,
-        feature_set_id=feature_set,
-        prediction_id=prediction,
-        model_id=model,
-        problem_id=problem,
+    selector = artifact_selector(
+        chain=chain,
+        dataset=dataset,
+        feature_set=feature_set,
+        prediction=prediction,
+        model=model,
+        problem=problem,
         variant=variant,
-        study_name=study,
+        study=study,
     )
     try:
         record = resolve_artifact_record(root, selector=selector)
@@ -433,14 +361,14 @@ def delete_study_command(
     ] = False,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    selector = StudySelector(
-        chain_name=chain,
-        dataset_name=dataset,
-        feature_set_id=feature_set,
-        prediction_id=prediction,
-        model_id=model,
-        problem_id=problem,
-        study_name=study,
+    selector = study_selector(
+        chain=chain,
+        dataset=dataset,
+        feature_set=feature_set,
+        prediction=prediction,
+        model=model,
+        problem=problem,
+        study=study,
     )
     try:
         record = resolve_study_record(root, selector=selector)
@@ -469,7 +397,7 @@ def delete_dataset_command(
     ] = False,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    selector = DatasetSelector(chain_name=chain, dataset_name=dataset)
+    selector = _dataset_selector(chain=chain, dataset=dataset)
     try:
         record = resolve_dataset_record(root, selector=selector)
     except SelectorResolutionError as error:

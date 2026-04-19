@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from spice.cli import app
 from spice.config import (
+    AcquireConfig,
     EvaluateConfig,
     TrainConfig,
     WorkflowSelections,
@@ -16,8 +17,59 @@ from spice.config import (
     resolve_workflow_config,
 )
 from spice.core.errors import ConfigResolutionError
+from spice.storage.ids import corpus_storage_id
+from spice.storage.layout import resolve_workflow_paths
 
 runner = CliRunner()
+
+
+def test_acquire_cli_loads_specs_and_applies_selector_overrides(tmp_path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _capture(config) -> None:
+        captured["config"] = config
+
+    monkeypatch.setattr("spice.workflows.acquire.run", _capture)
+
+    result = runner.invoke(
+        app,
+        [
+            "acquire",
+            "--preset",
+            "icdcs_2026",
+            "--chain",
+            "avalanche",
+            "--provider",
+            "publicnode",
+            "--storage-root",
+            str(tmp_path / "outputs"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    config = cast(AcquireConfig, captured["config"])
+    paths = resolve_workflow_paths(config)
+    assert config.chain.name == "avalanche"
+    assert config.chain.runtime.chain_id == 43114
+    assert config.provider.name == "publicnode"
+    assert config.provider.rpc.timeout_seconds == 30.0
+    assert (
+        config.provider.endpoint_for(config.chain.name)
+        == "https://avalanche-c-chain-rpc.publicnode.com"
+    )
+    assert config.acquisition.rpc.batch_size == 256
+    assert config.dataset.name == "icdcs_2026"
+    assert config.problem.sample_count == 400000
+    assert config.feature_set.id == "icdcs_2026"
+    assert paths.output_root == tmp_path / "outputs"
+    assert paths.history_dir == (
+        tmp_path
+        / "outputs"
+        / "corpora"
+        / "avalanche"
+        / corpus_storage_id(chain_name="avalanche", dataset_name="icdcs_2026")
+        / "history"
+    )
 
 
 def test_config_list_and_show_commands(isolate_conf_root) -> None:
@@ -90,35 +142,20 @@ def test_removed_group_is_gone_and_legacy_task_key_is_rejected(tmp_path, isolate
 def test_evaluate_loader_uses_delay_seconds_and_named_override(
     tmp_path,
     load_workflow_config,
+    model_workflow_override,
 ) -> None:
+    override = model_workflow_override(
+        compiler_id="timestamp_native",
+        max_delay_seconds=24,
+        delay_seconds=12,
+    )
     config = cast(
         EvaluateConfig,
         load_workflow_config(
             WorkflowTask.EVALUATE,
             workspace=tmp_path,
             preset="icdcs_2026",
-            override={
-                "problem": {
-                    "id": "test_problem",
-                    "lookback_seconds": 120,
-                    "sample_count": 24,
-                    "max_delay_seconds": 24,
-                    "compiler": {"id": "timestamp_native"},
-                },
-                "feature_set": "time_native_baseline",
-                "delay_seconds": 12,
-                "evaluation": {
-                    "evaluator": {
-                        "id": "poisson_replay",
-                        "window_seconds": 600,
-                        "arrival_rate_per_second": 0.02,
-                        "repetitions": 3,
-                        "seed": 2026,
-                    }
-                },
-            },
-            chain="ethereum",
-            model="lstm",
+            override=override,
         ),
     )
 
@@ -140,12 +177,21 @@ def test_train_loader_resolves_production_preset(
             workspace=tmp_path,
             preset="icdcs_2026",
             override={
-                "dataset": {"evaluation_date": "2025-11-09"},
+                "dataset": {
+                    "name": "icdcs_2026",
+                    "evaluation_date": "2025-11-09",
+                },
                 "training": {
+                    "learning_rate": 0.0003,
+                    "weight_decay": 0.01,
                     "device": "cpu",
                     "batch_size": 8,
                     "max_epochs": 1,
+                    "gradient_clip_norm": 1.0,
+                    "seed": 2026,
+                    "deterministic": True,
                     "log_every_n_steps": 1,
+                    "input_normalization": {"id": "row_standard"},
                     "precision": "fp32",
                     "compile": "off",
                     "early_stopping": {"patience": 1, "min_delta": 0.0},

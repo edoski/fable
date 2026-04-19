@@ -13,7 +13,7 @@ from ...prediction import PredictionOutputSpec
 from ..models import LSTMBaseline, TemporalModel
 from ..representations import SEQUENCE_INPUT_REPRESENTATION_ID
 from .base import ModelConfig, ModelTuningSpaceConfig, TunedModelParams
-from .registry import ModelSpec, register_model_spec
+from .registry import ModelSpec
 
 
 class LstmModelConfig(ModelConfig[Literal["lstm"]]):
@@ -119,18 +119,16 @@ def _resolve_representation_id(config: LstmModelConfig) -> str:
     return SEQUENCE_INPUT_REPRESENTATION_ID
 
 
-register_model_spec(
-    ModelSpec(
-        id="lstm",
-        resolve_representation_id=_resolve_representation_id,
-        model_config_type=LstmModelConfig,
-        tuning_space_type=LstmTuningSpaceModelConfig,
-        tuned_params_type=LstmTunedModelParams,
-        build_model=_build_model,
-        default_precision=_default_precision,
-        auto_compile=_auto_compile,
-        validate_tuning_space=_validate_tuning_space,
-        sample_model_params=_sample_model_params,
-        apply_model_params=_apply_model_params,
-    )
+MODEL_SPEC = ModelSpec(
+    id="lstm",
+    resolve_representation_id=_resolve_representation_id,
+    model_config_type=LstmModelConfig,
+    tuning_space_type=LstmTuningSpaceModelConfig,
+    tuned_params_type=LstmTunedModelParams,
+    build_model=_build_model,
+    default_precision=_default_precision,
+    auto_compile=_auto_compile,
+    validate_tuning_space=_validate_tuning_space,
+    sample_model_params=_sample_model_params,
+    apply_model_params=_apply_model_params,
 )

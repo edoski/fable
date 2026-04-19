@@ -7,13 +7,12 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, RowMapping
 
 from ..core.errors import MissingStateError, StateLayoutError
 from ..modeling.result_codecs import (
@@ -29,7 +28,7 @@ from ..modeling.result_codecs import (
     training_summary_payload,
 )
 from .engine import RootKind, create_state_engine, ensure_state_db, table_exists, touch_meta
-from .payloads import PayloadCodec, SequencePayloadStore, SingletonPayloadStore
+from .payloads import PayloadCodec, SequencePayloadStore, SingletonPayloadStore, mapping_payload
 from .schema import (
     ARTIFACT_TABLES,
     artifact_manifest,
@@ -168,7 +167,10 @@ def list_training_epochs(db_path: Path) -> list[TrainingEpochRecord]:
                 .all()
             )
         return [
-            training_epoch_from_payload(_payload_mapping(row["payload"]), epoch=int(row["epoch"]))
+            training_epoch_from_payload(
+                mapping_payload(row["payload"], label="training_epochs"),
+                epoch=int(row["epoch"]),
+            )
             for row in rows
         ]
     finally:
@@ -259,38 +261,22 @@ def list_evaluation_summaries(db_path: Path) -> list[LoadedEvaluationSummary]:
     try:
         with engine.connect() as conn:
             manifest = _ARTIFACT_MANIFEST_STORE.load(conn)
-            rows = (
-                conn.execute(
-                    select(
-                        evaluation_summary.c.evaluation_id,
-                        evaluation_summary.c.recorded_at,
-                        evaluation_summary.c.payload,
-                    ).order_by(
-                        evaluation_summary.c.recorded_at.desc(),
-                        evaluation_summary.c.evaluation_id,
-                    )
-                )
-                .mappings()
-                .all()
-            )
+            rows = _evaluation_summary_rows(conn)
+            runs_by_id = _evaluation_runs_by_id(conn)
         if manifest is None:
             return []
-        summaries: list[LoadedEvaluationSummary] = []
-        for row in rows:
-            evaluation_id = str(row["evaluation_id"])
-            runs = list_evaluation_runs(db_path, evaluation_id=evaluation_id, engine=engine)
-            summaries.append(
-                LoadedEvaluationSummary(
-                    evaluation_id=evaluation_id,
-                    recorded_at=int(row["recorded_at"]),
-                    manifest=manifest,
-                    runtime=evaluation_summary_from_payload(
-                        _payload_mapping(row["payload"]),
-                        runs=runs,
-                    ),
-                )
+        return [
+            LoadedEvaluationSummary(
+                evaluation_id=str(row["evaluation_id"]),
+                recorded_at=int(row["recorded_at"]),
+                manifest=manifest,
+                runtime=evaluation_summary_from_payload(
+                    mapping_payload(row["payload"], label="evaluation_summary"),
+                    runs=runs_by_id.get(str(row["evaluation_id"]), []),
+                ),
             )
-        return summaries
+            for row in rows
+        ]
     finally:
         engine.dispose()
 
@@ -299,26 +285,15 @@ def list_evaluation_runs(
     db_path: Path,
     *,
     evaluation_id: str | None = None,
-    engine: Engine | None = None,
 ) -> list[EvaluationRun]:
     if not table_exists(db_path, evaluation_runs.name):
         return []
-    owns_engine = engine is None
-    active_engine = create_state_engine(db_path) if engine is None else engine
+    engine = create_state_engine(db_path)
     try:
-        with active_engine.connect() as conn:
+        with engine.connect() as conn:
             resolved_evaluation_id = evaluation_id
             if resolved_evaluation_id is None:
-                evaluation_ids = [
-                    str(row["evaluation_id"])
-                    for row in conn.execute(
-                        select(evaluation_summary.c.evaluation_id).order_by(
-                            evaluation_summary.c.evaluation_id
-                        )
-                    )
-                    .mappings()
-                    .all()
-                ]
+                evaluation_ids = _evaluation_ids(conn)
                 if not evaluation_ids:
                     return []
                 if len(evaluation_ids) > 1:
@@ -327,19 +302,9 @@ def list_evaluation_runs(
                         "when listing evaluation runs"
                     )
                 resolved_evaluation_id = evaluation_ids[0]
-            rows = (
-                conn.execute(
-                    select(evaluation_runs.c.payload)
-                    .where(evaluation_runs.c.evaluation_id == resolved_evaluation_id)
-                    .order_by(evaluation_runs.c.ordinal)
-                )
-                .mappings()
-                .all()
-            )
-        return [evaluation_run_from_payload(_payload_mapping(row["payload"])) for row in rows]
+            return _evaluation_runs_by_id(conn).get(resolved_evaluation_id, [])
     finally:
-        if owns_engine:
-            active_engine.dispose()
+        engine.dispose()
 
 
 def _evaluation_storage_id(summary: EvaluationRuntimeSummary) -> str:
@@ -356,8 +321,48 @@ def _evaluation_storage_id(summary: EvaluationRuntimeSummary) -> str:
     return f"{summary.evaluator_id}-{summary.delay_seconds}s-{digest}"
 
 
-def _payload_mapping(payload: object) -> dict[str, object]:
-    if not isinstance(payload, Mapping):
-        raise TypeError("Artifact payload must be a mapping")
-    mapping = cast(Mapping[object, object], payload)
-    return {str(key): value for key, value in mapping.items()}
+def _evaluation_ids(conn: Connection) -> list[str]:
+    return [
+        str(row["evaluation_id"])
+        for row in conn.execute(
+            select(evaluation_summary.c.evaluation_id).order_by(evaluation_summary.c.evaluation_id)
+        )
+        .mappings()
+        .all()
+    ]
+
+
+def _evaluation_summary_rows(conn: Connection) -> list[RowMapping]:
+    return list(
+        conn.execute(
+            select(
+                evaluation_summary.c.evaluation_id,
+                evaluation_summary.c.recorded_at,
+                evaluation_summary.c.payload,
+            ).order_by(
+                evaluation_summary.c.recorded_at.desc(),
+                evaluation_summary.c.evaluation_id,
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+
+def _evaluation_runs_by_id(conn: Connection) -> dict[str, list[EvaluationRun]]:
+    grouped: dict[str, list[EvaluationRun]] = {}
+    for row in (
+        conn.execute(
+            select(evaluation_runs.c.evaluation_id, evaluation_runs.c.payload).order_by(
+                evaluation_runs.c.evaluation_id,
+                evaluation_runs.c.ordinal,
+            )
+        )
+        .mappings()
+        .all()
+    ):
+        evaluation_id = str(row["evaluation_id"])
+        grouped.setdefault(evaluation_id, []).append(
+            evaluation_run_from_payload(mapping_payload(row["payload"], label="evaluation_runs"))
+        )
+    return grouped

@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ..modeling.representations import PreparedRepresentation
 
 IntVector = NDArray[np.int64]
+DecodedOffsets = list[int]
 
 
 class ModelInputBatch(Protocol):
@@ -75,9 +76,9 @@ ComputeBatchLossAndStateFn = Callable[
 ]
 CreateEpochAccumulatorFn = Callable[[str], EpochMetricAccumulator]
 SelectBestEpochFn = Callable[[list[MetricSet]], int]
-AllocateDecodedOffsetsFn = Callable[[int], object]
+AllocateDecodedOffsetsFn = Callable[[int], DecodedOffsets]
 DecodeSelectedOffsetsIntoFn = Callable[
-    [object, torch.Tensor, Any, PredictionTargetBatch],
+    [DecodedOffsets, torch.Tensor, Any, PredictionTargetBatch],
     None,
 ]
 
@@ -248,12 +249,12 @@ class CompiledPredictionContract:
             if descriptor.id in metrics.values
         )
 
-    def allocate_decoded_offsets(self, sample_count: int) -> object:
+    def allocate_decoded_offsets(self, sample_count: int) -> DecodedOffsets:
         return self.allocate_decoded_offsets_fn(sample_count)
 
     def decode_selected_offsets_into(
         self,
-        predictions: object,
+        predictions: DecodedOffsets,
         sample_positions: torch.Tensor,
         outputs: ModelOutputs,
         targets: PredictionTargetBatch,

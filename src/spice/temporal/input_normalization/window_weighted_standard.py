@@ -1,15 +1,11 @@
 """Window-weighted standardization matching the legacy pipeline."""
 
-from __future__ import annotations
-
-from typing import Literal
-
 from ..scaling import fit_window_weighted_standard_scaler
 from .base import CompiledInputNormalizationContract, InputNormalizationConfig
 
 
-class WindowWeightedStandardConfig(InputNormalizationConfig[Literal["window_weighted_standard"]]):
-    id: Literal["window_weighted_standard"] = "window_weighted_standard"
+class WindowWeightedStandardConfig(InputNormalizationConfig):
+    id: str = "window_weighted_standard"
 
 
 def compile_input_normalization(

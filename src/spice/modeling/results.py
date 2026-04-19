@@ -25,18 +25,13 @@ from .pipeline import PreparedInferenceDataset, PreparedTrainingDataset, Trainin
 
 
 @dataclass(frozen=True, slots=True)
-class ArtifactChainMetadata:
-    name: str
-
-
-@dataclass(frozen=True, slots=True)
 class TrainingArtifactManifest:
     """Single-source persisted artifact provenance plus exact authored config payloads."""
 
     artifact_id: str
     dataset_builder: DatasetBuilderConfig
     prediction: PredictionConfig
-    chain: ArtifactChainMetadata
+    chain_name: str
     dataset_id: str
     dataset_name: str
     problem: ProblemSpec

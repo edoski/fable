@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING
 
 from ..config.models import ChainRuntimeSpec, ProblemSpec
 from ..core.errors import ConfigResolutionError
@@ -117,10 +118,27 @@ def problem_runtime_metadata_from_payload(
         return TimestampRuntimeMetadata()
     if compiler_id == "estimated_block":
         return EstimatedBlockRuntimeMetadata(
-            calibrated_interval_seconds=float(raw_payload["calibrated_interval_seconds"]),
-            lookback_interval_seconds=float(raw_payload["lookback_interval_seconds"]),
-            candidate_interval_seconds=float(raw_payload["candidate_interval_seconds"]),
-            lookback_steps=int(raw_payload["lookback_steps"]),
-            capability_candidate_count=int(raw_payload["capability_candidate_count"]),
+            calibrated_interval_seconds=_float_payload(
+                raw_payload,
+                "calibrated_interval_seconds",
+            ),
+            lookback_interval_seconds=_float_payload(raw_payload, "lookback_interval_seconds"),
+            candidate_interval_seconds=_float_payload(raw_payload, "candidate_interval_seconds"),
+            lookback_steps=_int_payload(raw_payload, "lookback_steps"),
+            capability_candidate_count=_int_payload(raw_payload, "capability_candidate_count"),
         )
     raise ConfigResolutionError(f"Unsupported problem.compiler.id: {compiler_id}")
+
+
+def _float_payload(payload: Mapping[str, object], key: str) -> float:
+    value = payload.get(key)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ConfigResolutionError(f"Invalid float runtime metadata field: {key}")
+    return float(value)
+
+
+def _int_payload(payload: Mapping[str, object], key: str) -> int:
+    value = payload.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigResolutionError(f"Invalid integer runtime metadata field: {key}")
+    return int(value)

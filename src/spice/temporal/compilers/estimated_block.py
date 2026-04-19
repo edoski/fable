@@ -15,7 +15,11 @@ from ...features import (
     FeaturePrerequisites,
     ResolvedFeatureTable,
 )
-from ..contracts import CompiledProblemContract, EstimatedBlockRuntimeMetadata
+from ..contracts import (
+    CompiledProblemContract,
+    EstimatedBlockRuntimeMetadata,
+    ProblemRuntimeMetadata,
+)
 from ..problem_store import CompiledProblemStore
 from .base import ProblemCompilerConfig
 
@@ -139,9 +143,11 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
         feature_table: ResolvedFeatureTable,
         delay_seconds: int,
         *,
-        compiler_runtime_metadata: EstimatedBlockRuntimeMetadata,
+        compiler_runtime_metadata: ProblemRuntimeMetadata,
         max_candidate_slots: int,
     ) -> CompiledProblemStore:
+        if not isinstance(compiler_runtime_metadata, EstimatedBlockRuntimeMetadata):
+            raise TypeError("estimated_block requires EstimatedBlockRuntimeMetadata")
         if delay_seconds <= 0:
             raise ValueError("delay_seconds must be positive")
         if delay_seconds > self.max_delay_seconds:

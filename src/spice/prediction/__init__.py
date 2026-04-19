@@ -10,6 +10,7 @@ from .base import (
 )
 from .contracts import (
     CompiledPredictionContract,
+    DecodedOffsets,
     EpochMetricAccumulator,
     ModelInputBatch,
     PredictionBatch,
@@ -25,6 +26,7 @@ from .registry import (
 
 __all__ = [
     "CompiledPredictionContract",
+    "DecodedOffsets",
     "EpochMetricAccumulator",
     "MetricDescriptor",
     "MetricSet",

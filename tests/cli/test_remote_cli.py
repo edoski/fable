@@ -16,15 +16,15 @@ runner = CliRunner()
 def test_config_list_remote_routes_to_remote_cli(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr("spice.cli.commands.config.resolve_remote_target", lambda: object())
+    monkeypatch.setattr("spice.cli.commands.remote.resolve_remote_target", lambda: object())
 
     def fake_run_remote_cli(_target, args: list[str]):
         captured["args"] = args
         return CompletedProcess(args=args, returncode=0, stdout="execution\n", stderr="")
 
-    monkeypatch.setattr("spice.cli.commands.config.run_remote_cli", fake_run_remote_cli)
+    monkeypatch.setattr("spice.cli.commands.remote.run_remote_cli", fake_run_remote_cli)
 
-    result = runner.invoke(app, ["config", "list", "execution", "--remote"])
+    result = runner.invoke(app, ["remote", "config", "list", "execution"])
 
     assert result.exit_code == 0, result.stdout
     assert captured["args"] == ["config", "list", "execution"]
@@ -37,20 +37,20 @@ def test_show_artifact_remote_routes_to_remote_cli(monkeypatch) -> None:
         spec=SimpleNamespace(paths=SimpleNamespace(storage_root=Path("/remote-storage")))
     )
 
-    monkeypatch.setattr("spice.cli.commands.storage.resolve_remote_target", lambda: target)
+    monkeypatch.setattr("spice.cli.commands.remote.resolve_remote_target", lambda: target)
 
     def fake_run_remote_cli(_target, args: list[str]):
         captured["args"] = args
         return CompletedProcess(args=args, returncode=0, stdout="artifact summary\n", stderr="")
 
-    monkeypatch.setattr("spice.cli.commands.storage.run_remote_cli", fake_run_remote_cli)
+    monkeypatch.setattr("spice.cli.commands.remote.run_remote_cli", fake_run_remote_cli)
 
     result = runner.invoke(
         app,
         [
+            "remote",
             "show",
             "artifact",
-            "--remote",
             "--chain",
             "ethereum",
             "--dataset",
@@ -112,19 +112,19 @@ def test_train_remote_detach_submits_without_follow(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(
-        "spice.cli.commands.workflows.submit_remote_workflow",
+        "spice.cli.commands.remote.submit_remote_workflow",
         fake_submit_remote_workflow,
     )
 
     result = runner.invoke(
         app,
         [
+            "remote",
             "train",
             "--preset",
             "icdcs_2026",
             "--prediction",
             "candidate_offset_selection",
-            "--remote",
             "--detach",
         ],
     )
@@ -146,15 +146,15 @@ def test_refresh_catalog_remote_routes_to_remote_cli(monkeypatch) -> None:
         spec=SimpleNamespace(paths=SimpleNamespace(storage_root=Path("/remote-storage")))
     )
 
-    monkeypatch.setattr("spice.cli.commands.transfer.resolve_remote_target", lambda: target)
+    monkeypatch.setattr("spice.cli.commands.remote.resolve_remote_target", lambda: target)
 
     def fake_run_remote_cli(_target, args: list[str]):
         captured["args"] = args
         return CompletedProcess(args=args, returncode=0, stdout="catalog refreshed\n", stderr="")
 
-    monkeypatch.setattr("spice.cli.commands.transfer.run_remote_cli", fake_run_remote_cli)
+    monkeypatch.setattr("spice.cli.commands.remote.run_remote_cli", fake_run_remote_cli)
 
-    result = runner.invoke(app, ["refresh", "catalog", "--remote"])
+    result = runner.invoke(app, ["remote", "refresh", "catalog"])
 
     assert result.exit_code == 0, result.stdout
     assert captured["args"] == [

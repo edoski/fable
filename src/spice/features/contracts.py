@@ -8,12 +8,14 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 from ..semantics import FeatureSemantics
-from .engine import (
-    FeatureSelection,
+from .core import (
     ResolvedFeatureTable,
     build_feature_table,
+    feature_graph_fingerprint,
+    feature_prerequisites,
 )
-from .families import FeaturePrerequisites, feature_family_spec
+from .families.base import FeaturePrerequisites
+from .registry import feature_family_spec
 
 if TYPE_CHECKING:
     from ..config.models import FeatureSetConfig
@@ -37,22 +39,31 @@ class CompiledFeatureContract:
             feature_prerequisites=self.feature_prerequisites,
         )
 
-    @property
-    def selection(self) -> FeatureSelection:
-        return FeatureSelection(
+    def build_table(self, blocks: pl.DataFrame) -> ResolvedFeatureTable:
+        spec = feature_family_spec(self.feature_family_id)
+        return build_feature_table(
+            blocks,
             feature_set_id=self.feature_set_id,
-            feature_family_id=self.feature_family_id,
+            spec=spec,
             feature_names=self.feature_names,
         )
-
-    def build_table(self, blocks: pl.DataFrame) -> ResolvedFeatureTable:
-        return build_feature_table(blocks, selection=self.selection)
 
 
 def compile_feature_contract(*, feature_set: FeatureSetConfig) -> CompiledFeatureContract:
     family_spec = feature_family_spec(feature_set.family.id)
-    return family_spec.compile_contract(
-        feature_set.id,
-        feature_set.family,
-        tuple(feature_set.outputs),
+    if feature_set.family.id != family_spec.id:
+        raise ValueError(
+            f"Feature family config {feature_set.family.id} does not match spec {family_spec.id}"
+        )
+    feature_names = tuple(feature_set.outputs)
+    return CompiledFeatureContract(
+        feature_set_id=feature_set.id,
+        feature_family_id=family_spec.id,
+        feature_names=feature_names,
+        feature_graph_fingerprint=feature_graph_fingerprint(
+            family_spec.id,
+            feature_names,
+            fingerprint_sources=family_spec.fingerprint_sources,
+        ),
+        feature_prerequisites=feature_prerequisites(family_spec, feature_names),
     )

@@ -8,14 +8,14 @@ import pytest
 from spice.core.errors import StateConflictError
 from spice.core.reporting import NullReporter
 from spice.remote.transfer import pull_artifact_from_remote, push_study_to_remote
-from spice.storage.query import ArtifactSelector, StudySelector, list_artifact_records
+from spice.storage.layout import resolve_workflow_paths
+from spice.storage.roots import ArtifactSelector, StudySelector, list_artifact_records
 from spice.workflows.train import run as run_train
 from spice.workflows.tune import run as run_tune
 
 
 def test_push_study_to_remote_uses_canonical_destination_root(
     tmp_path,
-    deep_merge,
     load_test_tune_config,
     model_workflow_override,
     seed_history_dataset,
@@ -24,8 +24,9 @@ def test_push_study_to_remote_uses_canonical_destination_root(
 ) -> None:
     config = load_test_tune_config(
         tmp_path,
-        override=deep_merge(model_workflow_override(), tune_override()),
+        override=model_workflow_override() | tune_override(),
     )
+    paths = resolve_workflow_paths(config)
     seed_history_dataset(config)
     run_tune(config, reporter=NullReporter())
 
@@ -68,9 +69,9 @@ def test_push_study_to_remote_uses_canonical_destination_root(
         replace=False,
     )
 
-    assert record.study_id == config.paths.study_id
+    assert record.study_id == paths.study_id
     assert captured["destination_root"] == (
-        remote_storage_root / "studies" / config.chain.name / config.paths.study_id
+        remote_storage_root / "studies" / config.chain.name / paths.study_id
     )
     assert captured["replace"] is False
 

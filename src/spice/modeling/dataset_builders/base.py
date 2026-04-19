@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, Literal, TypeVar
+from typing import TYPE_CHECKING
 
 import polars as pl
-from pydantic import Field, field_validator
+from pydantic import field_validator
 
+from ...core.closed_dispatch import (
+    config_payload_and_id,
+    unknown_id_error,
+    validate_path_segment,
+)
 from ...modeling.families.base import ConfigModel
 from ...semantics import DatasetBuilderSemantics
 
@@ -21,28 +26,17 @@ if TYPE_CHECKING:
     )
 
 
-def _validate_path_segment(value: str, *, label: str) -> str:
-    if not value or "/" in value or "\\" in value:
-        raise ValueError(f"{label} must be a non-empty path segment")
-    return value
-
-
-DatasetBuilderIdT = TypeVar("DatasetBuilderIdT", bound=str)
-
-
-class DatasetBuilderConfig(ConfigModel, Generic[DatasetBuilderIdT]):
-    id: DatasetBuilderIdT
+class DatasetBuilderConfig(ConfigModel):
+    id: str
 
     @field_validator("id")
     @classmethod
     def validate_id(cls, value: str) -> str:
-        return _validate_path_segment(value, label="dataset_builder.id")
+        return validate_path_segment(value, label="dataset_builder.id")
 
 
-class StandardTemporalDatasetBuilderConfig(
-    DatasetBuilderConfig[Literal["standard_temporal"]]
-):
-    id: Literal["standard_temporal"] = Field(default="standard_temporal")
+class StandardTemporalDatasetBuilderConfig(DatasetBuilderConfig):
+    id: str = "standard_temporal"
 
 
 PrepareTrainingFn = Callable[[pl.DataFrame, "TrainingSpec"], "PreparedTrainingDataset"]
@@ -55,7 +49,6 @@ PrepareInferenceFn = Callable[
 @dataclass(frozen=True, slots=True)
 class CompiledDatasetBuilderContract:
     dataset_builder_id: str
-    config_payload: dict[str, object]
     prepare_training_fn: PrepareTrainingFn
     prepare_inference_fn: PrepareInferenceFn
 
@@ -81,11 +74,38 @@ class CompiledDatasetBuilderContract:
         return self.prepare_inference_fn(history_blocks, evaluation_blocks, spec)
 
 
-DatasetBuilderConfigT = TypeVar("DatasetBuilderConfigT", bound=DatasetBuilderConfig)
+def _compile_standard_temporal(
+    config: StandardTemporalDatasetBuilderConfig,
+) -> CompiledDatasetBuilderContract:
+    from .standard_temporal import compile_dataset_builder
+
+    return compile_dataset_builder(config)
 
 
-@dataclass(frozen=True, slots=True)
-class DatasetBuilderSpec(Generic[DatasetBuilderConfigT]):
-    id: str
-    config_type: type[DatasetBuilderConfigT]
-    compile: Callable[[DatasetBuilderConfigT], CompiledDatasetBuilderContract]
+def _require_standard_temporal(builder_id: str) -> None:
+    if builder_id != "standard_temporal":
+        raise unknown_id_error(
+            field_name="dataset_builder.id",
+            component_id=builder_id,
+            known_ids=("standard_temporal",),
+        )
+
+
+def coerce_dataset_builder_config(
+    payload: Mapping[str, object] | DatasetBuilderConfig,
+) -> DatasetBuilderConfig:
+    raw_payload, builder_id = config_payload_and_id(
+        payload,
+        config_type=DatasetBuilderConfig,
+        field_name="dataset_builder.id",
+        mapping_label="dataset_builder",
+    )
+    _require_standard_temporal(builder_id)
+    return StandardTemporalDatasetBuilderConfig.model_validate(raw_payload)
+
+
+def compile_dataset_builder_contract(
+    config: DatasetBuilderConfig,
+) -> CompiledDatasetBuilderContract:
+    _require_standard_temporal(config.id)
+    return _compile_standard_temporal(StandardTemporalDatasetBuilderConfig.model_validate(config))

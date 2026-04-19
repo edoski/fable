@@ -10,6 +10,7 @@ import polars as pl
 from ..config import (
     ArtifactVariant,
     ChainSpec,
+    DatasetBuilderConfig,
     FeatureSetConfig,
     ModelConfig,
     PredictionConfig,
@@ -22,16 +23,17 @@ from ..config import (
 )
 from ..core.reporting import NullReporter, Reporter
 from ..corpus.io import load_block_frame
-from ..modeling.dataset_builders import (
-    CompiledDatasetBuilderContract,
-    compile_dataset_builder_contract,
-)
 from ..features import (
     CompiledFeatureContract,
     compile_feature_contract,
 )
+from ..modeling.dataset_builders import (
+    CompiledDatasetBuilderContract,
+    compile_dataset_builder_contract,
+)
 from ..prediction import CompiledPredictionContract, compile_prediction_contract
 from ..semantics import FeatureSemantics
+from ..storage.layout import resolve_workflow_paths
 from ..temporal.contracts import (
     CompiledProblemContract,
     ProblemRuntimeMetadata,
@@ -91,6 +93,7 @@ class InferencePreparationSpec:
 
 
 def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
+    paths = resolve_workflow_paths(config)
     variant = ArtifactVariant.TUNED if isinstance(config, TuneConfig) else config.artifact.variant
     feature_contract = compile_feature_contract(feature_set=config.feature_set)
     contract = compile_problem_contract(
@@ -113,12 +116,12 @@ def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
         )
     return TrainingSpec(
         chain=config.chain,
-        dataset_id=config.paths.corpus_id,
+        dataset_id=paths.corpus_id,
         dataset_name=config.dataset.name,
         artifact_id=(
-            config.paths.artifact_id
-            if config.paths.artifact_id is not None
-            else config.paths.study_id or "trial"
+            paths.artifact_id
+            if paths.artifact_id is not None
+            else paths.study_id or "trial"
         ),
         problem=config.problem,
         dataset_builder=config.dataset_builder,
@@ -135,7 +138,7 @@ def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
         model=config.model,
         variant=variant,
         study=config.study if variant is ArtifactVariant.TUNED else None,
-        study_id=config.paths.study_id if variant is ArtifactVariant.TUNED else None,
+        study_id=paths.study_id if variant is ArtifactVariant.TUNED else None,
         split=config.split,
         training=config.training,
     )

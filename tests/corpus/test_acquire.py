@@ -14,15 +14,16 @@ from spice.acquisition.provider import ManagedAsyncHTTPProvider
 from spice.acquisition.rpc import (
     BlockPullPlan,
     BlockRange,
+    BlockRpcClient,
     RpcController,
     TimestampRange,
-    Web3BlockClient,
     pull_block_range,
 )
 from spice.core.reporting import NullReporter, PlainReporter, StageMetricValue
 from spice.features import compile_feature_contract
 from spice.storage.catalog import list_dataset_records
 from spice.storage.corpus import list_acquire_runs, load_dataset_manifest
+from spice.storage.layout import resolve_workflow_paths
 from spice.temporal.contracts import compile_problem_contract
 from spice.workflows.acquire import _DaemonThreadPoolExecutor
 from spice.workflows.acquire import run as run_acquire
@@ -89,6 +90,7 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
     make_block_rows,
 ) -> None:
     config = load_test_acquire_config(tmp_path, override=acquire_override())
+    paths = resolve_workflow_paths(config)
     feature_contract = compile_feature_contract(feature_set=config.feature_set)
     contract = compile_problem_contract(
         problem=config.problem,
@@ -161,13 +163,13 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
                     )
             raise AssertionError(f"missing plan for block {first_block}")
 
-    monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", FakeAcquireClient)
+    monkeypatch.setattr("spice.workflows.acquire.BlockRpcClient", FakeAcquireClient)
 
     run_acquire(config, reporter=NullReporter())
 
-    summary = load_dataset_manifest(config.paths.corpus_state_db)
-    runs = list_acquire_runs(config.paths.corpus_state_db)
-    assert config.paths.corpus_state_db.is_file()
+    summary = load_dataset_manifest(paths.corpus_state_db)
+    runs = list_acquire_runs(paths.corpus_state_db)
+    assert paths.corpus_state_db.is_file()
     assert summary.validation.evaluation.rows == evaluation_plan.expected_rows
     assert summary.semantics.problem.problem_id == config.problem.id
     assert summary.semantics.problem.compiler_id == config.problem.compiler.id
@@ -183,15 +185,15 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
     assert runs[0].facts.required_history_seconds == contract.required_history_seconds
     assert runs[0].facts.valid_anchor_samples >= config.problem.sample_count
     assert runs[0].facts.acquired_history_window_seconds >= contract.required_history_seconds
-    assert config.paths.history_dir.is_dir()
-    assert config.paths.evaluation_dir.is_dir()
+    assert paths.history_dir.is_dir()
+    assert paths.evaluation_dir.is_dir()
     datasets = list_dataset_records(
-        config.paths.catalog_db,
+        paths.catalog_db,
         chain_name=config.chain.name,
         dataset_name=config.dataset.name,
     )
     assert len(datasets) == 1
-    assert datasets[0].dataset_id == config.paths.corpus_id
+    assert datasets[0].dataset_id == paths.corpus_id
 
 
 def test_acquire_cancellation_during_planning_logs_warning(
@@ -201,6 +203,7 @@ def test_acquire_cancellation_during_planning_logs_warning(
     acquire_override,
 ) -> None:
     config = load_test_acquire_config(tmp_path, override=acquire_override())
+    paths = resolve_workflow_paths(config)
     output = StringIO()
     reporter = PlainReporter(stream=output)
 
@@ -225,7 +228,7 @@ def test_acquire_cancellation_during_planning_logs_warning(
                 chunk_size=config.acquisition.chunk_size,
             )
 
-    monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", FakeAcquireClient)
+    monkeypatch.setattr("spice.workflows.acquire.BlockRpcClient", FakeAcquireClient)
 
     async def _exercise() -> None:
         problem = asyncio.create_task(acquire_workflow._run_async(config, reporter=reporter))
@@ -240,7 +243,7 @@ def test_acquire_cancellation_during_planning_logs_warning(
     assert "history [planning] - resolving window" in rendered
     assert "evaluation [planning] - resolving window" in rendered
     assert "warning: acquire cancelled; partial download removed" in rendered
-    assert config.paths.corpus_state_db.exists() is False
+    assert paths.corpus_state_db.exists() is False
 
 
 def test_pull_block_range_emits_structured_progress_messages(
@@ -267,7 +270,7 @@ def test_pull_block_range_emits_structured_progress_messages(
         expected_files=1,
     )
 
-    class FakeClient(Web3BlockClient):
+    class FakeClient(BlockRpcClient):
         def __post_init__(self) -> None:
             self._calls = 0
 
@@ -333,7 +336,7 @@ def test_pull_block_range_coalesces_simultaneous_success_updates(
         expected_files=1,
     )
 
-    class FakeClient(Web3BlockClient):
+    class FakeClient(BlockRpcClient):
         async def close(self) -> None:
             return None
 
@@ -471,7 +474,7 @@ def test_acquire_workflow_reuses_temporary_history_between_expansions(
                 block_interval_seconds=12,
             )
 
-    monkeypatch.setattr("spice.workflows.acquire.Web3BlockClient", FakeAcquireClient)
+    monkeypatch.setattr("spice.workflows.acquire.BlockRpcClient", FakeAcquireClient)
     monkeypatch.setattr(
         "spice.workflows.acquire._count_valid_history_samples",
         lambda **_: next(valid_anchor_samples),
@@ -523,7 +526,7 @@ def test_managed_async_http_provider_retries_batch_transport_errors(monkeypatch)
     )
     attempts = 0
 
-    async def _fake_post_request(endpoint_uri: str, data: bytes, **kwargs) -> bytes:
+    async def _fake_post_request(endpoint_uri: str, data: bytes, **kwargs: object) -> bytes:
         del endpoint_uri, data, kwargs
         nonlocal attempts
         attempts += 1

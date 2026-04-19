@@ -125,20 +125,6 @@ def compute_batch_loss_and_state(
     )
 
 
-def summarize_epoch_metrics(batch_states: list[object]) -> MetricSet:
-    states = [state for state in batch_states if isinstance(state, CandidateSlateBatchState)]
-    if not states:
-        raise ValueError("Cannot summarize an empty batch-state collection")
-    return _metric_set_from_totals(
-        count=sum(item.count for item in states),
-        total_loss_sum=sum(item.total_loss_sum for item in states),
-        exact_hit_count=sum(item.exact_hit_count for item in states),
-        realized_fee_sum=sum(item.realized_fee_sum for item in states),
-        baseline_fee_sum=sum(item.baseline_fee_sum for item in states),
-        optimal_fee_sum=sum(item.optimal_fee_sum for item in states),
-    )
-
-
 def create_epoch_accumulator() -> CandidateSlateEpochAccumulator:
     return CandidateSlateEpochAccumulator()
 

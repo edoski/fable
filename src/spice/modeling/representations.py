@@ -1,16 +1,16 @@
-"""Internal model-input representation registry and realization helpers."""
+"""Internal model-input representation realization helpers."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Generic, NamedTuple, Protocol, TypeVar
+from typing import NamedTuple, Protocol, TypeVar, cast
 
 import numpy as np
 import torch
 from numpy.typing import NDArray
 
-from ..core.components import ComponentCatalog
+from ..core.closed_dispatch import unknown_id_error
 from ..prediction import ModelInputBatch
 from ..semantics import RepresentationSemantics
 from ..temporal.problem_store import CompiledProblemStore
@@ -89,18 +89,6 @@ class PreparedRepresentation(Protocol[BatchT]):
 
 
 @dataclass(frozen=True, slots=True)
-class InputRepresentationSpec:
-    id: str
-    prepare: Callable[..., PreparedRepresentation[ModelInputBatch]]
-
-    def compile_contract(self) -> CompiledRepresentationContract:
-        return CompiledRepresentationContract(
-            representation_id=self.id,
-            prepare_impl=self.prepare,
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class CompiledRepresentationContract:
     """Compiled model-input representation seam used by training and inference only."""
 
@@ -125,38 +113,17 @@ class CompiledRepresentationContract:
         )
 
 
-_REPRESENTATIONS = ComponentCatalog[InputRepresentationSpec](
-    kind_label="input representation",
-    entry_point_group="spice.input_representations",
-)
-
-
-def register_input_representation(spec: InputRepresentationSpec) -> None:
-    _REPRESENTATIONS.register(spec.id, spec)
-
-
-def input_representation_spec(representation_id: str) -> InputRepresentationSpec:
-    return _REPRESENTATIONS.get(representation_id)
-
-
 def compile_representation_contract(representation_id: str) -> CompiledRepresentationContract:
     """Compile one representation contract from the shared representation registry."""
-
-    spec = input_representation_spec(representation_id)
-    return spec.compile_contract()
-
-
-def prepare_representation(
-    representation_id: str,
-    store: CompiledProblemStore,
-    sample_indices: IntVector,
-    *,
-    runtime_context: RepresentationRuntimeContext,
-) -> PreparedRepresentation[ModelInputBatch]:
-    return compile_representation_contract(representation_id).prepare(
-        store,
-        sample_indices,
-        runtime_context=runtime_context,
+    if representation_id != SEQUENCE_INPUT_REPRESENTATION_ID:
+        raise unknown_id_error(
+            field_name="representation_id",
+            component_id=representation_id,
+            known_ids=(SEQUENCE_INPUT_REPRESENTATION_ID,),
+        )
+    return CompiledRepresentationContract(
+        representation_id=SEQUENCE_INPUT_REPRESENTATION_ID,
+        prepare_impl=_prepare_sequence_input,
     )
 
 
@@ -363,21 +330,6 @@ def _dense_sequence_input_storage_bytes(
     return inputs_bytes + input_mask_bytes
 
 
-def _sequence_input_order(
-    layout: _SequenceInputLayout,
-    *,
-    epoch: int,
-    seed: int,
-    shuffle: bool,
-) -> IntVector:
-    order = np.arange(layout.sample_indices.shape[0], dtype=np.int64)
-    if shuffle:
-        rng = np.random.default_rng(np.random.SeedSequence([seed, epoch]))
-        order = rng.permutation(order)
-    signatures = layout.context_lengths[order].astype(np.int64)
-    return order[np.argsort(signatures, kind="stable")]
-
-
 def _materialize_sequence_input(
     store: CompiledProblemStore,
     layout: _SequenceInputLayout,
@@ -415,11 +367,14 @@ def _materialize_sequence_input_to_device(
     device: torch.device,
 ) -> _MaterializedSequenceInputRepresentation:
     if device.type != "cuda":
-        return _materialize_sequence_input(
+        prepared = _materialize_sequence_input(
             store,
             layout,
             batch_size=batch_size,
         ).to_device_storage(device)
+        if prepared is None:
+            raise RuntimeError("materialized sequence input could not be moved to device storage")
+        return cast(_MaterializedSequenceInputRepresentation, prepared)
     sample_count = int(layout.sample_indices.shape[0])
     inputs = torch.zeros(
         (sample_count, layout.max_context_length, store.n_features),
@@ -488,11 +443,3 @@ def _fill_dense_sequence_input_rows(
         sequence = store.feature_matrix[context_start : anchor_row + 1]
         inputs[output_row, : sequence.shape[0], :] = sequence
         input_mask[output_row, : sequence.shape[0]] = True
-
-
-register_input_representation(
-    InputRepresentationSpec(
-        id=SEQUENCE_INPUT_REPRESENTATION_ID,
-        prepare=_prepare_sequence_input,
-    )
-)

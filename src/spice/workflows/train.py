@@ -13,12 +13,13 @@ from ..modeling.persisted_training import run_persisted_training
 from ..modeling.pipeline import TrainingStageReporters, build_training_spec
 from ..modeling.summary import training_summary_sections
 from ..modeling.tuning import apply_study_best_params
-from ..storage import ARTIFACT_ROOT_KIND, RootKind
 from ..storage.catalog import upsert_artifact_record
+from ..storage.engine import ARTIFACT_ROOT_KIND
+from ..storage.layout import resolve_workflow_paths
 from ._shared import abort_cleanup, managed_workflow
 
 _FIT_STAGE_METRICS: tuple[StageMetricDescriptor, ...] = (
-    StageMetricDescriptor(id="epoch", label="epoch", width=7),
+    StageMetricDescriptor(id="epoch", label="epoch"),
 )
 
 
@@ -45,28 +46,18 @@ def _workflow_facts(config: TrainConfig) -> list[tuple[str, str]]:
     return facts
 
 
-def _state_root_kind(config: TrainConfig) -> RootKind:
-    del config
-    return ARTIFACT_ROOT_KIND
-
-
 def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
     with managed_workflow(
-        config,
-        run_name=(
-            "train-"
-            f"{config.chain.name}-{config.model.id}-"
-            f"{config.problem.id}"
-        ),
         reporter=reporter,
     ) as session:
         active_config = config
         if config.artifact.variant is ArtifactVariant.TUNED:
             active_config = apply_study_best_params(config)
+        paths = resolve_workflow_paths(active_config)
         session.runtime.configure_workflow("train", _workflow_facts(active_config))
         spec = build_training_spec(active_config)
-        artifact_dir = active_config.paths.artifact_root
-        history_block_path = active_config.paths.history_dir
+        artifact_dir = paths.artifact_root
+        history_block_path = paths.history_dir
         if artifact_dir is None:
             raise ConfigResolutionError("training workflow requires artifact output paths")
         staged_artifact_root = _build_staged_artifact_root(artifact_dir)
@@ -110,18 +101,18 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
                 stage_reporters=stage_reporters,
                 write_reporter=write_reporter,
                 reporter=session.reporter,
-                state_root_kind=_state_root_kind(active_config),
+                state_root_kind=ARTIFACT_ROOT_KIND,
             )
-            artifact_root = active_config.paths.artifact_root
-            artifact_state_db = active_config.paths.artifact_state_db
-            artifact_id = active_config.paths.artifact_id
+            artifact_root = paths.artifact_root
+            artifact_state_db = paths.artifact_state_db
+            artifact_id = paths.artifact_id
             if artifact_root is None or artifact_state_db is None or artifact_id is None:
                 raise ConfigResolutionError("training workflow requires artifact output paths")
             promote_paths_atomic([(artifact_root, staged_artifact_root)])
             upsert_artifact_record(
-                active_config.paths.catalog_db,
+                paths.catalog_db,
                 artifact_id=artifact_id,
-                dataset_id=active_config.paths.corpus_id,
+                dataset_id=paths.corpus_id,
                 dataset_name=active_config.dataset.name,
                 chain_name=active_config.chain.name,
                 feature_set_id=active_config.feature_set.id,
@@ -129,7 +120,7 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
                 model_id=active_config.model.id,
                 problem_id=active_config.problem.id,
                 variant=active_config.artifact.variant.value,
-                study_id=active_config.paths.study_id,
+                study_id=paths.study_id,
                 study_name=(
                     active_config.study.name
                     if active_config.artifact.variant is ArtifactVariant.TUNED

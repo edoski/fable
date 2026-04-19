@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..core.errors import StateLayoutError
-from . import (
+from .engine import (
     ARTIFACT_ROOT_KIND,
     DATASET_ROOT_KIND,
     STUDY_ROOT_KIND,

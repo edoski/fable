@@ -14,8 +14,9 @@ from ..modeling.pipeline import prepare_inference_dataset
 from ..modeling.results import LoadedEvaluationSummary, build_evaluation_runtime_summary
 from ..modeling.summary import evaluation_summary_sections
 from ..prediction import compile_prediction_contract
-from ..storage import ARTIFACT_ROOT_KIND, RootKind
 from ..storage.artifact import write_evaluation_state
+from ..storage.engine import ARTIFACT_ROOT_KIND
+from ..storage.layout import resolve_workflow_paths
 from ..temporal.contracts import compile_problem_contract
 from ._shared import abort_cleanup, managed_workflow
 
@@ -36,25 +37,14 @@ def _workflow_facts(config: EvaluateConfig) -> list[tuple[str, str]]:
     return facts
 
 
-def _state_root_kind(config: EvaluateConfig) -> RootKind:
-    del config
-    return ARTIFACT_ROOT_KIND
-
-
 def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
-    artifact_dir = config.paths.artifact_root
-    history_block_path = config.paths.history_dir
-    evaluation_block_path = config.paths.evaluation_dir
+    paths = resolve_workflow_paths(config)
+    artifact_dir = paths.artifact_root
+    history_block_path = paths.history_dir
+    evaluation_block_path = paths.evaluation_dir
     if artifact_dir is None:
         raise ConfigResolutionError("evaluation workflow requires artifact output paths")
-    with managed_workflow(
-        config,
-        run_name=(
-            f"evaluate-{config.chain.name}-{config.model.id}"
-            f"-{config.problem.id}-{config.delay_seconds}s"
-        ),
-        reporter=reporter,
-    ) as session:
+    with managed_workflow(reporter=reporter) as session:
         session.runtime.configure_workflow("evaluate", _workflow_facts(config))
         load_reporter = session.runtime.stage_reporter("load", label="load")
         prepare_reporter = session.runtime.stage_reporter("prepare", label="prepare")
@@ -153,7 +143,7 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
             report_task = write_reporter.start_task("write evaluation state")
             evaluation_id, recorded_at = write_evaluation_state(
                 artifact_dir / ".spice" / "state.sqlite",
-                root_kind=_state_root_kind(config),
+                root_kind=ARTIFACT_ROOT_KIND,
                 summary=runtime_summary,
             )
             write_reporter.finish_task(report_task, message=str(artifact_dir), silent=True)

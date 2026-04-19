@@ -1,22 +1,29 @@
-"""Deterministic storage layout for corpus, study, and artifact roots."""
+"""Deterministic workflow storage layout helpers."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 from ..core.errors import ConfigResolutionError
 from .ids import artifact_storage_id, corpus_storage_id, study_storage_id
 
 if TYPE_CHECKING:
-    from ..config.models import ArtifactVariant, ChainSpec, DatasetSpec, StorageSpec
+    from ..config.models import (
+        AcquireConfig,
+        ArtifactVariant,
+        ChainSpec,
+        DatasetSpec,
+        ModelWorkflowConfig,
+        StorageSpec,
+    )
 
 _CATALOG_DB_FILENAME = "catalog.sqlite"
 
 
 @dataclass(frozen=True, slots=True)
-class PathLayout:
+class WorkflowPaths:
     output_root: Path
     catalog_db: Path
     corpus_id: str
@@ -37,7 +44,7 @@ def catalog_db_path(storage_root: Path) -> Path:
     return storage_root / ".spice" / _CATALOG_DB_FILENAME
 
 
-def build_path_layout(
+def build_workflow_paths(
     *,
     storage: StorageSpec,
     chain: ChainSpec,
@@ -51,7 +58,7 @@ def build_path_layout(
     study_name: str = "default",
     include_artifacts: bool = False,
     tuning_mode: bool = False,
-) -> PathLayout:
+) -> WorkflowPaths:
     from ..config.models import ArtifactVariant
 
     output_root = storage.root
@@ -76,7 +83,8 @@ def build_path_layout(
             or prediction_payload is None
         ):
             raise ConfigResolutionError(
-                "artifact paths require dataset_builder_payload, feature_set_payload, model_payload, "
+                "artifact paths require dataset_builder_payload, "
+                "feature_set_payload, model_payload, "
                 "problem_payload, prediction_payload"
             )
         if tuning_mode or resolved_variant is ArtifactVariant.TUNED:
@@ -108,7 +116,7 @@ def build_path_layout(
             checkpoint_dir = artifact_root / "checkpoints"
             artifact_state_db = artifact_root / ".spice" / "state.sqlite"
 
-    return PathLayout(
+    return WorkflowPaths(
         output_root=output_root,
         catalog_db=catalog_db,
         corpus_id=corpus_id,
@@ -124,3 +132,41 @@ def build_path_layout(
         study_root=study_root,
         study_state_db=study_state_db,
     )
+
+
+@overload
+def resolve_workflow_paths(config: AcquireConfig) -> WorkflowPaths: ...
+
+
+@overload
+def resolve_workflow_paths(config: ModelWorkflowConfig) -> WorkflowPaths: ...
+
+
+def resolve_workflow_paths(config: object) -> WorkflowPaths:
+    from ..config.models import AcquireConfig, ModelWorkflowConfig
+
+    if isinstance(config, AcquireConfig):
+        return build_workflow_paths(
+            storage=config.storage,
+            chain=config.chain,
+            dataset=config.dataset,
+        )
+    if isinstance(config, ModelWorkflowConfig):
+        return build_workflow_paths(
+            storage=config.storage,
+            chain=config.chain,
+            dataset=config.dataset,
+            dataset_builder_payload=config.dataset_builder.model_dump(
+                mode="json",
+                exclude_none=True,
+            ),
+            feature_set_payload=config.feature_set.model_dump(mode="json", exclude_none=True),
+            model_payload=config.model.model_dump(mode="json", exclude_none=True),
+            problem_payload=config.problem.model_dump(mode="json"),
+            prediction_payload=config.prediction.model_dump(mode="json"),
+            variant=config.artifact.variant,
+            study_name=config.study.name,
+            include_artifacts=True,
+            tuning_mode=config.workflow.value == "tune",
+        )
+    raise TypeError(f"Unsupported workflow config for path resolution: {type(config)!r}")

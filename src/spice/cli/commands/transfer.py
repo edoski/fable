@@ -6,17 +6,16 @@ from typing import Annotated
 
 import typer
 
-from ...core.errors import SpiceOperatorError
 from ...remote import (
     pull_artifact_from_remote,
     pull_study_from_remote,
     push_dataset_to_remote,
     push_study_to_remote,
-    resolve_remote_target,
-    run_remote_cli,
 )
-from ...storage.query import ArtifactSelector, DatasetSelector, StudySelector
-from ...storage.reindex import refresh_catalog
+from ...storage.roots import (
+    DatasetSelector,
+    refresh_catalog,
+)
 from ..options import (
     ChainFilterOption,
     DatasetFilterOption,
@@ -24,12 +23,12 @@ from ..options import (
     ModelFilterOption,
     PredictionFilterOption,
     ProblemFilterOption,
-    RemoteOption,
     StorageRootReadOption,
     StudyFilterOption,
     VariantFilterOption,
     resolve_storage_root,
 )
+from ._selectors import artifact_selector, study_selector
 
 push_app = typer.Typer(
     help="Copy one local root into the remote cluster storage.",
@@ -83,14 +82,14 @@ def push_study_command(
     root = resolve_storage_root(storage_root)
     record = push_study_to_remote(
         storage_root=root,
-        selector=StudySelector(
-            chain_name=chain,
-            dataset_name=dataset,
-            feature_set_id=feature_set,
-            prediction_id=prediction,
-            model_id=model,
-            problem_id=problem,
-            study_name=study,
+        selector=study_selector(
+            chain=chain,
+            dataset=dataset,
+            feature_set=feature_set,
+            prediction=prediction,
+            model=model,
+            problem=problem,
+            study=study,
         ),
         replace=replace,
     )
@@ -113,15 +112,15 @@ def pull_artifact_command(
     root = resolve_storage_root(storage_root)
     record, dataset_present = pull_artifact_from_remote(
         storage_root=root,
-        selector=ArtifactSelector(
-            chain_name=chain,
-            dataset_name=dataset,
-            feature_set_id=feature_set,
-            prediction_id=prediction,
-            model_id=model,
-            problem_id=problem,
+        selector=artifact_selector(
+            chain=chain,
+            dataset=dataset,
+            feature_set=feature_set,
+            prediction=prediction,
+            model=model,
+            problem=problem,
             variant=variant,
-            study_name=study,
+            study=study,
         ),
         replace=replace,
     )
@@ -151,14 +150,14 @@ def pull_study_command(
     root = resolve_storage_root(storage_root)
     record = pull_study_from_remote(
         storage_root=root,
-        selector=StudySelector(
-            chain_name=chain,
-            dataset_name=dataset,
-            feature_set_id=feature_set,
-            prediction_id=prediction,
-            model_id=model,
-            problem_id=problem,
-            study_name=study,
+        selector=study_selector(
+            chain=chain,
+            dataset=dataset,
+            feature_set=feature_set,
+            prediction=prediction,
+            model=model,
+            problem=problem,
+            study=study,
         ),
         replace=replace,
     )
@@ -168,26 +167,7 @@ def pull_study_command(
 @refresh_app.command("catalog", short_help="Rebuild the derived storage catalog.")
 def refresh_catalog_command(
     storage_root: StorageRootReadOption = None,
-    remote: RemoteOption = False,
 ) -> None:
-    if remote:
-        if storage_root is not None:
-            raise SpiceOperatorError("--storage-root is not supported with --remote")
-        target = resolve_remote_target()
-        result = run_remote_cli(
-            target,
-            [
-                "refresh",
-                "catalog",
-                "--storage-root",
-                str(target.spec.paths.storage_root),
-            ],
-        )
-        if result.returncode != 0:
-            message = (result.stderr or result.stdout).strip()
-            raise SpiceOperatorError(message or "remote catalog refresh failed")
-        typer.echo(result.stdout, nl=False)
-        return
     root = resolve_storage_root(storage_root)
     summary = refresh_catalog(root)
     typer.echo(

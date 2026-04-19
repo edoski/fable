@@ -49,10 +49,6 @@ StorageRootDeleteOption = Annotated[
     Path | None,
     typer.Option("--storage-root", metavar="PATH", help="Delete from a non-default output root."),
 ]
-RemoteOption = Annotated[
-    bool,
-    typer.Option("--remote", help="Run against the remote university cluster."),
-]
 
 
 def resolve_storage_root(storage_root: Path | None) -> Path:

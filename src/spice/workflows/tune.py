@@ -18,6 +18,7 @@ from ..modeling.pipeline import TrainingStageReporters, build_training_spec
 from ..modeling.tuning import apply_tuned_parameters
 from ..prediction import compile_prediction_contract
 from ..storage.catalog import upsert_study_record
+from ..storage.layout import resolve_workflow_paths
 from ..storage.study_models import build_study_summary
 from ..storage.study_optuna import (
     open_tuning_study,
@@ -28,7 +29,7 @@ from ..storage.study_render import study_summary_sections
 from ._shared import managed_workflow
 
 _TRIAL_STAGE_METRICS: tuple[StageMetricDescriptor, ...] = (
-    StageMetricDescriptor(id="epoch", label="epoch", width=7),
+    StageMetricDescriptor(id="epoch", label="epoch"),
 )
 
 
@@ -80,7 +81,7 @@ def _objective(
     config = apply_tuned_parameters(base_config, params)
 
     spec = build_training_spec(config)
-    history_block_path = config.paths.history_dir
+    history_block_path = resolve_workflow_paths(config).history_dir
     runtime.set_stage_state(
         "trial",
         status="running",
@@ -88,13 +89,7 @@ def _objective(
     )
     with _trial_work_dir(study_root, trial.number) as temp_dir_name:
         artifact_dir = Path(temp_dir_name)
-        with managed_workflow(
-            config,
-            run_name=f"trial-{trial.number:03d}",
-            runtime=runtime,
-            reporter=trial_reporter,
-            nested=True,
-        ) as session:
+        with managed_workflow(runtime=runtime, reporter=trial_reporter) as session:
             persisted = run_persisted_training(
                 history_block_path,
                 spec=spec,
@@ -116,15 +111,12 @@ def _objective(
 
 
 def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
-    with managed_workflow(
-        config,
-        run_name=(f"study-{config.chain.name}-{config.model.id}-{config.problem.id}"),
-        reporter=reporter,
-    ) as session:
+    with managed_workflow(reporter=reporter) as session:
         session.runtime.configure_workflow("tune", _workflow_facts(config))
-        study_root = config.paths.study_root
-        study_state_db = config.paths.study_state_db
-        study_id = config.paths.study_id
+        paths = resolve_workflow_paths(config)
+        study_root = paths.study_root
+        study_state_db = paths.study_state_db
+        study_id = paths.study_id
         if study_root is None or study_state_db is None or study_id is None:
             raise ConfigResolutionError("tuning workflow requires study output paths")
         study_reporter = session.runtime.stage_reporter(
@@ -202,10 +194,10 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
             study_reporter.finish_task(study_task, message="no successful trials")
         summary = build_study_summary(study_access.manifest, study)
         upsert_study_record(
-            config.paths.catalog_db,
+            paths.catalog_db,
             study_id=study_id,
             study_name=config.study.name,
-            dataset_id=config.paths.corpus_id,
+            dataset_id=paths.corpus_id,
             dataset_name=config.dataset.name,
             chain_name=config.chain.name,
             feature_set_id=config.feature_set.id,

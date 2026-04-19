@@ -10,6 +10,7 @@ from ....modeling.models import ModelOutputs
 from ....temporal.problem_store import CompiledProblemStore
 from ...contracts import (
     CompiledPredictionContract,
+    DecodedOffsets,
     IntVector,
     PredictionTargetBatch,
     PreparedPredictionTargets,
@@ -35,10 +36,10 @@ from .outputs import (
 from .targets import prepare_min_block_fee_targets
 
 PROGRESS_METRIC_DESCRIPTORS: tuple[StageMetricDescriptor, ...] = (
-    StageMetricDescriptor(id="total_loss", label="loss", width=7),
-    StageMetricDescriptor(id="offset_accuracy", label="hit", width=6),
-    StageMetricDescriptor(id="classification_loss", label="cls", width=7),
-    StageMetricDescriptor(id="regression_loss", label="reg", width=7),
+    StageMetricDescriptor(id="total_loss", label="loss"),
+    StageMetricDescriptor(id="offset_accuracy", label="hit"),
+    StageMetricDescriptor(id="classification_loss", label="cls"),
+    StageMetricDescriptor(id="regression_loss", label="reg"),
 )
 
 
@@ -105,20 +106,18 @@ def _create_epoch_accumulator(stage: str):
     return create_epoch_accumulator()
 
 
-def _allocate_decoded_offsets(sample_count: int) -> object:
+def _allocate_decoded_offsets(sample_count: int) -> DecodedOffsets:
     return [0] * sample_count
 
 
 def _decode_selected_offsets_into(
-    predictions: object,
+    predictions: DecodedOffsets,
     sample_positions: torch.Tensor,
     outputs: ModelOutputs,
     targets: PredictionTargetBatch,
 ) -> None:
     if not isinstance(targets, MinBlockFeeTargetBatch):
         raise TypeError("min_block_fee_multitask expects MinBlockFeeTargetBatch targets")
-    if not isinstance(predictions, list):
-        raise TypeError("min_block_fee_multitask decoded_offsets buffer must be a list")
     logits = masked_offset_logits(outputs.head(OFFSET_LOGITS_HEAD_ID), targets.candidate_mask)
     decoded = logits.argmax(dim=-1).cpu().tolist()
     positions = sample_positions.tolist()

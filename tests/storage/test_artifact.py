@@ -18,7 +18,6 @@ from spice.modeling.families.lstm import LstmModelConfig
 from spice.modeling.families.registry import resolve_model_representation_id
 from spice.modeling.representations import compile_representation_contract
 from spice.modeling.results import (
-    ArtifactChainMetadata,
     EvaluationRuntimeSummary,
     LoadedEvaluationSummary,
     SplitSizes,
@@ -155,7 +154,7 @@ def _manifest(
         artifact_id="artifact-1",
         dataset_builder=_dataset_builder_config(),
         prediction=prediction,
-        chain=ArtifactChainMetadata(name="ethereum"),
+        chain_name="ethereum",
         dataset_id="icdcs_2026",
         dataset_name="icdcs_2026",
         problem=problem,
@@ -277,7 +276,7 @@ def test_artifact_validation_catches_feature_drift() -> None:
         artifact_id=manifest.artifact_id,
         dataset_builder=manifest.dataset_builder,
         prediction=manifest.prediction,
-        chain=manifest.chain,
+        chain_name=manifest.chain_name,
         dataset_id=manifest.dataset_id,
         dataset_name=manifest.dataset_name,
         problem=manifest.problem,

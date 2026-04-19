@@ -7,6 +7,7 @@ from typing import cast
 
 from ...core.errors import ConfigResolutionError
 from .base import ProblemCompilerConfig, ProblemCompilerSpec
+
 _KNOWN_PROBLEM_COMPILERS = ("estimated_block", "timestamp_native")
 
 
@@ -14,6 +15,8 @@ def problem_compiler_spec(compiler_id: str) -> ProblemCompilerSpec[ProblemCompil
     if compiler_id == "timestamp_native":
         from .timestamp_native import (
             TimestampNativeCompilerConfig,
+        )
+        from .timestamp_native import (
             compile_problem as compile_timestamp_native,
         )
 
@@ -25,6 +28,8 @@ def problem_compiler_spec(compiler_id: str) -> ProblemCompilerSpec[ProblemCompil
     if compiler_id == "estimated_block":
         from .estimated_block import (
             EstimatedBlockCompilerConfig,
+        )
+        from .estimated_block import (
             compile_problem as compile_estimated_block,
         )
 

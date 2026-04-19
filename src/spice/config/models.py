@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 from pydantic import (
     Field,
@@ -31,9 +31,6 @@ from ..modeling.families.base import (
 from ..prediction import PredictionFamilyConfig
 from ..temporal.compilers import ProblemCompilerConfig
 from ..temporal.input_normalization import InputNormalizationConfig
-
-if TYPE_CHECKING:
-    from ..storage.layout import PathLayout
 
 
 class WorkflowTask(StrEnum):
@@ -584,13 +581,6 @@ class AcquireConfig(WorkflowConfig):
         self.provider.endpoint_for(self.chain.name)
         return self
 
-    @property
-    def paths(self) -> PathLayout:
-        from ..storage.layout import build_path_layout
-
-        return build_path_layout(storage=self.storage, chain=self.chain, dataset=self.dataset)
-
-
 class ModelWorkflowConfig(WorkflowConfig):
     problem: ProblemSpec
     model: SerializeAsAny[ModelConfig]
@@ -608,26 +598,6 @@ class ModelWorkflowConfig(WorkflowConfig):
         if isinstance(value, DatasetBuilderConfig):
             return coerce_dataset_builder_config(value)
         raise TypeError("dataset_builder must be a mapping or config model")
-
-    @property
-    def paths(self) -> PathLayout:
-        from ..storage.layout import build_path_layout
-
-        return build_path_layout(
-            storage=self.storage,
-            chain=self.chain,
-            dataset=self.dataset,
-            dataset_builder_payload=self.dataset_builder.model_dump(mode="json", exclude_none=True),
-            feature_set_payload=self.feature_set.model_dump(mode="json", exclude_none=True),
-            model_payload=self.model.model_dump(mode="json", exclude_none=True),
-            problem_payload=self.problem.model_dump(mode="json", exclude_none=True),
-            prediction_payload=self.prediction.model_dump(mode="json", exclude_none=True),
-            variant=self.artifact.variant,
-            study_name=self.study.name,
-            include_artifacts=True,
-            tuning_mode=self.workflow is WorkflowTask.TUNE,
-        )
-
 
 class TrainConfig(ModelWorkflowConfig):
     workflow: WorkflowTask = WorkflowTask.TRAIN

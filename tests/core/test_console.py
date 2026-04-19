@@ -6,8 +6,8 @@ from spice.core.reporting import PlainReporter, StageMetricDescriptor, StageMetr
 from spice.core.runtime import create_workflow_runtime
 
 _TRAIN_METRICS = (
-    StageMetricDescriptor(id="epoch", label="epoch", width=7),
-    StageMetricDescriptor(id="loss", label="loss", width=7),
+    StageMetricDescriptor(id="epoch", label="epoch"),
+    StageMetricDescriptor(id="loss", label="loss"),
 )
 
 

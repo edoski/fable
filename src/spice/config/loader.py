@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal, TypeVar, cast, overload
 
@@ -18,12 +18,12 @@ from .models import (
     ArtifactConfig,
     ChainSpec,
     ConfigModel,
+    DatasetBuilderConfig,
     DatasetSpec,
     EvaluateConfig,
     EvaluationConfig,
     FeatureSetConfig,
     ModelConfig,
-    DatasetBuilderConfig,
     PredictionConfig,
     PresetSpec,
     ProblemSpec,
@@ -39,24 +39,19 @@ from .models import (
     WorkflowSelections,
     WorkflowTask,
     apply_provider_acquisition_overrides,
-    coerce_feature_set_config,
     coerce_dataset_builder_config,
+    coerce_feature_set_config,
     coerce_prediction_config,
     coerce_problem_spec,
 )
-from .registry import list_group_names, load_named_group, named_group_keys
+from .registry import list_group_names, load_named_group
 
 _MODEL_GROUP = "model"
 _TUNING_SPACE_GROUP = "tuning_space"
 _KNOWN_TOP_LEVEL_CONFIG_KEYS = frozenset(PresetSpec.model_fields)
-_NAMED_GROUP_KEYS = frozenset(named_group_keys())
 
 ModelT = TypeVar("ModelT", bound=ConfigModel)
 WorkflowConfig = AcquireConfig | TrainConfig | TuneConfig | EvaluateConfig
-
-
-def _load_named_model(name: str) -> ModelConfig[str]:
-    return coerce_model_config(load_named_group(name, _MODEL_GROUP))
 
 
 def load_named_tuning_space(name: str, *, model_config: ModelConfig[str]) -> TuningSpaceConfig:
@@ -73,117 +68,14 @@ def _load_named_preset(name: str) -> PresetSpec:
     return PresetSpec.model_validate(load_named_group(name, "preset"))
 
 
-def compact_mapping(payload: Mapping[str, object | None]) -> dict[str, object]:
-    compacted: dict[str, object] = {}
-    for key, value in payload.items():
-        if value is None:
-            continue
-        if isinstance(value, Mapping):
-            nested = compact_mapping(
-                _optional_mapping(cast(Mapping[object, object], value), label=key)
-            )
-            if nested:
-                compacted[key] = nested
-            continue
-        compacted[key] = value
-    return compacted
-
-
-def _deep_merge_mappings(
-    base: Mapping[str, object],
-    override: Mapping[str, object],
-) -> dict[str, object]:
-    merged = dict(base)
-    for key, override_value in override.items():
-        base_value = merged.get(key)
-        if isinstance(base_value, Mapping) and isinstance(override_value, Mapping):
-            base_mapping = _mapping_copy(cast(Mapping[object, object], base_value), label=key)
-            override_mapping = _mapping_copy(
-                cast(Mapping[object, object], override_value),
-                label=key,
-            )
-            if _replace_component_mapping(base_mapping, override_mapping):
-                merged[key] = override_mapping
-                continue
-            merged[key] = _deep_merge_mappings(
-                base_mapping,
-                override_mapping,
-            )
-            continue
-        merged[key] = _mapping_copy(
-            cast(Mapping[object, object], override_value), label=key
-        ) if isinstance(
-            override_value, Mapping
-        ) else override_value
-    return merged
-
-
-def _merge_workflow_payload(
-    base: Mapping[str, object],
-    override: Mapping[str, object],
-) -> dict[str, object]:
-    merged = dict(base)
-    for key, override_value in override.items():
-        base_value = merged.get(key)
-        if isinstance(override_value, Mapping):
-            if isinstance(base_value, Mapping):
-                base_mapping = _mapping_copy(cast(Mapping[object, object], base_value), label=key)
-                override_mapping = _mapping_copy(
-                    cast(Mapping[object, object], override_value),
-                    label=key,
-                )
-                if _replace_component_mapping(base_mapping, override_mapping):
-                    merged[key] = override_mapping
-                    continue
-                merged[key] = _deep_merge_mappings(
-                    base_mapping,
-                    override_mapping,
-                )
-                continue
-            if isinstance(base_value, str) and key in _NAMED_GROUP_KEYS:
-                named_group = load_named_group(base_value, key)
-                override_mapping = _mapping_copy(
-                    cast(Mapping[object, object], override_value),
-                    label=key,
-                )
-                if _replace_component_mapping(named_group, override_mapping):
-                    merged[key] = override_mapping
-                    continue
-                merged[key] = _deep_merge_mappings(named_group, override_mapping)
-                continue
-            merged[key] = _mapping_copy(
-                cast(Mapping[object, object], override_value), label=key
-            )
-            continue
-        merged[key] = override_value
-    return merged
-
-
-def _replace_component_mapping(
-    base: Mapping[str, object],
-    override: Mapping[str, object],
-) -> bool:
-    base_id = base.get("id")
-    override_id = override.get("id")
-    return (
-        isinstance(base_id, str)
-        and isinstance(override_id, str)
-        and base_id != override_id
-    )
-
-
-def _mapping_copy(value: Mapping[object, object], *, label: str) -> dict[str, object]:
-    del label
+def _mapping_copy(value: Mapping[object, object]) -> dict[str, object]:
     return {str(key): child for key, child in value.items()}
 
 
-def _optional_mapping(
-    value: Mapping[object, object],
-    *,
-    label: str,
-) -> dict[str, object | None]:
-    mapping = _mapping_copy(value, label=label)
-    return {key: child for key, child in mapping.items()}
+def _require_mapping(raw: object, *, label: str) -> dict[str, object]:
+    if not isinstance(raw, Mapping):
+        raise ConfigResolutionError(f"{label} must be provided as a mapping")
+    return _mapping_copy(cast(Mapping[object, object], raw))
 
 
 @overload
@@ -250,50 +142,76 @@ def _workflow_request(
     workflow: WorkflowTask,
     selections: WorkflowSelections,
 ) -> dict[str, object]:
-    merged: dict[str, object] = {}
-    if selections.preset is not None:
-        merged = _load_named_preset(selections.preset).model_dump(mode="json", exclude_none=True)
-    merged = _merge_workflow_payload(
-        merged,
-        compact_mapping(
-            {
-                "dataset": selections.dataset,
-                "problem": selections.problem,
-                "chain": selections.chain,
-                "provider": selections.provider if workflow is WorkflowTask.ACQUIRE else None,
-                "model": selections.model
-                if workflow in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.EVALUATE}
-                else None,
-                "dataset_builder": selections.dataset_builder
-                if workflow in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.EVALUATE}
-                else None,
-                "feature_set": selections.feature_set,
-                "prediction": selections.prediction
-                if workflow in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.EVALUATE}
-                else None,
-                "study": selections.study
-                if workflow in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.EVALUATE}
-                else None,
-                "artifact": {"variant": selections.variant}
-                if selections.variant is not None
-                else None,
-                "storage": {"root": selections.storage_root}
-                if selections.storage_root is not None
-                else None,
-                "acquisition": {"dry_run": selections.dry_run}
-                if workflow is WorkflowTask.ACQUIRE and selections.dry_run is not None
-                else None,
-                "tuning": {"trial_count": selections.trial_count}
-                if workflow is WorkflowTask.TUNE and selections.trial_count is not None
-                else None,
-                "delay_seconds": selections.delay_seconds
-                if workflow is WorkflowTask.EVALUATE
-                else None,
-            }
-        ),
+    payload = (
+        _load_named_preset(selections.preset).model_dump(mode="json", exclude_none=True)
+        if selections.preset is not None
+        else {}
     )
-    _reject_unknown_top_level_keys(merged)
-    return merged
+    _apply_selection_overlays(payload, workflow=workflow, selections=selections)
+    _reject_unknown_top_level_keys(payload)
+    return payload
+
+
+def _apply_selection_overlays(
+    payload: dict[str, object],
+    *,
+    workflow: WorkflowTask,
+    selections: WorkflowSelections,
+) -> None:
+    for field in ("dataset", "problem", "chain", "feature_set"):
+        value = getattr(selections, field)
+        if value is not None:
+            payload[field] = value
+    if selections.storage_root is not None:
+        payload["storage"] = _overlay_mapping(
+            payload.get("storage"),
+            {"root": selections.storage_root},
+            label="storage",
+        )
+    if workflow is WorkflowTask.ACQUIRE:
+        if selections.provider is not None:
+            payload["provider"] = selections.provider
+        if selections.dry_run is not None:
+            payload["acquisition"] = _overlay_mapping(
+                payload.get("acquisition"),
+                {"dry_run": selections.dry_run},
+                label="acquisition",
+            )
+        return
+    for field in ("model", "dataset_builder", "prediction", "study"):
+        value = getattr(selections, field)
+        if value is not None:
+            payload[field] = value
+    if selections.variant is not None:
+        payload["artifact"] = _overlay_mapping(
+            payload.get("artifact"),
+            {"variant": selections.variant},
+            label="artifact",
+        )
+    if workflow is WorkflowTask.TUNE and selections.trial_count is not None:
+        payload["tuning"] = _overlay_mapping(
+            payload.get("tuning"),
+            {"trial_count": selections.trial_count},
+            label="tuning",
+        )
+    if workflow is WorkflowTask.EVALUATE and selections.delay_seconds is not None:
+        payload["delay_seconds"] = selections.delay_seconds
+
+
+def _overlay_mapping(
+    current: object,
+    overlay: Mapping[str, object],
+    *,
+    label: str,
+) -> dict[str, object]:
+    if current is None:
+        return dict(overlay)
+    if not isinstance(current, Mapping):
+        raise ConfigResolutionError(f"{label} must be provided as a mapping")
+    return {
+        **_mapping_copy(cast(Mapping[object, object], current)),
+        **overlay,
+    }
 
 
 def _reject_unknown_top_level_keys(payload: Mapping[str, object]) -> None:
@@ -309,61 +227,93 @@ def _require_payload_key(payload: Mapping[str, object], key: str) -> object:
 
 
 def resolve_named_or_inline(raw: object, *, group: str, model_type: type[ModelT]) -> ModelT:
+    return _resolve_named_or_mapping(
+        raw,
+        group=group,
+        label=group,
+        parse_mapping=model_type.model_validate,
+    )
+
+
+def _resolve_named_or_mapping(
+    raw: object,
+    *,
+    group: str,
+    label: str,
+    parse_mapping: Callable[[dict[str, object]], ModelT],
+) -> ModelT:
     if isinstance(raw, str):
-        return model_type.model_validate(load_named_group(raw, group))
+        return parse_mapping(load_named_group(raw, group))
     if isinstance(raw, Mapping):
-        return model_type.model_validate(
-            _mapping_copy(cast(Mapping[object, object], raw), label=group)
-        )
-    raise ConfigResolutionError(f"{group} must be provided as a spec name or mapping")
+        return parse_mapping(_mapping_copy(cast(Mapping[object, object], raw)))
+    raise ConfigResolutionError(f"{label} must be provided as a spec name or mapping")
 
 
 def resolve_inline(raw: object, *, label: str, model_type: type[ModelT]) -> ModelT:
-    if isinstance(raw, Mapping):
-        return model_type.model_validate(
-            _mapping_copy(cast(Mapping[object, object], raw), label=label)
-        )
-    raise ConfigResolutionError(f"{label} must be provided as a mapping")
+    return model_type.model_validate(_require_mapping(raw, label=label))
 
 
 def resolve_problem(raw: object) -> ProblemSpec:
-    if isinstance(raw, str):
-        return coerce_problem_spec(load_named_group(raw, "problem"))
-    if isinstance(raw, Mapping):
-        return coerce_problem_spec(
-            _mapping_copy(cast(Mapping[object, object], raw), label="problem")
-        )
-    raise ConfigResolutionError("problem must be provided as a spec name or mapping")
+    return _resolve_named_or_mapping(
+        raw,
+        group="problem",
+        label="problem",
+        parse_mapping=coerce_problem_spec,
+    )
 
 
 def resolve_feature_set(raw: object) -> FeatureSetConfig:
-    if isinstance(raw, str):
-        return coerce_feature_set_config(load_named_group(raw, "feature_set"))
-    if isinstance(raw, Mapping):
-        return coerce_feature_set_config(
-            _mapping_copy(cast(Mapping[object, object], raw), label="feature_set")
-        )
-    raise ConfigResolutionError("feature_set must be provided as a spec name or mapping")
+    return _resolve_named_or_mapping(
+        raw,
+        group="feature_set",
+        label="feature_set",
+        parse_mapping=coerce_feature_set_config,
+    )
 
 
 def resolve_dataset_builder(raw: object) -> DatasetBuilderConfig:
-    if isinstance(raw, str):
-        return coerce_dataset_builder_config(load_named_group(raw, "dataset_builder"))
-    if isinstance(raw, Mapping):
-        return coerce_dataset_builder_config(
-            _mapping_copy(cast(Mapping[object, object], raw), label="dataset_builder")
-        )
-    raise ConfigResolutionError("dataset_builder must be provided as a spec name or mapping")
+    return _resolve_named_or_mapping(
+        raw,
+        group="dataset_builder",
+        label="dataset_builder",
+        parse_mapping=coerce_dataset_builder_config,
+    )
 
 
 def resolve_prediction(raw: object) -> PredictionConfig:
+    return _resolve_named_or_mapping(
+        raw,
+        group="prediction",
+        label="prediction",
+        parse_mapping=coerce_prediction_config,
+    )
+
+
+def _resolve_model(raw: object) -> ModelConfig[str]:
+    return _resolve_named_or_mapping(
+        raw,
+        group=_MODEL_GROUP,
+        label="model",
+        parse_mapping=coerce_model_config,
+    )
+
+
+def _resolve_tuning_space(
+    raw: object,
+    *,
+    model_config: ModelConfig[str],
+) -> TuningSpaceConfig:
     if isinstance(raw, str):
-        return coerce_prediction_config(load_named_group(raw, "prediction"))
+        return load_named_tuning_space(raw, model_config=model_config)
     if isinstance(raw, Mapping):
-        return coerce_prediction_config(
-            _mapping_copy(cast(Mapping[object, object], raw), label="prediction")
+        resolved = coerce_tuning_space_config(
+            _mapping_copy(cast(Mapping[object, object], raw)),
+            model_config=model_config,
         )
-    raise ConfigResolutionError("prediction must be provided as a spec name or mapping")
+        if resolved is None:
+            raise ConfigResolutionError("tuning_space is required for tune")
+        return resolved
+    raise ConfigResolutionError("tuning_space must be provided as a spec name or mapping")
 
 
 def resolve_storage(raw: object | None) -> StorageSpec:
@@ -371,11 +321,7 @@ def resolve_storage(raw: object | None) -> StorageSpec:
         return StorageSpec()
     if isinstance(raw, (str, Path)):
         return StorageSpec(root=Path(raw))
-    if isinstance(raw, Mapping):
-        return StorageSpec.model_validate(
-            _mapping_copy(cast(Mapping[object, object], raw), label="storage")
-        )
-    raise ConfigResolutionError("storage must be a path or mapping")
+    return StorageSpec.model_validate(_require_mapping(raw, label="storage"))
 
 
 def _resolve_common(
@@ -418,15 +364,7 @@ def _resolve_model_workflow(
 ]:
     dataset, chain, storage = _resolve_common(payload)
     problem = resolve_problem(payload["problem"])
-    model_raw = payload["model"]
-    if isinstance(model_raw, str):
-        model = _load_named_model(model_raw)
-    elif isinstance(model_raw, Mapping):
-        model = coerce_model_config(
-            _mapping_copy(cast(Mapping[object, object], model_raw), label="model")
-        )
-    else:
-        raise ConfigResolutionError("model must be provided as a spec name or mapping")
+    model = _resolve_model(payload["model"])
     dataset_builder = resolve_dataset_builder(_require_payload_key(payload, "dataset_builder"))
     feature_set = resolve_feature_set(payload["feature_set"])
     prediction = resolve_prediction(payload["prediction"])
@@ -550,21 +488,10 @@ def _resolve_tune_config(payload: dict[str, object]) -> TuneConfig:
         label="tuning",
         model_type=TuningConfig,
     )
-    tuning_space_raw = _require_payload_key(payload, "tuning_space")
-    if isinstance(tuning_space_raw, str):
-        tuning_space_spec = load_named_tuning_space(tuning_space_raw, model_config=model_spec)
-    elif isinstance(tuning_space_raw, Mapping):
-        resolved_tuning_space = coerce_tuning_space_config(
-            _mapping_copy(
-                cast(Mapping[object, object], tuning_space_raw), label="tuning_space"
-            ),
-            model_config=model_spec,
-        )
-        if resolved_tuning_space is None:
-            raise ConfigResolutionError("tuning_space is required for tune")
-        tuning_space_spec = resolved_tuning_space
-    else:
-        raise ConfigResolutionError("tuning_space must be provided as a spec name or mapping")
+    tuning_space_spec = _resolve_tuning_space(
+        _require_payload_key(payload, "tuning_space"),
+        model_config=model_spec,
+    )
     return TuneConfig(
         chain=chain_spec,
         dataset=dataset_spec,

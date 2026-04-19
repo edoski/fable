@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 class StageMetricDescriptor:
     id: str
     label: str
-    width: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,7 +20,6 @@ class StageMetricValue:
 @dataclass(slots=True)
 class _TaskBinding:
     stage_key: str
-    task_name: str
     done_status: str
 
 
@@ -30,7 +28,6 @@ class _StageState:
     key: str
     label: str
     status: str = "pending"
-    progress_finalized: bool = True
     metric_descriptors: tuple[StageMetricDescriptor, ...] = ()
     metric_values: dict[str, str] = field(default_factory=dict)
     total: int | None = None
@@ -39,9 +36,6 @@ class _StageState:
     detail: str | None = None
     started_at: float | None = None
     finished_at: float | None = None
-    last_progress_at: float | None = None
-    last_progress_completed: int = 0
-    smoothed_rate: float | None = None
     last_emitted_status: str | None = None
     last_emitted_detail: str | None = None
     last_emitted_metric_values: dict[str, str] = field(default_factory=dict)

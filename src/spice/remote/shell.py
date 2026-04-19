@@ -59,18 +59,20 @@ def run_remote_cli(
     )
 
 
-def run_remote_python_snippet(
+def run_remote_module(
     target: RemoteExecutionTarget,
-    code: str,
+    module: str,
+    args: list[str],
     *,
     capture_output: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     python_path = shlex.quote(str(target.spec.paths.python_path))
     repo_root = shlex.quote(str(target.spec.paths.repo_root))
+    module_name = shlex.quote(module)
+    argv = shlex.join(args)
     return run_remote_command(
         target,
-        f"cd {repo_root} && {python_path} -",
-        input_text=code,
+        f"cd {repo_root} && {python_path} -m {module_name} {argv}",
         capture_output=capture_output,
     )
 

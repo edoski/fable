@@ -15,7 +15,7 @@ from web3.exceptions import Web3RPCError
 from ...core.reporting import NullReporter, Reporter, StageMetricValue
 from ...corpus.contract import CanonicalBlockRow, canonicalize_block_frame
 from ...corpus.io import write_block_file
-from .client import Web3BlockClient
+from .client import BlockRpcClient
 from .controller import RpcController
 from .types import BlockPullPlan
 
@@ -48,7 +48,7 @@ class _CompletedBatch:
 
 
 async def pull_block_range(
-    block_client: Web3BlockClient,
+    block_client: BlockRpcClient,
     output_dir: Path,
     *,
     plan: BlockPullPlan,

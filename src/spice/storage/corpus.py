@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
 from typing import cast
@@ -29,7 +29,7 @@ from ..corpus.metadata import (
 )
 from ..modeling.result_codecs import corpus_semantics_from_payload, corpus_semantics_payload
 from .engine import DATASET_ROOT_KIND, create_state_engine, ensure_state_db, touch_meta
-from .payloads import PayloadCodec, SequencePayloadStore, SingletonPayloadStore
+from .payloads import PayloadCodec, SequencePayloadStore, SingletonPayloadStore, mapping_payload
 from .schema import DATASET_TABLES, acquire_runs, dataset_manifest
 
 _DATASET_MANIFEST_STORE = SingletonPayloadStore(
@@ -113,13 +113,13 @@ def _dataset_manifest_payload(manifest: DatasetManifest) -> dict[str, object]:
 
 
 def _dataset_manifest_from_payload(payload: dict[str, object]) -> DatasetManifest:
-    dataset = _mapping_payload(payload["dataset"], label="dataset")
-    chain = _mapping_payload(payload["chain"], label="chain")
-    request = _mapping_payload(payload["request"], label="request")
-    coverage = _mapping_payload(payload["coverage"], label="coverage")
-    validation = _mapping_payload(payload["validation"], label="validation")
+    dataset = mapping_payload(payload["dataset"], label="dataset")
+    chain = mapping_payload(payload["chain"], label="chain")
+    request = mapping_payload(payload["request"], label="request")
+    coverage = mapping_payload(payload["coverage"], label="coverage")
+    validation = mapping_payload(payload["validation"], label="validation")
     semantics = corpus_semantics_from_payload(
-        _mapping_payload(payload["semantics"], label="semantics")
+        mapping_payload(payload["semantics"], label="semantics")
     )
     return DatasetManifest(
         dataset=DatasetIdentity(
@@ -147,7 +147,7 @@ def _dataset_manifest_from_payload(payload: dict[str, object]) -> DatasetManifes
 
 
 def _window_from_payload(payload: object) -> DatasetWindowMetadata:
-    mapping = _mapping_payload(payload, label="window")
+    mapping = mapping_payload(payload, label="window")
     return DatasetWindowMetadata(
         start_timestamp=_int_value(mapping["start_timestamp"]),
         end_timestamp=_int_value(mapping["end_timestamp"]),
@@ -172,10 +172,10 @@ def _acquire_run_payload(run: AcquireRunRecord) -> dict[str, object]:
 
 
 def _acquire_run_from_payload(payload: dict[str, object]) -> AcquireRunRecord:
-    provider = _mapping_payload(payload["provider"], label="provider")
-    facts = _mapping_payload(payload["facts"], label="facts")
-    settings = _mapping_payload(payload["settings"], label="settings")
-    runtime = _mapping_payload(payload["runtime"], label="runtime")
+    provider = mapping_payload(payload["provider"], label="provider")
+    facts = mapping_payload(payload["facts"], label="facts")
+    settings = mapping_payload(payload["settings"], label="settings")
+    runtime = mapping_payload(payload["runtime"], label="runtime")
     return AcquireRunRecord(
         provider=ProviderMetadata(
             name=str(provider["name"]),
@@ -215,9 +215,9 @@ def _validation_payload(report: CompactValidationReport) -> dict[str, object]:
 
 
 def _validation_from_payload(payload: object) -> CompactValidationReport:
-    mapping = _mapping_payload(payload, label="validation")
-    block_range = _mapping_payload(mapping["block_range"], label="validation.block_range")
-    timestamp_range = _mapping_payload(
+    mapping = mapping_payload(payload, label="validation")
+    block_range = mapping_payload(mapping["block_range"], label="validation.block_range")
+    timestamp_range = mapping_payload(
         mapping["timestamp_range"], label="validation.timestamp_range"
     )
     return CompactValidationReport(
@@ -238,14 +238,7 @@ def _validation_from_payload(payload: object) -> CompactValidationReport:
 def _issues_payload(payload: object) -> dict[str, object] | None:
     if payload is None:
         return None
-    return _mapping_payload(payload, label="validation.issues")
-
-
-def _mapping_payload(payload: object, *, label: str) -> dict[str, object]:
-    if not isinstance(payload, Mapping):
-        raise TypeError(f"{label} payload must be a mapping")
-    mapping = cast(Mapping[object, object], payload)
-    return {str(key): value for key, value in mapping.items()}
+    return mapping_payload(payload, label="validation.issues")
 
 
 def _optional_int(value: object) -> int | None:

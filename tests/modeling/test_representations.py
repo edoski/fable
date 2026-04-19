@@ -19,7 +19,6 @@ from spice.modeling.representations import (
     SEQUENCE_INPUT_REPRESENTATION_ID,
     RepresentationRuntimeContext,
     compile_representation_contract,
-    prepare_representation,
 )
 from spice.prediction import compile_prediction_contract
 from spice.prediction.families.candidate_offset_selection.outputs import (
@@ -108,8 +107,8 @@ class _ToyTemporalModel(TemporalModel):
 def test_sequence_input_storage_modes_yield_identical_batches() -> None:
     store = _test_store()
     sample_indices = np.array([3, 0, 2, 1], dtype=np.int64)
-    streaming = prepare_representation(
-        SEQUENCE_INPUT_REPRESENTATION_ID,
+    contract = compile_representation_contract(SEQUENCE_INPUT_REPRESENTATION_ID)
+    streaming = contract.prepare(
         store,
         sample_indices,
         runtime_context=RepresentationRuntimeContext(
@@ -118,8 +117,7 @@ def test_sequence_input_storage_modes_yield_identical_batches() -> None:
             available_host_memory_bytes=1,
         ),
     )
-    materialized = prepare_representation(
-        SEQUENCE_INPUT_REPRESENTATION_ID,
+    materialized = contract.prepare(
         store,
         sample_indices,
         runtime_context=RepresentationRuntimeContext(

@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
+
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from ..config import (
     ArtifactVariant,
-    coerce_dataset_builder_config,
     StudyConfig,
+    coerce_dataset_builder_config,
     coerce_feature_set_config,
     coerce_prediction_config,
     coerce_problem_spec,
 )
+from ..core.reporting import StageMetricDescriptor
 from ..evaluation import EvaluationRun
 from ..features import FeaturePrerequisites
 from ..prediction import MetricDescriptor, MetricSet, WindowMetricSummary
@@ -43,19 +46,80 @@ if TYPE_CHECKING:
     )
 
 
+class CodecPayloadModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+_METRIC_DESCRIPTOR_ADAPTER = TypeAdapter(MetricDescriptor)
+_WINDOW_METRIC_ADAPTER = TypeAdapter(WindowMetricSummary)
+_EVALUATION_RUN_ADAPTER = TypeAdapter(EvaluationRun)
+_FEATURE_PREREQUISITES_ADAPTER = TypeAdapter(FeaturePrerequisites)
+_PROBLEM_SEMANTICS_ADAPTER = TypeAdapter(ProblemSemantics)
+_FEATURE_SEMANTICS_ADAPTER = TypeAdapter(FeatureSemantics)
+_PREDICTION_SEMANTICS_ADAPTER = TypeAdapter(PredictionSemantics)
+_INPUT_NORMALIZATION_SEMANTICS_ADAPTER = TypeAdapter(InputNormalizationSemantics)
+_REPRESENTATION_SEMANTICS_ADAPTER = TypeAdapter(RepresentationSemantics)
+_DATASET_BUILDER_SEMANTICS_ADAPTER = TypeAdapter(DatasetBuilderSemantics)
+_CORPUS_SEMANTICS_ADAPTER = TypeAdapter(CorpusSemantics)
+_STUDY_SEMANTICS_ADAPTER = TypeAdapter(StudySemantics)
+_ARTIFACT_SEMANTICS_ADAPTER = TypeAdapter(ArtifactSemantics)
+
+_ADAPTER_NAMESPACE = {
+    "FeaturePrerequisites": FeaturePrerequisites,
+    "MetricDescriptor": MetricDescriptor,
+    "StageMetricDescriptor": StageMetricDescriptor,
+}
+for _adapter in (
+    _FEATURE_PREREQUISITES_ADAPTER,
+    _PROBLEM_SEMANTICS_ADAPTER,
+    _FEATURE_SEMANTICS_ADAPTER,
+    _PREDICTION_SEMANTICS_ADAPTER,
+    _INPUT_NORMALIZATION_SEMANTICS_ADAPTER,
+    _REPRESENTATION_SEMANTICS_ADAPTER,
+    _DATASET_BUILDER_SEMANTICS_ADAPTER,
+    _CORPUS_SEMANTICS_ADAPTER,
+    _STUDY_SEMANTICS_ADAPTER,
+    _ARTIFACT_SEMANTICS_ADAPTER,
+):
+    _adapter.rebuild(_types_namespace=_ADAPTER_NAMESPACE)
+
+
 def mapping_payload(payload: object) -> dict[str, object]:
     if not isinstance(payload, Mapping):
         raise TypeError("Expected mapping payload")
     return dict(payload)
 
 
-def study_config_from_name(study_name: object) -> StudyConfig | None:
+def _adapter_payload(adapter: object, value: object) -> dict[str, object]:
+    payload = cast(TypeAdapter[Any], adapter).dump_python(value, mode="json")
+    if not isinstance(payload, dict):
+        raise TypeError("Expected adapter to serialize to a mapping payload")
+    return cast(dict[str, object], payload)
+
+
+AdapterValueT = TypeVar("AdapterValueT")
+
+
+def _adapter_value(adapter: TypeAdapter[AdapterValueT], payload: object) -> AdapterValueT:
+    return adapter.validate_python(payload)
+
+
+def _metric_values_payload(metrics: MetricSet) -> dict[str, float]:
+    return dict(metrics.values)
+
+
+def _metric_set_from_payload(payload: object) -> MetricSet:
+    mapping = mapping_payload(payload)
+    return MetricSet(values={str(key): _float_value(value) for key, value in mapping.items()})
+
+
+def _study_config_from_name(study_name: object) -> StudyConfig | None:
     if study_name is None:
         return None
     return StudyConfig(name=str(study_name))
 
 
-def metric_descriptor_values(descriptor: MetricDescriptor) -> dict[str, str]:
+def _metric_descriptor_payload(descriptor: MetricDescriptor) -> dict[str, str]:
     return {
         "id": descriptor.id,
         "label": descriptor.label,
@@ -63,174 +127,256 @@ def metric_descriptor_values(descriptor: MetricDescriptor) -> dict[str, str]:
     }
 
 
-def metric_descriptor_from_payload(payload: object) -> MetricDescriptor:
+def _metric_descriptor_from_payload(payload: object) -> MetricDescriptor:
     mapping = mapping_payload(payload)
     return MetricDescriptor(
         id=str(mapping["id"]),
         label=str(mapping["label"]),
-        role=str(mapping["role"]),  # type: ignore[arg-type]
+        role=cast(Any, str(mapping["role"])),
     )
 
 
-def metric_set_values(metrics: MetricSet) -> dict[str, float]:
-    return dict(metrics.values)
+def _prediction_semantics_payload(semantics: PredictionSemantics) -> dict[str, object]:
+    payload = _adapter_payload(_PREDICTION_SEMANTICS_ADAPTER, semantics)
+    payload["supported_workflows"] = sorted(str(value) for value in semantics.supported_workflows)
+    return payload
 
 
-def metric_set_from_payload(payload: object) -> MetricSet:
-    mapping = mapping_payload(payload)
-    return MetricSet(values={str(key): _float_value(value) for key, value in mapping.items()})
+class ArtifactManifestPayload(CodecPayloadModel):
+    artifact_id: str
+    dataset_builder: dict[str, object]
+    prediction: dict[str, object]
+    chain_name: str
+    dataset_id: str
+    dataset_name: str
+    problem: dict[str, object]
+    variant: str
+    study_id: str | None
+    study_name: str | None
+    feature_set: dict[str, object]
+    model: dict[str, object]
+    scaler: dict[str, object]
+    builder_runtime_metadata: dict[str, object]
+    semantics: dict[str, object]
+
+    @classmethod
+    def from_manifest(cls, manifest: TrainingArtifactManifest) -> ArtifactManifestPayload:
+        return cls(
+            artifact_id=manifest.artifact_id,
+            dataset_builder=manifest.dataset_builder.model_dump(mode="json", exclude_none=True),
+            prediction=manifest.prediction.model_dump(mode="json"),
+            chain_name=manifest.chain_name,
+            dataset_id=manifest.dataset_id,
+            dataset_name=manifest.dataset_name,
+            problem=manifest.problem.model_dump(mode="json"),
+            variant=manifest.variant.value,
+            study_id=manifest.study_id,
+            study_name=None if manifest.study is None else manifest.study.name,
+            feature_set=manifest.feature_set.model_dump(mode="json", exclude_none=True),
+            model=manifest.model.model_dump(mode="json", exclude_none=True),
+            scaler=manifest.scaler.model_dump(mode="json", exclude_none=True),
+            builder_runtime_metadata=problem_runtime_metadata_payload(
+                manifest.builder_runtime_metadata
+            ),
+            semantics=artifact_semantics_payload(manifest.semantics),
+        )
+
+    def to_manifest(self) -> TrainingArtifactManifest:
+        from .results import TrainingArtifactManifest
+
+        return TrainingArtifactManifest(
+            artifact_id=self.artifact_id,
+            dataset_builder=coerce_dataset_builder_config(self.dataset_builder),
+            prediction=coerce_prediction_config(self.prediction),
+            chain_name=self.chain_name,
+            dataset_id=self.dataset_id,
+            dataset_name=self.dataset_name,
+            problem=coerce_problem_spec(self.problem),
+            variant=ArtifactVariant(self.variant),
+            study=_study_config_from_name(self.study_name),
+            study_id=self.study_id,
+            feature_set=coerce_feature_set_config(self.feature_set),
+            model=coerce_model_config(self.model),
+            scaler=ScalerStats.model_validate(self.scaler),
+            builder_runtime_metadata=problem_runtime_metadata_from_payload(
+                coerce_problem_spec(self.problem),
+                self.builder_runtime_metadata,
+            ),
+            semantics=artifact_semantics_from_payload(self.semantics),
+        )
 
 
-def window_metric_values(summary: WindowMetricSummary) -> dict[str, float]:
-    return {"mean": summary.mean, "std": summary.std}
+class TrainingSummaryPayload(CodecPayloadModel):
+    n_rows_available: int
+    n_rows_used: int
+    train_samples: int
+    validation_samples: int
+    test_samples: int
+    best_epoch: int
+    resolved_device: str
+    resolved_precision: str
+    compiled: bool
+    loader_strategy_id: str
+    input_storage_mode_id: str
+    target_storage_mode_id: str
+    batch_planner_id: str
+    best_validation_metrics: dict[str, float]
+    test_metrics: dict[str, float]
+
+    @classmethod
+    def from_runtime(cls, summary: TrainingRuntimeSummary) -> TrainingSummaryPayload:
+        return cls(
+            n_rows_available=summary.n_rows_available,
+            n_rows_used=summary.n_rows_used,
+            train_samples=summary.split_sizes.train_samples,
+            validation_samples=summary.split_sizes.validation_samples,
+            test_samples=summary.split_sizes.test_samples,
+            best_epoch=summary.best_epoch,
+            resolved_device=summary.resolved_device,
+            resolved_precision=summary.resolved_precision,
+            compiled=summary.compiled,
+            loader_strategy_id=summary.loader_strategy_id,
+            input_storage_mode_id=summary.input_storage_mode_id,
+            target_storage_mode_id=summary.target_storage_mode_id,
+            batch_planner_id=summary.batch_planner_id,
+            best_validation_metrics=_metric_values_payload(summary.best_validation_metrics),
+            test_metrics=_metric_values_payload(summary.test_metrics),
+        )
+
+    def to_runtime(self) -> TrainingRuntimeSummary:
+        from .results import SplitSizes, TrainingRuntimeSummary
+
+        return TrainingRuntimeSummary(
+            n_rows_available=self.n_rows_available,
+            n_rows_used=self.n_rows_used,
+            split_sizes=SplitSizes(
+                train_samples=self.train_samples,
+                validation_samples=self.validation_samples,
+                test_samples=self.test_samples,
+            ),
+            best_epoch=self.best_epoch,
+            resolved_device=self.resolved_device,
+            resolved_precision=self.resolved_precision,
+            compiled=self.compiled,
+            loader_strategy_id=self.loader_strategy_id,
+            input_storage_mode_id=self.input_storage_mode_id,
+            target_storage_mode_id=self.target_storage_mode_id,
+            batch_planner_id=self.batch_planner_id,
+            best_validation_metrics=MetricSet(values=self.best_validation_metrics),
+            test_metrics=MetricSet(values=self.test_metrics),
+        )
 
 
-def window_metric_from_payload(payload: object) -> WindowMetricSummary:
-    mapping = mapping_payload(payload)
-    return WindowMetricSummary(
-        mean=_float_value(mapping["mean"]),
-        std=_float_value(mapping["std"]),
-    )
+class TrainingEpochPayload(CodecPayloadModel):
+    train_metrics: dict[str, float]
+    validation_metrics: dict[str, float]
+
+    @classmethod
+    def from_record(cls, record: TrainingEpochRecord) -> TrainingEpochPayload:
+        return cls(
+            train_metrics=_metric_values_payload(record.train_metrics),
+            validation_metrics=_metric_values_payload(record.validation_metrics),
+        )
+
+    def to_record(self, *, epoch: int) -> TrainingEpochRecord:
+        from .results import TrainingEpochRecord
+
+        return TrainingEpochRecord(
+            epoch=epoch,
+            train_metrics=MetricSet(values=self.train_metrics),
+            validation_metrics=MetricSet(values=self.validation_metrics),
+        )
 
 
-def metric_descriptors_values(
-    descriptors: tuple[MetricDescriptor, ...] | list[MetricDescriptor],
-) -> list[dict[str, str]]:
-    return [metric_descriptor_values(descriptor) for descriptor in descriptors]
+class EvaluationSummaryPayload(CodecPayloadModel):
+    delay_seconds: int
+    evaluator_id: str
+    evaluator_config: dict[str, object]
+    metric_descriptors: tuple[dict[str, str], ...]
+    n_history_rows: int
+    n_evaluation_rows: int
+    sample_count: int
+    metrics: dict[str, float]
+    window_metrics: dict[str, WindowMetricSummary]
+    total_events: int
 
+    @classmethod
+    def from_runtime(cls, summary: EvaluationRuntimeSummary) -> EvaluationSummaryPayload:
+        return cls(
+            delay_seconds=summary.delay_seconds,
+            evaluator_id=summary.evaluator_id,
+            evaluator_config=dict(summary.evaluator_config),
+            metric_descriptors=tuple(
+                _metric_descriptor_payload(descriptor)
+                for descriptor in summary.metric_descriptors
+            ),
+            n_history_rows=summary.n_history_rows,
+            n_evaluation_rows=summary.n_evaluation_rows,
+            sample_count=summary.sample_count,
+            metrics=_metric_values_payload(summary.metrics),
+            window_metrics=dict(summary.window_metrics),
+            total_events=summary.total_events,
+        )
 
-def metric_descriptors_from_payload(payload: object) -> tuple[MetricDescriptor, ...]:
-    if not isinstance(payload, list):
-        raise TypeError("Expected list payload")
-    return tuple(metric_descriptor_from_payload(item) for item in payload)
+    def to_runtime(self, *, runs: list[EvaluationRun]) -> EvaluationRuntimeSummary:
+        from .results import EvaluationRuntimeSummary
+
+        return EvaluationRuntimeSummary(
+            delay_seconds=self.delay_seconds,
+            evaluator_id=self.evaluator_id,
+            evaluator_config=dict(self.evaluator_config),
+            metric_descriptors=tuple(
+                _metric_descriptor_from_payload(payload)
+                for payload in self.metric_descriptors
+            ),
+            n_history_rows=self.n_history_rows,
+            n_evaluation_rows=self.n_evaluation_rows,
+            sample_count=self.sample_count,
+            metrics=MetricSet(values=self.metrics),
+            window_metrics=dict(self.window_metrics),
+            total_events=self.total_events,
+            runs=runs,
+        )
 
 
 def artifact_manifest_payload(manifest: TrainingArtifactManifest) -> dict[str, object]:
-    return {
-        "artifact_id": manifest.artifact_id,
-        "dataset_builder": manifest.dataset_builder.model_dump(mode="json", exclude_none=True),
-        "prediction": manifest.prediction.model_dump(mode="json"),
-        "chain_name": manifest.chain.name,
-        "dataset_id": manifest.dataset_id,
-        "dataset_name": manifest.dataset_name,
-        "problem": manifest.problem.model_dump(mode="json"),
-        "variant": manifest.variant.value,
-        "study_id": manifest.study_id,
-        "study_name": None if manifest.study is None else manifest.study.name,
-        "feature_set": manifest.feature_set.model_dump(mode="json", exclude_none=True),
-        "model": manifest.model.model_dump(mode="json", exclude_none=True),
-        "scaler": manifest.scaler.model_dump(mode="json", exclude_none=True),
-        "builder_runtime_metadata": problem_runtime_metadata_payload(
-            manifest.builder_runtime_metadata
-        ),
-        "semantics": artifact_semantics_payload(manifest.semantics),
-    }
+    return cast(
+        dict[str, object],
+        ArtifactManifestPayload.from_manifest(manifest).model_dump(mode="json"),
+    )
 
 
 def artifact_manifest_from_payload(payload: dict[str, object]):
-    from .results import ArtifactChainMetadata, TrainingArtifactManifest
-
-    return TrainingArtifactManifest(
-        artifact_id=str(payload["artifact_id"]),
-        dataset_builder=coerce_dataset_builder_config(
-            mapping_payload(payload["dataset_builder"])
-        ),
-        prediction=coerce_prediction_config(mapping_payload(payload["prediction"])),
-        chain=ArtifactChainMetadata(name=str(payload["chain_name"])),
-        dataset_id=str(payload["dataset_id"]),
-        dataset_name=str(payload["dataset_name"]),
-        problem=coerce_problem_spec(mapping_payload(payload["problem"])),
-        variant=ArtifactVariant(str(payload["variant"])),
-        study=study_config_from_name(payload.get("study_name")),
-        study_id=_optional_str(payload.get("study_id")),
-        feature_set=coerce_feature_set_config(mapping_payload(payload["feature_set"])),
-        model=coerce_model_config(mapping_payload(payload["model"])),
-        scaler=ScalerStats.model_validate(mapping_payload(payload["scaler"])),
-        builder_runtime_metadata=problem_runtime_metadata_from_payload(
-            coerce_problem_spec(mapping_payload(payload["problem"])),
-            mapping_payload(payload["builder_runtime_metadata"]),
-        ),
-        semantics=artifact_semantics_from_payload(mapping_payload(payload["semantics"])),
-    )
+    return ArtifactManifestPayload.model_validate(payload).to_manifest()
 
 
 def training_summary_payload(summary: TrainingRuntimeSummary) -> dict[str, object]:
-    return {
-        "n_rows_available": summary.n_rows_available,
-        "n_rows_used": summary.n_rows_used,
-        "train_samples": summary.split_sizes.train_samples,
-        "validation_samples": summary.split_sizes.validation_samples,
-        "test_samples": summary.split_sizes.test_samples,
-        "best_epoch": summary.best_epoch,
-        "resolved_device": summary.resolved_device,
-        "resolved_precision": summary.resolved_precision,
-        "compiled": summary.compiled,
-        "loader_strategy_id": summary.loader_strategy_id,
-        "input_storage_mode_id": summary.input_storage_mode_id,
-        "target_storage_mode_id": summary.target_storage_mode_id,
-        "batch_planner_id": summary.batch_planner_id,
-        "best_validation_metrics": metric_set_values(summary.best_validation_metrics),
-        "test_metrics": metric_set_values(summary.test_metrics),
-    }
+    return cast(
+        dict[str, object],
+        TrainingSummaryPayload.from_runtime(summary).model_dump(mode="json"),
+    )
 
 
 def training_summary_from_payload(payload: dict[str, object]):
-    from .results import SplitSizes, TrainingRuntimeSummary
-
-    return TrainingRuntimeSummary(
-        n_rows_available=_int_value(payload["n_rows_available"]),
-        n_rows_used=_int_value(payload["n_rows_used"]),
-        split_sizes=SplitSizes(
-            train_samples=_int_value(payload["train_samples"]),
-            validation_samples=_int_value(payload["validation_samples"]),
-            test_samples=_int_value(payload["test_samples"]),
-        ),
-        best_epoch=_int_value(payload["best_epoch"]),
-        resolved_device=str(payload["resolved_device"]),
-        resolved_precision=str(payload["resolved_precision"]),
-        compiled=bool(payload["compiled"]),
-        loader_strategy_id=str(payload["loader_strategy_id"]),
-        input_storage_mode_id=str(payload["input_storage_mode_id"]),
-        target_storage_mode_id=str(payload["target_storage_mode_id"]),
-        batch_planner_id=str(payload["batch_planner_id"]),
-        best_validation_metrics=metric_set_from_payload(payload["best_validation_metrics"]),
-        test_metrics=metric_set_from_payload(payload["test_metrics"]),
-    )
+    return TrainingSummaryPayload.model_validate(payload).to_runtime()
 
 
 def training_epoch_payload(record: TrainingEpochRecord) -> dict[str, object]:
-    return {
-        "train_metrics": metric_set_values(record.train_metrics),
-        "validation_metrics": metric_set_values(record.validation_metrics),
-    }
-
-
-def training_epoch_from_payload(payload: dict[str, object], *, epoch: int):
-    from .results import TrainingEpochRecord
-
-    return TrainingEpochRecord(
-        epoch=epoch,
-        train_metrics=metric_set_from_payload(payload["train_metrics"]),
-        validation_metrics=metric_set_from_payload(payload["validation_metrics"]),
+    return cast(
+        dict[str, object],
+        TrainingEpochPayload.from_record(record).model_dump(mode="json"),
     )
 
 
+def training_epoch_from_payload(payload: dict[str, object], *, epoch: int):
+    return TrainingEpochPayload.model_validate(payload).to_record(epoch=epoch)
+
+
 def evaluation_summary_payload(summary: EvaluationRuntimeSummary) -> dict[str, object]:
-    return {
-        "delay_seconds": summary.delay_seconds,
-        "evaluator_id": summary.evaluator_id,
-        "evaluator_config": dict(summary.evaluator_config),
-        "metric_descriptors": metric_descriptors_values(summary.metric_descriptors),
-        "n_history_rows": summary.n_history_rows,
-        "n_evaluation_rows": summary.n_evaluation_rows,
-        "sample_count": summary.sample_count,
-        "metrics": metric_set_values(summary.metrics),
-        "window_metrics": {
-            metric_id: window_metric_values(metric)
-            for metric_id, metric in summary.window_metrics.items()
-        },
-        "total_events": summary.total_events,
-    }
+    return cast(
+        dict[str, object],
+        EvaluationSummaryPayload.from_runtime(summary).model_dump(mode="json"),
+    )
 
 
 def evaluation_summary_from_payload(
@@ -238,267 +384,105 @@ def evaluation_summary_from_payload(
     *,
     runs: list[EvaluationRun],
 ):
-    from .results import EvaluationRuntimeSummary
-
-    window_payload = mapping_payload(payload["window_metrics"])
-    return EvaluationRuntimeSummary(
-        delay_seconds=_int_value(payload["delay_seconds"]),
-        evaluator_id=str(payload["evaluator_id"]),
-        evaluator_config=mapping_payload(payload["evaluator_config"]),
-        metric_descriptors=metric_descriptors_from_payload(payload["metric_descriptors"]),
-        n_history_rows=_int_value(payload["n_history_rows"]),
-        n_evaluation_rows=_int_value(payload["n_evaluation_rows"]),
-        sample_count=_int_value(payload["sample_count"]),
-        metrics=metric_set_from_payload(payload["metrics"]),
-        window_metrics={
-            str(metric_id): window_metric_from_payload(metric)
-            for metric_id, metric in window_payload.items()
-        },
-        total_events=_int_value(payload["total_events"]),
-        runs=runs,
-    )
+    return EvaluationSummaryPayload.model_validate(payload).to_runtime(runs=runs)
 
 
 def evaluation_run_payload(run: EvaluationRun) -> dict[str, object]:
-    return {
-        "n_events": run.n_events,
-        "metrics": dict(run.metrics),
-        "metadata": dict(run.metadata),
-    }
+    normalized = EvaluationRun(
+        n_events=run.n_events,
+        metrics=dict(run.metrics),
+        metadata={key: _metadata_value(value) for key, value in run.metadata.items()},
+    )
+    return _adapter_payload(_EVALUATION_RUN_ADAPTER, normalized)
 
 
 def evaluation_run_from_payload(payload: dict[str, object]):
-    return EvaluationRun(
-        n_events=_int_value(payload["n_events"]),
-        metrics={
-            str(key): _float_value(value)
-            for key, value in mapping_payload(payload["metrics"]).items()
-        },
-        metadata={
-            str(key): _metadata_value(value)
-            for key, value in mapping_payload(payload["metadata"]).items()
-        }
-    )
+    return cast(EvaluationRun, _adapter_value(_EVALUATION_RUN_ADAPTER, payload))
 
 
 def artifact_semantics_payload(semantics: ArtifactSemantics) -> dict[str, object]:
-    return {
-        "problem": problem_semantics_payload(semantics.problem),
-        "feature": feature_semantics_payload(semantics.feature),
-        "prediction": prediction_semantics_payload(semantics.prediction),
-        "input_normalization": input_normalization_semantics_payload(
-            semantics.input_normalization
-        ),
-        "representation": representation_semantics_payload(semantics.representation),
-        "dataset_builder": dataset_builder_semantics_payload(semantics.dataset_builder),
-        "max_candidate_slots": semantics.max_candidate_slots,
-    }
+    return _adapter_payload(_ARTIFACT_SEMANTICS_ADAPTER, semantics)
 
 
 def artifact_semantics_from_payload(payload: dict[str, object]) -> ArtifactSemantics:
-    return ArtifactSemantics(
-        problem=problem_semantics_from_payload(mapping_payload(payload["problem"])),
-        feature=feature_semantics_from_payload(mapping_payload(payload["feature"])),
-        prediction=prediction_semantics_from_payload(mapping_payload(payload["prediction"])),
-        input_normalization=input_normalization_semantics_from_payload(
-            mapping_payload(
-                payload.get(
-                    "input_normalization",
-                    {"input_normalization_id": "window_weighted_standard"},
-                )
-            )
-        ),
-        representation=representation_semantics_from_payload(
-            mapping_payload(payload["representation"])
-        ),
-        dataset_builder=dataset_builder_semantics_from_payload(
-            mapping_payload(payload["dataset_builder"])
-        ),
-        max_candidate_slots=_int_value(payload["max_candidate_slots"]),
-    )
+    return cast(ArtifactSemantics, _adapter_value(_ARTIFACT_SEMANTICS_ADAPTER, payload))
 
 
 def corpus_semantics_payload(semantics: CorpusSemantics) -> dict[str, object]:
-    return {
-        "problem": problem_semantics_payload(semantics.problem),
-        "feature": feature_semantics_payload(semantics.feature),
-    }
+    return _adapter_payload(_CORPUS_SEMANTICS_ADAPTER, semantics)
 
 
 def corpus_semantics_from_payload(payload: dict[str, object]) -> CorpusSemantics:
-    return CorpusSemantics(
-        problem=problem_semantics_from_payload(mapping_payload(payload["problem"])),
-        feature=feature_semantics_from_payload(mapping_payload(payload["feature"])),
-    )
+    return cast(CorpusSemantics, _adapter_value(_CORPUS_SEMANTICS_ADAPTER, payload))
 
 
 def study_semantics_payload(semantics: StudySemantics) -> dict[str, object]:
-    return {
-        "problem": problem_semantics_payload(semantics.problem),
-        "feature": feature_semantics_payload(semantics.feature),
-        "prediction": prediction_semantics_payload(semantics.prediction),
-        "input_normalization": input_normalization_semantics_payload(
-            semantics.input_normalization
-        ),
-        "representation": representation_semantics_payload(semantics.representation),
-        "dataset_builder": dataset_builder_semantics_payload(semantics.dataset_builder),
-    }
+    return _adapter_payload(_STUDY_SEMANTICS_ADAPTER, semantics)
 
 
 def study_semantics_from_payload(payload: dict[str, object]) -> StudySemantics:
-    return StudySemantics(
-        problem=problem_semantics_from_payload(mapping_payload(payload["problem"])),
-        feature=feature_semantics_from_payload(mapping_payload(payload["feature"])),
-        prediction=prediction_semantics_from_payload(mapping_payload(payload["prediction"])),
-        input_normalization=input_normalization_semantics_from_payload(
-            mapping_payload(
-                payload.get(
-                    "input_normalization",
-                    {"input_normalization_id": "window_weighted_standard"},
-                )
-            )
-        ),
-        representation=representation_semantics_from_payload(
-            mapping_payload(payload["representation"])
-        ),
-        dataset_builder=dataset_builder_semantics_from_payload(
-            mapping_payload(payload["dataset_builder"])
-        ),
-    )
+    return cast(StudySemantics, _adapter_value(_STUDY_SEMANTICS_ADAPTER, payload))
 
 
 def feature_semantics_payload(semantics: FeatureSemantics) -> dict[str, object]:
-    return {
-        "feature_set_id": semantics.feature_set_id,
-        "feature_family_id": semantics.feature_family_id,
-        "feature_names": list(semantics.feature_names),
-        "feature_graph_fingerprint": semantics.feature_graph_fingerprint,
-        "feature_prerequisites": semantics.feature_prerequisites.model_dump(mode="json"),
-    }
+    return _adapter_payload(_FEATURE_SEMANTICS_ADAPTER, semantics)
 
 
 def feature_semantics_from_payload(payload: dict[str, object]) -> FeatureSemantics:
-    names = payload["feature_names"]
-    if not isinstance(names, list):
-        raise TypeError("feature_names payload must be a list")
-    return FeatureSemantics(
-        feature_set_id=str(payload["feature_set_id"]),
-        feature_family_id=str(payload["feature_family_id"]),
-        feature_names=tuple(str(name) for name in names),
-        feature_graph_fingerprint=str(payload["feature_graph_fingerprint"]),
-        feature_prerequisites=FeaturePrerequisites.model_validate(
-            mapping_payload(payload["feature_prerequisites"])
-        ),
-    )
+    return cast(FeatureSemantics, _adapter_value(_FEATURE_SEMANTICS_ADAPTER, payload))
 
 
 def problem_semantics_payload(semantics: ProblemSemantics) -> dict[str, object]:
-    return {
-        "compiler_id": semantics.compiler_id,
-        "problem_id": semantics.problem_id,
-        "lookback_seconds": semantics.lookback_seconds,
-        "sample_count": semantics.sample_count,
-        "max_delay_seconds": semantics.max_delay_seconds,
-    }
+    return _adapter_payload(_PROBLEM_SEMANTICS_ADAPTER, semantics)
 
 
 def problem_semantics_from_payload(payload: dict[str, object]) -> ProblemSemantics:
-    return ProblemSemantics(
-        compiler_id=str(payload["compiler_id"]),
-        problem_id=str(payload["problem_id"]),
-        lookback_seconds=_int_value(payload["lookback_seconds"]),
-        sample_count=_int_value(payload["sample_count"]),
-        max_delay_seconds=_int_value(payload["max_delay_seconds"]),
-    )
+    return cast(ProblemSemantics, _adapter_value(_PROBLEM_SEMANTICS_ADAPTER, payload))
 
 
 def prediction_semantics_payload(semantics: PredictionSemantics) -> dict[str, object]:
-    return {
-        "prediction_id": semantics.prediction_id,
-        "prediction_family_id": semantics.prediction_family_id,
-        "training_metric_descriptors": metric_descriptors_values(
-            semantics.training_metric_descriptors
-        ),
-        "progress_metric_descriptors": [
-            {
-                "id": descriptor.id,
-                "label": descriptor.label,
-                "width": descriptor.width,
-            }
-            for descriptor in semantics.progress_metric_descriptors
-        ],
-        "primary_metric_id": semantics.primary_metric_id,
-        "direction": semantics.direction,
-        "supported_workflows": sorted(semantics.supported_workflows),
-    }
+    return _prediction_semantics_payload(semantics)
 
 
 def prediction_semantics_from_payload(payload: dict[str, object]) -> PredictionSemantics:
-    from ..core.reporting import StageMetricDescriptor
-
-    progress_payload = payload["progress_metric_descriptors"]
-    if not isinstance(progress_payload, list):
-        raise TypeError("progress_metric_descriptors payload must be a list")
-    workflows_payload = payload["supported_workflows"]
-    if not isinstance(workflows_payload, list):
-        raise TypeError("supported_workflows payload must be a list")
-    return PredictionSemantics(
-        prediction_id=str(payload["prediction_id"]),
-        prediction_family_id=str(payload["prediction_family_id"]),
-        training_metric_descriptors=metric_descriptors_from_payload(
-            payload["training_metric_descriptors"]
-        ),
-        progress_metric_descriptors=tuple(
-            StageMetricDescriptor(
-                id=str(item["id"]),
-                label=str(item["label"]),
-                width=_int_value(item["width"]),
-            )
-            for item in progress_payload
-            if isinstance(item, Mapping)
-        ),
-        primary_metric_id=str(payload["primary_metric_id"]),
-        direction=_prediction_direction(payload["direction"]),
-        supported_workflows=frozenset(str(value) for value in workflows_payload),
-    )
+    return cast(PredictionSemantics, _adapter_value(_PREDICTION_SEMANTICS_ADAPTER, payload))
 
 
 def input_normalization_semantics_payload(
     semantics: InputNormalizationSemantics,
 ) -> dict[str, object]:
-    return {"input_normalization_id": semantics.input_normalization_id}
+    return _adapter_payload(_INPUT_NORMALIZATION_SEMANTICS_ADAPTER, semantics)
 
 
 def input_normalization_semantics_from_payload(
     payload: dict[str, object],
 ) -> InputNormalizationSemantics:
-    return InputNormalizationSemantics(
-        input_normalization_id=str(payload["input_normalization_id"]),
+    return cast(
+        InputNormalizationSemantics,
+        _adapter_value(_INPUT_NORMALIZATION_SEMANTICS_ADAPTER, payload),
     )
 
 
 def representation_semantics_payload(semantics: RepresentationSemantics) -> dict[str, object]:
-    return {"representation_id": semantics.representation_id}
+    return _adapter_payload(_REPRESENTATION_SEMANTICS_ADAPTER, semantics)
 
 
 def representation_semantics_from_payload(payload: dict[str, object]) -> RepresentationSemantics:
-    return RepresentationSemantics(representation_id=str(payload["representation_id"]))
+    return cast(
+        RepresentationSemantics,
+        _adapter_value(_REPRESENTATION_SEMANTICS_ADAPTER, payload),
+    )
 
 
 def dataset_builder_semantics_payload(semantics: DatasetBuilderSemantics) -> dict[str, object]:
-    return {"dataset_builder_id": semantics.dataset_builder_id}
+    return _adapter_payload(_DATASET_BUILDER_SEMANTICS_ADAPTER, semantics)
 
 
 def dataset_builder_semantics_from_payload(payload: dict[str, object]) -> DatasetBuilderSemantics:
-    return DatasetBuilderSemantics(dataset_builder_id=str(payload["dataset_builder_id"]))
-
-
-def _int_value(value: object) -> int:
-    return int(cast(int | float | str | bytes, value))
-
-
-def _float_value(value: object) -> float:
-    return float(cast(int | float | str | bytes, value))
+    return cast(
+        DatasetBuilderSemantics,
+        _adapter_value(_DATASET_BUILDER_SEMANTICS_ADAPTER, payload),
+    )
 
 
 def _metadata_value(value: object) -> str | int | float:
@@ -511,14 +495,5 @@ def _metadata_value(value: object) -> str | int | float:
     return str(value)
 
 
-def _optional_str(value: object) -> str | None:
-    if value is None:
-        return None
-    return str(value)
-
-
-def _prediction_direction(value: object) -> Literal["maximize", "minimize"]:
-    resolved = str(value)
-    if resolved not in {"maximize", "minimize"}:
-        raise ValueError(f"Unsupported prediction direction: {resolved}")
-    return cast(Literal["maximize", "minimize"], resolved)
+def _float_value(value: object) -> float:
+    return float(cast(int | float | str | bytes, value))

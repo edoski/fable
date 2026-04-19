@@ -106,7 +106,10 @@ class _ProgressReporter:
         self.reporter.update_task(
             self.task_id,
             completed=completed,
-            message=f"batch {_format_compact_progress(batch_idx + 1, max(1, self.train_batches_per_epoch))}",
+            message=(
+                "batch "
+                f"{_format_compact_progress(batch_idx + 1, max(1, self.train_batches_per_epoch))}"
+            ),
             metrics=(
                 StageMetricValue(
                     id=_EPOCH_STAGE_METRIC_ID,
@@ -213,10 +216,10 @@ def _build_grad_scaler(
     *,
     resolved_device: torch.device,
     precision: str,
-) -> torch.amp.GradScaler | None:
+) -> object | None:
     if resolved_device.type != "cuda" or precision != "16-mixed":
         return None
-    return torch.amp.GradScaler("cuda")
+    return torch.cuda.amp.GradScaler()
 
 
 def _run_epoch(
@@ -228,13 +231,15 @@ def _run_epoch(
     prediction_contract: CompiledPredictionContract,
     prediction_training_state: object | None,
     optimizer: torch.optim.Optimizer | None,
-    grad_scaler: torch.amp.GradScaler | None,
+    grad_scaler: object | None,
     gradient_clip_norm: float | None,
     training: bool,
     progress: _ProgressReporter | None = None,
     epoch: int | None = None,
 ) -> MetricSet:
-    accumulator = prediction_contract.create_epoch_accumulator("train" if training else "validation")
+    accumulator = prediction_contract.create_epoch_accumulator(
+        "train" if training else "validation"
+    )
     if training:
         model.train()
     else:
@@ -257,12 +262,13 @@ def _run_epoch(
                 if optimizer is None:
                     raise RuntimeError("optimizer is required for training epochs")
                 if grad_scaler is not None:
-                    grad_scaler.scale(loss).backward()
-                    grad_scaler.unscale_(optimizer)
+                    scaler = cast("torch.cuda.amp.GradScaler", grad_scaler)
+                    scaler.scale(loss).backward()
+                    scaler.unscale_(optimizer)
                     if gradient_clip_norm is not None:
                         torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_norm)
-                    grad_scaler.step(optimizer)
-                    grad_scaler.update()
+                    scaler.step(optimizer)
+                    scaler.update()
                 else:
                     loss.backward()
                     if gradient_clip_norm is not None:

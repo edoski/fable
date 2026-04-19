@@ -6,6 +6,8 @@ import signal
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from types import FrameType
+from typing import Any, cast
 
 from ..core.reporting import Reporter
 from ..core.runtime import WorkflowRuntime, create_workflow_runtime
@@ -22,6 +24,9 @@ class _InterruptState:
     interrupted: bool = False
 
 
+SignalHandler = Callable[[int, FrameType | None], Any] | int | None
+
+
 @contextmanager
 def _capture_interrupts() -> Iterator[_InterruptState]:
     state = _InterruptState()
@@ -33,7 +38,7 @@ def _capture_interrupts() -> Iterator[_InterruptState]:
     if not signal_ids:
         yield state
         return
-    previous_handlers: dict[int, object] = {
+    previous_handlers: dict[int, SignalHandler] = {
         signum: signal.getsignal(signum) for signum in signal_ids
     }
 
@@ -63,7 +68,7 @@ def _capture_interrupts() -> Iterator[_InterruptState]:
     finally:
         for signum in registered:
             try:
-                signal.signal(signum, previous_handlers[signum])
+                signal.signal(signum, cast(signal.Handlers, previous_handlers[signum]))
             except ValueError:
                 pass
 
@@ -100,15 +105,11 @@ def abort_cleanup(
 
 @contextmanager
 def managed_workflow(
-    config: object,
     *,
-    run_name: str,
     runtime: WorkflowRuntime | None = None,
     reporter: Reporter | None = None,
     default_runtime_factory: Callable[..., WorkflowRuntime] = create_workflow_runtime,
-    nested: bool = False,
 ) -> Iterator[WorkflowSession]:
-    del config, run_name, nested
     active_runtime = runtime or default_runtime_factory(reporter=reporter)
     owns_runtime = runtime is None
     try:
