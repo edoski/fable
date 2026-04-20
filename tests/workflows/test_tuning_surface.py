@@ -7,9 +7,12 @@ from spice.config import (
     TunedParameterSet,
     TunedPredictionParams,
     TunedProblemParams,
+    TunedTrainingParams,
+    WorkflowTask,
 )
 from spice.core.errors import ConfigResolutionError
 from spice.core.reporting import NullReporter
+from spice.modeling.families.lstm import LstmTunedModelParams
 from spice.modeling.tuning import apply_study_best_params, apply_tuned_parameters
 from spice.storage.layout import resolve_workflow_paths
 from spice.workflows.train import run as run_train
@@ -34,6 +37,22 @@ def _problem_prediction_tuning_override(
         "model": {
             "id": "lstm",
         },
+    }
+    return override
+
+
+def _wide_tuning_override(model_workflow_override) -> dict[str, object]:
+    override = _problem_prediction_tuning_override(model_workflow_override)
+    override["tuning_space"]["training"] = {
+        "learning_rate": [0.0001, 0.0003],
+        "weight_decay": [0.0, 0.01],
+        "batch_size": [8, 16],
+    }
+    override["tuning_space"]["model"] = {
+        "id": "lstm",
+        "hidden_size": [64, 128],
+        "num_layers": [1, 2],
+        "dropout": [0.1, 0.2],
     }
     return override
 
@@ -99,6 +118,40 @@ def test_apply_tuned_parameters_updates_problem_and_prediction_groups(
     assert tuned.prediction.family.regression_loss_weight == 0.25
 
 
+def test_apply_tuned_parameters_updates_training_and_model_groups(
+    tmp_path,
+    load_test_train_config,
+    model_workflow_override,
+) -> None:
+    config = load_test_train_config(
+        tmp_path,
+        override=model_workflow_override(),
+    )
+
+    tuned = apply_tuned_parameters(
+        config,
+        TunedParameterSet(
+            training=TunedTrainingParams(
+                learning_rate=0.001,
+                weight_decay=0.01,
+                batch_size=16,
+            ),
+            model=LstmTunedModelParams(
+                hidden_size=128,
+                num_layers=1,
+                dropout=0.1,
+            ),
+        ),
+    )
+
+    assert tuned.training.learning_rate == 0.001
+    assert tuned.training.weight_decay == 0.01
+    assert tuned.training.batch_size == 16
+    assert tuned.model.hidden_size == 128
+    assert tuned.model.num_layers == 1
+    assert tuned.model.dropout == 0.1
+
+
 def test_tune_then_train_tuned_round_trips_problem_and_prediction_params(
     tmp_path,
     load_test_tune_config,
@@ -127,3 +180,63 @@ def test_tune_then_train_tuned_round_trips_problem_and_prediction_params(
     assert resolved.prediction.family.classification_loss_weight in {0.5, 1.0}
     assert resolved.prediction.family.regression_loss_weight in {0.25, 0.5}
     assert resolve_workflow_paths(resolved).artifact_state_db.is_file()
+
+
+def test_tune_then_train_tuned_round_trips_training_and_model_params(
+    tmp_path,
+    load_test_tune_config,
+    load_test_train_config,
+    model_workflow_override,
+    seed_history_dataset,
+) -> None:
+    tune_config = load_test_tune_config(
+        tmp_path,
+        override=_wide_tuning_override(model_workflow_override),
+    )
+    seed_history_dataset(tune_config)
+
+    run_tune(tune_config, reporter=NullReporter())
+
+    tuned_override = model_workflow_override(sample_count=20, lookback_seconds=240)
+    tuned_override["prediction"] = tune_config.prediction.id
+    tuned_override["artifact"] = {"variant": ArtifactVariant.TUNED.value}
+    tuned_override["study"] = tune_config.study.name
+    tuned_train_config = load_test_train_config(tmp_path, override=tuned_override)
+
+    run_train(tuned_train_config, reporter=NullReporter())
+    resolved = apply_study_best_params(tuned_train_config)
+
+    assert resolved.training.batch_size in {8, 16}
+    assert resolved.model.hidden_size in {64, 128}
+    assert resolved.model.num_layers in {1, 2}
+    assert resolved.model.dropout in {0.1, 0.2}
+    assert resolve_workflow_paths(resolved).artifact_state_db.is_file()
+
+
+def test_extensive_presets_resolve_cleanly(
+    tmp_path,
+    load_workflow_config,
+) -> None:
+    practical = load_workflow_config(
+        WorkflowTask.TUNE,
+        workspace=tmp_path,
+        preset="icdcs_2026_economic_extensive",
+    )
+    paper = load_workflow_config(
+        WorkflowTask.TUNE,
+        workspace=tmp_path,
+        preset="icdcs_2026_paper_truth_extensive",
+    )
+    transfer = load_workflow_config(
+        WorkflowTask.TRAIN,
+        workspace=tmp_path,
+        preset="icdcs_2026_paper_truth_practical_seed",
+    )
+
+    assert practical.objective.id == "validation_evaluator_metric"
+    assert practical.tuning_space.training is not None
+    assert practical.tuning_space.training.batch_size == [128, 256, 512, 1024, 2048]
+    assert paper.tuning_space.training is not None
+    assert paper.tuning_space.training.batch_size == [64, 128, 256, 512, 1024]
+    assert transfer.problem.lookback_seconds == 900
+    assert transfer.training.batch_size == 512

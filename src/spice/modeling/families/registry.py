@@ -202,7 +202,7 @@ def sample_tuned_parameters(
     problem_params: TunedProblemParams | None = None
     prediction_params: TunedPredictionParams | None = None
     if tuning_space.training is not None:
-        training_values: dict[str, float] = {}
+        training_values: dict[str, float | int] = {}
         if tuning_space.training.learning_rate is not None:
             training_values["learning_rate"] = float(
                 trial.suggest_categorical(
@@ -215,6 +215,13 @@ def sample_tuned_parameters(
                 trial.suggest_categorical(
                     "training.weight_decay",
                     tuning_space.training.weight_decay,
+                )
+            )
+        if tuning_space.training.batch_size is not None:
+            training_values["batch_size"] = int(
+                trial.suggest_categorical(
+                    "training.batch_size",
+                    tuning_space.training.batch_size,
                 )
             )
         if training_values:
@@ -275,6 +282,8 @@ def flatten_tuned_model_params(params: TunedParameterSet) -> dict[str, float | i
             flat["training.learning_rate"] = params.training.learning_rate
         if params.training.weight_decay is not None:
             flat["training.weight_decay"] = params.training.weight_decay
+        if params.training.batch_size is not None:
+            flat["training.batch_size"] = params.training.batch_size
     if params.problem is not None and params.problem.lookback_seconds is not None:
         flat["problem.lookback_seconds"] = params.problem.lookback_seconds
     if params.prediction is not None:

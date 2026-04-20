@@ -379,6 +379,7 @@ class ArtifactConfig(ConfigModel):
 class TuningTrainingSearchSpace(ConfigModel):
     learning_rate: list[float] | None = Field(default=None, min_length=1)
     weight_decay: list[float] | None = Field(default=None, min_length=1)
+    batch_size: list[int] | None = Field(default=None, min_length=1)
 
     @field_validator("learning_rate")
     @classmethod
@@ -394,9 +395,20 @@ class TuningTrainingSearchSpace(ConfigModel):
             raise ValueError("tuning_space.training.weight_decay values must be non-negative")
         return values
 
+    @field_validator("batch_size")
+    @classmethod
+    def validate_batch_size_candidates(cls, values: list[int] | None) -> list[int] | None:
+        if values is not None and any(value <= 0 for value in values):
+            raise ValueError("tuning_space.training.batch_size values must be positive")
+        return values
+
     @model_validator(mode="after")
     def validate_non_empty_group(self) -> Self:
-        if self.learning_rate is None and self.weight_decay is None:
+        if (
+            self.learning_rate is None
+            and self.weight_decay is None
+            and self.batch_size is None
+        ):
             raise ValueError("tuning_space.training must declare at least one field")
         return self
 
@@ -478,10 +490,15 @@ class TuningSpaceConfig(ConfigModel):
 class TunedTrainingParams(ConfigModel):
     learning_rate: float | None = Field(default=None, gt=0.0)
     weight_decay: float | None = Field(default=None, ge=0.0)
+    batch_size: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def validate_non_empty_group(self) -> Self:
-        if self.learning_rate is None and self.weight_decay is None:
+        if (
+            self.learning_rate is None
+            and self.weight_decay is None
+            and self.batch_size is None
+        ):
             raise ValueError("tuned training params must declare at least one field")
         return self
 

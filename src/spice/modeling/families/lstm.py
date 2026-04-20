@@ -28,6 +28,7 @@ class LstmModelConfig(ModelConfig[Literal["lstm"]]):
 class LstmTuningSpaceModelConfig(ModelTuningSpaceConfig[Literal["lstm"]]):
     id: Literal["lstm"] = "lstm"
     hidden_size: list[int] | None = Field(default=None, min_length=1)
+    num_layers: list[int] | None = Field(default=None, min_length=1)
     dropout: list[float] | None = Field(default=None, min_length=1)
 
     @field_validator("hidden_size")
@@ -35,6 +36,13 @@ class LstmTuningSpaceModelConfig(ModelTuningSpaceConfig[Literal["lstm"]]):
     def validate_hidden_size_candidates(cls, values: list[int] | None) -> list[int] | None:
         if values is not None and any(value <= 0 for value in values):
             raise ValueError("tuning_space.model.hidden_size values must be positive")
+        return values
+
+    @field_validator("num_layers")
+    @classmethod
+    def validate_num_layers_candidates(cls, values: list[int] | None) -> list[int] | None:
+        if values is not None and any(value <= 0 for value in values):
+            raise ValueError("tuning_space.model.num_layers values must be positive")
         return values
 
     @field_validator("dropout")
@@ -48,11 +56,16 @@ class LstmTuningSpaceModelConfig(ModelTuningSpaceConfig[Literal["lstm"]]):
 class LstmTunedModelParams(TunedModelParams[Literal["lstm"]]):
     id: Literal["lstm"] = "lstm"
     hidden_size: int | None = Field(default=None, gt=0)
+    num_layers: int | None = Field(default=None, gt=0)
     dropout: float | None = Field(default=None, ge=0.0, lt=1.0)
 
     @model_validator(mode="after")
     def validate_non_empty_group(self) -> LstmTunedModelParams:
-        if self.hidden_size is None and self.dropout is None:
+        if (
+            self.hidden_size is None
+            and self.num_layers is None
+            and self.dropout is None
+        ):
             raise ValueError("tuned model params must declare at least one field")
         return self
 
@@ -98,6 +111,10 @@ def _sample_model_params(
     if tuning_space.hidden_size is not None:
         values["hidden_size"] = int(
             trial.suggest_categorical("model.hidden_size", tuning_space.hidden_size)
+        )
+    if tuning_space.num_layers is not None:
+        values["num_layers"] = int(
+            trial.suggest_categorical("model.num_layers", tuning_space.num_layers)
         )
     if tuning_space.dropout is not None:
         values["dropout"] = float(trial.suggest_categorical("model.dropout", tuning_space.dropout))

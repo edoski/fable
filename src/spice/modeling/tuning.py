@@ -58,6 +58,8 @@ def apply_tuned_parameters(
             tuned_config.training.learning_rate = params.training.learning_rate
         if params.training.weight_decay is not None:
             tuned_config.training.weight_decay = params.training.weight_decay
+        if params.training.batch_size is not None:
+            tuned_config.training.batch_size = params.training.batch_size
     if params.problem is not None and params.problem.lookback_seconds is not None:
         tuned_config.problem.lookback_seconds = params.problem.lookback_seconds
     if params.prediction is not None:
