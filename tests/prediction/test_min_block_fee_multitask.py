@@ -14,6 +14,10 @@ from spice.prediction.families.min_block_fee_multitask.outputs import (
     MIN_LOG_FEE_HEAD_ID,
     OFFSET_LOGITS_HEAD_ID,
 )
+from spice.temporal import (
+    coerce_realization_policy_config,
+    compile_realization_policy_contract,
+)
 from spice.temporal.problem_store import CompiledProblemStore
 
 
@@ -67,12 +71,22 @@ def _contract():
     )
 
 
+def _realization_policy():
+    return compile_realization_policy_contract(
+        coerce_realization_policy_config({"id": "strict_deadline_miss"})
+    )
+
+
 def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
     store = _build_store()
     contract = _contract()
     sample_indices = np.arange(store.n_samples, dtype=np.int64)
 
-    prepared_targets = contract.prepare_targets(store, sample_indices)
+    prepared_targets = contract.prepare_targets(
+        store,
+        sample_indices,
+        realization_policy=_realization_policy(),
+    )
     batch = prepared_targets.build_batch(torch.arange(store.n_samples, dtype=torch.int64))
 
     np.testing.assert_array_equal(
@@ -82,7 +96,11 @@ def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
     assert batch.min_block_log_fees[1].item() == pytest_approx_log(5.0)
     assert batch.min_block_log_fees[2].item() == pytest_approx_log(4.0)
 
-    training_state = contract.fit_training_state(store, sample_indices)
+    training_state = contract.fit_training_state(
+        store,
+        sample_indices,
+        realization_policy=_realization_policy(),
+    )
     assert isinstance(training_state, MinBlockFeeTrainingState)
     class_weights = training_state.class_weights.cpu().numpy()
     assert class_weights[0] < class_weights[1]
@@ -125,9 +143,8 @@ def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
         predictions,
         torch.arange(store.n_samples, dtype=torch.int64),
         outputs,
-        batch,
     )
-    assert predictions == [0, 1, 2, 0]
+    assert predictions == [1, 2, 2, 2]
 
 
 def test_min_block_fee_training_state_caches_resolved_device_tensors() -> None:
@@ -147,23 +164,26 @@ def test_min_block_fee_training_state_caches_resolved_device_tensors() -> None:
     assert first.fee_std.item() == pytest.approx(0.25)
 
 
-def test_min_block_fee_multitask_honors_precomputed_paper_targets() -> None:
+def test_min_block_fee_multitask_uses_realization_policy_targets() -> None:
     store = CompiledProblemStore(
         feature_matrix=np.zeros((8, 1), dtype=np.float32),
-        log_base_fees=np.log(np.array([10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0], dtype=np.float32)),
+        log_base_fees=np.log(
+            np.array([10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0], dtype=np.float32)
+        ),
         timestamps=np.arange(8, dtype=np.int64),
         anchor_rows=np.array([0, 1, 2], dtype=np.int64),
         context_start_rows=np.zeros(3, dtype=np.int64),
-        candidate_end_rows=np.array([5, 6, 7], dtype=np.int64),
-        max_candidate_slots=3,
-        precomputed_min_block_offsets=np.array([0, 2, 2], dtype=np.int64),
-        precomputed_min_block_log_fees=np.log1p(np.array([9.0, 5.0, 3.0], dtype=np.float32)),
-        fixed_candidate_class_space=True,
+        candidate_end_rows=np.array([2, 5, 6], dtype=np.int64),
+        max_candidate_slots=4,
     )
     contract = _contract()
     sample_indices = np.arange(store.n_samples, dtype=np.int64)
 
-    prepared_targets = contract.prepare_targets(store, sample_indices)
+    prepared_targets = contract.prepare_targets(
+        store,
+        sample_indices,
+        realization_policy=_realization_policy(),
+    )
     batch = prepared_targets.build_batch(torch.arange(store.n_samples, dtype=torch.int64))
 
     np.testing.assert_array_equal(
@@ -172,12 +192,19 @@ def test_min_block_fee_multitask_honors_precomputed_paper_targets() -> None:
     )
     np.testing.assert_array_equal(
         batch.candidate_mask.cpu().numpy(),
-        np.ones((3, 3), dtype=np.bool_),
+        np.array(
+            [
+                [True, False, False, False],
+                [True, True, True, False],
+                [True, True, True, False],
+            ],
+            dtype=np.bool_,
+        ),
     )
-    assert batch.min_block_log_fees[1].item() == pytest.approx(math.log1p(5.0))
+    assert batch.min_block_log_fees[1].item() == pytest_approx_log(6.0)
 
 
-def test_min_block_fee_multitask_masks_short_fixed_class_space_candidates() -> None:
+def test_min_block_fee_multitask_masks_short_realized_candidate_windows() -> None:
     store = CompiledProblemStore(
         feature_matrix=np.zeros((8, 1), dtype=np.float32),
         log_base_fees=np.log(
@@ -188,12 +215,15 @@ def test_min_block_fee_multitask_masks_short_fixed_class_space_candidates() -> N
         context_start_rows=np.zeros(3, dtype=np.int64),
         candidate_end_rows=np.array([3, 5, 6], dtype=np.int64),
         max_candidate_slots=3,
-        fixed_candidate_class_space=True,
     )
     contract = _contract()
     sample_indices = np.arange(store.n_samples, dtype=np.int64)
 
-    prepared_targets = contract.prepare_targets(store, sample_indices)
+    prepared_targets = contract.prepare_targets(
+        store,
+        sample_indices,
+        realization_policy=_realization_policy(),
+    )
     batch = prepared_targets.build_batch(torch.arange(store.n_samples, dtype=torch.int64))
 
     np.testing.assert_array_equal(

@@ -15,6 +15,7 @@ from ..core.reporting import Reporter
 from ..prediction.base import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..prediction.contracts import DecodedOffsets
 from ..temporal.problem_store import CompiledProblemStore
+from ..temporal.realization import CompiledRealizationPolicyContract
 
 
 class EvaluationConfigModel(BaseModel):
@@ -50,7 +51,13 @@ class EvaluationSummary:
 
 
 RunEvaluatorFn = Callable[
-    [CompiledProblemStore, DecodedOffsets, IntVector, Reporter | None],
+    [
+        CompiledProblemStore,
+        CompiledRealizationPolicyContract,
+        DecodedOffsets,
+        IntVector,
+        Reporter | None,
+    ],
     EvaluationSummary,
 ]
 
@@ -67,8 +74,15 @@ class CompiledEvaluatorContract:
     def run(
         self,
         store: CompiledProblemStore,
+        realization_policy: CompiledRealizationPolicyContract,
         decoded_offsets: DecodedOffsets,
         sample_indices: IntVector,
         reporter: Reporter | None,
     ) -> EvaluationSummary:
-        return self.run_fn(store, decoded_offsets, sample_indices, reporter)
+        return self.run_fn(
+            store,
+            realization_policy,
+            decoded_offsets,
+            sample_indices,
+            reporter,
+        )

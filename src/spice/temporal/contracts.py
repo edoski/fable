@@ -10,6 +10,7 @@ from ..config.models import ChainRuntimeSpec, ProblemSpec
 from ..core.errors import ConfigResolutionError
 from ..features import CompiledFeatureContract, FeaturePrerequisites
 from ..semantics import ProblemSemantics
+from .realization import CompiledRealizationPolicyContract, compile_realization_policy_contract
 
 if TYPE_CHECKING:
     from ..features import ResolvedFeatureTable
@@ -30,7 +31,18 @@ class EstimatedBlockRuntimeMetadata:
     capability_candidate_count: int
 
 
-ProblemRuntimeMetadata = TimestampRuntimeMetadata | EstimatedBlockRuntimeMetadata
+@dataclass(frozen=True, slots=True)
+class TimestampFutureWindowRuntimeMetadata:
+    calibrated_interval_seconds: float
+    action_interval_seconds: float
+    capability_action_count: int
+
+
+ProblemRuntimeMetadata = (
+    TimestampRuntimeMetadata
+    | EstimatedBlockRuntimeMetadata
+    | TimestampFutureWindowRuntimeMetadata
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +55,7 @@ class CompiledProblemContract:
     sample_count: int
     max_delay_seconds: int
     feature_prerequisites: FeaturePrerequisites
+    realization_policy: CompiledRealizationPolicyContract
 
     @property
     def semantics(self) -> ProblemSemantics:
@@ -93,9 +106,11 @@ def compile_problem_contract(
 ) -> CompiledProblemContract:
     from .compilers import problem_compiler_spec
 
+    realization_policy = compile_realization_policy_contract(problem.realization_policy)
     return problem_compiler_spec(problem.compiler.id).compile_problem(
         problem,
         feature_contract,
+        realization_policy,
         chain_runtime,
     )
 
@@ -108,7 +123,13 @@ def problem_runtime_metadata_from_payload(
     problem: ProblemSpec,
     payload: Mapping[str, object],
 ) -> ProblemRuntimeMetadata:
-    compiler_id = problem.compiler.id
+    return problem_runtime_metadata_from_compiler_payload(problem.compiler.id, payload)
+
+
+def problem_runtime_metadata_from_compiler_payload(
+    compiler_id: str,
+    payload: Mapping[str, object],
+) -> ProblemRuntimeMetadata:
     raw_payload = dict(payload)
     if compiler_id == "timestamp_native":
         if raw_payload:
@@ -126,6 +147,15 @@ def problem_runtime_metadata_from_payload(
             candidate_interval_seconds=_float_payload(raw_payload, "candidate_interval_seconds"),
             lookback_steps=_int_payload(raw_payload, "lookback_steps"),
             capability_candidate_count=_int_payload(raw_payload, "capability_candidate_count"),
+        )
+    if compiler_id == "timestamp_future_window":
+        return TimestampFutureWindowRuntimeMetadata(
+            calibrated_interval_seconds=_float_payload(
+                raw_payload,
+                "calibrated_interval_seconds",
+            ),
+            action_interval_seconds=_float_payload(raw_payload, "action_interval_seconds"),
+            capability_action_count=_int_payload(raw_payload, "capability_action_count"),
         )
     raise ConfigResolutionError(f"Unsupported problem.compiler.id: {compiler_id}")
 

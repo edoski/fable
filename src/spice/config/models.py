@@ -31,6 +31,7 @@ from ..modeling.families.base import (
 from ..prediction import PredictionFamilyConfig
 from ..temporal.compilers import ProblemCompilerConfig
 from ..temporal.input_normalization import InputNormalizationConfig
+from ..temporal.realization import RealizationPolicyConfig
 
 
 class WorkflowTask(StrEnum):
@@ -56,6 +57,11 @@ class CompileMode(StrEnum):
 class ArtifactVariant(StrEnum):
     BASELINE = "baseline"
     TUNED = "tuned"
+
+
+class TuningObjectiveDirection(StrEnum):
+    MAXIMIZE = "maximize"
+    MINIMIZE = "minimize"
 
 
 def _validate_path_segment(value: str, *, label: str) -> str:
@@ -165,6 +171,7 @@ class ProblemSpec(ConfigModel):
     sample_count: int = Field(gt=0)
     max_delay_seconds: int = Field(gt=0)
     compiler: SerializeAsAny[ProblemCompilerConfig]
+    realization_policy: SerializeAsAny[RealizationPolicyConfig]
 
     @field_validator("id")
     @classmethod
@@ -186,7 +193,18 @@ def coerce_problem_spec(payload: Mapping[str, object] | ProblemSpec) -> ProblemS
         ProblemCompilerConfig,
     ):
         raise ConfigResolutionError("problem.compiler must be a mapping")
+    raw_realization_policy = raw_payload.get("realization_policy")
+    if raw_realization_policy is None:
+        raise ConfigResolutionError("problem.realization_policy is required")
+    if not isinstance(raw_realization_policy, Mapping) and not isinstance(
+        raw_realization_policy,
+        RealizationPolicyConfig,
+    ):
+        raise ConfigResolutionError("problem.realization_policy must be a mapping")
+    from ..temporal.realization import coerce_realization_policy_config
+
     raw_payload["compiler"] = coerce_problem_compiler_config(raw_compiler)
+    raw_payload["realization_policy"] = coerce_realization_policy_config(raw_realization_policy)
     return ProblemSpec.model_validate(raw_payload)
 
 
@@ -519,6 +537,17 @@ class TuningConfig(ConfigModel):
     timeout_seconds: int | None = Field(default=None, gt=0)
     sampler_seed: int = Field(ge=0)
     enable_pruning: bool
+    objective: TuningObjectiveConfig | None = None
+
+
+class TuningObjectiveConfig(ConfigModel):
+    metric_id: str
+    direction: TuningObjectiveDirection
+
+    @field_validator("metric_id")
+    @classmethod
+    def validate_metric_id(cls, value: str) -> str:
+        return _validate_path_segment(value, label="tuning.objective.metric_id")
 
 
 class ProviderEndpointSpec(ConfigModel):
@@ -762,6 +791,7 @@ class WorkflowSelections(ConfigModel):
     dataset_builder: str | None = None
     feature_set: str | None = None
     prediction: str | None = None
+    evaluation: str | None = None
     study: str | None = None
     variant: str | None = None
     delay_seconds: int | None = Field(default=None, gt=0)

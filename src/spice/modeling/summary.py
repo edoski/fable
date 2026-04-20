@@ -32,6 +32,7 @@ def training_summary_sections(
                 ("variant", manifest.variant.value),
                 *([] if manifest.study is None else [("study", manifest.study.name)]),
                 ("capability", f"{manifest.max_delay_seconds}s"),
+                ("realization", manifest.semantics.realization_policy.realization_policy_id),
             ],
         ),
         (
@@ -105,6 +106,7 @@ def evaluation_summary_sections(
                 *([] if manifest.study is None else [("study", manifest.study.name)]),
                 ("capability", f"{manifest.max_delay_seconds}s"),
                 ("requested", f"{runtime.delay_seconds}s"),
+                ("realization", manifest.semantics.realization_policy.realization_policy_id),
             ],
         ),
         (

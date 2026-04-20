@@ -128,6 +128,14 @@ def train_command(
         str | None,
         _selection_option("--model", metavar="MODEL", help="Use a named model config."),
     ] = None,
+    dataset_builder: Annotated[
+        str | None,
+        _selection_option(
+            "--dataset-builder",
+            metavar="DATASET_BUILDER",
+            help="Use a named dataset builder config.",
+        ),
+    ] = None,
     feature_set: Annotated[
         str | None,
         _selection_option(
@@ -152,6 +160,14 @@ def train_command(
         str | None,
         _selection_option("--variant", metavar="VARIANT", help="Override the artifact variant."),
     ] = None,
+    evaluation: Annotated[
+        str | None,
+        _selection_option(
+            "--evaluation",
+            metavar="EVALUATION",
+            help="Use a named evaluation config.",
+        ),
+    ] = None,
     storage_root: Annotated[
         Path | None,
         _output_option(
@@ -172,8 +188,10 @@ def train_command(
             problem=problem,
             chain=chain,
             model=model,
+            dataset_builder=dataset_builder,
             feature_set=feature_set,
             prediction=prediction,
+            evaluation=evaluation,
             storage_root=storage_root,
             variant=variant,
             study=study,
@@ -206,6 +224,14 @@ def tune_command(
         str | None,
         _selection_option("--model", metavar="MODEL", help="Use a named model config."),
     ] = None,
+    dataset_builder: Annotated[
+        str | None,
+        _selection_option(
+            "--dataset-builder",
+            metavar="DATASET_BUILDER",
+            help="Use a named dataset builder config.",
+        ),
+    ] = None,
     feature_set: Annotated[
         str | None,
         _selection_option(
@@ -234,6 +260,14 @@ def tune_command(
             help="Override the requested trial count.",
         ),
     ] = None,
+    evaluation: Annotated[
+        str | None,
+        _selection_option(
+            "--evaluation",
+            metavar="EVALUATION",
+            help="Use a named evaluation config.",
+        ),
+    ] = None,
     storage_root: Annotated[
         Path | None,
         _output_option(
@@ -254,8 +288,10 @@ def tune_command(
             problem=problem,
             chain=chain,
             model=model,
+            dataset_builder=dataset_builder,
             feature_set=feature_set,
             prediction=prediction,
+            evaluation=evaluation,
             storage_root=storage_root,
             study=study,
             trial_count=trial_count,
@@ -288,6 +324,14 @@ def evaluate_command(
         str | None,
         _selection_option("--model", metavar="MODEL", help="Use a named model config."),
     ] = None,
+    dataset_builder: Annotated[
+        str | None,
+        _selection_option(
+            "--dataset-builder",
+            metavar="DATASET_BUILDER",
+            help="Use a named dataset builder config.",
+        ),
+    ] = None,
     feature_set: Annotated[
         str | None,
         _selection_option(
@@ -311,6 +355,14 @@ def evaluate_command(
     variant: Annotated[
         str | None,
         _selection_option("--variant", metavar="VARIANT", help="Override the artifact variant."),
+    ] = None,
+    evaluation: Annotated[
+        str | None,
+        _selection_option(
+            "--evaluation",
+            metavar="EVALUATION",
+            help="Use a named evaluation config.",
+        ),
     ] = None,
     delay_seconds: Annotated[
         int | None,
@@ -340,8 +392,10 @@ def evaluate_command(
             problem=problem,
             chain=chain,
             model=model,
+            dataset_builder=dataset_builder,
             feature_set=feature_set,
             prediction=prediction,
+            evaluation=evaluation,
             storage_root=storage_root,
             variant=variant,
             study=study,

@@ -8,6 +8,10 @@ from spice.features import compile_feature_contract
 from spice.temporal.contracts import compile_problem_contract
 
 
+def _realization_policy_config() -> dict[str, object]:
+    return {"id": "strict_deadline_miss"}
+
+
 def test_temporal_store_uses_real_timestamps_for_context_and_candidates() -> None:
     feature_contract = compile_feature_contract(
         feature_set=coerce_feature_set_config(
@@ -37,9 +41,15 @@ def test_temporal_store_uses_real_timestamps_for_context_and_candidates() -> Non
                 "sample_count": 4,
                 "max_delay_seconds": 12,
                 "compiler": {"id": "timestamp_native"},
+                "realization_policy": _realization_policy_config(),
             }
         ),
         feature_contract=feature_contract,
+        chain_runtime=ChainRuntimeSpec(
+            chain_id=1,
+            uses_poa_extra_data=False,
+            nominal_block_time_seconds=12.0,
+        ),
     )
     store, _ = contract.build_capability_store(feature_table)
 
@@ -84,9 +94,15 @@ def test_estimated_block_store_uses_corpus_calibration_for_row_geometry() -> Non
                 "sample_count": 3,
                 "max_delay_seconds": 18,
                 "compiler": {"id": "estimated_block"},
+                "realization_policy": _realization_policy_config(),
             }
         ),
         feature_contract=feature_contract,
+        chain_runtime=ChainRuntimeSpec(
+            chain_id=1,
+            uses_poa_extra_data=False,
+            nominal_block_time_seconds=12.0,
+        ),
     )
 
     store, runtime_metadata = contract.build_capability_store(feature_table)
@@ -135,6 +151,7 @@ def test_estimated_block_supports_nominal_lookback_and_mean_calibrated_candidate
                     "candidate_interval_source": "calibrated",
                     "calibrated_interval_statistic": "mean",
                 },
+                "realization_policy": _realization_policy_config(),
             }
         ),
         feature_contract=feature_contract,
@@ -154,3 +171,62 @@ def test_estimated_block_supports_nominal_lookback_and_mean_calibrated_candidate
     )
     np.testing.assert_array_equal(store.context_start_rows, store.anchor_rows - 1)
     assert store.max_candidate_slots == 4
+
+
+def test_timestamp_future_window_uses_future_only_realized_windows() -> None:
+    feature_contract = compile_feature_contract(
+        feature_set=coerce_feature_set_config(
+            {
+                "id": "test_timestamp_future_window",
+                "family": {"id": "time_native"},
+                "outputs": ["seconds_since_previous_block", "elapsed_seconds"],
+            }
+        )
+    )
+    blocks = pl.DataFrame(
+        {
+            "block_number": np.arange(400, 408, dtype=np.int64),
+            "timestamp": np.array([0, 11, 23, 35, 46, 58, 71, 84], dtype=np.int64),
+            "base_fee_per_gas": np.full(8, 1_000_000_000, dtype=np.int64),
+            "gas_used": np.full(8, 18_000_000, dtype=np.int64),
+            "gas_limit": np.full(8, 30_000_000, dtype=np.int64),
+            "chain_id": np.ones(8, dtype=np.int64),
+        }
+    )
+    feature_table = feature_contract.build_table(blocks)
+    contract = compile_problem_contract(
+        problem=coerce_problem_spec(
+            {
+                "id": "test_timestamp_future_window",
+                "lookback_seconds": 24,
+                "sample_count": 4,
+                "max_delay_seconds": 36,
+                "compiler": {
+                    "id": "timestamp_future_window",
+                    "action_interval_source": "nominal_chain_runtime",
+                },
+                "realization_policy": _realization_policy_config(),
+            }
+        ),
+        feature_contract=feature_contract,
+        chain_runtime=ChainRuntimeSpec(
+            chain_id=1,
+            uses_poa_extra_data=False,
+            nominal_block_time_seconds=12.0,
+        ),
+    )
+
+    store, runtime_metadata = contract.build_capability_store(feature_table)
+
+    np.testing.assert_array_equal(store.anchor_rows, np.array([0, 1, 2, 3, 4], dtype=np.int64))
+    np.testing.assert_array_equal(
+        store.context_start_rows,
+        np.array([0, 0, 0, 1, 2], dtype=np.int64),
+    )
+    np.testing.assert_array_equal(
+        store.candidate_counts,
+        np.array([3, 3, 3, 3, 2], dtype=np.int64),
+    )
+    assert runtime_metadata.action_interval_seconds == 12.0
+    assert runtime_metadata.capability_action_count == 3
+    assert store.max_candidate_slots == 3

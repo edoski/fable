@@ -109,14 +109,22 @@ def weekday_cos(timestamps: IntVector) -> FloatVector:
     return np.cos(2.0 * math.pi * weekdays.astype(np.float64, copy=False) / 7.0)
 
 
-def block_rolling_stat(values: FloatVector, *, window: int, stat: str) -> FloatVector:
+def block_rolling_stat(
+    values: FloatVector,
+    *,
+    window: int,
+    stat: str,
+    ddof: int = 0,
+) -> FloatVector:
     if values.size == 0:
         return np.empty(0, dtype=np.float64)
     series = pl.Series(values)
     if stat == "mean":
         result = series.rolling_mean(window_size=window, min_samples=window)
     elif stat == "std":
-        result = series.rolling_std(window_size=window, min_samples=window, ddof=0)
+        result = series.rolling_std(window_size=window, min_samples=window, ddof=ddof)
+    elif stat == "min":
+        result = series.rolling_min(window_size=window, min_samples=window)
     else:  # pragma: no cover
         raise ValueError(f"Unsupported rolling stat: {stat}")
     return result.to_numpy().astype(np.float64, copy=False)

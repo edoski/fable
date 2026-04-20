@@ -17,9 +17,9 @@ from ...config.models import (
     TunedPredictionParams,
     TunedProblemParams,
     TunedTrainingParams,
-    TuningSpaceConfig,
     TuningPredictionSearchSpace,
     TuningProblemSearchSpace,
+    TuningSpaceConfig,
     TuningTrainingSearchSpace,
 )
 from ...core.errors import ConfigResolutionError

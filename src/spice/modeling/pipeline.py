@@ -28,17 +28,14 @@ from ..features import (
     compile_feature_contract,
 )
 from ..modeling.dataset_builders import (
+    BuilderRuntimeMetadata,
     CompiledDatasetBuilderContract,
     compile_dataset_builder_contract,
 )
 from ..prediction import CompiledPredictionContract, compile_prediction_contract
 from ..semantics import FeatureSemantics
 from ..storage.layout import resolve_workflow_paths
-from ..temporal.contracts import (
-    CompiledProblemContract,
-    ProblemRuntimeMetadata,
-    compile_problem_contract,
-)
+from ..temporal.contracts import CompiledProblemContract, compile_problem_contract
 from ..temporal.input_normalization import (
     CompiledInputNormalizationContract,
     compile_input_normalization_contract,
@@ -48,6 +45,7 @@ from ..temporal.problem_store import (
     DatasetSplitIndices,
     IntVector,
 )
+from ..temporal.realization import CompiledRealizationPolicyContract
 from ..temporal.scaling import ScalerStats
 from ._runtime import CompiledRepresentationContract
 from .families.registry import build_model, resolve_model_representation_id
@@ -85,7 +83,7 @@ class InferencePreparationSpec:
     feature_contract: CompiledFeatureContract
     contract: CompiledProblemContract
     delay_seconds: int
-    builder_runtime_metadata: ProblemRuntimeMetadata
+    builder_runtime_metadata: BuilderRuntimeMetadata
     scaler: ScalerStats
     max_candidate_slots: int
     window_start_timestamp: int
@@ -150,10 +148,11 @@ class PreparedTrainingDataset:
     n_rows_used: int
     sample_count: int
     feature: FeatureSemantics
+    realization_policy: CompiledRealizationPolicyContract
     store: CompiledProblemStore
     split_indices: DatasetSplitIndices
     scaler: ScalerStats
-    builder_runtime_metadata: ProblemRuntimeMetadata
+    builder_runtime_metadata: BuilderRuntimeMetadata
 
     @property
     def n_features(self) -> int:
@@ -170,6 +169,7 @@ class PreparedInferenceDataset:
     n_evaluation_rows: int
     sample_count: int
     feature: FeatureSemantics
+    realization_policy: CompiledRealizationPolicyContract
     store: CompiledProblemStore
     sample_indices: IntVector
 
@@ -231,7 +231,7 @@ def prepare_inference_dataset(
     feature_contract: CompiledFeatureContract,
     contract: CompiledProblemContract,
     delay_seconds: int,
-    builder_runtime_metadata: ProblemRuntimeMetadata,
+    builder_runtime_metadata: BuilderRuntimeMetadata,
     scaler: ScalerStats,
     max_candidate_slots: int,
     window_start_timestamp: int,
@@ -283,6 +283,7 @@ def run_training(
         model,
         model_config=spec.model,
         prediction_contract=spec.prediction_contract,
+        realization_policy=prepared.realization_policy,
         representation_contract=spec.representation_contract,
         store=prepared.store,
         train_sample_indices=prepared.split_indices.train,

@@ -7,17 +7,19 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import polars as pl
-from pydantic import field_validator
+from pydantic import Field, field_validator, model_validator
 
 from ...core.closed_dispatch import (
     config_payload_and_id,
     unknown_id_error,
     validate_path_segment,
 )
+from ...core.errors import ConfigResolutionError
 from ...modeling.families.base import ConfigModel
 from ...semantics import DatasetBuilderSemantics
 
 if TYPE_CHECKING:
+    from ...temporal.contracts import ProblemRuntimeMetadata
     from ..pipeline import (
         InferencePreparationSpec,
         PreparedInferenceDataset,
@@ -37,6 +39,23 @@ class DatasetBuilderConfig(ConfigModel):
 
 class StandardTemporalDatasetBuilderConfig(DatasetBuilderConfig):
     id: str = "standard_temporal"
+
+
+class ProfessorTemporalDatasetBuilderConfig(DatasetBuilderConfig):
+    id: str = "professor_temporal"
+    min_sequence_length: int = Field(default=64, gt=0)
+    max_sequence_length: int = Field(default=4096, gt=0)
+
+    @model_validator(mode="after")
+    def validate_sequence_bounds(self) -> ProfessorTemporalDatasetBuilderConfig:
+        if self.max_sequence_length < self.min_sequence_length:
+            raise ValueError("max_sequence_length must be >= min_sequence_length")
+        return self
+
+
+BuilderRuntimeMetadata = dict[str, object]
+
+_COMPILER_RUNTIME_METADATA_KEY = "compiler_runtime_metadata"
 
 
 PrepareTrainingFn = Callable[[pl.DataFrame, "TrainingSpec"], "PreparedTrainingDataset"]
@@ -82,13 +101,40 @@ def _compile_standard_temporal(
     return compile_dataset_builder(config)
 
 
-def _require_standard_temporal(builder_id: str) -> None:
-    if builder_id != "standard_temporal":
-        raise unknown_id_error(
-            field_name="dataset_builder.id",
-            component_id=builder_id,
-            known_ids=("standard_temporal",),
-        )
+def _compile_professor_temporal(
+    config: ProfessorTemporalDatasetBuilderConfig,
+) -> CompiledDatasetBuilderContract:
+    from .professor_temporal import compile_dataset_builder
+
+    return compile_dataset_builder(config)
+
+
+def builder_runtime_metadata(
+    *,
+    compiler_runtime_metadata: ProblemRuntimeMetadata,
+    extra: Mapping[str, object] | None = None,
+) -> BuilderRuntimeMetadata:
+    from ...temporal.contracts import problem_runtime_metadata_payload
+
+    payload: BuilderRuntimeMetadata = {
+        _COMPILER_RUNTIME_METADATA_KEY: problem_runtime_metadata_payload(compiler_runtime_metadata)
+    }
+    if extra is not None:
+        payload.update(dict(extra))
+    return payload
+
+
+def compiler_runtime_metadata_from_builder_payload(
+    payload: Mapping[str, object],
+    *,
+    compiler_id: str,
+) -> ProblemRuntimeMetadata:
+    from ...temporal.contracts import problem_runtime_metadata_from_compiler_payload
+
+    raw_payload = payload.get(_COMPILER_RUNTIME_METADATA_KEY)
+    if not isinstance(raw_payload, Mapping):
+        raise ConfigResolutionError("builder runtime metadata is missing compiler_runtime_metadata")
+    return problem_runtime_metadata_from_compiler_payload(compiler_id, raw_payload)
 
 
 def coerce_dataset_builder_config(
@@ -100,12 +146,30 @@ def coerce_dataset_builder_config(
         field_name="dataset_builder.id",
         mapping_label="dataset_builder",
     )
-    _require_standard_temporal(builder_id)
-    return StandardTemporalDatasetBuilderConfig.model_validate(raw_payload)
+    if builder_id == "standard_temporal":
+        return StandardTemporalDatasetBuilderConfig.model_validate(raw_payload)
+    if builder_id == "professor_temporal":
+        return ProfessorTemporalDatasetBuilderConfig.model_validate(raw_payload)
+    raise unknown_id_error(
+        field_name="dataset_builder.id",
+        component_id=builder_id,
+        known_ids=("standard_temporal", "professor_temporal"),
+    )
 
 
 def compile_dataset_builder_contract(
     config: DatasetBuilderConfig,
 ) -> CompiledDatasetBuilderContract:
-    _require_standard_temporal(config.id)
-    return _compile_standard_temporal(StandardTemporalDatasetBuilderConfig.model_validate(config))
+    if config.id == "standard_temporal":
+        return _compile_standard_temporal(
+            StandardTemporalDatasetBuilderConfig.model_validate(config)
+        )
+    if config.id == "professor_temporal":
+        return _compile_professor_temporal(
+            ProfessorTemporalDatasetBuilderConfig.model_validate(config)
+        )
+    raise unknown_id_error(
+        field_name="dataset_builder.id",
+        component_id=config.id,
+        known_ids=("standard_temporal", "professor_temporal"),
+    )

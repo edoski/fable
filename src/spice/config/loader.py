@@ -186,7 +186,7 @@ def _apply_selection_overlays(
                 label="acquisition",
             )
         return
-    for field in ("model", "dataset_builder", "prediction", "study"):
+    for field in ("model", "dataset_builder", "prediction", "evaluation", "study"):
         value = getattr(selections, field)
         if value is not None:
             payload[field] = value
@@ -286,6 +286,10 @@ def resolve_dataset_builder(raw: object) -> DatasetBuilderConfig:
         label="dataset_builder",
         parse_mapping=coerce_dataset_builder_config,
     )
+
+
+def resolve_evaluation(raw: object) -> EvaluationConfig:
+    return resolve_named_or_inline(raw, group="evaluation", model_type=EvaluationConfig)
 
 
 def resolve_prediction(raw: object) -> PredictionConfig:
@@ -547,11 +551,7 @@ def _resolve_evaluate_config(payload: dict[str, object]) -> EvaluateConfig:
         label="training",
         model_type=TrainingConfig,
     )
-    evaluation_spec = resolve_inline(
-        _require_payload_key(payload, "evaluation"),
-        label="evaluation",
-        model_type=EvaluationConfig,
-    )
+    evaluation_spec = resolve_evaluation(_require_payload_key(payload, "evaluation"))
     delay_raw = _require_payload_key(payload, "delay_seconds")
     if not isinstance(delay_raw, int):
         raise ConfigResolutionError("delay_seconds must be an integer")

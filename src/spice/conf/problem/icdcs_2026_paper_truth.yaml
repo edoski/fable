@@ -1,0 +1,9 @@
+id: icdcs_2026_paper_truth
+lookback_seconds: 600
+sample_count: 400000
+max_delay_seconds: 36
+compiler:
+  id: timestamp_future_window
+  action_interval_source: nominal_chain_runtime
+realization_policy:
+  id: strict_deadline_miss

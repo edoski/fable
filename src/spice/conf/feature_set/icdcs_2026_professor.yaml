@@ -1,0 +1,43 @@
+id: icdcs_2026_professor
+family:
+  id: block_native
+outputs:
+  - log_base_fee_per_gas
+  - log_gas_used
+  - log_gas_limit
+  - gas_ratio
+  - dt_seconds
+  - hour_sin
+  - hour_cos
+  - dow_sin
+  - dow_cos
+  - time_since_start
+  - base_fee_trend
+  - dlog_base_fee
+  - roll10_mean_logfee
+  - roll10_std_logfee
+  - roll10_min_logfee
+  - roll10_mean_gr
+  - roll10_std_gr
+  - roll50_mean_logfee
+  - roll50_std_logfee
+  - roll50_min_logfee
+  - roll50_mean_gr
+  - roll50_std_gr
+  - roll200_mean_logfee
+  - roll200_std_logfee
+  - roll200_min_logfee
+  - roll200_mean_gr
+  - roll200_std_gr
+  - gas_ratio_lag1
+  - gas_ratio_lag2
+  - gas_ratio_lag3
+  - gas_ratio_lag4
+  - gas_ratio_lag5
+  - gas_ratio_lag6
+  - dlogfee_lag1
+  - dlogfee_lag2
+  - dlogfee_lag3
+  - dlogfee_lag4
+  - dlogfee_lag5
+  - dlogfee_lag6

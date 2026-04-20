@@ -15,6 +15,7 @@ from ...features import (
 )
 from ..contracts import CompiledProblemContract, ProblemRuntimeMetadata, TimestampRuntimeMetadata
 from ..problem_store import CompiledProblemStore
+from ..realization import CompiledRealizationPolicyContract
 from .base import ProblemCompilerConfig
 
 if TYPE_CHECKING:
@@ -103,6 +104,7 @@ class TimestampNativeCompiledProblemContract(CompiledProblemContract):
 def compile_problem(
     problem: ProblemSpec,
     feature_contract: CompiledFeatureContract,
+    realization_policy: CompiledRealizationPolicyContract,
     chain_runtime: ChainRuntimeSpec | None,
 ) -> CompiledProblemContract:
     del chain_runtime
@@ -115,6 +117,7 @@ def compile_problem(
         sample_count=problem.sample_count,
         max_delay_seconds=problem.max_delay_seconds,
         feature_prerequisites=feature_contract.feature_prerequisites,
+        realization_policy=realization_policy,
     )
 
 

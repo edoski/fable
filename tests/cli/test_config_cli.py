@@ -12,6 +12,7 @@ from spice.config import (
     AcquireConfig,
     EvaluateConfig,
     TrainConfig,
+    TuneConfig,
     WorkflowSelections,
     WorkflowTask,
     resolve_workflow_config,
@@ -86,6 +87,21 @@ def test_config_list_and_show_commands(isolate_conf_root) -> None:
         "evaluation_date": "2025-11-09",
     }
 
+    evaluation_list = runner.invoke(app, ["config", "list", "evaluation"])
+    assert evaluation_list.exit_code == 0, evaluation_list.stdout
+    assert set(evaluation_list.stdout.splitlines()) >= {"paper_fullset", "paper_windowed_2h"}
+
+    evaluation_show = runner.invoke(app, ["config", "show", "evaluation", "paper_windowed_2h"])
+    assert evaluation_show.exit_code == 0, evaluation_show.stdout
+    assert yaml.safe_load(evaluation_show.stdout) == {
+        "evaluator": {
+            "id": "paper_windowed",
+            "window_seconds": 7200,
+            "repetitions": 50,
+            "seed": 2026,
+        }
+    }
+
 
 def test_config_edit_seeds_missing_file_and_uses_editor(
     tmp_path, isolate_conf_root, monkeypatch
@@ -149,6 +165,7 @@ def test_evaluate_loader_uses_delay_seconds_and_named_override(
         max_delay_seconds=24,
         delay_seconds=12,
     )
+    override["evaluation"] = "paper_windowed_2h"
     config = cast(
         EvaluateConfig,
         load_workflow_config(
@@ -156,14 +173,22 @@ def test_evaluate_loader_uses_delay_seconds_and_named_override(
             workspace=tmp_path,
             preset="icdcs_2026",
             override=override,
+            dataset_builder="professor_temporal",
         ),
     )
 
     assert config.problem.id == "test_problem"
     assert config.problem.max_delay_seconds == 24
     assert config.delay_seconds == 12
+    assert config.dataset_builder.id == "professor_temporal"
     assert config.feature_set.id == "time_native_baseline"
-    assert config.evaluation.evaluator.id == "poisson_replay"
+    assert config.evaluation.evaluator.id == "paper_windowed"
+    assert config.evaluation.evaluator.model_dump(mode="json") == {
+        "id": "paper_windowed",
+        "window_seconds": 7200,
+        "repetitions": 50,
+        "seed": 2026,
+    }
 
 
 def test_train_loader_resolves_production_preset(
@@ -211,3 +236,46 @@ def test_train_loader_resolves_production_preset(
     assert config.prediction.id == "icdcs_2026"
     assert config.model.id == "lstm"
     assert config.model.hidden_size == 128
+
+
+@pytest.mark.parametrize(
+    ("command", "runner_path"),
+    [
+        ("train", "spice.workflows.train.run"),
+        ("tune", "spice.workflows.tune.run"),
+        ("evaluate", "spice.workflows.evaluate.run"),
+    ],
+)
+def test_model_workflow_cli_accepts_dataset_builder_and_evaluation_selectors(
+    tmp_path,
+    monkeypatch,
+    command: str,
+    runner_path: str,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _capture(config) -> None:
+        captured["config"] = config
+
+    monkeypatch.setattr(runner_path, _capture)
+
+    result = runner.invoke(
+        app,
+        [
+            command,
+            "--preset",
+            "icdcs_2026",
+            "--dataset-builder",
+            "professor_temporal",
+            "--evaluation",
+            "paper_windowed_2h",
+            "--storage-root",
+            str(tmp_path / "outputs"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    config = cast(TrainConfig | TuneConfig | EvaluateConfig, captured["config"])
+    assert config.dataset_builder.id == "professor_temporal"
+    if isinstance(config, EvaluateConfig):
+        assert config.evaluation.evaluator.id == "paper_windowed"

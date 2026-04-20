@@ -21,6 +21,7 @@ from ..contracts import (
     ProblemRuntimeMetadata,
 )
 from ..problem_store import CompiledProblemStore
+from ..realization import CompiledRealizationPolicyContract
 from .base import ProblemCompilerConfig
 
 if TYPE_CHECKING:
@@ -173,6 +174,7 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
 def compile_problem(
     problem: ProblemSpec,
     feature_contract: CompiledFeatureContract,
+    realization_policy: CompiledRealizationPolicyContract,
     chain_runtime: ChainRuntimeSpec | None,
 ) -> CompiledProblemContract:
     compiler_config = cast(EstimatedBlockCompilerConfig, problem.compiler)
@@ -201,6 +203,7 @@ def compile_problem(
         sample_count=problem.sample_count,
         max_delay_seconds=problem.max_delay_seconds,
         feature_prerequisites=feature_contract.feature_prerequisites,
+        realization_policy=realization_policy,
         lookback_interval_source=compiler_config.lookback_interval_source,
         candidate_interval_source=compiler_config.candidate_interval_source,
         calibrated_interval_statistic=compiler_config.calibrated_interval_statistic,

@@ -1,0 +1,3 @@
+id: professor_temporal
+min_sequence_length: 64
+max_sequence_length: 4096

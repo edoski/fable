@@ -1,4 +1,6 @@
 """Public configuration API."""
+
+from ..temporal.realization import RealizationPolicyConfig
 from .loader import resolve_workflow_config
 from .models import (
     AcquireConfig,
@@ -38,6 +40,8 @@ from .models import (
     TunedProblemParams,
     TunedTrainingParams,
     TuningConfig,
+    TuningObjectiveConfig,
+    TuningObjectiveDirection,
     TuningPredictionSearchSpace,
     TuningProblemSearchSpace,
     TuningSpaceConfig,
@@ -80,6 +84,7 @@ __all__ = [
     "StorageSpec",
     "StudyConfig",
     "ProblemSpec",
+    "RealizationPolicyConfig",
     "TrainConfig",
     "TrainingConfig",
     "TrainingPrecision",
@@ -90,6 +95,8 @@ __all__ = [
     "TunedProblemParams",
     "TunedTrainingParams",
     "TuningConfig",
+    "TuningObjectiveConfig",
+    "TuningObjectiveDirection",
     "TuningPredictionSearchSpace",
     "TuningProblemSearchSpace",
     "TuningSpaceConfig",

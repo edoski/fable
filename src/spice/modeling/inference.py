@@ -11,7 +11,7 @@ from ..prediction import CompiledPredictionContract, DecodedOffsets
 from ..temporal.problem_store import CompiledProblemStore
 from ._runtime import (
     CompiledRepresentationContract,
-    build_prediction_batch_source,
+    build_inference_batch_source,
     build_representation_runtime_context,
     configure_torch_backends,
     ensure_device_runtime_ready,
@@ -48,11 +48,10 @@ def predict_with_model(
         device=resolved_device,
         batch_size=batch_size,
     )
-    batch_source_plan = build_prediction_batch_source(
+    batch_source_plan = build_inference_batch_source(
         store,
         sample_indices,
         representation_contract=representation_contract,
-        prediction_contract=prediction_contract,
         runtime_context=runtime_context,
         resolved_device=resolved_device,
         seed=0,
@@ -72,7 +71,6 @@ def predict_with_model(
                     predictions,
                     batch.sample_positions,
                     outputs,
-                    device_batch.targets,
                 )
                 reporter.update_task(task_id, advance=1)
     reporter.finish_task(task_id)

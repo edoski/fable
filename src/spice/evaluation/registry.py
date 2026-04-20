@@ -20,10 +20,14 @@ def _coerce_known_evaluator_config(
         from .evaluators.poisson_replay import PoissonReplayEvaluatorConfig
 
         return PoissonReplayEvaluatorConfig.model_validate(payload)
+    if evaluator_id == "paper_windowed":
+        from .evaluators.paper_windowed import PaperWindowedEvaluatorConfig
+
+        return PaperWindowedEvaluatorConfig.model_validate(payload)
     raise unknown_id_error(
         field_name="evaluation.evaluator.id",
         component_id=evaluator_id,
-        known_ids=("paper_fullset", "poisson_replay"),
+        known_ids=("paper_fullset", "poisson_replay", "paper_windowed"),
     )
 
 
@@ -60,8 +64,17 @@ def compile_evaluator_contract(
         if not isinstance(evaluator_config, PoissonReplayEvaluatorConfig):
             raise TypeError("poisson_replay evaluator config has unexpected type")
         return compile_evaluator(evaluator_config)
+    if evaluator_config.id == "paper_windowed":
+        from .evaluators.paper_windowed import (
+            PaperWindowedEvaluatorConfig,
+            compile_evaluator,
+        )
+
+        if not isinstance(evaluator_config, PaperWindowedEvaluatorConfig):
+            raise TypeError("paper_windowed evaluator config has unexpected type")
+        return compile_evaluator(evaluator_config)
     raise unknown_id_error(
         field_name="evaluation.evaluator.id",
         component_id=evaluator_config.id,
-        known_ids=("paper_fullset", "poisson_replay"),
+        known_ids=("paper_fullset", "poisson_replay", "paper_windowed"),
     )

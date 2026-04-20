@@ -32,9 +32,6 @@ class CompiledProblemStore:
     context_start_rows: IntVector
     candidate_end_rows: IntVector
     max_candidate_slots: int
-    precomputed_min_block_offsets: IntVector | None = None
-    precomputed_min_block_log_fees: FloatVector | None = None
-    fixed_candidate_class_space: bool = False
 
     @property
     def n_rows(self) -> int:

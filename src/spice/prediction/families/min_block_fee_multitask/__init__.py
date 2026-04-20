@@ -8,6 +8,7 @@ import torch
 from ....core.reporting import StageMetricDescriptor
 from ....modeling.models import ModelOutputs
 from ....temporal.problem_store import CompiledProblemStore
+from ....temporal.realization import CompiledRealizationPolicyContract
 from ...contracts import (
     CompiledPredictionContract,
     DecodedOffsets,
@@ -31,7 +32,6 @@ from .outputs import (
     MIN_LOG_FEE_HEAD_ID,
     OFFSET_LOGITS_HEAD_ID,
     build_output_spec,
-    masked_offset_logits,
 )
 from .targets import prepare_min_block_fee_targets
 
@@ -46,13 +46,18 @@ PROGRESS_METRIC_DESCRIPTORS: tuple[StageMetricDescriptor, ...] = (
 def _fit_training_state(
     store: CompiledProblemStore,
     train_sample_indices: IntVector,
+    realization_policy: CompiledRealizationPolicyContract,
     *,
     class_weighting: str,
     fee_target_normalization: str,
 ) -> MinBlockFeeTrainingState:
     if class_weighting != "inverse_frequency":
         raise ValueError(f"Unsupported class_weighting: {class_weighting}")
-    targets = prepare_min_block_fee_targets(store, train_sample_indices)
+    targets = prepare_min_block_fee_targets(
+        store,
+        train_sample_indices,
+        realization_policy=realization_policy,
+    )
     offsets = targets.min_block_offsets.detach().cpu().numpy().astype(np.int64, copy=False)
     state = inverse_frequency_class_weights(offsets, n_classes=store.max_candidate_slots)
     fee_mean = 0.0
@@ -73,8 +78,13 @@ def _fit_training_state(
 def _prepare_targets(
     store: CompiledProblemStore,
     sample_indices: IntVector,
+    realization_policy: CompiledRealizationPolicyContract,
 ) -> PreparedPredictionTargets:
-    return prepare_min_block_fee_targets(store, sample_indices)
+    return prepare_min_block_fee_targets(
+        store,
+        sample_indices,
+        realization_policy=realization_policy,
+    )
 
 
 def _compute_batch_loss_and_state(
@@ -114,12 +124,8 @@ def _decode_selected_offsets_into(
     predictions: DecodedOffsets,
     sample_positions: torch.Tensor,
     outputs: ModelOutputs,
-    targets: PredictionTargetBatch,
 ) -> None:
-    if not isinstance(targets, MinBlockFeeTargetBatch):
-        raise TypeError("min_block_fee_multitask expects MinBlockFeeTargetBatch targets")
-    logits = masked_offset_logits(outputs.head(OFFSET_LOGITS_HEAD_ID), targets.candidate_mask)
-    decoded = logits.argmax(dim=-1).cpu().tolist()
+    decoded = outputs.head(OFFSET_LOGITS_HEAD_ID).argmax(dim=-1).cpu().tolist()
     positions = sample_positions.tolist()
     for sample_position, prediction in zip(positions, decoded, strict=True):
         predictions[int(sample_position)] = int(prediction)
@@ -138,9 +144,10 @@ def compile_prediction_family(
         direction="minimize",
         supported_workflows=frozenset({"train", "tune", "evaluate"}),
         build_output_spec_fn=build_output_spec,
-        fit_training_state_fn=lambda store, indices: _fit_training_state(
+        fit_training_state_fn=lambda store, indices, realization_policy: _fit_training_state(
             store,
             indices,
+            realization_policy,
             class_weighting=family.class_weighting,
             fee_target_normalization=family.fee_target_normalization,
         ),

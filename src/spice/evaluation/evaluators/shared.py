@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 
 from ...prediction.base import MetricDescriptor, MetricSet, WindowMetricSummary
 from ...temporal.problem_store import CompiledProblemStore
+from ...temporal.realization import CompiledRealizationPolicyContract
 from ..base import EvaluationRun, EvaluationSummary
 
 IntVector = NDArray[np.int64]
@@ -77,6 +78,7 @@ def select_sample_positions_for_arrivals(
 
 def summarize_selected_costs(
     store: CompiledProblemStore,
+    realization_policy: CompiledRealizationPolicyContract,
     decoded_offsets: Sequence[int],
     sample_indices: IntVector,
     selected_positions: IntVector,
@@ -88,22 +90,18 @@ def summarize_selected_costs(
     if selected_positions.size == 0:
         raise ValueError("selected_positions must be non-empty")
 
-    selected_sample_indices = sample_indices[selected_positions]
-    selected_offsets = np.asarray(decoded_offsets, dtype=np.int64)[selected_positions]
-    selected_anchor_rows = store.anchor_rows[selected_sample_indices]
-    candidate_starts = selected_anchor_rows + 1
-    candidate_ends = store.candidate_end_rows[selected_sample_indices]
-    realized_rows = candidate_starts + selected_offsets
-    realized_logs = store.log_base_fees[realized_rows]
+    realized = realization_policy.realize_selections(
+        store,
+        decoded_offsets,
+        sample_indices,
+        selected_positions,
+    )
+    realized_logs = store.log_base_fees[realized.realized_rows]
     realized_total = float(np.exp(realized_logs.astype(np.float64, copy=False)).sum())
     baseline_total = float(
-        np.exp(store.log_base_fees[candidate_starts].astype(np.float64, copy=False)).sum()
+        np.exp(store.log_base_fees[realized.baseline_rows].astype(np.float64, copy=False)).sum()
     )
-    optimum_logs = np.empty(selected_sample_indices.shape[0], dtype=np.float64)
-    for index, (start_row, end_row) in enumerate(
-        zip(candidate_starts, candidate_ends, strict=True)
-    ):
-        optimum_logs[index] = float(store.log_base_fees[start_row:end_row].min())
+    optimum_logs = store.log_base_fees[realized.optimum_rows].astype(np.float64, copy=False)
     optimum_total = float(np.exp(optimum_logs).sum())
 
     return EvaluationRun(
@@ -116,7 +114,10 @@ def summarize_selected_costs(
             "baseline_fee_sum": baseline_total,
             "optimum_fee_sum": optimum_total,
         },
-        metadata=dict(metadata),
+        metadata={
+            **dict(metadata),
+            "overflow_count": int(realized.overflow_mask.sum()),
+        },
     )
 
 

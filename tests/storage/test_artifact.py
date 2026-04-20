@@ -14,6 +14,7 @@ from spice.core.errors import SpiceOperatorError
 from spice.evaluation import EvaluationRun
 from spice.features import compile_feature_contract
 from spice.modeling.artifacts import validate_artifact_semantics
+from spice.modeling.dataset_builders import builder_runtime_metadata
 from spice.modeling.families.lstm import LstmModelConfig
 from spice.modeling.families.registry import resolve_model_representation_id
 from spice.modeling.representations import compile_representation_contract
@@ -118,6 +119,7 @@ def _problem_config():
             "sample_count": 24,
             "max_delay_seconds": 36,
             "compiler": {"id": "estimated_block"},
+            "realization_policy": {"id": "strict_deadline_miss"},
         }
     )
 
@@ -164,17 +166,23 @@ def _manifest(
         feature_set=feature_set,
         model=model,
         scaler=ScalerStats(means=[0.0, 1.0], scales=[1.0, 1.0]),
-        builder_runtime_metadata=EstimatedBlockRuntimeMetadata(
-            calibrated_interval_seconds=12.0,
-            lookback_interval_seconds=12.0,
-            candidate_interval_seconds=12.0,
-            lookback_steps=10,
-            capability_candidate_count=4,
+        builder_runtime_metadata=builder_runtime_metadata(
+            compiler_runtime_metadata=EstimatedBlockRuntimeMetadata(
+                calibrated_interval_seconds=12.0,
+                lookback_interval_seconds=12.0,
+                candidate_interval_seconds=12.0,
+                lookback_steps=10,
+                capability_candidate_count=4,
+            ),
+            extra={
+                "seq_len": 64,
+            },
         ),
         semantics=ArtifactSemantics(
             problem=problem_contract.semantics,
             feature=feature_contract.semantics,
             prediction=prediction_contract.semantics,
+            realization_policy=problem_contract.realization_policy.semantics,
             input_normalization=InputNormalizationSemantics(
                 input_normalization_id="window_weighted_standard"
             ),
@@ -287,21 +295,22 @@ def test_artifact_validation_catches_feature_drift() -> None:
         model=manifest.model,
         scaler=manifest.scaler,
         builder_runtime_metadata=manifest.builder_runtime_metadata,
-        semantics=ArtifactSemantics(
-            problem=manifest.semantics.problem,
-            feature=manifest.semantics.feature.__class__(
-                feature_set_id=manifest.semantics.feature.feature_set_id,
-                feature_family_id=manifest.semantics.feature.feature_family_id,
+            semantics=ArtifactSemantics(
+                problem=manifest.semantics.problem,
+                feature=manifest.semantics.feature.__class__(
+                    feature_set_id=manifest.semantics.feature.feature_set_id,
+                    feature_family_id=manifest.semantics.feature.feature_family_id,
                 feature_names=manifest.semantics.feature.feature_names,
                 feature_graph_fingerprint="stale-fingerprint",
                 feature_prerequisites=manifest.semantics.feature.feature_prerequisites,
+                ),
+                prediction=manifest.semantics.prediction,
+                realization_policy=manifest.semantics.realization_policy,
+                input_normalization=manifest.semantics.input_normalization,
+                representation=manifest.semantics.representation,
+                dataset_builder=manifest.semantics.dataset_builder,
+                max_candidate_slots=manifest.semantics.max_candidate_slots,
             ),
-            prediction=manifest.semantics.prediction,
-            input_normalization=manifest.semantics.input_normalization,
-            representation=manifest.semantics.representation,
-            dataset_builder=manifest.semantics.dataset_builder,
-            max_candidate_slots=manifest.semantics.max_candidate_slots,
-        ),
     )
 
     with pytest.raises(

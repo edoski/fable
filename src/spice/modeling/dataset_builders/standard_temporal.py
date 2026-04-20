@@ -21,7 +21,12 @@ from ..pipeline import (
     TrainingSpec,
     selected_row_span,
 )
-from .base import CompiledDatasetBuilderContract, StandardTemporalDatasetBuilderConfig
+from .base import (
+    CompiledDatasetBuilderContract,
+    StandardTemporalDatasetBuilderConfig,
+    builder_runtime_metadata,
+    compiler_runtime_metadata_from_builder_payload,
+)
 
 
 def prepare_training_dataset(blocks: pl.DataFrame, spec: TrainingSpec) -> PreparedTrainingDataset:
@@ -35,7 +40,7 @@ def prepare_training_dataset(blocks: pl.DataFrame, spec: TrainingSpec) -> Prepar
             f"expected {spec.contract.feature_prerequisites.model_dump(mode='json')}, "
             f"got {feature_table.feature_prerequisites.model_dump(mode='json')}"
         )
-    store, builder_runtime_metadata = spec.contract.build_capability_store(feature_table)
+    store, compiler_runtime_metadata = spec.contract.build_capability_store(feature_table)
     selected_sample_indices = tail_sample_indices(store, sample_count=spec.problem.sample_count)
     split_positions = chronological_split_indices(int(selected_sample_indices.shape[0]), spec.split)
     split_indices = DatasetSplitIndices(
@@ -59,10 +64,13 @@ def prepare_training_dataset(blocks: pl.DataFrame, spec: TrainingSpec) -> Prepar
         n_rows_used=used_end - used_start,
         sample_count=int(selected_sample_indices.shape[0]),
         feature=spec.feature_contract.semantics,
+        realization_policy=spec.contract.realization_policy,
         store=scaled_store,
         split_indices=split_indices,
         scaler=scaler,
-        builder_runtime_metadata=builder_runtime_metadata,
+        builder_runtime_metadata=builder_runtime_metadata(
+            compiler_runtime_metadata=compiler_runtime_metadata
+        ),
     )
 
 
@@ -79,7 +87,10 @@ def prepare_inference_dataset(
     store = spec.contract.build_delay_store(
         feature_table,
         spec.delay_seconds,
-        compiler_runtime_metadata=spec.builder_runtime_metadata,
+        compiler_runtime_metadata=compiler_runtime_metadata_from_builder_payload(
+            spec.builder_runtime_metadata,
+            compiler_id=spec.contract.compiler_id,
+        ),
         max_candidate_slots=spec.max_candidate_slots,
     )
     sample_indices = filter_sample_indices_by_timestamp_window(
@@ -98,6 +109,7 @@ def prepare_inference_dataset(
         n_evaluation_rows=evaluation_blocks.height,
         sample_count=int(sample_indices.shape[0]),
         feature=spec.feature_contract.semantics,
+        realization_policy=spec.contract.realization_policy,
         store=scaled_store,
         sample_indices=sample_indices,
     )

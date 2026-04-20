@@ -36,6 +36,13 @@ class ProblemSemantics:
 
 
 @dataclass(frozen=True, slots=True)
+class RealizationPolicySemantics:
+    """Resolved realization-policy identity for persisted provenance."""
+
+    realization_policy_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class PredictionSemantics:
     """Family-owned prediction semantics that persist with studies and artifacts."""
 
@@ -82,6 +89,7 @@ class StudySemantics:
     """Canonical study provenance bundled from the compiled architectural seams."""
 
     problem: ProblemSemantics
+    realization_policy: RealizationPolicySemantics
     feature: FeatureSemantics
     prediction: PredictionSemantics
     input_normalization: InputNormalizationSemantics
@@ -94,6 +102,7 @@ class ArtifactSemantics:
     """Canonical artifact provenance bundled from the compiled architectural seams."""
 
     problem: ProblemSemantics
+    realization_policy: RealizationPolicySemantics
     feature: FeatureSemantics
     prediction: PredictionSemantics
     input_normalization: InputNormalizationSemantics

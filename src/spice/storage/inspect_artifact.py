@@ -89,6 +89,7 @@ def artifact_sections(
                 ("dataset id", manifest.dataset_id),
                 ("chain", manifest.chain_name),
                 ("problem", manifest.problem_id),
+                ("realization", manifest.semantics.realization_policy.realization_policy_id),
                 ("dataset builder", manifest.dataset_builder_id),
                 ("feature set", manifest.feature_set_id),
                 ("feature family", manifest.feature_family_id),
@@ -162,6 +163,10 @@ def artifact_sections(
                         ("evaluation id", evaluation.evaluation_id),
                         ("requested", f"{runtime.delay_seconds}s"),
                         ("evaluator", runtime.evaluator_id),
+                        (
+                            "realization",
+                            evaluation.manifest.semantics.realization_policy.realization_policy_id,
+                        ),
                         ("events", str(runtime.total_events)),
                         (
                             "metrics",

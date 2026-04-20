@@ -34,12 +34,14 @@ def test_training_summary_metrics_match_replayed_saved_artifact(
     prediction_training_state = spec.prediction_contract.fit_training_state(
         prepared.store,
         prepared.split_indices.train,
+        realization_policy=prepared.realization_policy,
     )
 
     validation_metrics = evaluate_model(
         loaded_artifact.model,
         model_config=spec.model,
         prediction_contract=spec.prediction_contract,
+        realization_policy=prepared.realization_policy,
         representation_contract=loaded_artifact.representation_contract,
         store=prepared.store,
         sample_indices=prepared.split_indices.validation,
@@ -51,6 +53,7 @@ def test_training_summary_metrics_match_replayed_saved_artifact(
         loaded_artifact.model,
         model_config=spec.model,
         prediction_contract=spec.prediction_contract,
+        realization_policy=prepared.realization_policy,
         representation_contract=loaded_artifact.representation_contract,
         store=prepared.store,
         sample_indices=prepared.split_indices.test,

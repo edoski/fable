@@ -91,6 +91,29 @@ def _assert_time_native(feature_contract, feature_table) -> None:
     assert feature_table.feature_matrix[20, 2] > 0.0
 
 
+def _assert_professor_block_native(feature_contract, feature_table) -> None:
+    assert feature_contract.feature_prerequisites == FeaturePrerequisites(
+        history_seconds=0,
+        warmup_rows=199,
+    )
+    np.testing.assert_allclose(
+        feature_table.feature_matrix[:3, 0],
+        np.log1p(np.arange(1_000, 1_003, dtype=np.float64)),
+    )
+    np.testing.assert_array_equal(
+        feature_table.feature_matrix[:4, 1],
+        np.array([12.0, 12.0, 12.0, 12.0], dtype=np.float32),
+    )
+    np.testing.assert_allclose(
+        feature_table.feature_matrix[9, 2],
+        np.log1p(np.arange(1_000, 1_010, dtype=np.float64)).min(),
+    )
+    assert np.isnan(feature_table.feature_matrix[0, 3])
+    assert feature_table.feature_matrix[1, 3] == pytest.approx(0.6)
+    assert np.isnan(feature_table.feature_matrix[198, 4])
+    assert np.isfinite(feature_table.feature_matrix[199, 4])
+
+
 @pytest.mark.parametrize(
     ("feature_set_id", "family_id", "outputs", "frame_factory", "assertions"),
     [
@@ -115,6 +138,19 @@ def _assert_time_native(feature_contract, feature_table) -> None:
             ],
             _time_frame,
             _assert_time_native,
+        ),
+        (
+            "test_professor_block_native",
+            "block_native",
+            [
+                "log_base_fee_per_gas",
+                "dt_seconds",
+                "roll10_min_logfee",
+                "gas_ratio_lag1",
+                "base_fee_trend",
+            ],
+            _block_frame,
+            _assert_professor_block_native,
         ),
     ],
 )

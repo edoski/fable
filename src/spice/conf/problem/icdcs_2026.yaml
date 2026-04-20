@@ -7,3 +7,5 @@ compiler:
   lookback_interval_source: nominal_chain_runtime
   candidate_interval_source: calibrated
   calibrated_interval_statistic: mean
+realization_policy:
+  id: strict_deadline_miss

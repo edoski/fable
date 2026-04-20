@@ -14,6 +14,7 @@ IntVector = NDArray[np.int64]
 
 def _run(
     store: CompiledProblemStore,
+    realization_policy,
     decoded_offsets: DecodedOffsets,
     sample_indices: IntVector,
     reporter: Reporter | None,
@@ -24,6 +25,7 @@ def _run(
     task_id = reporter.start_task("evaluate full set")
     run = summarize_selected_costs(
         store,
+        realization_policy,
         decoded_offsets,
         sample_indices,
         np.arange(sample_indices.shape[0], dtype=np.int64),

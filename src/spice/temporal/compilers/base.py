@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ...config.models import ChainRuntimeSpec, ProblemSpec
     from ...features import CompiledFeatureContract
     from ..contracts import CompiledProblemContract
+    from ..realization import CompiledRealizationPolicyContract
 
 
 def _validate_path_segment(value: str, *, label: str) -> str:
@@ -39,6 +40,11 @@ class ProblemCompilerSpec(Generic[ProblemCompilerConfigT]):
     id: str
     config_type: type[ProblemCompilerConfigT]
     compile_problem: Callable[
-        [ProblemSpec, CompiledFeatureContract, ChainRuntimeSpec | None],
+        [
+            ProblemSpec,
+            CompiledFeatureContract,
+            CompiledRealizationPolicyContract,
+            ChainRuntimeSpec | None,
+        ],
         CompiledProblemContract,
     ]

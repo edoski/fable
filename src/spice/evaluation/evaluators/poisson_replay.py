@@ -22,6 +22,7 @@ IntVector = NDArray[np.int64]
 
 def _run(
     store: CompiledProblemStore,
+    realization_policy,
     decoded_offsets: DecodedOffsets,
     sample_indices: IntVector,
     reporter: Reporter | None,
@@ -70,6 +71,7 @@ def _run(
             continue
         run = summarize_selected_costs(
             store,
+            realization_policy,
             decoded_offsets,
             sample_indices,
             selected_positions,
@@ -110,8 +112,9 @@ def compile_evaluator(config: PoissonReplayEvaluatorConfig) -> CompiledEvaluator
         primary_metric_id="profit_over_baseline",
         direction="maximize",
         config_payload=config.model_dump(mode="json", exclude_none=True),
-        run_fn=lambda store, decoded_offsets, sample_indices, reporter: _run(
+        run_fn=lambda store, realization_policy, decoded_offsets, sample_indices, reporter: _run(
             store,
+            realization_policy,
             decoded_offsets,
             sample_indices,
             reporter,

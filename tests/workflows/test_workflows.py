@@ -302,6 +302,37 @@ def test_evaluate_workflow_smoke(
     assert summary.runtime.runs == runs
 
 
+def test_evaluate_workflow_supports_named_evaluation_override(
+    tmp_path,
+    load_test_evaluate_config,
+    load_test_train_config,
+    model_workflow_override,
+    seed_evaluation_dataset,
+    seed_history_dataset,
+) -> None:
+    override = model_workflow_override()
+    override["evaluation"] = "paper_windowed_2h"
+    train_config = load_test_train_config(tmp_path, override=override)
+    evaluate_config = load_test_evaluate_config(tmp_path, override=override)
+    seed_history_dataset(train_config)
+    seed_evaluation_dataset(evaluate_config)
+
+    run_train(train_config, reporter=NullReporter())
+    run_evaluate(evaluate_config, reporter=NullReporter())
+
+    summary = load_evaluation_summary(resolve_workflow_paths(evaluate_config).artifact_state_db)
+    assert summary is not None
+    assert summary.runtime.evaluator_id == "paper_windowed"
+    assert summary.runtime.evaluator_config == {
+        "id": "paper_windowed",
+        "window_seconds": 7200,
+        "repetitions": 50,
+        "seed": 2026,
+    }
+    assert summary.runtime.runs
+    assert summary.runtime.runs[0].metadata["mode"] == "fullset_fallback"
+
+
 @pytest.mark.parametrize(
     ("prediction_name", "expected_family_id"),
     [

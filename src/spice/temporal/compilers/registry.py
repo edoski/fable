@@ -8,7 +8,7 @@ from typing import cast
 from ...core.errors import ConfigResolutionError
 from .base import ProblemCompilerConfig, ProblemCompilerSpec
 
-_KNOWN_PROBLEM_COMPILERS = ("estimated_block", "timestamp_native")
+_KNOWN_PROBLEM_COMPILERS = ("estimated_block", "timestamp_future_window", "timestamp_native")
 
 
 def problem_compiler_spec(compiler_id: str) -> ProblemCompilerSpec[ProblemCompilerConfig]:
@@ -24,6 +24,15 @@ def problem_compiler_spec(compiler_id: str) -> ProblemCompilerSpec[ProblemCompil
             id="timestamp_native",
             config_type=TimestampNativeCompilerConfig,
             compile_problem=compile_timestamp_native,
+        )
+    if compiler_id == "timestamp_future_window":
+        from .timestamp_future_window import TimestampFutureWindowCompilerConfig
+        from .timestamp_future_window import compile_problem as compile_timestamp_future_window
+
+        return ProblemCompilerSpec(
+            id="timestamp_future_window",
+            config_type=TimestampFutureWindowCompilerConfig,
+            compile_problem=compile_timestamp_future_window,
         )
     if compiler_id == "estimated_block":
         from .estimated_block import (

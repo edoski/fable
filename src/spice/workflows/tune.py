@@ -99,9 +99,14 @@ def _objective(
                 reporter=session.reporter,
                 persist_artifact=False,
             )
-    metric_value = spec.prediction_contract.optimization_value(
-        persisted.summary.runtime.best_validation_metrics
-    )
+    if base_config.tuning.objective is None:
+        metric_value = spec.prediction_contract.optimization_value(
+            persisted.summary.runtime.best_validation_metrics
+        )
+    else:
+        metric_value = persisted.summary.runtime.best_validation_metrics.require(
+            base_config.tuning.objective.metric_id
+        )
     record_trial_best_epoch(trial, persisted.training_run.training_result.best_epoch)
     if config.tuning.enable_pruning:
         trial.report(metric_value, step=persisted.training_run.training_result.best_epoch)

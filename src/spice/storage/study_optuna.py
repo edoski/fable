@@ -134,10 +134,15 @@ def load_or_create_materialized_study(db_path: Path, *, config: TuneConfig) -> o
             prediction_id=config.prediction.id,
             family_config=config.prediction.family,
         )
+        direction = (
+            prediction_contract.direction
+            if config.tuning.objective is None
+            else config.tuning.objective.direction.value
+        )
         return optuna.create_study(
             study_name=config.study.name,
             storage=study_storage(db_path),
-            direction=prediction_contract.direction,
+            direction=direction,
             load_if_exists=False,
             sampler=optuna.samplers.TPESampler(seed=config.tuning.sampler_seed),
             pruner=(

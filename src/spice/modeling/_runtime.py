@@ -19,9 +19,12 @@ from ..prediction import (
 )
 from ..prediction.contracts import PredictionPreparedRepresentation
 from ..temporal.problem_store import CompiledProblemStore
+from ..temporal.realization import CompiledRealizationPolicyContract
 from .batch_sources import (
     BatchSourcePlan,
+    ModelInputBatchSourcePlan,
     plan_batch_source,
+    plan_model_input_batch_source,
     resolve_available_device_memory_budget,
 )
 from .families.registry import (
@@ -188,12 +191,13 @@ def prepare_model_representation(
     )
 
 
-def prepare_prediction_representation(
+def prepare_supervised_prediction_representation(
     store: CompiledProblemStore,
     sample_indices: IntVector,
     *,
     representation_contract: CompiledRepresentationContract,
     prediction_contract: CompiledPredictionContract,
+    realization_policy: CompiledRealizationPolicyContract,
     runtime_context: RepresentationRuntimeContext,
 ) -> PredictionPreparedRepresentation:
     prepared = prepare_model_representation(
@@ -202,7 +206,11 @@ def prepare_prediction_representation(
         representation_contract=representation_contract,
         runtime_context=runtime_context,
     )
-    targets = prediction_contract.prepare_targets(store, sample_indices)
+    targets = prediction_contract.prepare_targets(
+        store,
+        sample_indices,
+        realization_policy=realization_policy,
+    )
     return bind_prediction_representation(prepared, targets=targets)
 
 
@@ -212,16 +220,18 @@ def build_prediction_batch_source(
     *,
     representation_contract: CompiledRepresentationContract,
     prediction_contract: CompiledPredictionContract,
+    realization_policy: CompiledRealizationPolicyContract,
     runtime_context: RepresentationRuntimeContext,
     resolved_device: torch.device,
     seed: int,
     shuffle: bool = False,
 ) -> BatchSourcePlan:
-    prepared = prepare_prediction_representation(
+    prepared = prepare_supervised_prediction_representation(
         store,
         sample_indices,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
+        realization_policy=realization_policy,
         runtime_context=runtime_context,
     )
     return plan_batch_source(
@@ -230,6 +240,30 @@ def build_prediction_batch_source(
         resolved_device=resolved_device,
         seed=seed,
         shuffle=shuffle,
+    )
+
+
+def build_inference_batch_source(
+    store: CompiledProblemStore,
+    sample_indices: IntVector,
+    *,
+    representation_contract: CompiledRepresentationContract,
+    runtime_context: RepresentationRuntimeContext,
+    resolved_device: torch.device,
+    seed: int,
+) -> ModelInputBatchSourcePlan:
+    prepared = prepare_model_representation(
+        store,
+        sample_indices,
+        representation_contract=representation_contract,
+        runtime_context=runtime_context,
+    )
+    return plan_model_input_batch_source(
+        prepared,
+        runtime_context=runtime_context,
+        resolved_device=resolved_device,
+        seed=seed,
+        shuffle=False,
     )
 
 

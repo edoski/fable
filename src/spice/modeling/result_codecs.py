@@ -27,12 +27,9 @@ from ..semantics import (
     InputNormalizationSemantics,
     PredictionSemantics,
     ProblemSemantics,
+    RealizationPolicySemantics,
     RepresentationSemantics,
     StudySemantics,
-)
-from ..temporal.contracts import (
-    problem_runtime_metadata_from_payload,
-    problem_runtime_metadata_payload,
 )
 from ..temporal.scaling import ScalerStats
 from .families.registry import coerce_model_config
@@ -58,6 +55,7 @@ _PROBLEM_SEMANTICS_ADAPTER = TypeAdapter(ProblemSemantics)
 _FEATURE_SEMANTICS_ADAPTER = TypeAdapter(FeatureSemantics)
 _PREDICTION_SEMANTICS_ADAPTER = TypeAdapter(PredictionSemantics)
 _INPUT_NORMALIZATION_SEMANTICS_ADAPTER = TypeAdapter(InputNormalizationSemantics)
+_REALIZATION_POLICY_SEMANTICS_ADAPTER = TypeAdapter(RealizationPolicySemantics)
 _REPRESENTATION_SEMANTICS_ADAPTER = TypeAdapter(RepresentationSemantics)
 _DATASET_BUILDER_SEMANTICS_ADAPTER = TypeAdapter(DatasetBuilderSemantics)
 _CORPUS_SEMANTICS_ADAPTER = TypeAdapter(CorpusSemantics)
@@ -75,6 +73,7 @@ for _adapter in (
     _FEATURE_SEMANTICS_ADAPTER,
     _PREDICTION_SEMANTICS_ADAPTER,
     _INPUT_NORMALIZATION_SEMANTICS_ADAPTER,
+    _REALIZATION_POLICY_SEMANTICS_ADAPTER,
     _REPRESENTATION_SEMANTICS_ADAPTER,
     _DATASET_BUILDER_SEMANTICS_ADAPTER,
     _CORPUS_SEMANTICS_ADAPTER,
@@ -175,9 +174,7 @@ class ArtifactManifestPayload(CodecPayloadModel):
             feature_set=manifest.feature_set.model_dump(mode="json", exclude_none=True),
             model=manifest.model.model_dump(mode="json", exclude_none=True),
             scaler=manifest.scaler.model_dump(mode="json", exclude_none=True),
-            builder_runtime_metadata=problem_runtime_metadata_payload(
-                manifest.builder_runtime_metadata
-            ),
+            builder_runtime_metadata=dict(manifest.builder_runtime_metadata),
             semantics=artifact_semantics_payload(manifest.semantics),
         )
 
@@ -198,8 +195,7 @@ class ArtifactManifestPayload(CodecPayloadModel):
             feature_set=coerce_feature_set_config(self.feature_set),
             model=coerce_model_config(self.model),
             scaler=ScalerStats.model_validate(self.scaler),
-            builder_runtime_metadata=problem_runtime_metadata_from_payload(
-                coerce_problem_spec(self.problem),
+            builder_runtime_metadata=mapping_payload(
                 self.builder_runtime_metadata,
             ),
             semantics=artifact_semantics_from_payload(self.semantics),

@@ -123,8 +123,12 @@ def test_train_remote_detach_submits_without_follow(monkeypatch) -> None:
             "train",
             "--preset",
             "icdcs_2026",
+            "--dataset-builder",
+            "professor_temporal",
             "--prediction",
             "candidate_offset_selection",
+            "--evaluation",
+            "paper_windowed_2h",
             "--detach",
         ],
     )
@@ -134,10 +138,124 @@ def test_train_remote_detach_submits_without_follow(monkeypatch) -> None:
     assert captured["cli_args"] == [
         "--preset",
         "icdcs_2026",
+        "--dataset-builder",
+        "professor_temporal",
         "--prediction",
         "candidate_offset_selection",
+        "--evaluation",
+        "paper_windowed_2h",
     ]
     assert "submitted remote train" in result.stdout
+
+
+def test_tune_remote_forwards_dataset_builder_and_evaluation(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_submit_remote_workflow(
+        task,
+        *,
+        cli_args: list[str],
+        execution_name: str | None = None,
+    ):
+        captured["task"] = task
+        captured["cli_args"] = cli_args
+        return RemoteJobSubmission(
+            task=task,
+            execution_name=execution_name or "disi_l40",
+            target=SimpleNamespace(spec=SimpleNamespace(follow_by_default=False)),
+            job_id="23456",
+            log_path=Path("/tmp/spice-tune-23456.out"),
+        )
+
+    monkeypatch.setattr(
+        "spice.cli.commands.remote.submit_remote_workflow",
+        fake_submit_remote_workflow,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "remote",
+            "tune",
+            "--preset",
+            "icdcs_2026",
+            "--dataset-builder",
+            "professor_temporal",
+            "--evaluation",
+            "paper_windowed_2h",
+            "--trial-count",
+            "3",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert captured["cli_args"] == [
+        "--preset",
+        "icdcs_2026",
+        "--dataset-builder",
+        "professor_temporal",
+        "--evaluation",
+        "paper_windowed_2h",
+        "--trial-count",
+        "3",
+    ]
+
+
+def test_evaluate_remote_forwards_dataset_builder_and_evaluation(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_submit_remote_workflow(
+        task,
+        *,
+        cli_args: list[str],
+        execution_name: str | None = None,
+    ):
+        captured["task"] = task
+        captured["cli_args"] = cli_args
+        return RemoteJobSubmission(
+            task=task,
+            execution_name=execution_name or "disi_l40",
+            target=SimpleNamespace(spec=SimpleNamespace(follow_by_default=False)),
+            job_id="34567",
+            log_path=Path("/tmp/spice-evaluate-34567.out"),
+        )
+
+    monkeypatch.setattr(
+        "spice.cli.commands.remote.submit_remote_workflow",
+        fake_submit_remote_workflow,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "remote",
+            "evaluate",
+            "--preset",
+            "icdcs_2026",
+            "--dataset-builder",
+            "professor_temporal",
+            "--evaluation",
+            "paper_windowed_2h",
+            "--variant",
+            "baseline",
+            "--delay-seconds",
+            "36",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert captured["cli_args"] == [
+        "--preset",
+        "icdcs_2026",
+        "--dataset-builder",
+        "professor_temporal",
+        "--evaluation",
+        "paper_windowed_2h",
+        "--variant",
+        "baseline",
+        "--delay-seconds",
+        "36",
+    ]
 
 
 def test_refresh_catalog_remote_routes_to_remote_cli(monkeypatch) -> None:

@@ -60,22 +60,14 @@ def apply_tuned_parameters(
                     "classification_loss_weight tuning is unsupported for "
                     f"prediction.family.id={family.id}"
                 )
-            setattr(
-                family,
-                "classification_loss_weight",
-                params.prediction.classification_loss_weight,
-            )
+            family.classification_loss_weight = params.prediction.classification_loss_weight
         if params.prediction.regression_loss_weight is not None:
             if not hasattr(family, "regression_loss_weight"):
                 raise ConfigResolutionError(
                     "regression_loss_weight tuning is unsupported for "
                     f"prediction.family.id={family.id}"
                 )
-            setattr(
-                family,
-                "regression_loss_weight",
-                params.prediction.regression_loss_weight,
-            )
+            family.regression_loss_weight = params.prediction.regression_loss_weight
     tuned_config.model = apply_model_tuned_parameters(tuned_config.model, params)
     payload = tuned_config.model_dump(mode="json")
     payload["problem"] = coerce_problem_spec(payload["problem"])

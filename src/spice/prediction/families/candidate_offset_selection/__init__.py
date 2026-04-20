@@ -7,6 +7,7 @@ import torch
 from ....core.reporting import StageMetricDescriptor
 from ....modeling.models import ModelOutputs
 from ....temporal.problem_store import CompiledProblemStore
+from ....temporal.realization import CompiledRealizationPolicyContract
 from ...contracts import (
     CompiledPredictionContract,
     DecodedOffsets,
@@ -26,7 +27,6 @@ from .outputs import (
     CANDIDATE_LOGITS_HEAD_ID,
     build_output_spec,
     candidate_logits,
-    masked_candidate_logits,
 )
 from .targets import prepare_candidate_slate_targets
 
@@ -41,8 +41,13 @@ PROGRESS_METRIC_DESCRIPTORS: tuple[StageMetricDescriptor, ...] = (
 def _prepare_targets(
     store: CompiledProblemStore,
     sample_indices: IntVector,
+    realization_policy: CompiledRealizationPolicyContract,
 ) -> PreparedPredictionTargets:
-    return prepare_candidate_slate_targets(store, sample_indices)
+    return prepare_candidate_slate_targets(
+        store,
+        sample_indices,
+        realization_policy=realization_policy,
+    )
 
 
 def _compute_batch_loss_and_state(
@@ -69,12 +74,8 @@ def _decode_selected_offsets_into(
     predictions: DecodedOffsets,
     sample_positions: torch.Tensor,
     outputs: ModelOutputs,
-    targets: PredictionTargetBatch,
 ) -> None:
-    if not isinstance(targets, CandidateSlateTargetBatch):
-        raise TypeError("candidate_offset_selection expects CandidateSlateTargetBatch targets")
-    logits = masked_candidate_logits(candidate_logits(outputs), targets.candidate_mask)
-    decoded = logits.argmax(dim=-1).cpu().tolist()
+    decoded = candidate_logits(outputs).argmax(dim=-1).cpu().tolist()
     positions = sample_positions.tolist()
     for sample_position, prediction in zip(positions, decoded, strict=True):
         predictions[int(sample_position)] = int(prediction)

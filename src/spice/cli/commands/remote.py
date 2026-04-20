@@ -49,8 +49,8 @@ remote_app.add_typer(show_app, name="show")
 remote_app.add_typer(refresh_app, name="refresh")
 
 _CONFIG_GROUP_HELP = (
-    "One of: chain, dataset, execution, feature-set, model, prediction, preset, problem, "
-    "provider, tuning-space."
+    "One of: chain, dataset, dataset-builder, evaluation, execution, feature-set, model, "
+    "prediction, preset, problem, provider, tuning-space."
 )
 
 
@@ -182,6 +182,14 @@ def remote_train_command(
         str | None,
         _selection_option("--model", metavar="MODEL", help="Use a named model config."),
     ] = None,
+    dataset_builder: Annotated[
+        str | None,
+        _selection_option(
+            "--dataset-builder",
+            metavar="DATASET_BUILDER",
+            help="Use a named dataset builder config.",
+        ),
+    ] = None,
     feature_set: Annotated[
         str | None,
         _selection_option(
@@ -205,6 +213,14 @@ def remote_train_command(
     variant: Annotated[
         str | None,
         _selection_option("--variant", metavar="VARIANT", help="Override the artifact variant."),
+    ] = None,
+    evaluation: Annotated[
+        str | None,
+        _selection_option(
+            "--evaluation",
+            metavar="EVALUATION",
+            help="Use a named evaluation config.",
+        ),
     ] = None,
     execution: Annotated[
         str | None,
@@ -230,8 +246,10 @@ def remote_train_command(
             ("--problem", problem),
             ("--chain", chain),
             ("--model", model),
+            ("--dataset-builder", dataset_builder),
             ("--feature-set", feature_set),
             ("--prediction", prediction),
+            ("--evaluation", evaluation),
             ("--study", study),
             ("--variant", variant),
         ],
@@ -268,6 +286,14 @@ def remote_tune_command(
         str | None,
         _selection_option("--model", metavar="MODEL", help="Use a named model config."),
     ] = None,
+    dataset_builder: Annotated[
+        str | None,
+        _selection_option(
+            "--dataset-builder",
+            metavar="DATASET_BUILDER",
+            help="Use a named dataset builder config.",
+        ),
+    ] = None,
     feature_set: Annotated[
         str | None,
         _selection_option(
@@ -296,6 +322,14 @@ def remote_tune_command(
             help="Override the requested trial count.",
         ),
     ] = None,
+    evaluation: Annotated[
+        str | None,
+        _selection_option(
+            "--evaluation",
+            metavar="EVALUATION",
+            help="Use a named evaluation config.",
+        ),
+    ] = None,
     execution: Annotated[
         str | None,
         _execution_option(
@@ -320,8 +354,10 @@ def remote_tune_command(
             ("--problem", problem),
             ("--chain", chain),
             ("--model", model),
+            ("--dataset-builder", dataset_builder),
             ("--feature-set", feature_set),
             ("--prediction", prediction),
+            ("--evaluation", evaluation),
             ("--study", study),
             ("--trial-count", trial_count),
         ],
@@ -358,6 +394,14 @@ def remote_evaluate_command(
         str | None,
         _selection_option("--model", metavar="MODEL", help="Use a named model config."),
     ] = None,
+    dataset_builder: Annotated[
+        str | None,
+        _selection_option(
+            "--dataset-builder",
+            metavar="DATASET_BUILDER",
+            help="Use a named dataset builder config.",
+        ),
+    ] = None,
     feature_set: Annotated[
         str | None,
         _selection_option(
@@ -381,6 +425,14 @@ def remote_evaluate_command(
     variant: Annotated[
         str | None,
         _selection_option("--variant", metavar="VARIANT", help="Override the artifact variant."),
+    ] = None,
+    evaluation: Annotated[
+        str | None,
+        _selection_option(
+            "--evaluation",
+            metavar="EVALUATION",
+            help="Use a named evaluation config.",
+        ),
     ] = None,
     delay_seconds: Annotated[
         int | None,
@@ -414,8 +466,10 @@ def remote_evaluate_command(
             ("--problem", problem),
             ("--chain", chain),
             ("--model", model),
+            ("--dataset-builder", dataset_builder),
             ("--feature-set", feature_set),
             ("--prediction", prediction),
+            ("--evaluation", evaluation),
             ("--study", study),
             ("--variant", variant),
             ("--delay-seconds", delay_seconds),

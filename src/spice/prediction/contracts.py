@@ -13,6 +13,7 @@ from numpy.typing import NDArray
 from ..core.reporting import StageMetricDescriptor, StageMetricValue, format_compact_number
 from ..semantics import PredictionSemantics
 from ..temporal.problem_store import CompiledProblemStore
+from ..temporal.realization import CompiledRealizationPolicyContract
 from .base import (
     MetricDescriptor,
     MetricSet,
@@ -68,8 +69,14 @@ class EpochMetricAccumulator(Protocol):
 
 
 BuildOutputSpecFn = Callable[[int], PredictionOutputSpec]
-FitTrainingStateFn = Callable[[CompiledProblemStore, IntVector], object | None]
-PrepareTargetsFn = Callable[[CompiledProblemStore, IntVector], PreparedPredictionTargets]
+FitTrainingStateFn = Callable[
+    [CompiledProblemStore, IntVector, CompiledRealizationPolicyContract],
+    object | None,
+]
+PrepareTargetsFn = Callable[
+    [CompiledProblemStore, IntVector, CompiledRealizationPolicyContract],
+    PreparedPredictionTargets,
+]
 ComputeBatchLossAndStateFn = Callable[
     [Any, PredictionTargetBatch, object | None],
     tuple[torch.Tensor, object],
@@ -77,10 +84,7 @@ ComputeBatchLossAndStateFn = Callable[
 CreateEpochAccumulatorFn = Callable[[str], EpochMetricAccumulator]
 SelectBestEpochFn = Callable[[list[MetricSet]], int]
 AllocateDecodedOffsetsFn = Callable[[int], DecodedOffsets]
-DecodeSelectedOffsetsIntoFn = Callable[
-    [DecodedOffsets, torch.Tensor, Any, PredictionTargetBatch],
-    None,
-]
+DecodeSelectedOffsetsIntoFn = Callable[[DecodedOffsets, torch.Tensor, Any], None]
 
 
 @dataclass(slots=True)
@@ -209,17 +213,21 @@ class CompiledPredictionContract:
         self,
         store: CompiledProblemStore,
         train_sample_indices: IntVector,
+        *,
+        realization_policy: CompiledRealizationPolicyContract,
     ) -> object | None:
         if self.fit_training_state_fn is None:
             return None
-        return self.fit_training_state_fn(store, train_sample_indices)
+        return self.fit_training_state_fn(store, train_sample_indices, realization_policy)
 
     def prepare_targets(
         self,
         store: CompiledProblemStore,
         sample_indices: IntVector,
+        *,
+        realization_policy: CompiledRealizationPolicyContract,
     ) -> PreparedPredictionTargets:
-        return self.prepare_targets_fn(store, sample_indices)
+        return self.prepare_targets_fn(store, sample_indices, realization_policy)
 
     def compute_batch_loss_and_state(
         self,
@@ -257,9 +265,8 @@ class CompiledPredictionContract:
         predictions: DecodedOffsets,
         sample_positions: torch.Tensor,
         outputs: ModelOutputs,
-        targets: PredictionTargetBatch,
     ) -> None:
-        self.decode_selected_offsets_into_fn(predictions, sample_positions, outputs, targets)
+        self.decode_selected_offsets_into_fn(predictions, sample_positions, outputs)
 
 
 def bind_prediction_representation(

@@ -24,6 +24,10 @@ from spice.prediction import compile_prediction_contract
 from spice.prediction.families.candidate_offset_selection.outputs import (
     CANDIDATE_LOGITS_HEAD_ID,
 )
+from spice.temporal import (
+    coerce_realization_policy_config,
+    compile_realization_policy_contract,
+)
 from spice.temporal.problem_store import CompiledProblemStore
 
 
@@ -78,6 +82,12 @@ def _model_config() -> LstmModelConfig:
         num_layers=2,
         dropout=0.1,
         head_hidden_dim=8,
+    )
+
+
+def _realization_policy():
+    return compile_realization_policy_contract(
+        coerce_realization_policy_config({"id": "strict_deadline_miss"})
     )
 
 
@@ -216,6 +226,7 @@ def test_prediction_batch_source_binds_current_family_targets() -> None:
         sample_indices,
         representation_contract=representation_contract,
         prediction_contract=_prediction_contract(),
+        realization_policy=_realization_policy(),
         runtime_context=RepresentationRuntimeContext(
             device_type="cpu",
             batch_size=2,
@@ -254,7 +265,11 @@ def test_host_and_device_batch_sources_yield_identical_batches() -> None:
             available_device_memory_bytes=10**12,
         ),
     )
-    prepared_prediction = _prediction_contract().prepare_targets(store, sample_indices)
+    prepared_prediction = _prediction_contract().prepare_targets(
+        store,
+        sample_indices,
+        realization_policy=_realization_policy(),
+    )
     from spice.prediction.contracts import bind_prediction_representation
 
     bound = bind_prediction_representation(prepared, targets=prepared_prediction)

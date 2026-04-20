@@ -114,6 +114,7 @@ def build_training_artifact_manifest(
         builder_runtime_metadata=prepared.builder_runtime_metadata,
         semantics=ArtifactSemantics(
             problem=spec.contract.semantics,
+            realization_policy=spec.contract.realization_policy.semantics,
             feature=spec.feature_contract.semantics,
             prediction=spec.prediction_contract.semantics,
             input_normalization=spec.input_normalization_contract.semantics,

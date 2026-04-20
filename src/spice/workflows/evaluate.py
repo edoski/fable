@@ -128,6 +128,7 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
             evaluation = run_prediction_evaluation(
                 evaluator_contract,
                 prepared.store,
+                prepared.realization_policy,
                 decoded_offsets,
                 sample_indices=prepared.sample_indices,
                 reporter=evaluation_reporter,

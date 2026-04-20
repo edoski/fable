@@ -16,6 +16,10 @@ from spice.prediction import MetricSet
 from spice.prediction.families.candidate_offset_selection.batch import CandidateSlateTargetBatch
 from spice.prediction.families.candidate_offset_selection.loss import compute_selection_loss
 from spice.prediction.families.candidate_offset_selection.metrics import best_epoch
+from spice.temporal import (
+    coerce_realization_policy_config,
+    compile_realization_policy_contract,
+)
 from spice.temporal.contracts import compile_problem_contract
 
 
@@ -48,12 +52,19 @@ def _build_test_store():
                 "sample_count": 4,
                 "max_delay_seconds": 12,
                 "compiler": {"id": "timestamp_native"},
+                "realization_policy": {"id": "strict_deadline_miss"},
             }
         ),
         feature_contract=feature_contract,
     )
     store, _ = contract.build_capability_store(feature_table)
     return store
+
+
+def _realization_policy():
+    return compile_realization_policy_contract(
+        coerce_realization_policy_config({"id": "strict_deadline_miss"})
+    )
 
 
 def test_selection_loss_prefers_cheaper_candidates_and_ignores_masked_slots() -> None:
@@ -127,6 +138,7 @@ def test_poisson_replay_summary_uses_event_weighted_totals() -> None:
     summary = run_prediction_evaluation(
         evaluator,
         store,
+        _realization_policy(),
         predictions,
         sample_indices=sample_indices,
         reporter=NullReporter(),

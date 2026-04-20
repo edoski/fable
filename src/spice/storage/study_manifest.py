@@ -14,6 +14,7 @@ from ..config import (
     TrainConfig,
     TrainingConfig,
     TuneConfig,
+    TuningObjectiveConfig,
     TuningSpaceConfig,
     coerce_dataset_builder_config,
     coerce_feature_set_config,
@@ -97,9 +98,11 @@ def manifest_from_tune_config(config: TuneConfig) -> StudyManifest:
         sampler_seed=config.tuning.sampler_seed,
         pruner_name=pruner_name(config.tuning.enable_pruning),
         enable_pruning=config.tuning.enable_pruning,
+        tuning_objective=config.tuning.objective,
         tuning_space=config.tuning_space,
         semantics=StudySemantics(
             problem=problem_contract.semantics,
+            realization_policy=problem_contract.realization_policy.semantics,
             feature=feature_contract.semantics,
             prediction=prediction_contract.semantics,
             input_normalization=input_normalization_contract.semantics,
@@ -186,6 +189,11 @@ def study_manifest_identity_payload(manifest: StudyManifest) -> dict[str, object
         "sampler_seed": manifest.sampler_seed,
         "pruner_name": manifest.pruner_name,
         "enable_pruning": manifest.enable_pruning,
+        "tuning_objective": (
+            None
+            if manifest.tuning_objective is None
+            else manifest.tuning_objective.model_dump(mode="json")
+        ),
         "tuning_space": manifest.tuning_space.model_dump(mode="json", exclude_none=True),
     }
 
@@ -289,6 +297,7 @@ def manifest_from_payload(payload: dict[str, object]) -> StudyManifest:
         sampler_seed=coerce_int(payload["sampler_seed"], label="sampler_seed"),
         pruner_name=str(payload["pruner_name"]),
         enable_pruning=bool(payload["enable_pruning"]),
+        tuning_objective=coerce_tuning_objective(payload.get("tuning_objective")),
         tuning_space=coerce_study_tuning_space(
             payload["tuning_space"],
             model=model,
@@ -315,6 +324,14 @@ def coerce_study_tuning_space(
     if tuning_space is None:
         raise StateLayoutError("Study tuning_space payload is required")
     return tuning_space
+
+
+def coerce_tuning_objective(payload: object) -> TuningObjectiveConfig | None:
+    if payload is None:
+        return None
+    return TuningObjectiveConfig.model_validate(
+        mapping_payload(payload, label="study.tuning_objective")
+    )
 
 
 def pruner_name(enable_pruning: bool) -> str:

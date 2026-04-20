@@ -21,13 +21,14 @@ from ..core.reporting import (
 )
 from ..prediction import CompiledPredictionContract, MetricSet
 from ..temporal.problem_store import CompiledProblemStore
+from ..temporal.realization import CompiledRealizationPolicyContract
 from ._runtime import (
     CompiledRepresentationContract,
     build_prediction_batch_source,
     build_representation_runtime_context,
     configure_torch_backends,
     ensure_device_runtime_ready,
-    prepare_prediction_representation,
+    prepare_supervised_prediction_representation,
     resolve_compile_enabled,
     resolve_device,
     resolve_trainer_precision,
@@ -288,6 +289,7 @@ def train_model(
     *,
     model_config: ModelConfig,
     prediction_contract: CompiledPredictionContract,
+    realization_policy: CompiledRealizationPolicyContract,
     representation_contract: CompiledRepresentationContract,
     store: CompiledProblemStore,
     train_sample_indices: IntVector,
@@ -321,18 +323,20 @@ def train_model(
         device=resolved_device,
         batch_size=training_config.batch_size,
     )
-    train_representation = prepare_prediction_representation(
+    train_representation = prepare_supervised_prediction_representation(
         store,
         train_sample_indices,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
+        realization_policy=realization_policy,
         runtime_context=runtime_context,
     )
-    validation_representation = prepare_prediction_representation(
+    validation_representation = prepare_supervised_prediction_representation(
         store,
         validation_sample_indices,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
+        realization_policy=realization_policy,
         runtime_context=runtime_context,
     )
     train_batch_source_plan = _plan_training_batch_source(
@@ -353,6 +357,7 @@ def train_model(
     prediction_training_state = prediction_contract.fit_training_state(
         store,
         train_sample_indices,
+        realization_policy=realization_policy,
     )
     model.to(resolved_device)
     fit_model = cast(TemporalModel, torch.compile(model) if compile_enabled else model)
@@ -470,6 +475,7 @@ def evaluate_model(
     *,
     model_config: ModelConfig,
     prediction_contract: CompiledPredictionContract,
+    realization_policy: CompiledRealizationPolicyContract,
     representation_contract: CompiledRepresentationContract,
     store: CompiledProblemStore,
     sample_indices: IntVector,
@@ -500,6 +506,7 @@ def evaluate_model(
         sample_indices,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
+        realization_policy=realization_policy,
         runtime_context=runtime_context,
         resolved_device=resolved_device,
         seed=training_config.seed,

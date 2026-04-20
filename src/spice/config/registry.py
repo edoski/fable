@@ -19,6 +19,7 @@ from ..modeling.families.registry import coerce_model_config
 from .models import (
     ChainSpec,
     DatasetSpec,
+    EvaluationConfig,
     ExecutionSpec,
     PresetSpec,
     ProviderSpec,
@@ -36,6 +37,7 @@ class ConfigGroup(StrEnum):
     CHAIN = "chain"
     DATASET = "dataset"
     DATASET_BUILDER = "dataset-builder"
+    EVALUATION = "evaluation"
     EXECUTION = "execution"
     FEATURE_SET = "feature-set"
     MODEL = "model"
@@ -83,6 +85,12 @@ _GROUP_SPECS = (
         validate=coerce_dataset_builder_config,
         identity_field="id",
         seed_from_requested_name=True,
+    ),
+    GroupSpec(
+        token=ConfigGroup.EVALUATION.value,
+        directory="evaluation",
+        seed_name="paper_fullset",
+        validate=EvaluationConfig.model_validate,
     ),
     GroupSpec(
         token=ConfigGroup.EXECUTION.value,
