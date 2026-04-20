@@ -13,6 +13,7 @@ from ..modeling.inference import predict_with_model
 from ..modeling.pipeline import prepare_inference_dataset
 from ..modeling.results import LoadedEvaluationSummary, build_evaluation_runtime_summary
 from ..modeling.summary import evaluation_summary_sections
+from ..modeling.tuning import apply_study_best_params
 from ..prediction import compile_prediction_contract
 from ..storage.artifact import write_evaluation_state
 from ..storage.engine import ARTIFACT_ROOT_KIND
@@ -38,14 +39,17 @@ def _workflow_facts(config: EvaluateConfig) -> list[tuple[str, str]]:
 
 
 def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
-    paths = resolve_workflow_paths(config)
+    active_config = config
+    if config.artifact.variant.value == "tuned":
+        active_config = apply_study_best_params(config)
+    paths = resolve_workflow_paths(active_config)
     artifact_dir = paths.artifact_root
     history_block_path = paths.history_dir
     evaluation_block_path = paths.evaluation_dir
     if artifact_dir is None:
         raise ConfigResolutionError("evaluation workflow requires artifact output paths")
     with managed_workflow(reporter=reporter) as session:
-        session.runtime.configure_workflow("evaluate", _workflow_facts(config))
+        session.runtime.configure_workflow("evaluate", _workflow_facts(active_config))
         load_reporter = session.runtime.stage_reporter("load", label="load")
         prepare_reporter = session.runtime.stage_reporter("prepare", label="prepare")
         predict_reporter = session.runtime.stage_reporter("predict", label="predict")
@@ -64,12 +68,12 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
             loaded_artifact = load_training_artifact(artifact_dir)
             validated = validate_artifact_semantics(
                 loaded_artifact.manifest,
-                problem=config.problem,
-                dataset_builder=config.dataset_builder,
-                feature_set=config.feature_set,
-                prediction=config.prediction,
-                objective=config.objective,
-                model=config.model,
+                problem=active_config.problem,
+                dataset_builder=active_config.dataset_builder,
+                feature_set=active_config.feature_set,
+                prediction=active_config.prediction,
+                objective=active_config.objective,
+                model=active_config.model,
             )
             feature_contract = validated.feature_contract
             history_blocks = load_block_frame(history_block_path)
@@ -80,24 +84,24 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
             )
             prepare_task = prepare_reporter.start_task("prepare inference dataset")
             contract = compile_problem_contract(
-                problem=config.problem,
+                problem=active_config.problem,
                 feature_contract=feature_contract,
-                chain_runtime=config.chain.runtime,
+                chain_runtime=active_config.chain.runtime,
             )
             prediction_contract = compile_prediction_contract(
-                prediction_id=config.prediction.id,
-                family_config=config.prediction.family,
+                prediction_id=active_config.prediction.id,
+                family_config=active_config.prediction.family,
             )
-            evaluator_contract = compile_evaluator_contract(config.evaluation.evaluator)
+            evaluator_contract = compile_evaluator_contract(active_config.evaluation.evaluator)
             if "evaluate" not in prediction_contract.supported_workflows:
                 raise ConfigResolutionError(
                     f"prediction family {prediction_contract.prediction_family_id} "
                     "does not support evaluate"
                 )
-            if config.delay_seconds > loaded_artifact.manifest.max_delay_seconds:
+            if active_config.delay_seconds > loaded_artifact.manifest.max_delay_seconds:
                 raise ConfigResolutionError(
                     "delay_seconds exceeds artifact capability: "
-                    f"{config.delay_seconds} > {loaded_artifact.manifest.max_delay_seconds}"
+                    f"{active_config.delay_seconds} > {loaded_artifact.manifest.max_delay_seconds}"
                 )
             prepared = prepare_inference_dataset(
                 history_blocks,
@@ -105,12 +109,12 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
                 dataset_builder_contract=validated.dataset_builder_contract,
                 feature_contract=feature_contract,
                 contract=contract,
-                delay_seconds=config.delay_seconds,
+                delay_seconds=active_config.delay_seconds,
                 builder_runtime_metadata=loaded_artifact.manifest.builder_runtime_metadata,
                 scaler=loaded_artifact.manifest.scaler,
                 max_candidate_slots=loaded_artifact.manifest.max_candidate_slots,
-                window_start_timestamp=config.evaluation_window_start_timestamp,
-                window_end_timestamp=config.evaluation_window_end_timestamp,
+                window_start_timestamp=active_config.evaluation_window_start_timestamp,
+                window_end_timestamp=active_config.evaluation_window_end_timestamp,
             )
             prepare_reporter.finish_task(
                 prepare_task,
@@ -122,8 +126,8 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
                 representation_contract=loaded_artifact.representation_contract,
                 store=prepared.store,
                 sample_indices=prepared.sample_indices,
-                batch_size=config.training.batch_size,
-                device=config.training.device,
+                batch_size=active_config.training.batch_size,
+                device=active_config.training.device,
                 reporter=predict_reporter,
             )
             evaluation = run_prediction_evaluation(
@@ -137,7 +141,7 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
             runtime_summary = build_evaluation_runtime_summary(
                 prepared=prepared,
                 evaluation=evaluation,
-                delay_seconds=config.delay_seconds,
+                delay_seconds=active_config.delay_seconds,
                 evaluator_id=evaluator_contract.evaluator_id,
                 evaluator_config=evaluator_contract.config_payload,
                 metric_descriptors=evaluator_contract.metric_descriptors,

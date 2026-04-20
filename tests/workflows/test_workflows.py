@@ -106,9 +106,11 @@ def test_train_configs_with_distinct_semantic_bundles_get_distinct_artifact_ids(
 
 def test_tune_then_train_tuned_smoke(
     tmp_path,
+    load_workflow_config,
     load_test_train_config,
     load_test_tune_config,
     model_workflow_override,
+    seed_evaluation_dataset,
     seed_history_dataset,
     tune_override,
 ) -> None:
@@ -149,6 +151,20 @@ def test_tune_then_train_tuned_smoke(
 
     assert resolved_paths.artifact_state_db.is_file()
     assert (resolved_paths.artifact_root / "model.pt").is_file()
+
+    tuned_eval_config = load_workflow_config(
+        WorkflowTask.EVALUATE,
+        workspace=tmp_path,
+        preset="icdcs_2026",
+        study=config.study.name,
+        variant="tuned",
+        override=model_workflow_override(),
+    )
+    seed_evaluation_dataset(tuned_eval_config)
+    run_evaluate(tuned_eval_config, reporter=NullReporter())
+
+    evaluation_runs = list_evaluation_runs(resolved_paths.artifact_state_db)
+    assert evaluation_runs
 
 
 def test_tune_resume_same_study_tops_up_to_target(

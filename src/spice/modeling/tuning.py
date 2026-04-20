@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import overload
 
 from ..config import (
+    EvaluateConfig,
     TrainConfig,
     TuneConfig,
     TunedParameterSet,
@@ -40,10 +41,17 @@ def apply_tuned_parameters(
 ) -> TuneConfig: ...
 
 
+@overload
 def apply_tuned_parameters(
-    config: TrainConfig | TuneConfig,
+    config: EvaluateConfig,
     params: TunedParameterSet,
-) -> TrainConfig | TuneConfig:
+) -> EvaluateConfig: ...
+
+
+def apply_tuned_parameters(
+    config: TrainConfig | TuneConfig | EvaluateConfig,
+    params: TunedParameterSet,
+) -> TrainConfig | TuneConfig | EvaluateConfig:
     tuned_config = deepcopy(config)
     if params.training is not None:
         if params.training.learning_rate is not None:
@@ -83,10 +91,12 @@ def apply_tuned_parameters(
             prediction_config=payload["prediction"],
         )
         return TuneConfig.model_validate(payload)
+    if isinstance(config, EvaluateConfig):
+        return EvaluateConfig.model_validate(payload)
     return TrainConfig.model_validate(payload)
 
 
-def apply_study_best_params(config: TrainConfig) -> TrainConfig:
+def apply_study_best_params(config: TrainConfig | EvaluateConfig) -> TrainConfig | EvaluateConfig:
     path = resolve_workflow_paths(config).study_state_db
     if path is None:
         raise ConfigResolutionError("study_state_db is required for tuned artifacts")

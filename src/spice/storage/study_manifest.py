@@ -7,6 +7,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from ..config import (
+    EvaluateConfig,
     ModelConfig,
     PredictionConfig,
     ProblemSpec,
@@ -162,7 +163,11 @@ def diff_study_manifests(stored: StudyManifest, requested: StudyManifest) -> lis
     return [key for key in stored_payload if stored_payload[key] != requested_payload[key]]
 
 
-def validate_tuned_train_request(config: TrainConfig, *, manifest: StudyManifest) -> None:
+def validate_tuned_train_request(
+    config: TrainConfig | EvaluateConfig,
+    *,
+    manifest: StudyManifest,
+) -> None:
     """Reject tuned-artifact requests whose identity diverges from the stored study."""
 
     paths = resolve_workflow_paths(config)
