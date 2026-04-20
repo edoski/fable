@@ -115,6 +115,7 @@ def test_tune_then_train_tuned_round_trips_problem_and_prediction_params(
     run_tune(tune_config, reporter=NullReporter())
 
     tuned_override = model_workflow_override(sample_count=20, lookback_seconds=240)
+    tuned_override["prediction"] = tune_config.prediction.id
     tuned_override["artifact"] = {"variant": ArtifactVariant.TUNED.value}
     tuned_override["study"] = tune_config.study.name
     tuned_train_config = load_test_train_config(tmp_path, override=tuned_override)

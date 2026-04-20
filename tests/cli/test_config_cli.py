@@ -210,4 +210,4 @@ def test_train_loader_resolves_production_preset(
     assert config.feature_set.id == "icdcs_2026"
     assert config.prediction.id == "icdcs_2026"
     assert config.model.id == "lstm"
-    assert config.model.hidden_size == 256
+    assert config.model.hidden_size == 128
