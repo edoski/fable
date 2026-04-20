@@ -54,6 +54,7 @@ def submit_remote_workflow(
     *,
     cli_args: list[str],
     execution_name: str | None = None,
+    dependency: str | None = None,
 ) -> RemoteJobSubmission:
     target = resolve_remote_target(execution_name)
     workflow_spec = _workflow_spec(target, task)
@@ -69,7 +70,7 @@ def submit_remote_workflow(
         [
             f"mkdir -p {shlex.quote(str(target.spec.paths.log_root))}",
             f"mkdir -p {shlex.quote(str(target.spec.paths.storage_root))}",
-            "cat | sbatch",
+            _build_sbatch_submit_command(dependency=dependency),
         ]
     )
     result = ensure_remote_success(
@@ -208,6 +209,13 @@ def _render_sbatch_script(
         f"exec {cli_command}",
     ]
     return "\n".join(lines) + "\n"
+
+
+def _build_sbatch_submit_command(*, dependency: str | None) -> str:
+    command = ["cat", "|", "sbatch"]
+    if dependency is not None:
+        command.append(f"--dependency={shlex.quote(dependency)}")
+    return " ".join(command)
 
 
 def _first_output_line(payload: str) -> str | None:

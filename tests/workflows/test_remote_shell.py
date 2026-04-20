@@ -10,6 +10,7 @@ from spice.remote.workflows import (
     RemoteJobSubmission,
     _render_sbatch_script,
     follow_remote_job,
+    submit_remote_workflow,
 )
 
 
@@ -132,3 +133,56 @@ def test_render_sbatch_script_execs_spice_command(tmp_path: Path) -> None:
     )
 
     assert "\nexec /venv/bin/spice train --preset icdcs_2026 --storage-root /storage\n" in script
+
+
+def test_submit_remote_workflow_forwards_sbatch_dependency(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+    target = SimpleNamespace(
+        name="disi_l40",
+        spec=SimpleNamespace(
+            paths=SimpleNamespace(
+                repo_root=Path("/repo"),
+                venv_activate_path=Path("/venv/bin/activate"),
+                storage_root=Path("/storage"),
+                log_root=tmp_path,
+                spice_path=Path("/venv/bin/spice"),
+            ),
+            workflows=SimpleNamespace(
+                train=ExecutionWorkflowSpec(
+                    partition="l40",
+                    gpus=1,
+                    cpus_per_task=4,
+                    memory_gb=24,
+                    time_limit="00:10:00",
+                ),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr("spice.remote.workflows.resolve_remote_target", lambda _name: target)
+
+    def fake_run_remote_command(_target, command: str, *, input_text: str | None = None):
+        captured["command"] = command
+        captured["input_text"] = input_text
+        return CompletedProcess(
+            args=["ssh", "giano"],
+            returncode=0,
+            stdout="Submitted batch job 12345\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr("spice.remote.workflows.run_remote_command", fake_run_remote_command)
+
+    submission = submit_remote_workflow(
+        WorkflowTask.TRAIN,
+        cli_args=["--preset", "icdcs_2026"],
+        execution_name="disi_l40",
+        dependency="afterok:99999",
+    )
+
+    assert submission.job_id == "12345"
+    assert captured["command"] == (
+        f"mkdir -p {tmp_path} && mkdir -p /storage && "
+        "cat | sbatch --dependency=afterok:99999"
+    )
+    assert isinstance(captured["input_text"], str)

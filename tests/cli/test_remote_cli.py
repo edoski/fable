@@ -99,10 +99,12 @@ def test_train_remote_detach_submits_without_follow(monkeypatch) -> None:
         *,
         cli_args: list[str],
         execution_name: str | None = None,
+        dependency: str | None = None,
     ):
         captured["task"] = task
         captured["cli_args"] = cli_args
         captured["execution_name"] = execution_name
+        captured["dependency"] = dependency
         return RemoteJobSubmission(
             task=task,
             execution_name=execution_name or "disi_l40",
@@ -129,12 +131,15 @@ def test_train_remote_detach_submits_without_follow(monkeypatch) -> None:
             "candidate_offset_selection",
             "--evaluation",
             "paper_windowed_2h",
+            "--dependency",
+            "afterok:12345",
             "--detach",
         ],
     )
 
     assert result.exit_code == 0, result.stdout
     assert captured["execution_name"] == "disi_l40"
+    assert captured["dependency"] == "afterok:12345"
     assert captured["cli_args"] == [
         "--preset",
         "icdcs_2026",
@@ -156,9 +161,11 @@ def test_tune_remote_forwards_dataset_builder_and_evaluation(monkeypatch) -> Non
         *,
         cli_args: list[str],
         execution_name: str | None = None,
+        dependency: str | None = None,
     ):
         captured["task"] = task
         captured["cli_args"] = cli_args
+        captured["dependency"] = dependency
         return RemoteJobSubmission(
             task=task,
             execution_name=execution_name or "disi_l40",
@@ -199,6 +206,7 @@ def test_tune_remote_forwards_dataset_builder_and_evaluation(monkeypatch) -> Non
         "--trial-count",
         "3",
     ]
+    assert captured["dependency"] is None
 
 
 def test_evaluate_remote_forwards_dataset_builder_and_evaluation(monkeypatch) -> None:
@@ -209,9 +217,11 @@ def test_evaluate_remote_forwards_dataset_builder_and_evaluation(monkeypatch) ->
         *,
         cli_args: list[str],
         execution_name: str | None = None,
+        dependency: str | None = None,
     ):
         captured["task"] = task
         captured["cli_args"] = cli_args
+        captured["dependency"] = dependency
         return RemoteJobSubmission(
             task=task,
             execution_name=execution_name or "disi_l40",
@@ -256,6 +266,7 @@ def test_evaluate_remote_forwards_dataset_builder_and_evaluation(monkeypatch) ->
         "--delay-seconds",
         "36",
     ]
+    assert captured["dependency"] is None
 
 
 def test_refresh_catalog_remote_routes_to_remote_cli(monkeypatch) -> None:

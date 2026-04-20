@@ -62,6 +62,10 @@ def _execution_option(*param_decls: str, metavar: str, help: str) -> object:
     return typer.Option(*param_decls, metavar=metavar, help=help, rich_help_panel="Execution")
 
 
+def _submission_option(*param_decls: str, metavar: str, help: str) -> object:
+    return typer.Option(*param_decls, metavar=metavar, help=help, rich_help_panel="Submission")
+
+
 def _append_option(args: list[str], flag: str, value: str | int | Path | None) -> None:
     if value is None:
         return
@@ -93,6 +97,7 @@ def _submit_remote_selected_workflow(
     task: WorkflowTask,
     preset: str | None,
     execution: str | None,
+    dependency: str | None,
     detach: bool,
     cli_options: list[tuple[str, str | int | Path | None]],
 ) -> None:
@@ -100,6 +105,7 @@ def _submit_remote_selected_workflow(
         task,
         cli_args=_build_cli_args(*cli_options),
         execution_name=_resolve_remote_execution_name(preset=preset, execution=execution),
+        dependency=dependency,
     )
     typer.echo(
         " ".join(
@@ -230,6 +236,14 @@ def remote_train_command(
             help="Use a named remote execution spec.",
         ),
     ] = None,
+    dependency: Annotated[
+        str | None,
+        _submission_option(
+            "--dependency",
+            metavar="DEPENDENCY",
+            help="Pass one Slurm dependency spec such as afterok:12345.",
+        ),
+    ] = None,
     detach: Annotated[
         bool,
         typer.Option("--detach", help="Submit remote job and exit without following."),
@@ -239,6 +253,7 @@ def remote_train_command(
         task=WorkflowTask.TRAIN,
         preset=preset,
         execution=execution,
+        dependency=dependency,
         detach=detach,
         cli_options=[
             ("--preset", preset),
@@ -338,6 +353,14 @@ def remote_tune_command(
             help="Use a named remote execution spec.",
         ),
     ] = None,
+    dependency: Annotated[
+        str | None,
+        _submission_option(
+            "--dependency",
+            metavar="DEPENDENCY",
+            help="Pass one Slurm dependency spec such as afterok:12345.",
+        ),
+    ] = None,
     detach: Annotated[
         bool,
         typer.Option("--detach", help="Submit remote job and exit without following."),
@@ -347,6 +370,7 @@ def remote_tune_command(
         task=WorkflowTask.TUNE,
         preset=preset,
         execution=execution,
+        dependency=dependency,
         detach=detach,
         cli_options=[
             ("--preset", preset),
@@ -450,6 +474,14 @@ def remote_evaluate_command(
             help="Use a named remote execution spec.",
         ),
     ] = None,
+    dependency: Annotated[
+        str | None,
+        _submission_option(
+            "--dependency",
+            metavar="DEPENDENCY",
+            help="Pass one Slurm dependency spec such as afterok:12345.",
+        ),
+    ] = None,
     detach: Annotated[
         bool,
         typer.Option("--detach", help="Submit remote job and exit without following."),
@@ -459,6 +491,7 @@ def remote_evaluate_command(
         task=WorkflowTask.EVALUATE,
         preset=preset,
         execution=execution,
+        dependency=dependency,
         detach=detach,
         cli_options=[
             ("--preset", preset),
