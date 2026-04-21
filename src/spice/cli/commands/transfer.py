@@ -6,7 +6,7 @@ from typing import Annotated
 
 import typer
 
-from ...storage.roots import DatasetSelector
+from ...storage.roots import ArtifactSelector, DatasetSelector, StudySelector
 from ...storage.sync import (
     pull_artifact_from_cluster,
     pull_study_from_cluster,
@@ -25,7 +25,6 @@ from ..options import (
     VariantFilterOption,
     resolve_storage_root,
 )
-from ._selectors import artifact_selector, study_selector
 
 push_app = typer.Typer(
     help="Copy one local root into cluster storage.",
@@ -72,14 +71,14 @@ def push_study_command(
     root = resolve_storage_root(storage_root)
     record = push_study_to_cluster(
         storage_root=root,
-        selector=study_selector(
-            chain=chain,
-            dataset=dataset,
-            feature_set=feature_set,
-            prediction=prediction,
-            model=model,
-            problem=problem,
-            study=study,
+        selector=StudySelector(
+            chain_name=chain,
+            dataset_name=dataset,
+            feature_set_id=feature_set,
+            prediction_id=prediction,
+            model_id=model,
+            problem_id=problem,
+            study_name=study,
         ),
         replace=replace,
     )
@@ -102,15 +101,15 @@ def pull_artifact_command(
     root = resolve_storage_root(storage_root)
     record, dataset_present = pull_artifact_from_cluster(
         storage_root=root,
-        selector=artifact_selector(
-            chain=chain,
-            dataset=dataset,
-            feature_set=feature_set,
-            prediction=prediction,
-            model=model,
-            problem=problem,
+        selector=ArtifactSelector(
+            chain_name=chain,
+            dataset_name=dataset,
+            feature_set_id=feature_set,
+            prediction_id=prediction,
+            model_id=model,
+            problem_id=problem,
             variant=variant,
-            study=study,
+            study_name=study,
         ),
         replace=replace,
     )
@@ -140,14 +139,14 @@ def pull_study_command(
     root = resolve_storage_root(storage_root)
     record = pull_study_from_cluster(
         storage_root=root,
-        selector=study_selector(
-            chain=chain,
-            dataset=dataset,
-            feature_set=feature_set,
-            prediction=prediction,
-            model=model,
-            problem=problem,
-            study=study,
+        selector=StudySelector(
+            chain_name=chain,
+            dataset_name=dataset,
+            feature_set_id=feature_set,
+            prediction_id=prediction,
+            model_id=model,
+            problem_id=problem,
+            study_name=study,
         ),
         replace=replace,
     )

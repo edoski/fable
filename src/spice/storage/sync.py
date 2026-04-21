@@ -27,6 +27,7 @@ from .roots import (
     DatasetSelector,
     StudySelector,
     reindex_root,
+    resolve_artifact_record,
     resolve_dataset_record,
     resolve_study_record,
 )
@@ -199,7 +200,7 @@ def _prepare_cluster_stage(
     ensure_execution_success(
         run_execution_module(
             target,
-            "spice.storage.sync_actions",
+            "spice.storage.sync_cli",
             [
                 "prepare-stage",
                 "--destination-root",
@@ -224,7 +225,7 @@ def _finalize_cluster_stage(
     ensure_execution_success(
         run_execution_module(
             target,
-            "spice.storage.sync_actions",
+            "spice.storage.sync_cli",
             [
                 "finalize-stage",
                 "--storage-root",
@@ -297,7 +298,7 @@ def _resolve_cluster_record(
             record_payload[field.name] = None
         else:
             record_payload[field.name] = str(value)
-    return cast(RemoteRecordT, record_type(**cast(Any, record_payload)))
+    return cast(RemoteRecordT, record_type(**cast(dict[str, Any], record_payload)))
 
 
 def _resolve_cluster_record_payload(
@@ -310,7 +311,7 @@ def _resolve_cluster_record_payload(
     result = ensure_execution_success(
         run_execution_module(
             target,
-            "spice.storage.sync_actions",
+            "spice.storage.sync_cli",
             [
                 command,
                 "--storage-root",

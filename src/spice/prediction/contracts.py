@@ -1,10 +1,10 @@
-"""Compiled prediction contracts and batch wrappers."""
+"""Compiled prediction contracts and batch protocols."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Generic, Literal, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import numpy as np
 import torch
@@ -21,7 +21,6 @@ from .base import (
 
 if TYPE_CHECKING:
     from ..modeling.models import ModelOutputs
-    from ..modeling.representations import PreparedRepresentation
 
 IntVector = NDArray[np.int64]
 BoolMatrix = NDArray[np.bool_]
@@ -140,9 +139,6 @@ class EpochMetricAccumulator(Protocol):
     def finalize(self) -> MetricSet: ...
 
 
-PreparedTargetT = TypeVar("PreparedTargetT", bound=PreparedPredictionTargets)
-
-
 BuildOutputSpecFn = Callable[[int], PredictionOutputSpec]
 FitTrainingStateFn = Callable[
     [CompiledProblemStore, IntVector, CompiledRealizationPolicyContract],
@@ -156,17 +152,8 @@ ComputeBatchLossAndStateFn = Callable[
     [Any, PredictionTargetBatch, object | None],
     tuple[torch.Tensor, object],
 ]
-CreateEpochAccumulatorFn = Callable[[str], EpochMetricAccumulator]
-AllocateDecodedOffsetsFn = Callable[[int], DecodedOffsets]
+CreateEpochAccumulatorFn = Callable[[], EpochMetricAccumulator]
 DecodeSelectedOffsetsIntoFn = Callable[[DecodedOffsets, Any, "ActionSpaceDecodeContext"], None]
-
-
-def selected_sample_indices(
-    sample_indices: IntVector,
-    sample_positions: torch.Tensor,
-) -> IntVector:
-    positions = _coerce_cpu_int64_vector(sample_positions, label="sample_positions").numpy()
-    return sample_indices[positions].astype(np.int64, copy=False)
 
 
 def masked_offset_argmax(logits: torch.Tensor, action_mask: torch.Tensor) -> torch.Tensor:
@@ -211,35 +198,6 @@ def decode_context_from_batch(
     )
 
 
-@dataclass(frozen=True, slots=True)
-class StagedPreparedTargets(Generic[PreparedTargetT]):
-    store: CompiledProblemStore
-    sample_indices: IntVector
-    realization_policy: CompiledRealizationPolicyContract
-    estimated_storage_bytes: int
-    materialize_fn: Callable[
-        [CompiledProblemStore, IntVector, CompiledRealizationPolicyContract],
-        PreparedTargetT,
-    ]
-
-    def build_batch(self, sample_positions: torch.Tensor) -> PredictionTargetBatch:
-        materialized = self.materialize_fn(
-            self.store,
-            selected_sample_indices(self.sample_indices, sample_positions),
-            self.realization_policy,
-        )
-        return materialized.build_batch(
-            torch.arange(int(sample_positions.shape[0]), dtype=torch.int64)
-        )
-
-    def to_device_storage(self, device: torch.device) -> PreparedPredictionTargets:
-        return self.materialize_fn(
-            self.store,
-            self.sample_indices,
-            self.realization_policy,
-        ).to_device_storage(device)
-
-
 @dataclass(slots=True)
 class PredictionBatch:
     inputs: ModelInputBatch
@@ -266,43 +224,6 @@ class PredictionBatch:
         )
 
 
-@dataclass(slots=True)
-class PredictionPreparedRepresentation:
-    prepared: PreparedRepresentation
-    targets: PreparedPredictionTargets
-
-    @property
-    def representation_id(self) -> str:
-        return self.prepared.representation_id
-
-    @property
-    def sample_count(self) -> int:
-        return self.prepared.sample_count
-
-    @property
-    def batch_signatures(self) -> IntVector:
-        return self.prepared.batch_signatures
-
-    @property
-    def estimated_storage_bytes(self) -> int:
-        return self.prepared.estimated_storage_bytes + self.targets.estimated_storage_bytes
-
-    def build_batch(self, sample_positions: torch.Tensor) -> PredictionBatch:
-        input_batch = self.prepared.build_batch(sample_positions)
-        return PredictionBatch(
-            inputs=input_batch,
-            targets=self.targets.build_batch(input_batch.sample_positions),
-        )
-
-    def to_device_storage(
-        self,
-        device: torch.device,
-    ) -> PredictionPreparedRepresentation:
-        prepared = self.prepared.to_device_storage(device)
-        targets = self.targets.to_device_storage(device)
-        return PredictionPreparedRepresentation(prepared=prepared, targets=targets)
-
-
 @dataclass(frozen=True, slots=True)
 class CompiledPredictionContract:
     prediction_id: str
@@ -310,12 +231,10 @@ class CompiledPredictionContract:
     training_metric_descriptors: tuple[MetricDescriptor, ...]
     primary_metric_id: str
     direction: Literal["maximize", "minimize"]
-    supported_workflows: frozenset[str]
     build_output_spec_fn: BuildOutputSpecFn
     prepare_targets_fn: PrepareTargetsFn
     compute_batch_loss_and_state_fn: ComputeBatchLossAndStateFn
     create_epoch_accumulator_fn: CreateEpochAccumulatorFn
-    allocate_decoded_offsets_fn: AllocateDecodedOffsetsFn
     decode_selected_offsets_into_fn: DecodeSelectedOffsetsIntoFn
     fit_training_state_fn: FitTrainingStateFn | None = None
 
@@ -327,7 +246,6 @@ class CompiledPredictionContract:
             training_metric_descriptors=self.training_metric_descriptors,
             primary_metric_id=self.primary_metric_id,
             direction=self.direction,
-            supported_workflows=self.supported_workflows,
         )
 
     def build_output_spec(self, max_candidate_slots: int) -> PredictionOutputSpec:
@@ -362,11 +280,11 @@ class CompiledPredictionContract:
     ) -> tuple[torch.Tensor, object]:
         return self.compute_batch_loss_and_state_fn(outputs, targets, training_state)
 
-    def create_epoch_accumulator(self, stage: str) -> EpochMetricAccumulator:
-        return self.create_epoch_accumulator_fn(stage)
+    def create_epoch_accumulator(self) -> EpochMetricAccumulator:
+        return self.create_epoch_accumulator_fn()
 
     def allocate_decoded_offsets(self, sample_count: int) -> DecodedOffsets:
-        return self.allocate_decoded_offsets_fn(sample_count)
+        return DecodedOffsets.allocate(sample_count)
 
     def decode_selected_offsets_into(
         self,
@@ -374,16 +292,4 @@ class CompiledPredictionContract:
         outputs: ModelOutputs,
         decode_context: ActionSpaceDecodeContext,
     ) -> None:
-        self.decode_selected_offsets_into_fn(
-            predictions,
-            outputs,
-            decode_context,
-        )
-
-
-def bind_prediction_representation(
-    prepared: PreparedRepresentation,
-    *,
-    targets: PreparedPredictionTargets,
-) -> PredictionPreparedRepresentation:
-    return PredictionPreparedRepresentation(prepared=prepared, targets=targets)
+        self.decode_selected_offsets_into_fn(predictions, outputs, decode_context)

@@ -92,6 +92,8 @@ def write_artifact_manifest(
 def load_artifact_manifest(db_path: Path) -> TrainingArtifactManifest:
     """Load the canonical artifact manifest that owns persisted artifact provenance."""
 
+    if not db_path.is_file():
+        raise MissingStateError(f"Missing artifact manifest: {db_path}")
     engine = create_state_engine(db_path)
     try:
         with engine.connect() as conn:
@@ -311,14 +313,14 @@ def _evaluation_storage_id(summary: EvaluationRuntimeSummary) -> str:
     canonical_payload = json.dumps(
         {
             "delay_seconds": summary.delay_seconds,
-            "evaluator_id": summary.evaluator_id,
-            "evaluator_config": summary.evaluator_config,
+            "evaluation_id": summary.evaluation_id,
+            "evaluation_config": summary.evaluation_config,
         },
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
     digest = hashlib.sha256(canonical_payload).hexdigest()[:16]
-    return f"{summary.evaluator_id}-{summary.delay_seconds}s-{digest}"
+    return f"{summary.evaluation_id}-{summary.delay_seconds}s-{digest}"
 
 
 def _evaluation_ids(conn: Connection) -> list[str]:

@@ -21,7 +21,6 @@ from .batch import (
     MinBlockFeeTrainingState,
     materialize_min_block_fee_targets,
 )
-from .config import MinBlockFeeMultitaskFamilyConfig
 from .metrics import (
     TRAINING_METRIC_DESCRIPTORS,
     compute_batch_loss_and_state,
@@ -33,19 +32,13 @@ from .outputs import (
     OFFSET_LOGITS_HEAD_ID,
     build_output_spec,
 )
-from .targets import prepare_min_block_fee_targets
 
 
 def _fit_training_state(
     store: CompiledProblemStore,
     train_sample_indices: IntVector,
     realization_policy: CompiledRealizationPolicyContract,
-    *,
-    class_weighting: str,
-    fee_target_normalization: str,
 ) -> MinBlockFeeTrainingState:
-    if class_weighting != "inverse_frequency":
-        raise ValueError(f"Unsupported class_weighting: {class_weighting}")
     targets = materialize_min_block_fee_targets(
         store,
         train_sample_indices,
@@ -55,14 +48,9 @@ def _fit_training_state(
         targets.min_block_offsets,
         n_classes=store.max_candidate_slots,
     )
-    fee_mean = torch.tensor(0.0, dtype=torch.float32)
-    fee_std = torch.tensor(1.0, dtype=torch.float32)
-    if fee_target_normalization == "zscore_train_split":
-        fees = targets.min_block_log_fees.detach().to(device="cpu", dtype=torch.float32)
-        fee_mean = fees.mean()
-        fee_std = fees.std(correction=0) + 1e-8
-    elif fee_target_normalization != "none":
-        raise ValueError(f"Unsupported fee_target_normalization: {fee_target_normalization}")
+    fees = targets.min_block_log_fees.detach().to(device="cpu", dtype=torch.float32)
+    fee_mean = fees.mean()
+    fee_std = fees.std(correction=0) + 1e-8
     return MinBlockFeeTrainingState(
         class_weights=class_weights,
         fee_mean=fee_mean,
@@ -75,7 +63,7 @@ def _prepare_targets(
     sample_indices: IntVector,
     realization_policy: CompiledRealizationPolicyContract,
 ) -> PreparedPredictionTargets:
-    return prepare_min_block_fee_targets(
+    return materialize_min_block_fee_targets(
         store,
         sample_indices,
         realization_policy=realization_policy,
@@ -86,10 +74,6 @@ def _compute_batch_loss_and_state(
     outputs: ModelOutputs,
     targets: PredictionTargetBatch,
     training_state: object | None,
-    *,
-    classification_loss_weight: float,
-    regression_loss_weight: float,
-    fee_target_normalization: str,
 ) -> tuple[torch.Tensor, object]:
     if not isinstance(targets, MinBlockFeeTargetBatch):
         raise TypeError("min_block_fee_multitask expects MinBlockFeeTargetBatch targets")
@@ -100,19 +84,11 @@ def _compute_batch_loss_and_state(
         outputs.head(MIN_LOG_FEE_HEAD_ID).squeeze(-1),
         targets,
         training_state=training_state,
-        classification_loss_weight=classification_loss_weight,
-        regression_loss_weight=regression_loss_weight,
-        fee_target_normalization=fee_target_normalization,
     )
 
 
-def _create_epoch_accumulator(stage: str):
-    del stage
+def _create_epoch_accumulator():
     return create_epoch_accumulator()
-
-
-def _allocate_decoded_offsets(sample_count: int) -> DecodedOffsets:
-    return DecodedOffsets.allocate(sample_count)
 
 
 def _decode_selected_offsets_into(
@@ -131,7 +107,6 @@ def _decode_selected_offsets_into(
 
 def compile_prediction_family(
     prediction_id: str,
-    family: MinBlockFeeMultitaskFamilyConfig,
 ) -> CompiledPredictionContract:
     return CompiledPredictionContract(
         prediction_id=prediction_id,
@@ -139,27 +114,10 @@ def compile_prediction_family(
         training_metric_descriptors=TRAINING_METRIC_DESCRIPTORS,
         primary_metric_id="total_loss",
         direction="minimize",
-        supported_workflows=frozenset({"train", "tune", "evaluate"}),
         build_output_spec_fn=build_output_spec,
-        fit_training_state_fn=lambda store, indices, realization_policy: _fit_training_state(
-            store,
-            indices,
-            realization_policy,
-            class_weighting=family.class_weighting,
-            fee_target_normalization=family.fee_target_normalization,
-        ),
+        fit_training_state_fn=_fit_training_state,
         prepare_targets_fn=_prepare_targets,
-        compute_batch_loss_and_state_fn=lambda outputs, targets, training_state: (
-            _compute_batch_loss_and_state(
-                outputs,
-                targets,
-                training_state,
-                classification_loss_weight=family.classification_loss_weight,
-                regression_loss_weight=family.regression_loss_weight,
-                fee_target_normalization=family.fee_target_normalization,
-            )
-        ),
+        compute_batch_loss_and_state_fn=_compute_batch_loss_and_state,
         create_epoch_accumulator_fn=_create_epoch_accumulator,
-        allocate_decoded_offsets_fn=_allocate_decoded_offsets,
         decode_selected_offsets_into_fn=_decode_selected_offsets_into,
     )

@@ -21,15 +21,16 @@ from ..temporal.realization import CompiledRealizationPolicyContract
 from ._runtime import (
     autocast_context,
     build_cuda_modeling_runtime,
-    build_prediction_batch_source,
     configure_torch_backends,
-    resolve_compile_enabled,
-    resolve_training_precision,
     run_model_forward_pass,
     set_global_seed,
 )
-from .batch_sources import BatchSource
+from .batch_sources import BatchSource, build_prediction_batch_source
 from .families.base import ModelConfig
+from .families.registry import (
+    resolve_model_compile_enabled,
+    resolve_model_training_precision,
+)
 from .models import TemporalModel
 from .representations import CompiledRepresentationContract
 
@@ -134,9 +135,7 @@ def _run_epoch(
     gradient_clip_norm: float | None,
     training: bool,
 ) -> MetricSet:
-    accumulator = prediction_contract.create_epoch_accumulator(
-        "train" if training else "validation"
-    )
+    accumulator = prediction_contract.create_epoch_accumulator()
     if training:
         model.train()
     else:
@@ -195,31 +194,33 @@ def train_model(
 
     set_global_seed(training_config.seed)
     runtime = build_cuda_modeling_runtime(batch_size=training_config.batch_size)
-    precision = resolve_training_precision(
+    precision = resolve_model_training_precision(
         device=runtime.resolved_device,
         model_config=model_config,
     )
-    compile_enabled = resolve_compile_enabled(
+    compile_enabled = resolve_model_compile_enabled(
         device=runtime.resolved_device,
         model_config=model_config,
     )
-    train_batch_source_plan = build_prediction_batch_source(
+    train_batch_source = build_prediction_batch_source(
         store,
         train_sample_indices,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
         realization_policy=realization_policy,
-        runtime=runtime,
+        runtime_context=runtime.representation_runtime_context,
+        resolved_device=runtime.resolved_device,
         seed=training_config.seed,
         shuffle=True,
     )
-    validation_batch_source_plan = build_prediction_batch_source(
+    validation_batch_source = build_prediction_batch_source(
         store,
         validation_sample_indices,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
         realization_policy=realization_policy,
-        runtime=runtime,
+        runtime_context=runtime.representation_runtime_context,
+        resolved_device=runtime.resolved_device,
         seed=training_config.seed,
         shuffle=False,
     )
@@ -255,7 +256,7 @@ def train_model(
         for epoch in range(1, training_config.max_epochs + 1):
             train_metrics = _run_epoch(
                 fit_model,
-                loader=train_batch_source_plan.source,
+                loader=train_batch_source,
                 resolved_device=runtime.resolved_device,
                 precision=precision,
                 prediction_contract=prediction_contract,
@@ -267,7 +268,7 @@ def train_model(
             )
             validation_metrics = _run_epoch(
                 fit_model,
-                loader=validation_batch_source_plan.source,
+                loader=validation_batch_source,
                 resolved_device=runtime.resolved_device,
                 precision=precision,
                 prediction_contract=prediction_contract,
@@ -401,22 +402,22 @@ def evaluate_model(
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
     runtime = build_cuda_modeling_runtime(batch_size=training_config.batch_size)
-    precision = resolve_training_precision(
+    precision = resolve_model_training_precision(
         device=runtime.resolved_device,
         model_config=model_config,
     )
     model.to(runtime.resolved_device)
-    batch_source_plan = build_prediction_batch_source(
+    batch_source = build_prediction_batch_source(
         store,
         sample_indices,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
         realization_policy=realization_policy,
-        runtime=runtime,
+        runtime_context=runtime.representation_runtime_context,
+        resolved_device=runtime.resolved_device,
         seed=training_config.seed,
     )
-    loader = batch_source_plan.source
-    accumulator = prediction_contract.create_epoch_accumulator("evaluation")
+    accumulator = prediction_contract.create_epoch_accumulator()
 
     def _accumulate(batch: PredictionBatch, outputs) -> None:
         _, batch_state = prediction_contract.compute_batch_loss_and_state(
@@ -432,7 +433,7 @@ def evaluate_model(
     ):
         run_model_forward_pass(
             cast(TemporalModel, model),
-            loader=loader,
+            loader=batch_source,
             resolved_device=runtime.resolved_device,
             precision=precision,
             on_outputs=_accumulate,

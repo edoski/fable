@@ -6,7 +6,7 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from ...core.closed_dispatch import validate_path_segment
+from ...core.validation import validate_path_segment
 
 ModelIdT = TypeVar("ModelIdT", bound=str)
 

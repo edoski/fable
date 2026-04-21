@@ -104,10 +104,10 @@ def compile_problem_contract(
     feature_contract: CompiledFeatureContract,
     chain_runtime: ChainRuntimeSpec | None = None,
 ) -> CompiledProblemContract:
-    from .compilers import problem_compiler_spec
+    from .compilers import compile_problem
 
     realization_policy = compile_realization_policy_contract(problem.realization_policy)
-    return problem_compiler_spec(problem.compiler.id).compile_problem(
+    return compile_problem(
         problem,
         feature_contract,
         realization_policy,
@@ -117,13 +117,6 @@ def compile_problem_contract(
 
 def problem_runtime_metadata_payload(metadata: ProblemRuntimeMetadata) -> dict[str, object]:
     return asdict(metadata)
-
-
-def problem_runtime_metadata_from_payload(
-    problem: ProblemSpec,
-    payload: Mapping[str, object],
-) -> ProblemRuntimeMetadata:
-    return problem_runtime_metadata_from_compiler_payload(problem.compiler.id, payload)
 
 
 def problem_runtime_metadata_from_compiler_payload(

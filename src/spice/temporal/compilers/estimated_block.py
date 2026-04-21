@@ -22,6 +22,11 @@ from ..contracts import (
 )
 from ..problem_store import CompiledProblemStore
 from ..realization import CompiledRealizationPolicyContract
+from ._shared import (
+    calibrate_positive_timestamp_delta_seconds,
+    resolve_bootstrap_interval_seconds,
+    resolve_runtime_interval_seconds,
+)
 from .base import ProblemCompilerConfig
 
 if TYPE_CHECKING:
@@ -59,12 +64,12 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
 
     def initial_history_window_seconds(self, recent_block_interval_seconds: float | None) -> int:
         minimum_window = self.required_history_seconds + self.max_delay_seconds
-        lookback_interval_seconds = _resolve_bootstrap_interval_seconds(
+        lookback_interval_seconds = resolve_bootstrap_interval_seconds(
             source=self.lookback_interval_source,
             recent_block_interval_seconds=recent_block_interval_seconds,
             nominal_block_time_seconds=self.nominal_block_time_seconds,
         )
-        candidate_interval_seconds = _resolve_bootstrap_interval_seconds(
+        candidate_interval_seconds = resolve_bootstrap_interval_seconds(
             source=self.candidate_interval_source,
             recent_block_interval_seconds=recent_block_interval_seconds,
             nominal_block_time_seconds=self.nominal_block_time_seconds,
@@ -97,21 +102,24 @@ class EstimatedBlockCompiledProblemContract(CompiledProblemContract):
         self,
         feature_table: ResolvedFeatureTable,
     ) -> tuple[CompiledProblemStore, EstimatedBlockRuntimeMetadata]:
-        calibrated_interval_seconds = _calibrate_observed_block_interval_seconds(
+        calibrated_interval_seconds = calibrate_positive_timestamp_delta_seconds(
             feature_table,
             statistic=self.calibrated_interval_statistic,
+            empty_error="Estimated-block compiler requires positive timestamp deltas",
         )
-        lookback_interval_seconds = _resolve_runtime_interval_seconds(
+        lookback_interval_seconds = resolve_runtime_interval_seconds(
             source=self.lookback_interval_source,
             calibrated_interval_seconds=calibrated_interval_seconds,
             nominal_block_time_seconds=self.nominal_block_time_seconds,
-            label="lookback",
+            compiler_label="estimated_block compiler",
+            interval_label="lookback",
         )
-        candidate_interval_seconds = _resolve_runtime_interval_seconds(
+        candidate_interval_seconds = resolve_runtime_interval_seconds(
             source=self.candidate_interval_source,
             calibrated_interval_seconds=calibrated_interval_seconds,
             nominal_block_time_seconds=self.nominal_block_time_seconds,
-            label="candidate",
+            compiler_label="estimated_block compiler",
+            interval_label="candidate",
         )
         lookback_steps = _lookback_steps_for_seconds(
             self.lookback_seconds,
@@ -271,50 +279,6 @@ def _build_estimated_block_problem_store(
         candidate_end_rows=selected_candidate_ends,
         max_candidate_slots=resolved_max_candidate_slots,
     )
-
-
-def _calibrate_observed_block_interval_seconds(
-    feature_table: ResolvedFeatureTable,
-    *,
-    statistic: EstimatedBlockCalibratedStatistic,
-) -> float:
-    deltas = np.diff(feature_table.series.timestamps.astype(np.int64, copy=False))
-    positive_deltas = deltas[deltas > 0]
-    if positive_deltas.size == 0:
-        raise ValueError("Estimated-block compiler requires positive timestamp deltas")
-    if statistic is EstimatedBlockCalibratedStatistic.MEAN:
-        return float(np.mean(positive_deltas))
-    return float(np.median(positive_deltas))
-
-
-def _resolve_runtime_interval_seconds(
-    *,
-    source: EstimatedBlockIntervalSource,
-    calibrated_interval_seconds: float,
-    nominal_block_time_seconds: float | None,
-    label: str,
-) -> float:
-    if source is EstimatedBlockIntervalSource.CALIBRATED:
-        return calibrated_interval_seconds
-    if nominal_block_time_seconds is None or nominal_block_time_seconds <= 0:
-        raise ValueError(
-            f"estimated_block compiler requires nominal block time for {label} interval resolution"
-        )
-    return nominal_block_time_seconds
-
-
-def _resolve_bootstrap_interval_seconds(
-    *,
-    source: EstimatedBlockIntervalSource,
-    recent_block_interval_seconds: float | None,
-    nominal_block_time_seconds: float | None,
-) -> float | None:
-    if source is EstimatedBlockIntervalSource.NOMINAL_CHAIN_RUNTIME:
-        return nominal_block_time_seconds
-    if recent_block_interval_seconds is None or recent_block_interval_seconds <= 0:
-        return None
-    return recent_block_interval_seconds
-
 
 def _lookback_steps_for_seconds(
     lookback_seconds: int,

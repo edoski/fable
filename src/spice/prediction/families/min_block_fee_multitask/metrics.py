@@ -77,18 +77,12 @@ def compute_batch_loss_and_state(
     targets: MinBlockFeeTargetBatch,
     *,
     training_state: MinBlockFeeTrainingState,
-    classification_loss_weight: float,
-    regression_loss_weight: float,
-    fee_target_normalization: str,
 ) -> tuple[torch.Tensor, MinBlockFeeBatchState]:
     total_loss, classification_loss, regression_loss = compute_multitask_loss(
         offset_logits,
         fee_predictions,
         targets,
         training_state=training_state,
-        classification_loss_weight=classification_loss_weight,
-        regression_loss_weight=regression_loss_weight,
-        fee_target_normalization=fee_target_normalization,
     )
     decoded_offsets = masked_offset_logits(
         offset_logits.detach(),

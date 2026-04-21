@@ -18,7 +18,7 @@ from spice.config import (
     WorkflowTask,
     resolve_workflow_config,
 )
-from spice.config.presets import PresetOverlay
+from spice.config.presets import PresetFrame
 from spice.config.registry import (
     dump_canonical_yaml,
     load_named_group,
@@ -28,7 +28,7 @@ from spice.config.registry import (
 
 _CONF_ROOT = Path(__file__).resolve().parents[1] / "src" / "spice" / "conf"
 _SELECTION_GROUP_KEYS = frozenset(WorkflowRequest.model_fields) & frozenset(named_group_keys())
-_PRESET_FIELDS = frozenset(PresetOverlay.model_fields)
+_PRESET_FIELDS = frozenset(PresetFrame.model_fields)
 TEST_EVALUATION_DATE = date(2025, 11, 9)
 _IDENTITY_FIELDS = {
     "chain": "name",
@@ -118,13 +118,12 @@ def model_workflow_override():
                 "input_normalization": {"id": "row_standard"},
             },
             "evaluation": {
-                "evaluator": {
-                    "id": "poisson_replay",
-                    "window_seconds": 600,
-                    "arrival_rate_per_second": 0.02,
-                    "repetitions": 3,
-                    "seed": 2026,
-                }
+                "id": "paper_replay_2h",
+                "sampler": "poisson_arrivals",
+                "window_seconds": 600,
+                "arrival_rate_per_second": 0.02,
+                "repetitions": 3,
+                "seed": 2026,
             },
             "tuning": {
                 "trial_count": 2,
@@ -259,9 +258,6 @@ def load_workflow_config(tmp_path: Path, isolate_conf_root):
                     continue
                 selection_values[key] = value
                 continue
-            if key in WorkflowRequest.model_fields and not isinstance(value, Mapping):
-                selection_values[key] = value
-                continue
             if key in _PRESET_FIELDS:
                 if isinstance(value, Mapping) and key in named_group_keys():
                     spec_name = _spec_name_for_payload(
@@ -281,6 +277,9 @@ def load_workflow_config(tmp_path: Path, isolate_conf_root):
                     preset_payload[key] = dict(value)
                     continue
                 preset_payload[key] = value
+                continue
+            if key in WorkflowRequest.model_fields and not isinstance(value, Mapping):
+                selection_values[key] = value
                 continue
             raise ValueError(f"Unsupported test workflow override key: {key}")
         _write_named_spec(conf_root, group="preset", name=preset_name, payload=preset_payload)

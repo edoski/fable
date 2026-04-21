@@ -21,17 +21,6 @@ def metric_string(value: float) -> str:
     return f"{value:.4f}"
 
 
-def metric_fields(
-    descriptors: Sequence[MetricDescriptor],
-    metrics: Mapping[str, float],
-) -> list[tuple[str, str]]:
-    return [
-        (descriptor.label, metric_string(metrics[descriptor.id]))
-        for descriptor in descriptors
-        if descriptor.id in metrics
-    ]
-
-
 def metric_bundle_string(
     descriptors: Sequence[MetricDescriptor],
     metrics: Mapping[str, float],

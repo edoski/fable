@@ -1,30 +1,46 @@
-"""Closed dispatch for supported feature families."""
+"""Feature-family lookup for the fixed in-repo families."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
+from dataclasses import dataclass
 
 from ..core.errors import ConfigResolutionError
 from .core import validate_feature_names
-from .families.base import FeatureFamilyConfig, FeatureFamilySpec
+from .families.base import FeatureFamily, FeatureFamilyConfig
+from .families.block_native import (
+    BLOCK_NATIVE_FAMILY,
+    BlockNativeFeatureFamilyConfig,
+)
+from .families.time_native import TIME_NATIVE_FAMILY, TimeNativeFeatureFamilyConfig
 
-_KNOWN_FEATURE_FAMILIES = ("block_native", "time_native")
+
+@dataclass(frozen=True, slots=True)
+class _FeatureFamilyEntry:
+    config_type: type[FeatureFamilyConfig]
+    family: FeatureFamily
 
 
-def feature_family_spec(family_id: str) -> FeatureFamilySpec:
-    if family_id == "block_native":
-        from .families.block_native import FEATURE_FAMILY_SPEC
+_FEATURE_FAMILIES: dict[str, _FeatureFamilyEntry] = {
+    "block_native": _FeatureFamilyEntry(
+        config_type=BlockNativeFeatureFamilyConfig,
+        family=BLOCK_NATIVE_FAMILY,
+    ),
+    "time_native": _FeatureFamilyEntry(
+        config_type=TimeNativeFeatureFamilyConfig,
+        family=TIME_NATIVE_FAMILY,
+    ),
+}
 
-        return FEATURE_FAMILY_SPEC
-    if family_id == "time_native":
-        from .families.time_native import FEATURE_FAMILY_SPEC
 
-        return FEATURE_FAMILY_SPEC
-    known = ", ".join(_KNOWN_FEATURE_FAMILIES)
-    raise ConfigResolutionError(
-        f"Unknown feature_set.family.id: {family_id}. Known values: {known}"
-    )
+def feature_family(family_id: str) -> FeatureFamily:
+    entry = _FEATURE_FAMILIES.get(family_id)
+    if entry is None:
+        known = ", ".join(sorted(_FEATURE_FAMILIES))
+        raise ConfigResolutionError(
+            f"Unknown feature_set.family.id: {family_id}. Known values: {known}"
+        )
+    return entry.family
 
 
 def coerce_feature_family_config(
@@ -40,10 +56,13 @@ def coerce_feature_family_config(
         payload = dict(raw_config)
     else:
         raise ConfigResolutionError("feature_set.family must be a mapping")
-    return cast(
-        FeatureFamilyConfig,
-        feature_family_spec(family_id).config_type.model_validate(payload),
-    )
+    entry = _FEATURE_FAMILIES.get(family_id)
+    if entry is None:
+        known = ", ".join(sorted(_FEATURE_FAMILIES))
+        raise ConfigResolutionError(
+            f"Unknown feature_set.family.id: {family_id}. Known values: {known}"
+        )
+    return entry.config_type.model_validate(payload)
 
 
 def validate_feature_selection(
@@ -51,9 +70,9 @@ def validate_feature_selection(
     feature_family_id: str,
     feature_names: tuple[str, ...],
 ) -> None:
-    spec = feature_family_spec(feature_family_id)
+    family = feature_family(feature_family_id)
     validate_feature_names(
         feature_set_id,
         feature_names,
-        known_feature_names=tuple(spec.features),
+        known_feature_names=tuple(family.features),
     )

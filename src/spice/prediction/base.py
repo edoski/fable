@@ -5,22 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
-
-from ..core.closed_dispatch import validate_path_segment
+from pydantic import BaseModel, ConfigDict
 
 
 class PredictionConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
-
-
-class PredictionFamilyConfig(PredictionConfigModel):
-    id: str
-
-    @field_validator("id")
-    @classmethod
-    def validate_id(cls, value: str) -> str:
-        return validate_path_segment(value, label="prediction.family.id")
 
 
 @dataclass(frozen=True, slots=True)

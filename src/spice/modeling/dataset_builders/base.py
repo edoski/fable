@@ -9,11 +9,7 @@ from typing import TYPE_CHECKING
 import polars as pl
 from pydantic import Field, field_validator, model_validator
 
-from ...core.closed_dispatch import (
-    config_payload_and_id,
-    unknown_id_error,
-    validate_path_segment,
-)
+from ...core.validation import validate_path_segment
 from ...core.errors import ConfigResolutionError
 from ...modeling.families.base import ConfigModel
 from ...semantics import DatasetBuilderSemantics
@@ -140,20 +136,20 @@ def compiler_runtime_metadata_from_builder_payload(
 def coerce_dataset_builder_config(
     payload: Mapping[str, object] | DatasetBuilderConfig,
 ) -> DatasetBuilderConfig:
-    raw_payload, builder_id = config_payload_and_id(
-        payload,
-        config_type=DatasetBuilderConfig,
-        field_name="dataset_builder.id",
-        mapping_label="dataset_builder",
-    )
+    if isinstance(payload, DatasetBuilderConfig):
+        raw_payload = payload.model_dump(mode="json")
+        builder_id = payload.id
+    elif isinstance(payload, Mapping):
+        raw_payload = dict(payload)
+        builder_id = raw_payload.get("id")
+    else:
+        raise TypeError("dataset_builder must be a mapping or config model")
     if builder_id == "standard_temporal":
         return StandardTemporalDatasetBuilderConfig.model_validate(raw_payload)
     if builder_id == "professor_temporal":
         return ProfessorTemporalDatasetBuilderConfig.model_validate(raw_payload)
-    raise unknown_id_error(
-        field_name="dataset_builder.id",
-        component_id=builder_id,
-        known_ids=("standard_temporal", "professor_temporal"),
+    raise ValueError(
+        "dataset_builder.id must be one of: standard_temporal, professor_temporal"
     )
 
 
@@ -168,8 +164,6 @@ def compile_dataset_builder_contract(
         return _compile_professor_temporal(
             ProfessorTemporalDatasetBuilderConfig.model_validate(config)
         )
-    raise unknown_id_error(
-        field_name="dataset_builder.id",
-        component_id=config.id,
-        known_ids=("standard_temporal", "professor_temporal"),
+    raise ValueError(
+        "dataset_builder.id must be one of: standard_temporal, professor_temporal"
     )

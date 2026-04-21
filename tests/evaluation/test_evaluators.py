@@ -43,14 +43,17 @@ def test_paper_windowed_falls_back_to_fullset_for_short_spans() -> None:
     windowed = compile_evaluator_contract(
         coerce_evaluator_config(
             {
-                "id": "paper_windowed",
+                "id": "paper_windowed_2h",
+                "sampler": "uniform_window",
                 "window_seconds": 99_999,
                 "repetitions": 3,
                 "seed": 2026,
             }
         )
     )
-    fullset = compile_evaluator_contract(coerce_evaluator_config({"id": "paper_fullset"}))
+    fullset = compile_evaluator_contract(
+        coerce_evaluator_config({"id": "paper_fullset", "sampler": "fullset"})
+    )
 
     summary = windowed.run(
         store,
@@ -79,14 +82,17 @@ def test_paper_windowed_falls_back_to_fullset_for_exact_spans() -> None:
     windowed = compile_evaluator_contract(
         coerce_evaluator_config(
             {
-                "id": "paper_windowed",
+                "id": "paper_windowed_2h",
+                "sampler": "uniform_window",
                 "window_seconds": exact_window_seconds,
                 "repetitions": 3,
                 "seed": 2026,
             }
         )
     )
-    fullset = compile_evaluator_contract(coerce_evaluator_config({"id": "paper_fullset"}))
+    fullset = compile_evaluator_contract(
+        coerce_evaluator_config({"id": "paper_fullset", "sampler": "fullset"})
+    )
 
     summary = windowed.run(
         store,
@@ -113,7 +119,8 @@ def test_paper_windowed_samples_requested_number_of_runs() -> None:
     evaluator = compile_evaluator_contract(
         coerce_evaluator_config(
             {
-                "id": "paper_windowed",
+                "id": "paper_windowed_2h",
+                "sampler": "uniform_window",
                 "window_seconds": 3600,
                 "repetitions": 3,
                 "seed": 2026,
@@ -140,7 +147,8 @@ def test_paper_windowed_handles_sparse_non_empty_windows_without_retry_failure()
     evaluator = compile_evaluator_contract(
         coerce_evaluator_config(
             {
-                "id": "paper_windowed",
+                "id": "paper_windowed_2h",
+                "sampler": "uniform_window",
                 "window_seconds": 1,
                 "repetitions": 8,
                 "seed": 2026,
@@ -168,7 +176,8 @@ def test_poisson_replay_handles_non_chronological_sample_indices() -> None:
     evaluator = compile_evaluator_contract(
         coerce_evaluator_config(
             {
-                "id": "poisson_replay",
+                "id": "paper_replay_2h",
+                "sampler": "poisson_arrivals",
                 "window_seconds": 7200,
                 "arrival_rate_per_second": 0.01,
                 "repetitions": 3,

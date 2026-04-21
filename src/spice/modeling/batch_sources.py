@@ -1,4 +1,4 @@
-"""Internal batch-source planning for training and evaluation."""
+"""Internal batch-source planning for training and inference."""
 
 from __future__ import annotations
 
@@ -12,7 +12,15 @@ import torch
 from numpy.typing import NDArray
 from torch.utils.data import DataLoader, Dataset, Sampler
 
+from ..prediction import CompiledPredictionContract
+from ..prediction.contracts import ModelInputBatch, PredictionBatch, PreparedPredictionTargets
+from ..temporal.problem_store import CompiledProblemStore
+from ..temporal.realization import CompiledRealizationPolicyContract
 from .representations import RepresentationRuntimeContext
+from .representations import (
+    CompiledRepresentationContract,
+    PreparedRepresentation,
+)
 
 IntVector = NDArray[np.int64]
 BatchT = TypeVar("BatchT", covariant=True)
@@ -20,9 +28,6 @@ _CUDA_DEVICE_RESIDENT_BUDGET_FRACTION = 0.5
 
 
 class BatchSource(Protocol[BatchT]):
-    @property
-    def residency_mode(self) -> str: ...
-
     def __len__(self) -> int: ...
 
     def __iter__(self) -> Iterator[BatchT]: ...
@@ -44,12 +49,6 @@ class PreparedBatchRepresentation(Protocol[BatchT]):
         self,
         device: torch.device,
     ) -> PreparedBatchRepresentation[BatchT]: ...
-
-
-@dataclass(frozen=True, slots=True)
-class BatchSourcePlan(Generic[BatchT]):
-    source: BatchSource[BatchT]
-    residency_mode: str
 
 
 class _SamplePositionDataset(Dataset[int]):
@@ -128,11 +127,10 @@ class _HostBatchCollator(Generic[BatchT]):
         return self.prepared.build_batch(index)
 
 
-@dataclass(slots=True)
 class _HostDataLoaderBatchSource(Generic[BatchT]):
-    _loader: DataLoader[BatchT]
-    _batch_sampler: _PositionBatchSampler
-    residency_mode: str = "staged"
+    def __init__(self, loader: DataLoader[BatchT], batch_sampler: _PositionBatchSampler) -> None:
+        self._loader = loader
+        self._batch_sampler = batch_sampler
 
     def __len__(self) -> int:
         return len(self._batch_sampler)
@@ -141,11 +139,15 @@ class _HostDataLoaderBatchSource(Generic[BatchT]):
         return iter(self._loader)
 
 
-@dataclass(slots=True)
 class _DeviceResidentBatchSource(Generic[BatchT]):
-    prepared: PreparedBatchRepresentation[BatchT]
-    batch_sampler: _PositionBatchSampler
-    residency_mode: str = "resident"
+    def __init__(
+        self,
+        *,
+        prepared: PreparedBatchRepresentation[BatchT],
+        batch_sampler: _PositionBatchSampler,
+    ) -> None:
+        self.prepared = prepared
+        self.batch_sampler = batch_sampler
 
     def __len__(self) -> int:
         return len(self.batch_sampler)
@@ -155,29 +157,129 @@ class _DeviceResidentBatchSource(Generic[BatchT]):
             yield self.prepared.build_batch(torch.as_tensor(sample_positions, dtype=torch.int64))
 
 
-def plan_batch_source(
+@dataclass(slots=True)
+class _PreparedPredictionBatches:
+    prepared: PreparedRepresentation
+    targets: PreparedPredictionTargets
+
+    @property
+    def sample_count(self) -> int:
+        return self.prepared.sample_count
+
+    @property
+    def batch_signatures(self) -> IntVector:
+        return self.prepared.batch_signatures
+
+    @property
+    def estimated_storage_bytes(self) -> int:
+        return self.prepared.estimated_storage_bytes + self.targets.estimated_storage_bytes
+
+    def build_batch(self, sample_positions: torch.Tensor) -> PredictionBatch:
+        input_batch = self.prepared.build_batch(sample_positions)
+        return PredictionBatch(
+            inputs=input_batch,
+            targets=self.targets.build_batch(input_batch.sample_positions),
+        )
+
+    def to_device_storage(self, device: torch.device) -> _PreparedPredictionBatches:
+        return _PreparedPredictionBatches(
+            prepared=self.prepared.to_device_storage(device),
+            targets=self.targets.to_device_storage(device),
+        )
+
+
+def _build_source(
     prepared: PreparedBatchRepresentation[BatchT],
     *,
     runtime_context: RepresentationRuntimeContext,
     resolved_device: torch.device,
     seed: int,
     shuffle: bool,
-) -> BatchSourcePlan[BatchT]:
-    source = _plan_prepared_source(
-        prepared,
-        required_bytes=prepared.estimated_storage_bytes,
+) -> BatchSource[BatchT]:
+    return cast(
+        BatchSource[BatchT],
+        _build_batch_source(
+            prepared,
+            required_bytes=prepared.estimated_storage_bytes,
+            runtime_context=runtime_context,
+            resolved_device=resolved_device,
+            seed=seed,
+            shuffle=shuffle,
+        ),
+    )
+
+
+def _prepare_model_representation(
+    store: CompiledProblemStore,
+    sample_indices: IntVector,
+    *,
+    representation_contract: CompiledRepresentationContract,
+    runtime_context: RepresentationRuntimeContext,
+) -> PreparedRepresentation:
+    return representation_contract.prepare(
+        store,
+        sample_indices,
+        runtime_context=runtime_context,
+    )
+
+
+def build_prediction_batch_source(
+    store: CompiledProblemStore,
+    sample_indices: IntVector,
+    *,
+    representation_contract: CompiledRepresentationContract,
+    prediction_contract: CompiledPredictionContract,
+    realization_policy: CompiledRealizationPolicyContract,
+    runtime_context: RepresentationRuntimeContext,
+    resolved_device: torch.device,
+    seed: int,
+    shuffle: bool = False,
+) -> BatchSource[PredictionBatch]:
+    prepared = _prepare_model_representation(
+        store,
+        sample_indices,
+        representation_contract=representation_contract,
+        runtime_context=runtime_context,
+    )
+    targets = prediction_contract.prepare_targets(
+        store,
+        sample_indices,
+        realization_policy=realization_policy,
+    )
+    return _build_source(
+        _PreparedPredictionBatches(prepared=prepared, targets=targets),
         runtime_context=runtime_context,
         resolved_device=resolved_device,
         seed=seed,
         shuffle=shuffle,
     )
-    return BatchSourcePlan(
-        source=cast(BatchSource[BatchT], source),
-        residency_mode=source.residency_mode,
+
+
+def build_model_input_batch_source(
+    store: CompiledProblemStore,
+    sample_indices: IntVector,
+    *,
+    representation_contract: CompiledRepresentationContract,
+    runtime_context: RepresentationRuntimeContext,
+    resolved_device: torch.device,
+    seed: int,
+) -> BatchSource[ModelInputBatch]:
+    prepared = _prepare_model_representation(
+        store,
+        sample_indices,
+        representation_contract=representation_contract,
+        runtime_context=runtime_context,
+    )
+    return _build_source(
+        prepared,
+        runtime_context=runtime_context,
+        resolved_device=resolved_device,
+        seed=seed,
+        shuffle=False,
     )
 
 
-def _plan_prepared_source(
+def _build_batch_source(
     prepared: PreparedBatchRepresentation[BatchT],
     *,
     required_bytes: int,
@@ -222,8 +324,8 @@ def _build_host_dataloader_source(
         pin_memory=_should_pin_host_memory(resolved_device),
     )
     return _HostDataLoaderBatchSource(
-        _loader=cast(DataLoader[BatchT], loader),
-        _batch_sampler=batch_sampler,
+        loader=cast(DataLoader[BatchT], loader),
+        batch_sampler=batch_sampler,
     )
 
 

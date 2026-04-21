@@ -1,21 +1,11 @@
-"""Shared problem-compiler types."""
+"""Shared problem-compiler config type."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, TypeVar
-
 from pydantic import field_validator
 
-from ...core.closed_dispatch import validate_path_segment
+from ...core.validation import validate_path_segment
 from ...modeling.families.base import ConfigModel
-
-if TYPE_CHECKING:
-    from ...config.models import ChainRuntimeSpec, ProblemSpec
-    from ...features import CompiledFeatureContract
-    from ..contracts import CompiledProblemContract
-    from ..realization import CompiledRealizationPolicyContract
 
 class ProblemCompilerConfig(ConfigModel):
     id: str
@@ -24,21 +14,3 @@ class ProblemCompilerConfig(ConfigModel):
     @classmethod
     def validate_id(cls, value: str) -> str:
         return validate_path_segment(value, label="problem.compiler.id")
-
-
-ProblemCompilerConfigT = TypeVar("ProblemCompilerConfigT", bound=ProblemCompilerConfig)
-
-
-@dataclass(frozen=True, slots=True)
-class ProblemCompilerSpec(Generic[ProblemCompilerConfigT]):
-    id: str
-    config_type: type[ProblemCompilerConfigT]
-    compile_problem: Callable[
-        [
-            ProblemSpec,
-            CompiledFeatureContract,
-            CompiledRealizationPolicyContract,
-            ChainRuntimeSpec | None,
-        ],
-        CompiledProblemContract,
-    ]

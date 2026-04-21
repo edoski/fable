@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import signal
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from types import FrameType
+from typing import Any, cast
 from uuid import uuid4
 
 from ..config.models import ArtifactVariant, TrainConfig
@@ -15,10 +20,11 @@ from ..modeling.pipeline import build_training_spec
 from ..modeling.summary import training_result_fields
 from ..modeling.training import TrainingEpochProgress
 from ..modeling.tuning import apply_study_best_params
-from ..storage.catalog import upsert_artifact_record
 from ..storage.engine import ARTIFACT_ROOT_KIND
 from ..storage.layout import resolve_workflow_paths
-from ._shared import abort_cleanup, managed_workflow
+from ..storage.roots import reindex_root
+
+SignalHandler = Callable[[int, FrameType | None], Any] | int | None
 
 
 def _build_staged_artifact_root(artifact_root: Path) -> Path:
@@ -28,6 +34,63 @@ def _build_staged_artifact_root(artifact_root: Path) -> Path:
 def _cleanup_staged_artifact_root(staged_root: Path, *, prune_stop_at: Path) -> None:
     remove_path(staged_root)
     prune_empty_directories(staged_root.parent, stop_at=prune_stop_at)
+
+
+@contextmanager
+def _abort_cleanup(
+    reporter: Reporter,
+    *,
+    label: str,
+    cleanup: Callable[[], None],
+) -> Iterator[None]:
+    interrupted = False
+    signal_ids = [
+        getattr(signal, name)
+        for name in ("SIGINT", "SIGTERM")
+        if hasattr(signal, name)
+    ]
+    previous_handlers: dict[int, SignalHandler] = {}
+
+    def _run_cleanup() -> None:
+        cleanup()
+        reporter.milestone(f"{label} cancelled; partial outputs removed", level="warning")
+
+    def _handle_interrupt(signum: int, frame: FrameType | None) -> None:
+        nonlocal interrupted
+        interrupted = True
+        previous_handler = previous_handlers.get(signum, signal.SIG_DFL)
+        if previous_handler == signal.SIG_IGN:
+            return
+        if previous_handler == signal.SIG_DFL:
+            raise KeyboardInterrupt
+        if callable(previous_handler):
+            previous_handler(signum, frame)
+            return
+        raise KeyboardInterrupt
+
+    registered: list[int] = []
+    try:
+        for signum in signal_ids:
+            previous_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, _handle_interrupt)
+            registered.append(signum)
+    except ValueError:
+        registered = []
+    try:
+        yield
+    except BaseException as exc:
+        if interrupted or isinstance(exc, KeyboardInterrupt):
+            _run_cleanup()
+        raise
+    finally:
+        for signum in registered:
+            try:
+                signal.signal(signum, cast(signal.Handlers, previous_handlers[signum]))
+            except ValueError:
+                pass
+    if interrupted:
+        _run_cleanup()
+        raise KeyboardInterrupt
 
 
 def _workflow_facts(config: TrainConfig) -> list[tuple[str, str]]:
@@ -68,82 +131,66 @@ def _fit_epoch_message(
 
 
 def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
-    with managed_workflow(reporter=reporter) as active_reporter:
-        active_config = config
-        if config.artifact.variant is ArtifactVariant.TUNED:
-            active_config = apply_study_best_params(config)
-        paths = resolve_workflow_paths(active_config)
-        active_reporter.header("train", _workflow_facts(active_config))
-        spec = build_training_spec(active_config)
-        artifact_dir = paths.artifact_root
-        history_block_path = paths.history_dir
-        if artifact_dir is None:
-            raise ConfigResolutionError("training workflow requires artifact output paths")
-        staged_artifact_root = _build_staged_artifact_root(artifact_dir)
-        prune_stop_at = artifact_dir.parent.parent
-        with abort_cleanup(
-            active_reporter,
-            label="train",
-            cleanup=lambda: _cleanup_staged_artifact_root(
-                staged_artifact_root,
-                prune_stop_at=prune_stop_at,
+    active_reporter = reporter or Reporter()
+    active_config = config
+    study_id: str | None = None
+    if config.artifact.variant is ArtifactVariant.TUNED:
+        applied = apply_study_best_params(config)
+        active_config = applied.config
+        study_id = applied.study_id
+    paths = resolve_workflow_paths(active_config, study_id=study_id)
+    active_reporter.header("train", _workflow_facts(active_config))
+    spec = build_training_spec(active_config)
+    artifact_dir = paths.artifact_root
+    history_block_path = paths.history_dir
+    if artifact_dir is None:
+        raise ConfigResolutionError("training workflow requires artifact output paths")
+    staged_artifact_root = _build_staged_artifact_root(artifact_dir)
+    prune_stop_at = artifact_dir.parent.parent
+    with _abort_cleanup(
+        active_reporter,
+        label="train",
+        cleanup=lambda: _cleanup_staged_artifact_root(
+            staged_artifact_root,
+            prune_stop_at=prune_stop_at,
+        ),
+    ):
+        _cleanup_staged_artifact_root(
+            staged_artifact_root,
+            prune_stop_at=prune_stop_at,
+        )
+        persisted = run_persisted_training(
+            history_block_path,
+            spec=spec,
+            artifact_dir=staged_artifact_root,
+            state_root_kind=ARTIFACT_ROOT_KIND,
+            on_prepare_complete=lambda prepared: active_reporter.milestone(
+                f"prepare rows={prepared.n_rows_used} samples={prepared.sample_count}"
             ),
-        ):
-            _cleanup_staged_artifact_root(
-                staged_artifact_root,
-                prune_stop_at=prune_stop_at,
-            )
-            persisted = run_persisted_training(
-                history_block_path,
-                spec=spec,
-                artifact_dir=staged_artifact_root,
-                state_root_kind=ARTIFACT_ROOT_KIND,
-                on_prepare_complete=lambda prepared: active_reporter.milestone(
-                    f"prepare rows={prepared.n_rows_used} samples={prepared.sample_count}"
-                ),
-                on_fit_start=lambda: active_reporter.milestone(
-                    f"fit started epochs={spec.training.max_epochs}"
-                ),
-                on_epoch_end=lambda progress: active_reporter.milestone(
-                    _fit_epoch_message(
-                        progress,
-                        primary_metric_id=spec.prediction_contract.primary_metric_id,
-                    )
-                ),
-                on_early_stop=lambda epoch, best_epoch: active_reporter.milestone(
-                    f"fit early_stop epoch={epoch} best_epoch={best_epoch}"
-                ),
-            )
-            artifact_root = paths.artifact_root
-            artifact_state_db = paths.artifact_state_db
-            artifact_id = paths.artifact_id
-            if artifact_root is None or artifact_state_db is None or artifact_id is None:
-                raise ConfigResolutionError("training workflow requires artifact output paths")
-            promote_paths_atomic([(artifact_root, staged_artifact_root)])
-            upsert_artifact_record(
-                paths.catalog_db,
-                artifact_id=artifact_id,
-                dataset_id=paths.corpus_id,
-                dataset_name=active_config.dataset.name,
-                chain_name=active_config.chain.name,
-                feature_set_id=active_config.feature_set.id,
-                prediction_id=active_config.prediction.id,
-                model_id=active_config.model.id,
-                problem_id=active_config.problem.id,
-                variant=active_config.artifact.variant.value,
-                study_id=paths.study_id,
-                study_name=(
-                    active_config.study.name
-                    if active_config.artifact.variant is ArtifactVariant.TUNED
-                    else None
-                ),
-                root_path=artifact_root,
-                state_db_path=artifact_state_db,
-            )
-        active_reporter.result(
-            "train",
-            training_result_fields(
-                persisted.summary,
-                artifact_dir=artifact_root,
+            on_fit_start=lambda: active_reporter.milestone(
+                f"fit started epochs={spec.training.max_epochs}"
+            ),
+            on_epoch_end=lambda progress: active_reporter.milestone(
+                _fit_epoch_message(
+                    progress,
+                    primary_metric_id=spec.prediction_contract.primary_metric_id,
+                )
+            ),
+            on_early_stop=lambda epoch, best_epoch: active_reporter.milestone(
+                f"fit early_stop epoch={epoch} best_epoch={best_epoch}"
             ),
         )
+        artifact_root = paths.artifact_root
+        artifact_state_db = paths.artifact_state_db
+        artifact_id = paths.artifact_id
+        if artifact_root is None or artifact_state_db is None or artifact_id is None:
+            raise ConfigResolutionError("training workflow requires artifact output paths")
+        promote_paths_atomic([(artifact_root, staged_artifact_root)])
+        reindex_root(paths.output_root, root_path=artifact_root)
+    active_reporter.result(
+        "train",
+        training_result_fields(
+            persisted.summary,
+            artifact_dir=artifact_root,
+        ),
+    )

@@ -12,7 +12,7 @@ import polars as pl
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ...core.closed_dispatch import validate_path_segment
+from ...core.validation import validate_path_segment
 
 if TYPE_CHECKING:
     from ..core import CanonicalBlockSeries
@@ -48,7 +48,6 @@ class ComputeFeatureFn(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class FeatureDefinition:
-    name: str
     dependencies: tuple[str, ...]
     history_seconds: int
     warmup_rows: int
@@ -60,9 +59,7 @@ class BuildSeriesFn(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class FeatureFamilySpec:
-    id: str
-    config_type: type[FeatureFamilyConfig]
+class FeatureFamily:
     features: dict[str, FeatureDefinition]
     fingerprint_sources: tuple[Path, ...]
     build_series: BuildSeriesFn

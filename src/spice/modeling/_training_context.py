@@ -18,9 +18,8 @@ from .dataset_builders import (
     compile_dataset_builder_contract,
 )
 from .representations import (
-    SEQUENCE_INPUT_REPRESENTATION_ID,
     CompiledRepresentationContract,
-    compile_representation_contract,
+    sequence_input_contract,
 )
 
 
@@ -46,14 +45,15 @@ def compile_training_context(config: TrainConfig | TuneConfig) -> CompiledTraini
         ),
         prediction_contract=compile_prediction_contract(
             prediction_id=config.prediction.id,
-            family_config=config.prediction.family,
+            family_id=config.prediction.family_id,
         ),
-        objective_contract=compile_objective_contract(config.objective),
+        objective_contract=compile_objective_contract(
+            config.objective,
+            evaluation=config.evaluation,
+        ),
         dataset_builder_contract=compile_dataset_builder_contract(config.dataset_builder),
         input_normalization_contract=compile_input_normalization_contract(
             config.training.input_normalization
         ),
-        representation_contract=compile_representation_contract(
-            SEQUENCE_INPUT_REPRESENTATION_ID
-        ),
+        representation_contract=sequence_input_contract(),
     )

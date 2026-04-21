@@ -1,4 +1,4 @@
-id: validation_evaluator_metric
+id: evaluation
 metric_id: profit_over_baseline
 direction: maximize
-evaluator: paper_replay_2h
+benchmark_id: paper_replay_2h

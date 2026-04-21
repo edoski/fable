@@ -10,12 +10,12 @@ from ..prediction import (
 from ..temporal.problem_store import CompiledProblemStore, IntVector
 from ._runtime import (
     build_cuda_modeling_runtime,
-    build_model_input_batch_source,
     configure_torch_backends,
-    resolve_training_precision,
     run_model_forward_pass,
 )
+from .batch_sources import build_model_input_batch_source
 from .families.base import ModelConfig
+from .families.registry import resolve_model_training_precision
 from .models import TemporalModel
 from .representations import CompiledRepresentationContract
 
@@ -34,19 +34,19 @@ def predict_with_model(
         raise ValueError("sample_indices must be non-empty")
 
     runtime = build_cuda_modeling_runtime(batch_size=batch_size)
-    precision = resolve_training_precision(
+    precision = resolve_model_training_precision(
         device=runtime.resolved_device,
         model_config=model_config,
     )
     model.to(runtime.resolved_device)
-    batch_source_plan = build_model_input_batch_source(
+    batch_source = build_model_input_batch_source(
         store,
         sample_indices,
         representation_contract=representation_contract,
-        runtime=runtime,
+        runtime_context=runtime.representation_runtime_context,
+        resolved_device=runtime.resolved_device,
         seed=0,
     )
-    loader = batch_source_plan.source
     predictions = prediction_contract.allocate_decoded_offsets(int(sample_indices.shape[0]))
 
     def _decode_batch(batch, outputs) -> None:
@@ -62,7 +62,7 @@ def predict_with_model(
     ):
         run_model_forward_pass(
             model,
-            loader=loader,
+            loader=batch_source,
             resolved_device=runtime.resolved_device,
             precision=precision,
             on_outputs=_decode_batch,

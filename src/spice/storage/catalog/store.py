@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
-from sqlalchemy import Table, and_, create_engine, select
+from sqlalchemy import Table, and_, create_engine, inspect, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.sql.elements import ColumnElement
@@ -76,7 +76,7 @@ _ARTIFACT_SPEC = _CatalogRecordSpec(
 
 
 def ensure_catalog_db(path: Path) -> None:
-    engine = _create_engine(path)
+    engine = _create_engine(path, create_dirs=True)
     try:
         metadata.create_all(engine)
     finally:
@@ -305,8 +305,9 @@ def list_artifacts_for_study(path: Path, *, study_id: str) -> list[CatalogArtifa
     )
 
 
-def _create_engine(path: Path):
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _create_engine(path: Path, *, create_dirs: bool = False):
+    if create_dirs:
+        path.parent.mkdir(parents=True, exist_ok=True)
     return create_engine(f"sqlite:///{path.resolve().as_posix()}", future=True)
 
 
@@ -339,9 +340,12 @@ def _upsert_record(
 
 
 def _delete_record(path: Path, *, spec: _CatalogRecordSpec[Any], key: str) -> None:
-    ensure_catalog_db(path)
+    if not path.is_file():
+        return
     engine = _create_engine(path)
     try:
+        if not inspect(engine).has_table(spec.table.name):
+            return
         with engine.begin() as conn:
             conn.execute(spec.table.delete().where(spec.table.c[spec.key_name] == key))
     finally:
@@ -390,9 +394,12 @@ def _select_rows(
     filters: list[ColumnElement[bool]],
     order_by: list[ColumnElement[Any]],
 ) -> list[RowMapping]:
-    ensure_catalog_db(path)
+    if not path.is_file():
+        return []
     engine = _create_engine(path)
     try:
+        if not inspect(engine).has_table(table.name):
+            return []
         statement = select(table)
         if filters:
             statement = statement.where(and_(*filters))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import optuna
@@ -9,8 +10,7 @@ from optuna.storages import RDBStorage
 
 from ..config.models import TuneConfig, TunedParameterSet
 from ..core.errors import MissingStateError, StateConflictError, StateLayoutError
-from ..modeling.families.registry import coerce_tuned_parameter_set
-from ..objectives import compile_objective_contract
+from ..modeling.tuned_config import coerce_tuned_parameter_set
 from .engine import db_url
 from .study_manifest import (
     diff_study_manifests,
@@ -118,7 +118,7 @@ def load_or_create_materialized_study(db_path: Path, *, config: TuneConfig) -> o
         return optuna.create_study(
             study_name=config.study.name,
             storage=study_storage(db_path),
-            direction=compile_objective_contract(config.objective).direction,
+            direction=config.objective.direction.value,
             load_if_exists=False,
             sampler=optuna.samplers.TPESampler(seed=config.tuning.sampler_seed),
             pruner=(
@@ -150,6 +150,8 @@ def _load_verified_study(
 
 
 def _materialized_study_summary(db_path: Path) -> optuna.study.StudySummary | None:
+    if not _has_materialized_optuna_tables(db_path):
+        return None
     summaries = optuna.get_all_study_summaries(storage=study_storage(db_path))
     if not summaries:
         return None
@@ -158,3 +160,17 @@ def _materialized_study_summary(db_path: Path) -> optuna.study.StudySummary | No
             f"Expected exactly one Optuna study in {db_path}, found {len(summaries)}"
         )
     return summaries[0]
+
+
+def _has_materialized_optuna_tables(db_path: Path) -> bool:
+    if not db_path.is_file() or db_path.stat().st_size == 0:
+        return False
+    try:
+        with sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True) as connection:
+            rows = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+    except sqlite3.Error:
+        return False
+    table_names = {str(row[0]) for row in rows}
+    return {"studies", "study_directions", "trials"} <= table_names

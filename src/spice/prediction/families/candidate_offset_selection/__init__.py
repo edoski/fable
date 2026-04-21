@@ -16,8 +16,7 @@ from ...contracts import (
     PreparedPredictionTargets,
     masked_offset_argmax,
 )
-from .batch import CandidateSlateTargetBatch
-from .config import CandidateOffsetSelectionFamilyConfig
+from .batch import CandidateSlateTargetBatch, materialize_candidate_slate_targets
 from .metrics import (
     TRAINING_METRIC_DESCRIPTORS,
     compute_batch_loss_and_state,
@@ -28,15 +27,12 @@ from .outputs import (
     build_output_spec,
     candidate_logits,
 )
-from .targets import prepare_candidate_slate_targets
-
-
 def _prepare_targets(
     store: CompiledProblemStore,
     sample_indices: IntVector,
     realization_policy: CompiledRealizationPolicyContract,
 ) -> PreparedPredictionTargets:
-    return prepare_candidate_slate_targets(
+    return materialize_candidate_slate_targets(
         store,
         sample_indices,
         realization_policy=realization_policy,
@@ -54,13 +50,8 @@ def _compute_batch_loss_and_state(
     return compute_batch_loss_and_state(outputs.head(CANDIDATE_LOGITS_HEAD_ID), targets)
 
 
-def _create_epoch_accumulator(stage: str):
-    del stage
+def _create_epoch_accumulator():
     return create_epoch_accumulator()
-
-
-def _allocate_decoded_offsets(sample_count: int) -> DecodedOffsets:
-    return DecodedOffsets.allocate(sample_count)
 
 
 def _decode_selected_offsets_into(
@@ -76,20 +67,16 @@ def _decode_selected_offsets_into(
 
 def compile_prediction_family(
     prediction_id: str,
-    family: CandidateOffsetSelectionFamilyConfig,
 ) -> CompiledPredictionContract:
-    del family
     return CompiledPredictionContract(
         prediction_id=prediction_id,
         prediction_family_id="candidate_offset_selection",
         training_metric_descriptors=TRAINING_METRIC_DESCRIPTORS,
         primary_metric_id="profit_over_baseline",
         direction="maximize",
-        supported_workflows=frozenset({"train", "tune", "evaluate"}),
         build_output_spec_fn=build_output_spec,
         prepare_targets_fn=_prepare_targets,
         compute_batch_loss_and_state_fn=_compute_batch_loss_and_state,
         create_epoch_accumulator_fn=_create_epoch_accumulator,
-        allocate_decoded_offsets_fn=_allocate_decoded_offsets,
         decode_selected_offsets_into_fn=_decode_selected_offsets_into,
     )

@@ -1,4 +1,4 @@
-"""Helper actions for storage sync."""
+"""CLI transport wrapper for remote storage sync operations."""
 
 from __future__ import annotations
 
@@ -11,17 +11,11 @@ from typing import Any, cast
 
 from ..core.errors import StateConflictError
 from ..core.files import promote_paths_atomic
-from .roots import (
-    ArtifactSelector,
-    StudySelector,
-    reindex_root,
-    resolve_artifact_record,
-    resolve_study_record,
-)
+from .roots import ArtifactSelector, StudySelector, reindex_root, resolve_artifact_record, resolve_study_record
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="python -m spice.storage.sync_actions")
+    parser = argparse.ArgumentParser(prog="python -m spice.storage.sync_cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     prepare = subparsers.add_parser("prepare-stage")

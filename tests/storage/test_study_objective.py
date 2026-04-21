@@ -21,7 +21,7 @@ def test_tuning_objective_controls_study_direction(
         "enable_pruning": False,
     }
     override["objective"] = {
-        "id": "validation_training_metric",
+        "id": "validation",
         "metric_id": "offset_accuracy",
         "direction": "maximize",
     }

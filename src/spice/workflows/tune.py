@@ -15,12 +15,12 @@ from ..config.models import TuneConfig
 from ..core.errors import ConfigResolutionError
 from ..core.rendering import metric_string
 from ..core.reporting import Reporter
-from ..modeling.families.registry import sample_tuned_parameters
 from ..modeling.persisted_training import run_persisted_training
 from ..modeling.pipeline import build_training_spec
+from ..modeling.tuned_config import sample_tuned_parameters
 from ..modeling.tuning import apply_tuned_parameters
-from ..storage.catalog import upsert_study_record
 from ..storage.layout import resolve_workflow_paths
+from ..storage.roots import reindex_root
 from ..storage.study_models import best_epoch_from_trial, build_study_summary
 from ..storage.study_optuna import (
     open_tuning_study,
@@ -28,8 +28,6 @@ from ..storage.study_optuna import (
     record_trial_params,
 )
 from ..storage.study_render import study_result_fields
-from ._shared import managed_workflow
-
 
 def _workflow_facts(config: TuneConfig) -> list[tuple[str, str]]:
     return [
@@ -133,82 +131,67 @@ def _objective(
 
 
 def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
-    with managed_workflow(reporter=reporter) as active_reporter:
-        active_reporter.header("tune", _workflow_facts(config))
-        paths = resolve_workflow_paths(config)
-        study_root = paths.study_root
-        study_state_db = paths.study_state_db
-        study_id = paths.study_id
-        if study_root is None or study_state_db is None or study_id is None:
-            raise ConfigResolutionError("tuning workflow requires study output paths")
+    active_reporter = reporter or Reporter()
+    active_reporter.header("tune", _workflow_facts(config))
+    paths = resolve_workflow_paths(config)
+    study_root = paths.study_root
+    study_state_db = paths.study_state_db
+    study_id = paths.study_id
+    if study_root is None or study_state_db is None or study_id is None:
+        raise ConfigResolutionError("tuning workflow requires study output paths")
 
-        study_access = open_tuning_study(study_state_db, config=config)
-        study = study_access.study
-        if study_access.existing_trial_count:
-            active_reporter.milestone(
-                "resume "
-                f"trials={study_access.existing_trial_count}/"
-                f"{study_access.target_trial_count}"
-            )
-
-        existing_best = next(
-            (trial for trial in study.trials if trial.state == TrialState.COMPLETE),
-            None,
+    study_access = open_tuning_study(study_state_db, config=config)
+    study = study_access.study
+    if study_access.existing_trial_count:
+        active_reporter.milestone(
+            "resume "
+            f"trials={study_access.existing_trial_count}/"
+            f"{study_access.target_trial_count}"
         )
-        best_trial_number = None if existing_best is None else study.best_trial.number
 
-        def on_trial_complete(active_study: optuna.Study, frozen_trial: FrozenTrial) -> None:
-            nonlocal best_trial_number
-            active_reporter.milestone(
-                _trial_message(
-                    frozen_trial,
-                    total_trials=study_access.target_trial_count,
-                )
-            )
-            if frozen_trial.state != TrialState.COMPLETE:
-                return
-            try:
-                study_best = active_study.best_trial
-            except ValueError:
-                return
-            if study_best.number == best_trial_number:
-                return
-            best_trial_number = study_best.number
-            if study_best.value is not None:
-                active_reporter.milestone(
-                    "best improved "
-                    f"trial={study_best.number + 1} "
-                    f"value={metric_string(study_best.value)}"
-                )
+    existing_best = next(
+        (trial for trial in study.trials if trial.state == TrialState.COMPLETE),
+        None,
+    )
+    best_trial_number = None if existing_best is None else study.best_trial.number
 
-        if study_access.remaining_trial_count > 0:
-            active_reporter.milestone(
-                f"study started trials={study_access.remaining_trial_count}"
+    def on_trial_complete(active_study: optuna.Study, frozen_trial: FrozenTrial) -> None:
+        nonlocal best_trial_number
+        active_reporter.milestone(
+            _trial_message(
+                frozen_trial,
+                total_trials=study_access.target_trial_count,
             )
-            with _optuna_warning_logging(active_reporter):
-                study.optimize(
-                    lambda trial: _objective(
-                        config,
-                        trial,
-                        study_root=study_root,
-                    ),
-                    n_trials=study_access.remaining_trial_count,
-                    timeout=config.tuning.timeout_seconds,
-                    callbacks=[on_trial_complete],
-                )
-        summary = build_study_summary(study_access.manifest, study)
-        upsert_study_record(
-            paths.catalog_db,
-            study_id=study_id,
-            study_name=config.study.name,
-            dataset_id=paths.corpus_id,
-            dataset_name=config.dataset.name,
-            chain_name=config.chain.name,
-            feature_set_id=config.feature_set.id,
-            prediction_id=config.prediction.id,
-            model_id=config.model.id,
-            problem_id=config.problem.id,
-            root_path=study_root,
-            state_db_path=study_state_db,
         )
-        active_reporter.result("tune", study_result_fields(summary))
+        if frozen_trial.state != TrialState.COMPLETE:
+            return
+        try:
+            study_best = active_study.best_trial
+        except ValueError:
+            return
+        if study_best.number == best_trial_number:
+            return
+        best_trial_number = study_best.number
+        if study_best.value is not None:
+            active_reporter.milestone(
+                "best improved "
+                f"trial={study_best.number + 1} "
+                f"value={metric_string(study_best.value)}"
+            )
+
+    if study_access.remaining_trial_count > 0:
+        active_reporter.milestone(f"study started trials={study_access.remaining_trial_count}")
+        with _optuna_warning_logging(active_reporter):
+            study.optimize(
+                lambda trial: _objective(
+                    config,
+                    trial,
+                    study_root=study_root,
+                ),
+                n_trials=study_access.remaining_trial_count,
+                timeout=config.tuning.timeout_seconds,
+                callbacks=[on_trial_complete],
+            )
+    summary = build_study_summary(study_access.manifest, study)
+    reindex_root(paths.output_root, root_path=study_root)
+    active_reporter.result("tune", study_result_fields(summary))

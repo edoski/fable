@@ -11,21 +11,19 @@ from .core import (
 )
 from .families import (
     FeatureFamilyConfig,
-    FeatureFamilySpec,
     FeaturePrerequisites,
 )
-from .registry import coerce_feature_family_config, feature_family_spec, validate_feature_selection
+from .registry import coerce_feature_family_config, feature_family, validate_feature_selection
 
 __all__ = [
     "CanonicalBlockSeries",
     "CompiledFeatureContract",
     "FeatureFamilyConfig",
-    "FeatureFamilySpec",
     "FeaturePrerequisites",
     "ResolvedFeatureTable",
     "build_feature_table",
     "compile_feature_contract",
     "coerce_feature_family_config",
-    "feature_family_spec",
+    "feature_family",
     "validate_feature_selection",
 ]

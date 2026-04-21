@@ -140,9 +140,7 @@ def _metric_descriptor_from_payload(payload: object) -> MetricDescriptor:
 
 
 def _prediction_semantics_payload(semantics: PredictionSemantics) -> dict[str, object]:
-    payload = _adapter_payload(_PREDICTION_SEMANTICS_ADAPTER, semantics)
-    payload["supported_workflows"] = sorted(str(value) for value in semantics.supported_workflows)
-    return payload
+    return _adapter_payload(_PREDICTION_SEMANTICS_ADAPTER, semantics)
 
 
 class ArtifactManifestPayload(CodecPayloadModel):
@@ -287,8 +285,8 @@ class TrainingEpochPayload(CodecPayloadModel):
 
 class EvaluationSummaryPayload(CodecPayloadModel):
     delay_seconds: int
-    evaluator_id: str
-    evaluator_config: dict[str, object]
+    evaluation_id: str
+    evaluation_config: dict[str, object]
     metric_descriptors: tuple[dict[str, str], ...]
     n_history_rows: int
     n_evaluation_rows: int
@@ -301,8 +299,8 @@ class EvaluationSummaryPayload(CodecPayloadModel):
     def from_runtime(cls, summary: EvaluationRuntimeSummary) -> EvaluationSummaryPayload:
         return cls(
             delay_seconds=summary.delay_seconds,
-            evaluator_id=summary.evaluator_id,
-            evaluator_config=dict(summary.evaluator_config),
+            evaluation_id=summary.evaluation_id,
+            evaluation_config=dict(summary.evaluation_config),
             metric_descriptors=tuple(
                 _metric_descriptor_payload(descriptor)
                 for descriptor in summary.metric_descriptors
@@ -320,8 +318,8 @@ class EvaluationSummaryPayload(CodecPayloadModel):
 
         return EvaluationRuntimeSummary(
             delay_seconds=self.delay_seconds,
-            evaluator_id=self.evaluator_id,
-            evaluator_config=dict(self.evaluator_config),
+            evaluation_id=self.evaluation_id,
+            evaluation_config=dict(self.evaluation_config),
             metric_descriptors=tuple(
                 _metric_descriptor_from_payload(payload)
                 for payload in self.metric_descriptors

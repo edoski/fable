@@ -10,7 +10,6 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 
-from ..core.closed_dispatch import unknown_id_error
 from ..prediction import ModelInputBatch
 from ..semantics import RepresentationSemantics
 from ..temporal.problem_store import CompiledProblemStore, build_action_mask
@@ -69,9 +68,6 @@ class RepresentationRuntimeContext:
 
 class PreparedRepresentation(Protocol[BatchT]):
     @property
-    def representation_id(self) -> str: ...
-
-    @property
     def sample_count(self) -> int: ...
 
     @property
@@ -92,12 +88,15 @@ class PreparedRepresentation(Protocol[BatchT]):
 class CompiledRepresentationContract:
     """Compiled model-input representation seam used by training and inference only."""
 
-    representation_id: str
     prepare_impl: Callable[..., PreparedRepresentation[ModelInputBatch]]
 
     @property
     def semantics(self) -> RepresentationSemantics:
-        return RepresentationSemantics(representation_id=self.representation_id)
+        return RepresentationSemantics(representation_id=SEQUENCE_INPUT_REPRESENTATION_ID)
+
+    @property
+    def representation_id(self) -> str:
+        return SEQUENCE_INPUT_REPRESENTATION_ID
 
     def prepare(
         self,
@@ -113,18 +112,13 @@ class CompiledRepresentationContract:
         )
 
 
-def compile_representation_contract(representation_id: str) -> CompiledRepresentationContract:
-    """Compile one representation contract from the shared representation registry."""
+def sequence_input_contract() -> CompiledRepresentationContract:
+    return _SEQUENCE_INPUT_CONTRACT
+
+
+def validate_representation_id(representation_id: str) -> None:
     if representation_id != SEQUENCE_INPUT_REPRESENTATION_ID:
-        raise unknown_id_error(
-            field_name="representation_id",
-            component_id=representation_id,
-            known_ids=(SEQUENCE_INPUT_REPRESENTATION_ID,),
-        )
-    return CompiledRepresentationContract(
-        representation_id=SEQUENCE_INPUT_REPRESENTATION_ID,
-        prepare_impl=_prepare_sequence_input,
-    )
+        raise ValueError("representation_id must be sequence_inputs")
 
 
 def build_sequence_input_batch(
@@ -185,7 +179,6 @@ class _StreamingSequenceInputRepresentation:
     store: CompiledProblemStore
     layout: _SequenceInputLayout
     batch_size: int
-    representation_id: str = SEQUENCE_INPUT_REPRESENTATION_ID
 
     @property
     def sample_count(self) -> int:
@@ -233,7 +226,6 @@ class _MaterializedSequenceInputRepresentation:
     action_mask: torch.Tensor
     layout: _SequenceInputLayout
     batch_size: int
-    representation_id: str = SEQUENCE_INPUT_REPRESENTATION_ID
 
     @property
     def sample_count(self) -> int:
@@ -306,6 +298,11 @@ def _prepare_sequence_input(
         layout=layout,
         batch_size=runtime_context.batch_size,
     )
+
+
+_SEQUENCE_INPUT_CONTRACT = CompiledRepresentationContract(
+    prepare_impl=_prepare_sequence_input,
+)
 
 
 def _sequence_input_layout(

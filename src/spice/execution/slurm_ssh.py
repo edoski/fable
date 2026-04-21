@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..config.resolution import WorkflowRequest
 from ..config.models import WorkflowTask
 from ..config.registry import load_named_group
 from ..core.errors import SpiceOperatorError
@@ -69,22 +70,6 @@ def load_execution_target() -> ExecutionTarget:
     return ExecutionTarget(
         name=_EXECUTION_SPEC_NAME,
         spec=ExecutionSpec.model_validate(payload),
-    )
-
-
-def run_execution_cli(
-    target: ExecutionTarget,
-    args: list[str],
-    *,
-    capture_output: bool = True,
-) -> subprocess.CompletedProcess[str]:
-    spice_path = shlex.quote(str(target.spec.paths.spice_path))
-    repo_root = shlex.quote(str(target.spec.paths.repo_root))
-    argv = shlex.join(args)
-    return run_execution_command(
-        target,
-        f"cd {repo_root} && {spice_path} {argv}",
-        capture_output=capture_output,
     )
 
 
@@ -177,7 +162,7 @@ def ensure_execution_success(
 def submit_execution_workflow(
     task: WorkflowTask,
     *,
-    cli_args: list[str],
+    request: WorkflowRequest,
     dependency: str | None = None,
 ) -> ExecutionJobSubmission:
     target = load_execution_target()
@@ -187,7 +172,7 @@ def submit_execution_workflow(
         target=target,
         task=task,
         workflow_spec=workflow_spec,
-        cli_args=cli_args,
+        request=request,
         log_path_template=log_path_template,
     )
     submit_command = " && ".join(
@@ -297,19 +282,22 @@ def _render_sbatch_script(
     target: ExecutionTarget,
     task: WorkflowTask,
     workflow_spec: ExecutionWorkflowSpec,
-    cli_args: list[str],
+    request: WorkflowRequest,
     log_path_template: Path,
 ) -> str:
     repo_root = shlex.quote(str(target.spec.paths.repo_root))
     venv_activate_path = shlex.quote(str(target.spec.paths.venv_activate_path))
     storage_root = str(target.spec.paths.storage_root)
-    cli_command = shlex.join(
+    python_path = str(target.spec.paths.python_path)
+    remote_request = request.model_copy(update={"storage_root": target.spec.paths.storage_root})
+    request_json = remote_request.model_dump_json(exclude_none=True)
+    remote_command = shlex.join(
         [
-            str(target.spec.paths.spice_path),
+            python_path,
+            "-m",
+            "spice.execution.remote_runner",
             task.value,
-            *cli_args,
-            "--storage-root",
-            storage_root,
+            request_json,
         ]
     )
     lines = [
@@ -329,7 +317,7 @@ def _render_sbatch_script(
         f"cd {repo_root}",
         f"source {venv_activate_path}",
         "export PYTHONUNBUFFERED=1",
-        f"exec {cli_command}",
+        f"exec {remote_command}",
     ]
     return "\n".join(lines) + "\n"
 

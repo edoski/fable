@@ -15,7 +15,7 @@ from .core import (
     feature_prerequisites,
 )
 from .families.base import FeaturePrerequisites
-from .registry import feature_family_spec
+from .registry import feature_family
 
 if TYPE_CHECKING:
     from ..config.models import FeatureSetConfig
@@ -40,30 +40,27 @@ class CompiledFeatureContract:
         )
 
     def build_table(self, blocks: pl.DataFrame) -> ResolvedFeatureTable:
-        spec = feature_family_spec(self.feature_family_id)
+        family = feature_family(self.feature_family_id)
         return build_feature_table(
             blocks,
             feature_set_id=self.feature_set_id,
-            spec=spec,
+            feature_family_id=self.feature_family_id,
+            family=family,
             feature_names=self.feature_names,
         )
 
 
 def compile_feature_contract(*, feature_set: FeatureSetConfig) -> CompiledFeatureContract:
-    family_spec = feature_family_spec(feature_set.family.id)
-    if feature_set.family.id != family_spec.id:
-        raise ValueError(
-            f"Feature family config {feature_set.family.id} does not match spec {family_spec.id}"
-        )
+    family = feature_family(feature_set.family.id)
     feature_names = tuple(feature_set.outputs)
     return CompiledFeatureContract(
         feature_set_id=feature_set.id,
-        feature_family_id=family_spec.id,
+        feature_family_id=feature_set.family.id,
         feature_names=feature_names,
         feature_graph_fingerprint=feature_graph_fingerprint(
-            family_spec.id,
+            feature_set.family.id,
             feature_names,
-            fingerprint_sources=family_spec.fingerprint_sources,
+            fingerprint_sources=family.fingerprint_sources,
         ),
-        feature_prerequisites=feature_prerequisites(family_spec, feature_names),
+        feature_prerequisites=feature_prerequisites(family, feature_names),
     )

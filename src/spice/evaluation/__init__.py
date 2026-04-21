@@ -1,15 +1,18 @@
-"""Evaluator registry and runtime contracts."""
+"""Evaluation config and one-engine runtime contracts."""
 
 from .base import (
     CompiledEvaluatorContract,
+    EvaluationSampler,
     EvaluationRun,
     EvaluationSummary,
     EvaluatorConfig,
+    coerce_evaluator_config,
+    compile_evaluator_contract,
 )
-from .registry import coerce_evaluator_config, compile_evaluator_contract
 
 __all__ = [
     "CompiledEvaluatorContract",
+    "EvaluationSampler",
     "EvaluationRun",
     "EvaluationSummary",
     "EvaluatorConfig",

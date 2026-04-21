@@ -6,7 +6,7 @@ provider: publicnode
 problem: icdcs_2026
 dataset_builder: standard_temporal
 feature_set: icdcs_2026
-prediction: icdcs_2026_tuned
+prediction: icdcs_2026
 objective: validation_total_loss
 model: lstm_icdcs_2026
 tuning_space: lstm_default

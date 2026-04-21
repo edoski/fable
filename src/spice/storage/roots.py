@@ -16,10 +16,6 @@ from .catalog import (
     CatalogArtifactRecord,
     CatalogDatasetRecord,
     CatalogStudyRecord,
-    ensure_catalog_db,
-    upsert_artifact_record,
-    upsert_dataset_record,
-    upsert_study_record,
 )
 from .catalog import (
     delete_artifact_record as _delete_artifact_catalog_record,
@@ -47,6 +43,12 @@ from .catalog import (
 )
 from .catalog import (
     list_study_records as _list_study_catalog_records,
+)
+from .catalog.store import (
+    ensure_catalog_db,
+    upsert_artifact_record,
+    upsert_dataset_record,
+    upsert_study_record,
 )
 from .corpus import load_dataset_manifest
 from .engine import RootKind, detect_root_kind, state_db_path
@@ -259,7 +261,7 @@ def delete_artifact_record(
 
 
 def reindex_root(storage_root: Path, *, root_path: Path) -> RootKind:
-    return upsert_root_record(catalog_db_path(storage_root), root_path=root_path)
+    return _reindex_catalog_root(catalog_db_path(storage_root), root_path=root_path)
 
 
 def refresh_catalog(storage_root: Path) -> CatalogRefreshSummary:
@@ -277,7 +279,7 @@ def refresh_catalog(storage_root: Path) -> CatalogRefreshSummary:
             ("artifacts", "artifact_roots"),
         ):
             for root_path in _roots_under(storage_root / parent_name):
-                upsert_root_record(temp_catalog_path, root_path=root_path)
+                _reindex_catalog_root(temp_catalog_path, root_path=root_path)
                 counts[count_key] += 1
         os.replace(temp_catalog_path, catalog_path)
         return CatalogRefreshSummary(**counts)
@@ -286,7 +288,7 @@ def refresh_catalog(storage_root: Path) -> CatalogRefreshSummary:
         raise
 
 
-def upsert_root_record(catalog_path: Path, *, root_path: Path) -> RootKind:
+def _reindex_catalog_root(catalog_path: Path, *, root_path: Path) -> RootKind:
     db_path = state_db_path(root_path)
     root_kind = detect_root_kind(db_path)
     _ROOT_UPSERT_HANDLERS[root_kind](catalog_path, root_path=root_path, db_path=db_path)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import math
-from concurrent.futures.thread import _threads_queues
 from io import StringIO
 from typing import cast
 
@@ -24,7 +23,6 @@ from spice.storage.catalog import list_dataset_records
 from spice.storage.corpus import list_acquire_runs, load_dataset_manifest
 from spice.storage.layout import resolve_workflow_paths
 from spice.temporal.contracts import compile_problem_contract
-from spice.workflows.acquire import _DaemonThreadPoolExecutor
 from spice.workflows.acquire import run as run_acquire
 from tests.dataset_helpers import make_block_rows
 
@@ -464,17 +462,6 @@ def test_acquire_workflow_fails_after_one_short_refill(
     )
 
     assert history_plan_calls == 2
-
-
-def test_acquire_executor_threads_skip_python_exit_registry() -> None:
-    executor = _DaemonThreadPoolExecutor(max_workers=1, thread_name_prefix="spice-test")
-    try:
-        future = executor.submit(lambda: None)
-        future.result(timeout=1)
-        assert executor._threads
-        assert all(thread not in _threads_queues for thread in executor._threads)
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def test_managed_async_http_provider_disconnect_closes_managed_session() -> None:

@@ -147,7 +147,6 @@ def test_transformer_lstm_baseline_uses_last_valid_dense_timestep() -> None:
     model.eval()
     assert model.lstm.bidirectional is False
     assert model.lstm.num_layers == 2
-    assert not hasattr(model, "raw_skip")
 
     with torch.no_grad():
         projected = model.input_projection(batch.inputs)

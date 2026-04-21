@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import overload
 
 from ..config.models import (
@@ -11,21 +12,23 @@ from ..config.models import (
     TuneConfig,
     TunedParameterSet,
     coerce_feature_set_config,
-    coerce_prediction_config,
     coerce_problem_spec,
 )
 from ..core.errors import ConfigResolutionError, MissingStateError
-from ..prediction import apply_tuned_prediction_family_parameters
 from ..storage.layout import resolve_workflow_paths
 from ..storage.study_manifest import load_study_manifest, validate_tuned_train_request
 from ..storage.study_optuna import load_best_params
+from .tuned_config import coerce_tuning_space_config
 from .families.registry import (
-    apply_tuned_parameters as apply_model_tuned_parameters,
-)
-from .families.registry import (
+    apply_model_tuned_parameters,
     coerce_model_config,
-    coerce_tuning_space_config,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class AppliedStudyBestParams:
+    config: TrainConfig | EvaluateConfig
+    study_id: str
 
 
 @overload
@@ -63,16 +66,11 @@ def apply_tuned_parameters(
             tuned_config.training.batch_size = params.training.batch_size
     if params.problem is not None and params.problem.lookback_seconds is not None:
         tuned_config.problem.lookback_seconds = params.problem.lookback_seconds
-    if params.prediction is not None:
-        tuned_config.prediction.family = apply_tuned_prediction_family_parameters(
-            tuned_config.prediction.family,
-            params.prediction,
-        )
-    tuned_config.model = apply_model_tuned_parameters(tuned_config.model, params)
+    if params.model is not None:
+        tuned_config.model = apply_model_tuned_parameters(tuned_config.model, params.model)
     payload = tuned_config.model_dump(mode="json")
     payload["problem"] = coerce_problem_spec(payload["problem"])
     payload["feature_set"] = coerce_feature_set_config(payload["feature_set"])
-    payload["prediction"] = coerce_prediction_config(payload["prediction"])
     resolved_model = coerce_model_config(payload["model"])
     payload["model"] = resolved_model
     if payload.get("tuning_space") is not None:
@@ -80,7 +78,6 @@ def apply_tuned_parameters(
             payload["tuning_space"],
             model_config=resolved_model,
             problem_config=payload["problem"],
-            prediction_config=payload["prediction"],
         )
     if isinstance(config, TuneConfig):
         return TuneConfig.model_validate(payload)
@@ -90,14 +87,14 @@ def apply_tuned_parameters(
 
 
 @overload
-def apply_study_best_params(config: TrainConfig) -> TrainConfig: ...
+def apply_study_best_params(config: TrainConfig) -> AppliedStudyBestParams: ...
 
 
 @overload
-def apply_study_best_params(config: EvaluateConfig) -> EvaluateConfig: ...
+def apply_study_best_params(config: EvaluateConfig) -> AppliedStudyBestParams: ...
 
 
-def apply_study_best_params(config: TrainConfig | EvaluateConfig) -> TrainConfig | EvaluateConfig:
+def apply_study_best_params(config: TrainConfig | EvaluateConfig) -> AppliedStudyBestParams:
     paths = resolve_workflow_paths(config)
     path = paths.study_state_db
     if path is None or paths.study_id is None:
@@ -112,5 +109,4 @@ def apply_study_best_params(config: TrainConfig | EvaluateConfig) -> TrainConfig
     validate_tuned_train_request(config, manifest=manifest)
     params = load_best_params(path, study_name=config.study.name)
     tuned_config = apply_tuned_parameters(config, params)
-    tuned_config.resolved_study_id = paths.study_id
-    return tuned_config
+    return AppliedStudyBestParams(config=tuned_config, study_id=paths.study_id)

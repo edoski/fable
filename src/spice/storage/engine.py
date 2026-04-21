@@ -36,8 +36,9 @@ def db_url(path: Path) -> str:
     return f"sqlite:///{path.resolve().as_posix()}"
 
 
-def create_state_engine(path: Path) -> Engine:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def create_state_engine(path: Path, *, create_dirs: bool = False) -> Engine:
+    if create_dirs:
+        path.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(
         db_url(path),
         future=True,
@@ -57,7 +58,7 @@ def create_state_engine(path: Path) -> Engine:
 
 def ensure_state_db(path: Path, *, root_kind: RootKind, tables: Iterable[Table]) -> None:
     managed_tables = (spice_meta, *tuple(tables))
-    engine = create_state_engine(path)
+    engine = create_state_engine(path, create_dirs=True)
     try:
         metadata.create_all(engine, tables=managed_tables)
         with engine.begin() as conn:
@@ -107,6 +108,8 @@ def detect_root_kind(path: Path) -> RootKind:
 
 
 def table_exists(path: Path, table_name: str) -> bool:
+    if not path.is_file():
+        return False
     engine = create_state_engine(path)
     try:
         return inspect(engine).has_table(table_name)

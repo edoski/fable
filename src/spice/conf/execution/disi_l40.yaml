@@ -1,5 +1,4 @@
 id: disi_l40
-backend: slurm_over_ssh
 ssh:
   host: giano.cs.unibo.it
   user: edoardo.galli3

@@ -4,11 +4,10 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from types import SimpleNamespace
 
-from spice.config import WorkflowTask
+from spice.config import WorkflowRequest, WorkflowTask
 from spice.execution.models import ExecutionWorkflowSpec
 from spice.execution.slurm_ssh import (
     ExecutionJobSubmission,
-    _render_sbatch_script,
     build_execution_shell_argv,
     follow_execution_job,
     run_execution_command,
@@ -110,35 +109,6 @@ def test_follow_execution_job_uses_quoted_tail_command(monkeypatch, tmp_path: Pa
     assert captured["text"] is True
 
 
-def test_render_sbatch_script_execs_spice_command(tmp_path: Path) -> None:
-    target = SimpleNamespace(
-        spec=SimpleNamespace(
-            paths=SimpleNamespace(
-                repo_root=Path("/repo"),
-                venv_activate_path=Path("/venv/bin/activate"),
-                storage_root=Path("/storage"),
-                log_root=tmp_path,
-                spice_path=Path("/venv/bin/spice"),
-            )
-        )
-    )
-    script = _render_sbatch_script(
-        target=target,
-        task=WorkflowTask.TRAIN,
-        workflow_spec=ExecutionWorkflowSpec(
-            partition="l40",
-            gpus=1,
-            cpus_per_task=4,
-            memory_gb=24,
-            time_limit="00:10:00",
-        ),
-        cli_args=["--preset", "icdcs_2026"],
-        log_path_template=tmp_path / "spice-train-%j.out",
-    )
-
-    assert "\nexec /venv/bin/spice train --preset icdcs_2026 --storage-root /storage\n" in script
-
-
 def test_submit_execution_workflow_forwards_sbatch_dependency(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
     target = SimpleNamespace(
@@ -149,7 +119,7 @@ def test_submit_execution_workflow_forwards_sbatch_dependency(monkeypatch, tmp_p
                 venv_activate_path=Path("/venv/bin/activate"),
                 storage_root=Path("/storage"),
                 log_root=tmp_path,
-                spice_path=Path("/venv/bin/spice"),
+                python_path=Path("/venv/bin/python"),
             ),
             workflows=SimpleNamespace(
                 train=ExecutionWorkflowSpec(
@@ -182,7 +152,7 @@ def test_submit_execution_workflow_forwards_sbatch_dependency(monkeypatch, tmp_p
 
     submission = submit_execution_workflow(
         WorkflowTask.TRAIN,
-        cli_args=["--preset", "icdcs_2026"],
+        request=WorkflowRequest(preset="icdcs_2026"),
         dependency="afterok:99999",
     )
 

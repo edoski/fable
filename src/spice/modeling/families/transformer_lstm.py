@@ -8,6 +8,7 @@ import optuna
 from pydantic import Field, field_validator, model_validator
 
 from ...prediction import PredictionOutputSpec
+from .._runtime import require_cuda_device
 from ..models import TemporalModel, TransformerLSTMBaseline
 from .base import ModelConfig, ModelTuningSpaceConfig, TunedModelParams
 from .registry import ModelSpec
@@ -113,6 +114,16 @@ def _apply_model_params(
     return model_config.model_copy(update=updates)
 
 
+def _resolve_training_precision(device) -> str:
+    require_cuda_device(device)
+    return "32-true"
+
+
+def _resolve_compile_enabled(device) -> bool:
+    require_cuda_device(device)
+    return False
+
+
 MODEL_SPEC = ModelSpec(
     model_config_type=TransformerLstmModelConfig,
     tuning_space_type=TransformerLstmTuningSpaceModelConfig,
@@ -121,4 +132,6 @@ MODEL_SPEC = ModelSpec(
     validate_tuning_space=_validate_tuning_space,
     sample_model_params=_sample_model_params,
     apply_model_params=_apply_model_params,
+    resolve_training_precision=_resolve_training_precision,
+    resolve_compile_enabled=_resolve_compile_enabled,
 )

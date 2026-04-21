@@ -1,2 +1,2 @@
-evaluator:
-  id: paper_fullset
+id: paper_fullset
+sampler: fullset

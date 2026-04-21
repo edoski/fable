@@ -5,7 +5,6 @@ from .base import (
     InputNormalizationConfig,
     coerce_input_normalization_config,
     compile_input_normalization_contract,
-    input_normalization_spec,
 )
 
 __all__ = [
@@ -13,5 +12,4 @@ __all__ = [
     "InputNormalizationConfig",
     "coerce_input_normalization_config",
     "compile_input_normalization_contract",
-    "input_normalization_spec",
 ]

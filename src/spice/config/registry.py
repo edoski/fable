@@ -15,13 +15,13 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from ..core.errors import ConfigResolutionError
+from ..evaluation import EvaluatorConfig
 from ..execution.models import ExecutionSpec
 from ..modeling.families.registry import coerce_model_config
 from ..objectives import coerce_objective_config
 from .models import (
     ChainSpec,
     DatasetSpec,
-    EvaluationConfig,
     ProviderSpec,
     coerce_dataset_builder_config,
     coerce_feature_set_config,
@@ -63,10 +63,10 @@ class GroupSpec:
     public: bool = False
 
 
-def _validate_preset_overlay(payload: dict[str, object]) -> BaseModel:
-    from .presets import PresetOverlay
+def _validate_preset_frame(payload: dict[str, object]) -> BaseModel:
+    from .presets import PresetFrame
 
-    return PresetOverlay.model_validate(payload)
+    return PresetFrame.model_validate(payload)
 
 
 _GROUP_SPECS = (
@@ -74,7 +74,7 @@ _GROUP_SPECS = (
         token=ConfigGroup.PRESET.value,
         directory="preset",
         seed_name="icdcs_2026",
-        validate=_validate_preset_overlay,
+        validate=_validate_preset_frame,
         public=True,
     ),
     GroupSpec(
@@ -125,7 +125,7 @@ _GROUP_SPECS = (
         token=ConfigGroup.EVALUATION.value,
         directory="evaluation",
         seed_name="paper_fullset",
-        validate=EvaluationConfig.model_validate,
+        validate=EvaluatorConfig.model_validate,
     ),
     GroupSpec(
         token=ConfigGroup.EXECUTION.value,

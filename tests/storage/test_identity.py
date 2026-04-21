@@ -12,9 +12,10 @@ from spice.config import (
     WorkflowTask,
     resolve_workflow_config,
 )
+from spice.config.registry import load_named_group
 from spice.storage.identity import (
-    study_request_identity_payload_from_manifest,
-    study_request_identity_payload_from_tuned_config,
+    study_request_identity_from_manifest,
+    study_request_identity_from_tuned_config,
 )
 from spice.storage.layout import resolve_workflow_paths
 from spice.storage.study_manifest import manifest_from_tune_config
@@ -23,6 +24,14 @@ from spice.storage.study_manifest import manifest_from_tune_config
 def _write_preset(conf_root, name: str, payload: dict[str, object]) -> None:
     path = conf_root / "preset" / f"{name}.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+
+def _base_preset(conf_root) -> dict[str, object]:
+    return load_named_group("icdcs_2026", "preset")
+
+
+def _updated_preset(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
+    return {**base, **override}
 
 
 def _train_paths(tmp_path, *, preset: str, variant: str | None = None):
@@ -54,13 +63,42 @@ def _tune_paths(tmp_path, *, preset: str):
 @pytest.mark.parametrize(
     ("name", "override"),
     [
-        ("objective_id", {"objective": "paper_profit_replay_2h"}),
-        ("training_id", {"training": {"batch_size": 256}}),
+        (
+            "objective_id",
+            {"objective": "paper_profit_replay_2h", "evaluation": "paper_replay_2h"},
+        ),
+        (
+            "training_id",
+            {
+                "training": {
+                    "learning_rate": 0.0003,
+                    "weight_decay": 0.01,
+                    "batch_size": 256,
+                    "max_epochs": 50,
+                    "early_stopping": {"patience": 8, "min_delta": 0.0001},
+                    "gradient_clip_norm": 1.0,
+                    "seed": 2026,
+                    "deterministic": True,
+                    "log_every_n_steps": 100,
+                    "input_normalization": {"id": "row_standard"},
+                }
+            },
+        ),
         (
             "split_id",
             {"split": {"train_fraction": 0.7, "validation_fraction": 0.2}},
         ),
-        ("tuning_id", {"tuning": {"sampler_seed": 7}}),
+        (
+            "tuning_id",
+            {
+                "tuning": {
+                    "trial_count": 20,
+                    "timeout_seconds": None,
+                    "sampler_seed": 7,
+                    "enable_pruning": True,
+                }
+            },
+        ),
         ("tuning_space_id", {"tuning_space": "lstm_icdcs_2026_extensive"}),
     ],
 )
@@ -71,7 +109,8 @@ def test_study_id_uses_full_resolved_identity(
     override: dict[str, object],
 ) -> None:
     conf_root = isolate_conf_root()
-    _write_preset(conf_root, name, {"extends": "icdcs_2026", **override})
+    payload = _updated_preset(_base_preset(conf_root), override)
+    _write_preset(conf_root, name, payload)
 
     base = _tune_paths(tmp_path, preset="icdcs_2026")
     changed = _tune_paths(tmp_path, preset=name)
@@ -84,16 +123,33 @@ def test_study_id_uses_full_resolved_identity(
 @pytest.mark.parametrize(
     ("name", "override", "variant"),
     [
-        ("artifact_objective", {"objective": "paper_profit_replay_2h"}, None),
+        (
+            "artifact_objective",
+            {"objective": "paper_profit_replay_2h", "evaluation": "paper_replay_2h"},
+            None,
+        ),
         (
             "artifact_training",
-            {"training": {"input_normalization": {"id": "window_weighted_standard"}}},
+            {
+                "training": {
+                    "learning_rate": 0.0003,
+                    "weight_decay": 0.01,
+                    "batch_size": 512,
+                    "max_epochs": 50,
+                    "early_stopping": {"patience": 8, "min_delta": 0.0001},
+                    "gradient_clip_norm": 1.0,
+                    "seed": 2026,
+                    "deterministic": True,
+                    "log_every_n_steps": 100,
+                    "input_normalization": {"id": "window_weighted_standard"},
+                }
+            },
             None,
         ),
         ("artifact_model", {"model": "lstm"}, None),
         ("artifact_problem", {"problem": "icdcs_2026_paper_truth"}, None),
         ("artifact_feature", {"feature_set": "icdcs_2026_professor"}, None),
-        ("artifact_prediction", {"prediction": "icdcs_2026"}, None),
+        ("artifact_prediction", {"prediction": "candidate_offset_selection"}, None),
         ("artifact_builder", {"dataset_builder": "professor_temporal"}, None),
         ("artifact_variant", {}, "tuned"),
     ],
@@ -106,7 +162,8 @@ def test_artifact_id_uses_full_resolved_identity(
     variant: str | None,
 ) -> None:
     conf_root = isolate_conf_root()
-    _write_preset(conf_root, name, {"extends": "icdcs_2026", **override})
+    payload = _updated_preset(_base_preset(conf_root), override)
+    _write_preset(conf_root, name, payload)
 
     base = _train_paths(tmp_path, preset="icdcs_2026")
     changed = _train_paths(tmp_path, preset=name, variant=variant)
@@ -169,8 +226,8 @@ def test_tuned_request_identity_matches_stored_study_manifest(
     manifest = manifest_from_tune_config(tune_config)
 
     assert tune_paths.study_id is not None
-    assert study_request_identity_payload_from_manifest(manifest) == (
-        study_request_identity_payload_from_tuned_config(
+    assert study_request_identity_from_manifest(manifest) == (
+        study_request_identity_from_tuned_config(
             train_config,
             study_id=tune_paths.study_id,
             dataset_id=tune_paths.corpus_id,

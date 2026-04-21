@@ -1,11 +1,10 @@
 """Problem compiler package."""
 
-from .base import ProblemCompilerConfig, ProblemCompilerSpec
-from .registry import coerce_problem_compiler_config, problem_compiler_spec
+from .base import ProblemCompilerConfig
+from .registry import coerce_problem_compiler_config, compile_problem
 
 __all__ = [
     "ProblemCompilerConfig",
-    "ProblemCompilerSpec",
+    "compile_problem",
     "coerce_problem_compiler_config",
-    "problem_compiler_spec",
 ]

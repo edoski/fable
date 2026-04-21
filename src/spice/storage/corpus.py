@@ -70,6 +70,8 @@ def write_dataset_state(
 def load_dataset_manifest(db_path: Path) -> DatasetManifest:
     """Load the canonical dataset manifest that owns corpus provenance."""
 
+    if not db_path.is_file():
+        raise MissingStateError(f"Missing dataset manifest: {db_path}")
     engine = create_state_engine(db_path)
     try:
         with engine.connect() as conn:
@@ -84,6 +86,8 @@ def load_dataset_manifest(db_path: Path) -> DatasetManifest:
 def list_acquire_runs(db_path: Path) -> list[AcquireRunRecord]:
     """List acquire-run deltas newest first without duplicating manifest provenance."""
 
+    if not db_path.is_file():
+        return []
     engine = create_state_engine(db_path)
     try:
         with engine.connect() as conn:

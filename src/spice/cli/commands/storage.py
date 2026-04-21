@@ -15,10 +15,12 @@ from ...storage.inspect_artifact import artifact_list_sections
 from ...storage.inspect_dataset import dataset_list_sections
 from ...storage.inspect_study import study_list_sections
 from ...storage.roots import (
+    ArtifactSelector,
     CatalogRefreshSummary,
     DatasetSelector,
     DeleteBlockedError,
     SelectorResolutionError,
+    StudySelector,
     delete_artifact_record,
     delete_dataset_record,
     delete_study_record,
@@ -44,7 +46,6 @@ from ..options import (
     print_sections,
     resolve_storage_root,
 )
-from ._selectors import artifact_selector, study_selector
 
 show_app = typer.Typer(
     help="Query stored datasets, studies, and artifacts.",
@@ -253,14 +254,14 @@ def show_study_command(
     detail: StudyDetailOption = None,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    selector = study_selector(
-        chain=chain,
-        dataset=dataset,
-        feature_set=feature_set,
-        prediction=prediction,
-        model=model,
-        problem=problem,
-        study=study,
+    selector = StudySelector(
+        chain_name=chain,
+        dataset_name=dataset,
+        feature_set_id=feature_set,
+        prediction_id=prediction,
+        model_id=model,
+        problem_id=problem,
+        study_name=study,
     )
     records = list_study_records(
         root,
@@ -297,15 +298,15 @@ def show_artifact_command(
     detail: ArtifactDetailOption = None,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    selector = artifact_selector(
-        chain=chain,
-        dataset=dataset,
-        feature_set=feature_set,
-        prediction=prediction,
-        model=model,
-        problem=problem,
+    selector = ArtifactSelector(
+        chain_name=chain,
+        dataset_name=dataset,
+        feature_set_id=feature_set,
+        prediction_id=prediction,
+        model_id=model,
+        problem_id=problem,
         variant=variant,
-        study=study,
+        study_name=study,
     )
     records = list_artifact_records(
         root,
@@ -341,15 +342,15 @@ def delete_artifact_command(
     storage_root: StorageRootDeleteOption = None,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    selector = artifact_selector(
-        chain=chain,
-        dataset=dataset,
-        feature_set=feature_set,
-        prediction=prediction,
-        model=model,
-        problem=problem,
+    selector = ArtifactSelector(
+        chain_name=chain,
+        dataset_name=dataset,
+        feature_set_id=feature_set,
+        prediction_id=prediction,
+        model_id=model,
+        problem_id=problem,
         variant=variant,
-        study=study,
+        study_name=study,
     )
     try:
         record = resolve_artifact_record(root, selector=selector)
@@ -378,14 +379,14 @@ def delete_study_command(
     ] = False,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    selector = study_selector(
-        chain=chain,
-        dataset=dataset,
-        feature_set=feature_set,
-        prediction=prediction,
-        model=model,
-        problem=problem,
-        study=study,
+    selector = StudySelector(
+        chain_name=chain,
+        dataset_name=dataset,
+        feature_set_id=feature_set,
+        prediction_id=prediction,
+        model_id=model,
+        problem_id=problem,
+        study_name=study,
     )
     try:
         record = resolve_study_record(root, selector=selector)

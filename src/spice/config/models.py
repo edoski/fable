@@ -16,9 +16,9 @@ from pydantic import (
     model_validator,
 )
 
-from ..core.closed_dispatch import validate_path_segment
+from ..core.validation import validate_path_segment
 from ..core.errors import ConfigResolutionError
-from ..evaluation import EvaluatorConfig, coerce_evaluator_config
+from ..evaluation import EvaluatorConfig
 from ..features import FeatureFamilyConfig, validate_feature_selection
 from ..modeling.dataset_builders import (
     DatasetBuilderConfig,
@@ -30,8 +30,8 @@ from ..modeling.families.base import (
     ModelTuningSpaceConfig,
     TunedModelParams,
 )
-from ..objectives import ObjectiveConfig, coerce_objective_config
-from ..prediction import PredictionFamilyConfig
+from ..objectives import ObjectiveConfig
+from ..prediction import validate_prediction_family_id
 from ..temporal.compilers import ProblemCompilerConfig
 from ..temporal.input_normalization import InputNormalizationConfig
 from ..temporal.realization import RealizationPolicyConfig
@@ -213,19 +213,6 @@ class AcquisitionConfig(ConfigModel):
     rpc: AcquisitionRpcConfig
 
 
-class EvaluationConfig(ConfigModel):
-    evaluator: SerializeAsAny[EvaluatorConfig]
-
-    @field_validator("evaluator", mode="before")
-    @classmethod
-    def validate_evaluator(cls, value: object) -> EvaluatorConfig:
-        if isinstance(value, Mapping):
-            return coerce_evaluator_config(value)
-        if isinstance(value, EvaluatorConfig):
-            return coerce_evaluator_config(value)
-        raise TypeError("evaluation.evaluator must be a mapping or config model")
-
-
 class FeatureSetConfig(ConfigModel):
     id: str
     family: SerializeAsAny[FeatureFamilyConfig]
@@ -266,27 +253,27 @@ def coerce_feature_set_config(payload: Mapping[str, object] | FeatureSetConfig) 
 
 class PredictionConfig(ConfigModel):
     id: str
-    family: SerializeAsAny[PredictionFamilyConfig]
+    family_id: str
 
     @field_validator("id")
     @classmethod
     def validate_id(cls, value: str) -> str:
         return validate_path_segment(value, label="prediction.id")
 
+    @field_validator("family_id")
+    @classmethod
+    def validate_family_id(cls, value: str) -> str:
+        return validate_prediction_family_id(
+            validate_path_segment(value, label="prediction.family_id")
+        )
+
 
 def coerce_prediction_config(payload: Mapping[str, object] | PredictionConfig) -> PredictionConfig:
-    from ..prediction import coerce_prediction_family_config
-
-    raw_payload = (
-        payload.model_dump(mode="json") if isinstance(payload, PredictionConfig) else dict(payload)
-    )
-    raw_family = raw_payload.get("family")
-    if raw_family is None:
-        raise ConfigResolutionError("prediction.family is required")
-    if not isinstance(raw_family, Mapping) and not isinstance(raw_family, PredictionFamilyConfig):
-        raise ConfigResolutionError("prediction.family must be a mapping")
-    raw_payload["family"] = coerce_prediction_family_config(raw_family)
-    return PredictionConfig.model_validate(raw_payload)
+    if isinstance(payload, PredictionConfig):
+        return payload
+    if not isinstance(payload, Mapping):
+        raise ConfigResolutionError("prediction must be a mapping")
+    return PredictionConfig.model_validate(dict(payload))
 
 
 class StudyConfig(ConfigModel):
@@ -359,48 +346,9 @@ class TuningProblemSearchSpace(ConfigModel):
         return self
 
 
-class TuningPredictionSearchSpace(ConfigModel):
-    classification_loss_weight: list[float] | None = Field(default=None, min_length=1)
-    regression_loss_weight: list[float] | None = Field(default=None, min_length=1)
-
-    @field_validator("classification_loss_weight")
-    @classmethod
-    def validate_classification_loss_weight_candidates(
-        cls,
-        values: list[float] | None,
-    ) -> list[float] | None:
-        if values is not None and any(value <= 0.0 for value in values):
-            raise ValueError(
-                "tuning_space.prediction.classification_loss_weight values must be positive"
-            )
-        return values
-
-    @field_validator("regression_loss_weight")
-    @classmethod
-    def validate_regression_loss_weight_candidates(
-        cls,
-        values: list[float] | None,
-    ) -> list[float] | None:
-        if values is not None and any(value <= 0.0 for value in values):
-            raise ValueError(
-                "tuning_space.prediction.regression_loss_weight values must be positive"
-            )
-        return values
-
-    @model_validator(mode="after")
-    def validate_non_empty_group(self) -> Self:
-        if (
-            self.classification_loss_weight is None
-            and self.regression_loss_weight is None
-        ):
-            raise ValueError("tuning_space.prediction must declare at least one field")
-        return self
-
-
 class TuningSpaceConfig(ConfigModel):
     training: TuningTrainingSearchSpace | None = None
     problem: TuningProblemSearchSpace | None = None
-    prediction: TuningPredictionSearchSpace | None = None
     model: SerializeAsAny[ModelTuningSpaceConfig]
 
     def has_candidates(self) -> bool:
@@ -408,7 +356,6 @@ class TuningSpaceConfig(ConfigModel):
         return (
             self.training is not None
             or self.problem is not None
-            or self.prediction is not None
             or bool(model_candidates)
         )
 
@@ -439,24 +386,9 @@ class TunedProblemParams(ConfigModel):
         return self
 
 
-class TunedPredictionParams(ConfigModel):
-    classification_loss_weight: float | None = Field(default=None, gt=0.0)
-    regression_loss_weight: float | None = Field(default=None, gt=0.0)
-
-    @model_validator(mode="after")
-    def validate_non_empty_group(self) -> Self:
-        if (
-            self.classification_loss_weight is None
-            and self.regression_loss_weight is None
-        ):
-            raise ValueError("tuned prediction params must declare at least one field")
-        return self
-
-
 class TunedParameterSet(ConfigModel):
     training: TunedTrainingParams | None = None
     problem: TunedProblemParams | None = None
-    prediction: TunedPredictionParams | None = None
     model: SerializeAsAny[TunedModelParams] | None = None
 
     @model_validator(mode="after")
@@ -464,7 +396,6 @@ class TunedParameterSet(ConfigModel):
         if (
             self.training is None
             and self.problem is None
-            and self.prediction is None
             and self.model is None
         ):
             raise ValueError("tuned parameter set must declare at least one parameter group")
@@ -575,33 +506,11 @@ class ModelWorkflowConfig(WorkflowConfig):
     prediction: PredictionConfig
     study: StudyConfig = Field(default_factory=StudyConfig)
     artifact: ArtifactConfig = Field(default_factory=ArtifactConfig)
-    resolved_study_id: str | None = None
-
-    @field_validator("dataset_builder", mode="before")
-    @classmethod
-    def validate_dataset_builder(cls, value: object) -> DatasetBuilderConfig:
-        if isinstance(value, Mapping):
-            return coerce_dataset_builder_config(value)
-        if isinstance(value, DatasetBuilderConfig):
-            return coerce_dataset_builder_config(value)
-        raise TypeError("dataset_builder must be a mapping or config model")
 
 
 class ObjectiveModelWorkflowConfig(ModelWorkflowConfig):
     objective: SerializeAsAny[ObjectiveConfig]
-
-    @field_validator("objective", mode="before")
-    @classmethod
-    def validate_objective_field(cls, value: object) -> ObjectiveConfig:
-        if isinstance(value, str):
-            from ..config.registry import load_named_group
-
-            return coerce_objective_config(load_named_group(value, "objective"))
-        if isinstance(value, Mapping):
-            return coerce_objective_config(value)
-        if isinstance(value, ObjectiveConfig):
-            return coerce_objective_config(value)
-        raise TypeError("objective must be a spec name, mapping, or config model")
+    evaluation: SerializeAsAny[EvaluatorConfig] | None = None
 
 
 class TrainConfig(ObjectiveModelWorkflowConfig):
@@ -632,13 +541,14 @@ class EvaluateConfig(ObjectiveModelWorkflowConfig):
     workflow: WorkflowTask = WorkflowTask.EVALUATE
     split: SplitConfig
     training: TrainingConfig
-    evaluation: EvaluationConfig
     delay_seconds: int = Field(gt=0)
     tuning: TuningConfig | None = None
     tuning_space: TuningSpaceConfig | None = None
 
     @model_validator(mode="after")
     def validate_required_objective_and_delay(self) -> Self:
+        if self.evaluation is None:
+            raise ConfigResolutionError("evaluation workflow requires evaluation")
         if self.delay_seconds > self.problem.max_delay_seconds:
             raise ConfigResolutionError("delay_seconds must be <= problem.max_delay_seconds")
         return self

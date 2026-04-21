@@ -8,11 +8,13 @@ import torch
 from spice.core.errors import SpiceOperatorError
 from spice.modeling._runtime import (
     ensure_cuda_runtime_ready,
-    resolve_compile_enabled,
     resolve_cuda_device,
-    resolve_training_precision,
 )
 from spice.modeling.families.lstm import LstmModelConfig
+from spice.modeling.families.registry import (
+    resolve_model_compile_enabled,
+    resolve_model_training_precision,
+)
 from spice.modeling.families.transformer import TransformerModelConfig
 from spice.modeling.families.transformer_lstm import TransformerLstmModelConfig
 
@@ -57,7 +59,7 @@ def test_resolve_compile_enabled_skips_transformer_auto_compile_on_small_cuda_gp
         lambda index: SimpleNamespace(multi_processor_count=32),
     )
 
-    enabled = resolve_compile_enabled(
+    enabled = resolve_model_compile_enabled(
         device=torch.device("cuda"),
         model_config=TransformerModelConfig(
             dropout=0.1,
@@ -82,7 +84,7 @@ def test_resolve_compile_enabled_keeps_transformer_auto_compile_on_big_cuda_gpu(
         lambda index: SimpleNamespace(multi_processor_count=72),
     )
 
-    enabled = resolve_compile_enabled(
+    enabled = resolve_model_compile_enabled(
         device=torch.device("cuda"),
         model_config=TransformerModelConfig(
             dropout=0.1,
@@ -98,7 +100,7 @@ def test_resolve_compile_enabled_keeps_transformer_auto_compile_on_big_cuda_gpu(
 
 
 def test_recurrent_families_disable_auto_compile_on_cuda() -> None:
-    lstm_enabled = resolve_compile_enabled(
+    lstm_enabled = resolve_model_compile_enabled(
         device=torch.device("cuda"),
         model_config=LstmModelConfig(
             input_projection_dim=8,
@@ -108,7 +110,7 @@ def test_recurrent_families_disable_auto_compile_on_cuda() -> None:
             head_hidden_dim=8,
         ),
     )
-    transformer_lstm_enabled = resolve_compile_enabled(
+    transformer_lstm_enabled = resolve_model_compile_enabled(
         device=torch.device("cuda"),
         model_config=TransformerLstmModelConfig(
             hidden_size=16,
@@ -128,7 +130,7 @@ def test_recurrent_families_disable_auto_compile_on_cuda() -> None:
 
 def test_recurrent_families_default_to_fp32_on_cuda() -> None:
     assert (
-        resolve_training_precision(
+        resolve_model_training_precision(
             device=torch.device("cuda"),
             model_config=LstmModelConfig(
                 input_projection_dim=8,
@@ -141,7 +143,7 @@ def test_recurrent_families_default_to_fp32_on_cuda() -> None:
         == "32-true"
     )
     assert (
-        resolve_training_precision(
+        resolve_model_training_precision(
             device=torch.device("cuda"),
             model_config=TransformerLstmModelConfig(
                 hidden_size=16,
@@ -162,7 +164,7 @@ def test_transformer_default_precision_prefers_bf16_on_supported_cuda(monkeypatc
     monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: True)
 
     assert (
-        resolve_training_precision(
+        resolve_model_training_precision(
             device=torch.device("cuda"),
             model_config=TransformerModelConfig(
                 dropout=0.1,
@@ -181,7 +183,7 @@ def test_transformer_default_precision_falls_back_to_fp16_without_bf16(monkeypat
     monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: False)
 
     assert (
-        resolve_training_precision(
+        resolve_model_training_precision(
             device=torch.device("cuda"),
             model_config=TransformerModelConfig(
                 dropout=0.1,

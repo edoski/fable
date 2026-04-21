@@ -15,30 +15,9 @@ import torch
 from numpy.typing import NDArray
 
 from ..core.errors import SpiceOperatorError
-from ..prediction import (
-    CompiledPredictionContract,
-    bind_prediction_representation,
-)
-from ..prediction.contracts import (
-    ModelInputBatch,
-    PredictionBatch,
-    PredictionPreparedRepresentation,
-)
-from ..temporal.problem_store import CompiledProblemStore
-from ..temporal.realization import CompiledRealizationPolicyContract
-from .batch_sources import (
-    BatchSource,
-    BatchSourcePlan,
-    plan_batch_source,
-    resolve_available_device_memory_budget,
-)
-from .families.base import ModelConfig
+from .batch_sources import BatchSource, resolve_available_device_memory_budget
 from .models import ModelOutputs, TemporalModel
-from .representations import (
-    CompiledRepresentationContract,
-    PreparedRepresentation,
-    RepresentationRuntimeContext,
-)
+from .representations import RepresentationRuntimeContext
 
 try:
     import psutil
@@ -64,12 +43,12 @@ class ForwardBatch(Protocol):
 
 def resolve_cuda_device() -> torch.device:
     resolved_device = torch.device("cuda")
-    _require_cuda_device(resolved_device, requested_device="cuda")
+    require_cuda_device(resolved_device, requested_device="cuda")
     return resolved_device
 
 
 def ensure_cuda_runtime_ready(device: torch.device) -> None:
-    _require_cuda_device(device, requested_device="cuda")
+    require_cuda_device(device, requested_device="cuda")
     _ensure_cuda_runtime_ready(device)
 
 
@@ -141,31 +120,7 @@ def autocast_context(
     raise ValueError(f"Unsupported resolved precision: {precision}")
 
 
-def resolve_training_precision(
-    *,
-    device: torch.device,
-    model_config: ModelConfig,
-) -> str:
-    _require_cuda_device(device)
-    if model_config.id == "transformer":
-        if torch.cuda.is_bf16_supported():
-            return "bf16-mixed"
-        return "16-mixed"
-    return "32-true"
-
-
-def resolve_compile_enabled(
-    *,
-    device: torch.device,
-    model_config: ModelConfig,
-) -> bool:
-    _require_cuda_device(device)
-    if model_config.id != "transformer":
-        return False
-    return _device_supports_auto_compile(device)
-
-
-def _require_cuda_device(
+def require_cuda_device(
     device: torch.device,
     *,
     requested_device: str | None = None,
@@ -179,8 +134,8 @@ def _require_cuda_device(
         raise SpiceOperatorError("Modeling runtime requires NVIDIA CUDA. ROCm/HIP is unsupported.")
 
 
-def _device_supports_auto_compile(device: torch.device) -> bool:
-    _require_cuda_device(device)
+def device_supports_auto_compile(device: torch.device) -> bool:
+    require_cuda_device(device)
     device_index = torch.cuda.current_device() if device.index is None else device.index
     properties = torch.cuda.get_device_properties(device_index)
     # Mirror TorchInductor's "big GPU" threshold so auto mode skips the path
@@ -199,94 +154,6 @@ def build_representation_runtime_context(
         batch_size=batch_size,
         available_host_memory_bytes=_available_system_memory_bytes(),
         available_device_memory_bytes=resolve_available_device_memory_budget(device),
-    )
-
-
-def prepare_model_representation(
-    store: CompiledProblemStore,
-    sample_indices: IntVector,
-    *,
-    representation_contract: CompiledRepresentationContract,
-    runtime_context: RepresentationRuntimeContext,
-) -> PreparedRepresentation:
-    return representation_contract.prepare(
-        store,
-        sample_indices,
-        runtime_context=runtime_context,
-    )
-
-
-def prepare_supervised_prediction_representation(
-    store: CompiledProblemStore,
-    sample_indices: IntVector,
-    *,
-    representation_contract: CompiledRepresentationContract,
-    prediction_contract: CompiledPredictionContract,
-    realization_policy: CompiledRealizationPolicyContract,
-    runtime_context: RepresentationRuntimeContext,
-) -> PredictionPreparedRepresentation:
-    prepared = prepare_model_representation(
-        store,
-        sample_indices,
-        representation_contract=representation_contract,
-        runtime_context=runtime_context,
-    )
-    targets = prediction_contract.prepare_targets(
-        store,
-        sample_indices,
-        realization_policy=realization_policy,
-    )
-    return bind_prediction_representation(prepared, targets=targets)
-
-
-def build_prediction_batch_source(
-    store: CompiledProblemStore,
-    sample_indices: IntVector,
-    *,
-    representation_contract: CompiledRepresentationContract,
-    prediction_contract: CompiledPredictionContract,
-    realization_policy: CompiledRealizationPolicyContract,
-    runtime: CudaModelingRuntime,
-    seed: int,
-    shuffle: bool = False,
-) -> BatchSourcePlan[PredictionBatch]:
-    prepared = prepare_supervised_prediction_representation(
-        store,
-        sample_indices,
-        representation_contract=representation_contract,
-        prediction_contract=prediction_contract,
-        realization_policy=realization_policy,
-        runtime_context=runtime.representation_runtime_context,
-    )
-    return plan_batch_source(
-        prepared,
-        runtime_context=runtime.representation_runtime_context,
-        resolved_device=runtime.resolved_device,
-        seed=seed,
-        shuffle=shuffle,
-    )
-
-
-def build_model_input_batch_source(
-    store: CompiledProblemStore,
-    sample_indices: IntVector,
-    *,
-    representation_contract: CompiledRepresentationContract,
-    runtime: CudaModelingRuntime,
-    seed: int,
-) -> BatchSourcePlan[ModelInputBatch]:
-    prepared = prepare_model_representation(
-        store,
-        sample_indices,
-        representation_contract=representation_contract,
-        runtime_context=runtime.representation_runtime_context,
-    )
-    return plan_batch_source(
-        prepared,
-        runtime_context=runtime.representation_runtime_context,
-        resolved_device=runtime.resolved_device,
-        seed=seed,
-        shuffle=False,
     )
 
 

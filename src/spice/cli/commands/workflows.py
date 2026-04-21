@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -32,31 +31,17 @@ def _submission_option(*param_decls: str, metavar: str, help: str) -> object:
     return typer.Option(*param_decls, metavar=metavar, help=help, rich_help_panel="Execution")
 
 
-def _append_option(args: list[str], flag: str, value: str | int | Path | None) -> None:
-    if value is None:
-        return
-    args.extend([flag, str(value)])
-
-
-def _build_cli_args(*options: tuple[str, str | int | Path | None]) -> list[str]:
-    args: list[str] = []
-    for flag, value in options:
-        _append_option(args, flag, value)
-    return args
-
-
 def _submit_selected_workflow(
     *,
     task: WorkflowTask,
     request: WorkflowRequest,
     dependency: str | None,
     detach: bool,
-    cli_options: list[tuple[str, str | int | Path | None]],
 ) -> None:
     resolve_workflow_config(task, request)
     submission = submit_execution_workflow(
         task,
-        cli_args=_build_cli_args(*cli_options),
+        request=request,
         dependency=dependency,
     )
     typer.echo(
@@ -101,7 +86,7 @@ def _validate_submission_flags(
 def _run_resolved_workflow(
     *,
     task: WorkflowTask,
-    runner: Callable[..., None],
+    runner,
     request: WorkflowRequest,
 ) -> None:
     runner(resolve_workflow_config(task, request))
@@ -116,25 +101,15 @@ def _build_model_workflow_request(
     delay_seconds: int | None = None,
     trial_count: int | None = None,
     storage_root: Path | None = None,
-) -> tuple[WorkflowRequest, list[tuple[str, str | int | Path | None]]]:
-    return (
-        WorkflowRequest(
-            preset=preset,
-            chain=chain,
-            study=study,
-            variant=variant,
-            delay_seconds=delay_seconds,
-            trial_count=trial_count,
-            storage_root=storage_root,
-        ),
-        [
-            ("--preset", preset),
-            ("--chain", chain),
-            ("--study", study),
-            ("--variant", variant),
-            ("--delay-seconds", delay_seconds),
-            ("--trial-count", trial_count),
-        ],
+) -> WorkflowRequest:
+    return WorkflowRequest(
+        preset=preset,
+        chain=chain,
+        study=study,
+        variant=variant,
+        delay_seconds=delay_seconds,
+        trial_count=trial_count,
+        storage_root=storage_root,
     )
 
 
@@ -245,7 +220,7 @@ def train_command(
         detach=detach,
         storage_root=storage_root,
     )
-    submit_request, cli_options = _build_model_workflow_request(
+    submit_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
         study=study,
@@ -257,10 +232,9 @@ def train_command(
             request=submit_request,
             dependency=dependency,
             detach=detach,
-            cli_options=cli_options,
         )
         return
-    local_request, _ = _build_model_workflow_request(
+    local_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
         study=study,
@@ -336,7 +310,7 @@ def tune_command(
         detach=detach,
         storage_root=storage_root,
     )
-    submit_request, cli_options = _build_model_workflow_request(
+    submit_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
         trial_count=trial_count,
@@ -347,10 +321,9 @@ def tune_command(
             request=submit_request,
             dependency=dependency,
             detach=detach,
-            cli_options=cli_options,
         )
         return
-    local_request, _ = _build_model_workflow_request(
+    local_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
         trial_count=trial_count,
@@ -433,7 +406,7 @@ def evaluate_command(
         detach=detach,
         storage_root=storage_root,
     )
-    submit_request, cli_options = _build_model_workflow_request(
+    submit_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
         study=study,
@@ -446,10 +419,9 @@ def evaluate_command(
             request=submit_request,
             dependency=dependency,
             detach=detach,
-            cli_options=cli_options,
         )
         return
-    local_request, _ = _build_model_workflow_request(
+    local_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
         study=study,

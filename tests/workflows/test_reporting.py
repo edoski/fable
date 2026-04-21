@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-from contextlib import nullcontext
 from io import StringIO
 from types import SimpleNamespace
 from typing import cast
@@ -94,7 +92,7 @@ def test_train_workflow_emits_compact_epoch_output(
 
     monkeypatch.setattr(train_workflow, "run_persisted_training", fake_run_persisted_training)
     monkeypatch.setattr(train_workflow, "promote_paths_atomic", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(train_workflow, "upsert_artifact_record", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(train_workflow, "reindex_root", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         train_workflow,
         "training_result_fields",
@@ -166,9 +164,8 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
             remaining_trial_count=2,
         ),
     )
-    monkeypatch.setattr(tune_workflow, "_optuna_warning_logging", nullcontext)
     monkeypatch.setattr(tune_workflow, "build_study_summary", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr(tune_workflow, "upsert_study_record", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(tune_workflow, "reindex_root", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         tune_workflow,
         "study_result_fields",
@@ -193,18 +190,3 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
     assert "tune complete complete=2 pruned=0 failed=0 best_trial=2 best_value=0.3500" in rendered
     assert "fit epoch=" not in rendered
     assert "[running]" not in rendered
-
-
-def test_optuna_warnings_route_to_reporter() -> None:
-    output = StringIO()
-    reporter = Reporter(stream=output)
-    logger = logging.getLogger("optuna")
-    state = (list(logger.handlers), logger.level, logger.propagate)
-
-    with tune_workflow._optuna_warning_logging(reporter):
-        logger.warning("trial warning")
-
-    assert "warning: trial warning" in output.getvalue()
-    assert list(logger.handlers) == state[0]
-    assert logger.level == state[1]
-    assert logger.propagate == state[2]

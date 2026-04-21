@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, overload
 
 from .identity import (
-    artifact_storage_identity_payload_from_config,
-    study_storage_identity_payload_from_config,
+    artifact_storage_identity_from_config,
+    study_storage_identity_from_config,
 )
 from .ids import artifact_storage_id, corpus_storage_id, study_storage_id
 
@@ -89,34 +89,46 @@ def build_workflow_paths(
 
 
 @overload
-def resolve_workflow_paths(config: AcquireConfig) -> WorkflowPaths: ...
+def resolve_workflow_paths(config: AcquireConfig, *, study_id: str | None = None) -> WorkflowPaths: ...
 
 
 @overload
-def resolve_workflow_paths(config: ModelWorkflowConfig) -> WorkflowPaths: ...
+def resolve_workflow_paths(
+    config: ModelWorkflowConfig,
+    *,
+    study_id: str | None = None,
+) -> WorkflowPaths: ...
 
 
-def resolve_workflow_paths(config: object) -> WorkflowPaths:
+def resolve_workflow_paths(config: object, *, study_id: str | None = None) -> WorkflowPaths:
     from ..config.models import AcquireConfig, ModelWorkflowConfig
 
     if isinstance(config, (AcquireConfig, ModelWorkflowConfig)):
         return build_workflow_paths(
             output_root=config.storage.root,
             chain_name=config.chain.name,
-            identity=resolve_workflow_identity(config),
+            identity=resolve_workflow_identity(config, study_id=study_id),
         )
     raise TypeError(f"Unsupported workflow config for path resolution: {type(config)!r}")
 
 
 @overload
-def resolve_workflow_identity(config: AcquireConfig) -> WorkflowIdentity: ...
+def resolve_workflow_identity(
+    config: AcquireConfig,
+    *,
+    study_id: str | None = None,
+) -> WorkflowIdentity: ...
 
 
 @overload
-def resolve_workflow_identity(config: ModelWorkflowConfig) -> WorkflowIdentity: ...
+def resolve_workflow_identity(
+    config: ModelWorkflowConfig,
+    *,
+    study_id: str | None = None,
+) -> WorkflowIdentity: ...
 
 
-def resolve_workflow_identity(config: object) -> WorkflowIdentity:
+def resolve_workflow_identity(config: object, *, study_id: str | None = None) -> WorkflowIdentity:
     from ..config.models import (
         AcquireConfig,
         EvaluateConfig,
@@ -140,24 +152,25 @@ def resolve_workflow_identity(config: object) -> WorkflowIdentity:
         dataset_name=config.dataset.name,
     )
     tuning_mode = isinstance(config, TuneConfig)
-    study_id = config.resolved_study_id
-    if study_id is None and (
-        tuning_mode or config.artifact.variant.value == "tuned"
-    ) and isinstance(config, (TuneConfig, TrainConfig, EvaluateConfig)):
-        study_id = study_storage_id(
-            identity=study_storage_identity_payload_from_config(config, corpus_id=corpus_id)
+    resolved_study_id = study_id
+    if resolved_study_id is None and (tuning_mode or config.artifact.variant.value == "tuned") and isinstance(
+        config,
+        (TuneConfig, TrainConfig, EvaluateConfig),
+    ):
+        resolved_study_id = study_storage_id(
+            identity=study_storage_identity_from_config(config, corpus_id=corpus_id)
         )
     artifact_id: str | None = None
     if isinstance(config, (TrainConfig, EvaluateConfig)):
         artifact_id = artifact_storage_id(
-            identity=artifact_storage_identity_payload_from_config(
+            identity=artifact_storage_identity_from_config(
                 config,
                 corpus_id=corpus_id,
-                study_id=study_id,
+                study_id=resolved_study_id,
             )
         )
     return WorkflowIdentity(
         corpus_id=corpus_id,
-        study_id=study_id,
+        study_id=resolved_study_id,
         artifact_id=artifact_id,
     )

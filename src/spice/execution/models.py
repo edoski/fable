@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
 from pathlib import Path
 
 from pydantic import Field, field_validator
 
-from ..core.closed_dispatch import validate_path_segment
+from ..core.validation import validate_path_segment
 from ..modeling.families.base import ConfigModel
 
-
-class ExecutionBackend(StrEnum):
-    SLURM_OVER_SSH = "slurm_over_ssh"
 
 class ExecutionSshSpec(ConfigModel):
     host: str
@@ -32,10 +28,6 @@ class ExecutionPathsSpec(ConfigModel):
     @property
     def python_path(self) -> Path:
         return self.venv_root / "bin" / "python"
-
-    @property
-    def spice_path(self) -> Path:
-        return self.venv_root / "bin" / "spice"
 
 
 class ExecutionWorkflowSpec(ConfigModel):
@@ -59,7 +51,6 @@ class ExecutionWorkflowSet(ConfigModel):
 
 class ExecutionSpec(ConfigModel):
     id: str
-    backend: ExecutionBackend = ExecutionBackend.SLURM_OVER_SSH
     ssh: ExecutionSshSpec
     paths: ExecutionPathsSpec
     workflows: ExecutionWorkflowSet

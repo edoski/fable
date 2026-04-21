@@ -1,6 +1,6 @@
-evaluator:
-  id: poisson_replay
-  window_seconds: 7200
-  repetitions: 50
-  arrival_rate_per_second: 0.05
-  seed: 2026
+id: paper_replay_2h
+sampler: poisson_arrivals
+window_seconds: 7200
+repetitions: 50
+arrival_rate_per_second: 0.05
+seed: 2026

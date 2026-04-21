@@ -56,18 +56,12 @@ def _contract():
     prediction = coerce_prediction_config(
         {
             "id": "icdcs_2026",
-            "family": {
-                "id": "min_block_fee_multitask",
-                "classification_loss_weight": 1.0,
-                "regression_loss_weight": 0.5,
-                "class_weighting": "inverse_frequency",
-                "fee_target_normalization": "zscore_train_split",
-            },
+            "family_id": "min_block_fee_multitask",
         }
     )
     return compile_prediction_contract(
         prediction_id=prediction.id,
-        family_config=prediction.family,
+        family_id=prediction.family_id,
     )
 
 
@@ -131,7 +125,7 @@ def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
         batch,
         training_state=training_state,
     )
-    accumulator = contract.create_epoch_accumulator("train")
+    accumulator = contract.create_epoch_accumulator()
     accumulator.update(state)
     metrics = accumulator.finalize()
     assert loss.item() < 0.5
@@ -151,23 +145,6 @@ def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
         predictions.tensor,
         torch.tensor([0, 1, 2, 0], dtype=torch.int64),
     )
-
-
-def test_min_block_fee_training_state_caches_resolved_device_tensors() -> None:
-    state = MinBlockFeeTrainingState(
-        class_weights=torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32),
-        fee_mean=torch.tensor(1.5, dtype=torch.float32),
-        fee_std=torch.tensor(0.25, dtype=torch.float32),
-    )
-
-    first = state.resolve(device=torch.device("cpu"), dtype=torch.float32)
-    second = state.resolve(device=torch.device("cpu"), dtype=torch.float32)
-
-    assert first is second
-    assert first.class_weights.device.type == "cpu"
-    assert first.class_weights.dtype is torch.float32
-    assert first.fee_mean.item() == pytest.approx(1.5)
-    assert first.fee_std.item() == pytest.approx(0.25)
 
 
 def test_min_block_fee_multitask_uses_realization_policy_targets() -> None:

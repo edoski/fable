@@ -166,10 +166,10 @@ def test_train_submit_cli_preflights_and_routes_to_execution_backend(
     def _fake_submit(
         task: WorkflowTask,
         *,
-        cli_args: list[str],
+        request,
         dependency: str | None = None,
     ) -> ExecutionJobSubmission:
-        events.append(("submit", (task, cli_args, dependency)))
+        events.append(("submit", (task, request, dependency)))
         return ExecutionJobSubmission(
             task=task,
             target=SimpleNamespace(spec=SimpleNamespace(follow_by_default=False)),
@@ -200,20 +200,15 @@ def test_train_submit_cli_preflights_and_routes_to_execution_backend(
     assert resolved_task is WorkflowTask.TRAIN
     assert request.study == "default"
     assert request.variant == "baseline"
-    submitted_task, cli_args, dependency = cast(
-        tuple[WorkflowTask, list[str], str | None],
+    submitted_task, submitted_request, dependency = cast(
+        tuple[WorkflowTask, object, str | None],
         events[1][1],
     )
     assert submitted_task is WorkflowTask.TRAIN
     assert dependency is None
-    assert cli_args == [
-        "--preset",
-        "icdcs_2026",
-        "--study",
-        "default",
-        "--variant",
-        "baseline",
-    ]
+    assert submitted_request.preset == "icdcs_2026"
+    assert submitted_request.study == "default"
+    assert submitted_request.variant == "baseline"
     assert (
         "submit workflow=train job_id=12345 log=/remote/logs/spice-train-12345.out"
         in result.stdout

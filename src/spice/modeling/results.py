@@ -160,8 +160,8 @@ class EvaluationRuntimeSummary:
     """Runtime-only evaluation outcomes stored separately from manifest provenance."""
 
     delay_seconds: int
-    evaluator_id: str
-    evaluator_config: dict[str, object]
+    evaluation_id: str
+    evaluation_config: dict[str, object]
     metric_descriptors: tuple[MetricDescriptor, ...]
     n_history_rows: int
     n_evaluation_rows: int
@@ -228,14 +228,14 @@ def build_evaluation_runtime_summary(
     prepared: PreparedInferenceDataset,
     evaluation: EvaluationSummary,
     delay_seconds: int,
-    evaluator_id: str,
-    evaluator_config: dict[str, object],
+    evaluation_id: str,
+    evaluation_config: dict[str, object],
     metric_descriptors: tuple[MetricDescriptor, ...],
 ) -> EvaluationRuntimeSummary:
     return EvaluationRuntimeSummary(
         delay_seconds=delay_seconds,
-        evaluator_id=evaluator_id,
-        evaluator_config=dict(evaluator_config),
+        evaluation_id=evaluation_id,
+        evaluation_config=dict(evaluation_config),
         metric_descriptors=metric_descriptors,
         n_history_rows=prepared.n_history_rows,
         n_evaluation_rows=prepared.n_evaluation_rows,

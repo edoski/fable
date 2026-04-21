@@ -29,18 +29,18 @@ from ..core.errors import (
 from ..modeling._training_context import compile_training_context
 from ..modeling.dataset_builders import coerce_dataset_builder_config
 from ..modeling.families.base import ModelConfig
-from ..modeling.families.registry import (
-    coerce_model_config,
-    coerce_tuning_space_config,
-)
+from ..modeling.families.registry import coerce_model_config
+from ..modeling.tuned_config import coerce_tuning_space_config
 from ..modeling.result_codecs import study_semantics_from_payload, study_semantics_payload
 from ..objectives import coerce_objective_config
 from ..semantics import StudySemantics
 from .engine import STUDY_ROOT_KIND, create_state_engine, ensure_state_db
 from .identity import (
-    study_manifest_identity_payload,
-    study_request_identity_payload_from_manifest,
-    study_request_identity_payload_from_tuned_config,
+    IdentityModel,
+    identity_payload,
+    study_manifest_identity,
+    study_request_identity_from_manifest,
+    study_request_identity_from_tuned_config,
 )
 from .layout import resolve_workflow_paths
 from .payloads import PayloadCodec, SingletonPayloadStore, mapping_payload
@@ -117,7 +117,8 @@ def insert_study_manifest(db_path: Path, *, manifest: StudyManifest) -> None:
 def load_study_manifest(db_path: Path) -> StudyManifest:
     """Load the canonical study manifest that owns persisted study provenance."""
 
-    ensure_state_db(db_path, root_kind=STUDY_ROOT_KIND, tables=STUDY_TABLES)
+    if not db_path.is_file():
+        raise MissingStateError(f"Missing study manifest: {db_path}")
     engine = create_state_engine(db_path)
     try:
         with engine.connect() as conn:
@@ -130,7 +131,8 @@ def load_study_manifest(db_path: Path) -> StudyManifest:
 
 
 def try_load_study_manifest(db_path: Path) -> StudyManifest | None:
-    ensure_state_db(db_path, root_kind=STUDY_ROOT_KIND, tables=STUDY_TABLES)
+    if not db_path.is_file():
+        return None
     engine = create_state_engine(db_path)
     try:
         with engine.connect() as conn:
@@ -143,9 +145,10 @@ def try_load_study_manifest(db_path: Path) -> StudyManifest | None:
 
 
 def diff_study_manifests(stored: StudyManifest, requested: StudyManifest) -> list[str]:
-    stored_payload = study_manifest_identity_payload(stored)
-    requested_payload = study_manifest_identity_payload(requested)
-    return _mismatched_identity_fields(stored_payload, requested_payload)
+    return _mismatched_identity_fields(
+        study_manifest_identity(stored),
+        study_manifest_identity(requested),
+    )
 
 
 def validate_tuned_train_request(
@@ -158,13 +161,14 @@ def validate_tuned_train_request(
     paths = resolve_workflow_paths(config)
     if paths.study_id is None:
         raise ConfigResolutionError("study_id is required for tuned artifacts")
-    stored_payload = study_request_identity_payload_from_manifest(manifest)
-    requested_payload = study_request_identity_payload_from_tuned_config(
-        config,
-        study_id=paths.study_id,
-        dataset_id=paths.corpus_id,
+    mismatches = _mismatched_identity_fields(
+        study_request_identity_from_manifest(manifest),
+        study_request_identity_from_tuned_config(
+            config,
+            study_id=paths.study_id,
+            dataset_id=paths.corpus_id,
+        ),
     )
-    mismatches = _mismatched_identity_fields(stored_payload, requested_payload)
     if mismatches:
         raise StateConflictError(
             "Tuned artifact request does not match study definition: " + ", ".join(mismatches)
@@ -172,15 +176,42 @@ def validate_tuned_train_request(
 
 
 def _mismatched_identity_fields(
-    stored_payload: dict[str, object],
-    requested_payload: dict[str, object],
+    stored_identity: IdentityModel,
+    requested_identity: IdentityModel,
 ) -> list[str]:
-    return [key for key in stored_payload if stored_payload[key] != requested_payload[key]]
+    if type(stored_identity) is not type(requested_identity):
+        raise TypeError("identity comparisons require matching identity types")
+    return _identity_field_mismatches(stored_identity, requested_identity)
+
+
+def _identity_field_mismatches(
+    stored_identity: IdentityModel,
+    requested_identity: IdentityModel,
+    *,
+    prefix: str = "",
+) -> list[str]:
+    mismatches: list[str] = []
+    for field_name in stored_identity.__class__.model_fields:
+        stored_value = getattr(stored_identity, field_name)
+        requested_value = getattr(requested_identity, field_name)
+        label = field_name if not prefix else f"{prefix}.{field_name}"
+        if isinstance(stored_value, IdentityModel) and isinstance(requested_value, IdentityModel):
+            mismatches.extend(
+                _identity_field_mismatches(
+                    stored_value,
+                    requested_value,
+                    prefix=label,
+                )
+            )
+            continue
+        if stored_value != requested_value:
+            mismatches.append(label)
+    return mismatches
 
 
 def manifest_payload(manifest: StudyManifest) -> dict[str, object]:
     return {
-        **study_manifest_identity_payload(manifest),
+        **identity_payload(study_manifest_identity(manifest)),
         "semantics": study_semantics_payload(manifest.semantics),
     }
 
@@ -225,7 +256,6 @@ def manifest_from_payload(payload: dict[str, object]) -> StudyManifest:
             payload["tuning_space"],
             model=model,
             problem=problem,
-            prediction=prediction,
         ),
         semantics=study_semantics_from_payload(semantics_payload),
     )
@@ -236,13 +266,11 @@ def coerce_study_tuning_space(
     *,
     model: ModelConfig,
     problem: ProblemSpec,
-    prediction: PredictionConfig,
 ) -> TuningSpaceConfig:
     tuning_space = coerce_tuning_space_config(
         mapping_payload(payload, label="study.tuning_space"),
         model_config=model,
         problem_config=problem,
-        prediction_config=prediction,
     )
     if tuning_space is None:
         raise StateLayoutError("Study tuning_space payload is required")

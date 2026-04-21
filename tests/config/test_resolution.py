@@ -22,6 +22,10 @@ def _write_preset(conf_root: Path, name: str, payload: dict[str, object]) -> Non
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
+def _base_preset(conf_root: Path) -> dict[str, object]:
+    return load_named_group("icdcs_2026", "preset")
+
+
 def test_named_spec_identity_is_enforced_on_normal_load_paths(isolate_conf_root) -> None:
     conf_root = isolate_conf_root()
     aliased_problem = conf_root / "problem" / "aliased_problem.yaml"
@@ -52,28 +56,31 @@ def test_named_spec_identity_is_enforced_on_normal_load_paths(isolate_conf_root)
         load_named_group("aliased_problem", "problem")
 
 
-def test_preset_extends_merges_known_blocks_and_replaces_names(
+def test_preset_frames_are_explicit_and_request_overrides_are_narrow(
     tmp_path: Path,
     isolate_conf_root,
 ) -> None:
     conf_root = isolate_conf_root()
     child_root = tmp_path / "child_outputs"
-    _write_preset(
-        conf_root,
-        "child_train",
-        {
-            "extends": "icdcs_2026",
-            "objective": "paper_profit_replay_2h",
-            "training": {
-                "batch_size": 64,
-                "early_stopping": {"patience": 3},
-            },
-            "split": {"train_fraction": 0.7},
-            "storage": {"root": str(child_root)},
-            "study": {"name": "child-study"},
-            "artifact": {"variant": "baseline"},
+    payload = _base_preset(conf_root)
+    payload["objective"] = "paper_profit_replay_2h"
+    payload["evaluation"] = "paper_replay_2h"
+    payload["training"] = {
+        **cast(dict[str, object], payload["training"]),
+        "batch_size": 64,
+        "early_stopping": {
+            **cast(dict[str, object], cast(dict[str, object], payload["training"])["early_stopping"]),
+            "patience": 3,
         },
-    )
+    }
+    payload["split"] = {
+        **cast(dict[str, object], payload["split"]),
+        "train_fraction": 0.7,
+    }
+    payload["storage"] = {"root": str(child_root)}
+    payload["study"] = {"name": "child-study"}
+    payload["artifact"] = {"variant": "baseline"}
+    _write_preset(conf_root, "child_train", payload)
 
     config = cast(
         TrainConfig,
@@ -146,14 +153,9 @@ def test_acquire_resolution_fails_when_provider_lacks_chain_endpoint(
         ),
         encoding="utf-8",
     )
-    _write_preset(
-        conf_root,
-        "eth_only_acquire",
-        {
-            "extends": "icdcs_2026",
-            "provider": "eth_only",
-        },
-    )
+    payload = _base_preset(conf_root)
+    payload["provider"] = "eth_only"
+    _write_preset(conf_root, "eth_only_acquire", payload)
 
     with pytest.raises(
         ConfigResolutionError,
@@ -169,55 +171,52 @@ def test_acquire_resolution_fails_when_provider_lacks_chain_endpoint(
         )
 
 
-@pytest.mark.parametrize(
-    ("name", "payload", "match"),
-    [
-        (
-            "missing_parent",
-            {"extends": "does_not_exist"},
-            "Unknown preset: does_not_exist",
-        ),
-        (
-            "cycle_a",
-            {"extends": "cycle_b"},
-            "Preset extends cycle: cycle_a -> cycle_b -> cycle_a",
-        ),
-        (
-            "unknown_overlay",
-            {"extends": "icdcs_2026", "training": {"unknown": 1}},
-            "Unknown training preset fields: unknown",
-        ),
-    ],
-)
-def test_preset_overlay_reports_resolution_errors(
-    tmp_path: Path,
-    isolate_conf_root,
-    name: str,
-    payload: dict[str, object],
-    match: str,
-) -> None:
-    conf_root = isolate_conf_root()
-    _write_preset(conf_root, name, payload)
-    if name == "cycle_a":
-        _write_preset(conf_root, "cycle_b", {"extends": "cycle_a"})
+def test_resolution_requires_preset(isolate_conf_root) -> None:
+    isolate_conf_root()
 
-    with pytest.raises(ConfigResolutionError, match=match):
+    with pytest.raises(ConfigResolutionError, match="preset is required"):
+        resolve_workflow_config(WorkflowTask.TRAIN, WorkflowRequest())
+
+
+def test_unknown_preset_reports_clean_error(tmp_path: Path, isolate_conf_root) -> None:
+    isolate_conf_root()
+
+    with pytest.raises(ConfigResolutionError, match="Unknown preset spec: does_not_exist"):
         resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(preset=name, storage_root=tmp_path / "outputs"),
+            WorkflowRequest(preset="does_not_exist", storage_root=tmp_path / "outputs"),
         )
 
 
-def test_preset_parent_must_be_runnable(tmp_path: Path, isolate_conf_root) -> None:
+def test_preset_validation_reports_missing_required_fields(
+    tmp_path: Path,
+    isolate_conf_root,
+) -> None:
     conf_root = isolate_conf_root()
-    _write_preset(conf_root, "bad_parent", {"extends": "icdcs_2026", "delay_seconds": 999})
-    _write_preset(conf_root, "child_bad_parent", {"extends": "bad_parent"})
+    _write_preset(conf_root, "broken", {"chain": "ethereum"})
+
+    with pytest.raises(ConfigResolutionError, match="Field required"):
+        resolve_workflow_config(
+            WorkflowTask.TRAIN,
+            WorkflowRequest(preset="broken", storage_root=tmp_path / "outputs"),
+        )
+
+
+def test_benchmark_objective_requires_matching_evaluation(
+    tmp_path: Path,
+    isolate_conf_root,
+) -> None:
+    conf_root = isolate_conf_root()
+    payload = _base_preset(conf_root)
+    payload["objective"] = "paper_profit_replay_2h"
+    payload["evaluation"] = "paper_fullset"
+    _write_preset(conf_root, "mismatch", payload)
 
     with pytest.raises(
         ConfigResolutionError,
-        match="Parent preset bad_parent is not runnable for evaluate",
+        match="objective paper_profit_replay_2h requires evaluation paper_replay_2h, got paper_fullset",
     ):
         resolve_workflow_config(
-            WorkflowTask.TRAIN,
-            WorkflowRequest(preset="child_bad_parent", storage_root=tmp_path / "outputs"),
+            WorkflowTask.EVALUATE,
+            WorkflowRequest(preset="mismatch", storage_root=tmp_path / "outputs"),
         )

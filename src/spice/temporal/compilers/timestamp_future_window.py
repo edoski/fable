@@ -7,12 +7,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-import numpy as np
 from pydantic import Field
 
 from ...features import (
     CompiledFeatureContract,
-    FeaturePrerequisites,
     ResolvedFeatureTable,
 )
 from ..contracts import (
@@ -22,6 +20,12 @@ from ..contracts import (
 )
 from ..problem_store import CompiledProblemStore
 from ..realization import CompiledRealizationPolicyContract
+from ._shared import (
+    build_timestamp_window_store,
+    calibrate_positive_timestamp_delta_seconds,
+    resolve_bootstrap_interval_seconds,
+    resolve_runtime_interval_seconds,
+)
 from .base import ProblemCompilerConfig
 
 if TYPE_CHECKING:
@@ -56,7 +60,7 @@ class TimestampFutureWindowCompiledProblemContract(CompiledProblemContract):
 
     def initial_history_window_seconds(self, recent_block_interval_seconds: float | None) -> int:
         minimum_window = self.required_history_seconds + self.max_delay_seconds
-        bootstrap_interval_seconds = _resolve_bootstrap_interval_seconds(
+        bootstrap_interval_seconds = resolve_bootstrap_interval_seconds(
             source=self.action_interval_source,
             recent_block_interval_seconds=recent_block_interval_seconds,
             nominal_block_time_seconds=self.nominal_block_time_seconds,
@@ -78,25 +82,32 @@ class TimestampFutureWindowCompiledProblemContract(CompiledProblemContract):
         self,
         feature_table: ResolvedFeatureTable,
     ) -> tuple[CompiledProblemStore, TimestampFutureWindowRuntimeMetadata]:
-        calibrated_interval_seconds = _calibrate_observed_block_interval_seconds(
+        calibrated_interval_seconds = calibrate_positive_timestamp_delta_seconds(
             feature_table,
             statistic=self.calibrated_interval_statistic,
+            empty_error="timestamp_future_window requires positive timestamp deltas",
         )
-        action_interval_seconds = _resolve_runtime_interval_seconds(
+        action_interval_seconds = resolve_runtime_interval_seconds(
             source=self.action_interval_source,
             calibrated_interval_seconds=calibrated_interval_seconds,
             nominal_block_time_seconds=self.nominal_block_time_seconds,
+            compiler_label="timestamp_future_window",
+            interval_label="action",
         )
         capability_action_count = _action_count_for_delay(
             self.max_delay_seconds,
             action_interval_seconds,
         )
-        store = _build_timestamp_future_window_store(
+        store = build_timestamp_window_store(
             feature_table,
             feature_prerequisites=self.feature_prerequisites,
             lookback_seconds=self.lookback_seconds,
             delay_seconds=self.max_delay_seconds,
-            fixed_action_count=capability_action_count,
+            fixed_candidate_count=capability_action_count,
+            fixed_candidate_count_error=(
+                "timestamp_future_window requires fixed action space to upper-bound realized "
+                "future candidates"
+            ),
             requires_post_window_row=self.realization_policy.requires_post_window_row,
         )
         return (
@@ -125,12 +136,16 @@ class TimestampFutureWindowCompiledProblemContract(CompiledProblemContract):
                 "delay_seconds exceeds problem capability: "
                 f"{delay_seconds} > {self.max_delay_seconds}"
             )
-        return _build_timestamp_future_window_store(
+        return build_timestamp_window_store(
             feature_table,
             feature_prerequisites=self.feature_prerequisites,
             lookback_seconds=self.lookback_seconds,
             delay_seconds=delay_seconds,
-            fixed_action_count=max_candidate_slots,
+            fixed_candidate_count=max_candidate_slots,
+            fixed_candidate_count_error=(
+                "timestamp_future_window requires fixed action space to upper-bound realized "
+                "future candidates"
+            ),
             requires_post_window_row=self.realization_policy.requires_post_window_row,
         )
 
@@ -168,111 +183,6 @@ def compile_problem(
         calibrated_interval_statistic=compiler_config.calibrated_interval_statistic,
         nominal_block_time_seconds=nominal_block_time_seconds,
     )
-
-
-def _build_timestamp_future_window_store(
-    feature_table: ResolvedFeatureTable,
-    *,
-    feature_prerequisites: FeaturePrerequisites,
-    lookback_seconds: int,
-    delay_seconds: int,
-    fixed_action_count: int,
-    requires_post_window_row: bool = False,
-) -> CompiledProblemStore:
-    if lookback_seconds <= 0:
-        raise ValueError("lookback_seconds must be positive")
-    if delay_seconds <= 0:
-        raise ValueError("delay_seconds must be positive")
-    if fixed_action_count <= 0:
-        raise ValueError("fixed_action_count must be positive")
-    timestamps = feature_table.series.timestamps
-    if timestamps.size == 0:
-        raise ValueError("Feature table is too short to produce any supervised samples")
-    context_start_rows = np.searchsorted(
-        timestamps,
-        timestamps - lookback_seconds,
-        side="left",
-    ).astype(np.int64, copy=False)
-    candidate_end_rows = np.searchsorted(
-        timestamps,
-        timestamps + delay_seconds,
-        side="right",
-    ).astype(np.int64, copy=False)
-    anchor_candidates = np.arange(timestamps.shape[0], dtype=np.int64)
-    candidate_counts = candidate_end_rows - (anchor_candidates + 1)
-    context_history_ready = (
-        timestamps[context_start_rows] - timestamps[0]
-    ) >= feature_prerequisites.history_seconds
-    warmup_ready = context_start_rows >= feature_prerequisites.warmup_rows
-    future_ready = candidate_counts > 0
-    post_window_ready = (
-        candidate_end_rows < timestamps.shape[0]
-        if requires_post_window_row
-        else np.ones_like(candidate_counts, dtype=np.bool_)
-    )
-    valid_anchor_mask = context_history_ready & warmup_ready & future_ready & post_window_ready
-    anchor_rows = anchor_candidates[valid_anchor_mask].astype(np.int64, copy=False)
-    if anchor_rows.size == 0:
-        raise ValueError("Feature table is too short to produce any supervised samples")
-    selected_context_starts = context_start_rows[anchor_rows].astype(np.int64, copy=False)
-    selected_candidate_ends = candidate_end_rows[anchor_rows].astype(np.int64, copy=False)
-    selected_candidate_counts = selected_candidate_ends - (anchor_rows + 1)
-    if np.any(selected_candidate_counts > fixed_action_count):
-        raise ValueError(
-            "timestamp_future_window requires fixed action space to upper-bound realized "
-            "future candidates"
-        )
-    return CompiledProblemStore(
-        feature_matrix=feature_table.feature_matrix,
-        log_base_fees=feature_table.series.log_base_fees,
-        timestamps=timestamps,
-        anchor_rows=anchor_rows,
-        context_start_rows=selected_context_starts,
-        candidate_end_rows=selected_candidate_ends,
-        max_candidate_slots=fixed_action_count,
-    )
-
-
-def _calibrate_observed_block_interval_seconds(
-    feature_table: ResolvedFeatureTable,
-    *,
-    statistic: TimestampFutureWindowCalibratedStatistic,
-) -> float:
-    deltas = np.diff(feature_table.series.timestamps.astype(np.int64, copy=False))
-    positive_deltas = deltas[deltas > 0]
-    if positive_deltas.size == 0:
-        raise ValueError("timestamp_future_window requires positive timestamp deltas")
-    if statistic is TimestampFutureWindowCalibratedStatistic.MEAN:
-        return float(np.mean(positive_deltas))
-    return float(np.median(positive_deltas))
-
-
-def _resolve_runtime_interval_seconds(
-    *,
-    source: TimestampFutureWindowIntervalSource,
-    calibrated_interval_seconds: float,
-    nominal_block_time_seconds: float | None,
-) -> float:
-    if source is TimestampFutureWindowIntervalSource.CALIBRATED:
-        return calibrated_interval_seconds
-    if nominal_block_time_seconds is None or nominal_block_time_seconds <= 0:
-        raise ValueError(
-            "timestamp_future_window requires nominal block time for action interval resolution"
-        )
-    return nominal_block_time_seconds
-
-
-def _resolve_bootstrap_interval_seconds(
-    *,
-    source: TimestampFutureWindowIntervalSource,
-    recent_block_interval_seconds: float | None,
-    nominal_block_time_seconds: float | None,
-) -> float | None:
-    if source is TimestampFutureWindowIntervalSource.NOMINAL_CHAIN_RUNTIME:
-        return nominal_block_time_seconds
-    if recent_block_interval_seconds is None or recent_block_interval_seconds <= 0:
-        return None
-    return recent_block_interval_seconds
 
 
 def _action_count_for_delay(

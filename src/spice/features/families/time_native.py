@@ -10,7 +10,7 @@ import polars as pl
 
 from ..core import CanonicalBlockSeries
 from . import helpers
-from .base import FeatureDefinition, FeatureFamilyConfig, FeatureFamilySpec
+from .base import FeatureDefinition, FeatureFamily, FeatureFamilyConfig
 
 FloatVector = helpers.FloatVector
 
@@ -85,190 +85,63 @@ def _trend_slope_600s(
     )
 
 
-FEATURE_FAMILY_SPEC = FeatureFamilySpec(
-    id="time_native",
-    config_type=TimeNativeFeatureFamilyConfig,
-    features={
-        "log_base_fee": FeatureDefinition("log_base_fee", (), 0, 0, helpers.log_base_fee_feature),
-        "gas_utilization": FeatureDefinition(
-            "gas_utilization", (), 0, 0, helpers.gas_utilization_feature
+def _rolling_feature(
+    *,
+    dependency_name: str,
+    stat: str,
+    window_seconds: int,
+) -> FeatureDefinition:
+    compute = _time_rolling_mean if stat == "mean" else _time_rolling_std
+    return FeatureDefinition(
+        (dependency_name,),
+        window_seconds,
+        0,
+        lambda blocks, series, resolved_dependencies, dependency_name=dependency_name, window_seconds=window_seconds, compute=compute: compute(
+            blocks,
+            series,
+            resolved_dependencies,
+            dependency_name=dependency_name,
+            window_seconds=window_seconds,
         ),
+    )
+
+
+def _feature_definitions() -> dict[str, FeatureDefinition]:
+    features: dict[str, FeatureDefinition] = {
+        "log_base_fee": FeatureDefinition((), 0, 0, helpers.log_base_fee_feature),
+        "gas_utilization": FeatureDefinition((), 0, 0, helpers.gas_utilization_feature),
         "seconds_since_previous_block": FeatureDefinition(
-            "seconds_since_previous_block",
             (),
             0,
             0,
             _seconds_since_previous_block,
         ),
-        "elapsed_seconds": FeatureDefinition("elapsed_seconds", (), 0, 0, _elapsed_seconds),
-        "hour_sin": FeatureDefinition("hour_sin", (), 0, 0, helpers.hour_sin_feature),
-        "hour_cos": FeatureDefinition("hour_cos", (), 0, 0, helpers.hour_cos_feature),
-        "weekday_sin": FeatureDefinition("weekday_sin", (), 0, 0, helpers.weekday_sin_feature),
-        "weekday_cos": FeatureDefinition("weekday_cos", (), 0, 0, helpers.weekday_cos_feature),
-        "rolling_mean_log_base_fee_60s": FeatureDefinition(
-            "rolling_mean_log_base_fee_60s",
-            ("log_base_fee",),
-            60,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_mean(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="log_base_fee",
-                window_seconds=60,
-            ),
-        ),
-        "rolling_std_log_base_fee_60s": FeatureDefinition(
-            "rolling_std_log_base_fee_60s",
-            ("log_base_fee",),
-            60,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_std(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="log_base_fee",
-                window_seconds=60,
-            ),
-        ),
-        "rolling_mean_gas_utilization_60s": FeatureDefinition(
-            "rolling_mean_gas_utilization_60s",
-            ("gas_utilization",),
-            60,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_mean(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="gas_utilization",
-                window_seconds=60,
-            ),
-        ),
-        "rolling_std_gas_utilization_60s": FeatureDefinition(
-            "rolling_std_gas_utilization_60s",
-            ("gas_utilization",),
-            60,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_std(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="gas_utilization",
-                window_seconds=60,
-            ),
-        ),
-        "rolling_mean_log_base_fee_300s": FeatureDefinition(
-            "rolling_mean_log_base_fee_300s",
-            ("log_base_fee",),
-            300,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_mean(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="log_base_fee",
-                window_seconds=300,
-            ),
-        ),
-        "rolling_std_log_base_fee_300s": FeatureDefinition(
-            "rolling_std_log_base_fee_300s",
-            ("log_base_fee",),
-            300,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_std(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="log_base_fee",
-                window_seconds=300,
-            ),
-        ),
-        "rolling_mean_gas_utilization_300s": FeatureDefinition(
-            "rolling_mean_gas_utilization_300s",
-            ("gas_utilization",),
-            300,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_mean(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="gas_utilization",
-                window_seconds=300,
-            ),
-        ),
-        "rolling_std_gas_utilization_300s": FeatureDefinition(
-            "rolling_std_gas_utilization_300s",
-            ("gas_utilization",),
-            300,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_std(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="gas_utilization",
-                window_seconds=300,
-            ),
-        ),
-        "rolling_mean_log_base_fee_600s": FeatureDefinition(
-            "rolling_mean_log_base_fee_600s",
-            ("log_base_fee",),
-            600,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_mean(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="log_base_fee",
-                window_seconds=600,
-            ),
-        ),
-        "rolling_std_log_base_fee_600s": FeatureDefinition(
-            "rolling_std_log_base_fee_600s",
-            ("log_base_fee",),
-            600,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_std(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="log_base_fee",
-                window_seconds=600,
-            ),
-        ),
-        "rolling_mean_gas_utilization_600s": FeatureDefinition(
-            "rolling_mean_gas_utilization_600s",
-            ("gas_utilization",),
-            600,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_mean(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="gas_utilization",
-                window_seconds=600,
-            ),
-        ),
-        "rolling_std_gas_utilization_600s": FeatureDefinition(
-            "rolling_std_gas_utilization_600s",
-            ("gas_utilization",),
-            600,
-            0,
-            lambda blocks, series, resolved_dependencies: _time_rolling_std(
-                blocks,
-                series,
-                resolved_dependencies,
-                dependency_name="gas_utilization",
-                window_seconds=600,
-            ),
-        ),
+        "elapsed_seconds": FeatureDefinition((), 0, 0, _elapsed_seconds),
+        "hour_sin": FeatureDefinition((), 0, 0, helpers.hour_sin_feature),
+        "hour_cos": FeatureDefinition((), 0, 0, helpers.hour_cos_feature),
+        "weekday_sin": FeatureDefinition((), 0, 0, helpers.weekday_sin_feature),
+        "weekday_cos": FeatureDefinition((), 0, 0, helpers.weekday_cos_feature),
         "trend_slope_600s": FeatureDefinition(
-            "trend_slope_600s",
             ("log_base_fee",),
             600,
             0,
             _trend_slope_600s,
         ),
-    },
+    }
+    for window_seconds in (60, 300, 600):
+        for dependency_name in ("log_base_fee", "gas_utilization"):
+            for stat in ("mean", "std"):
+                name = f"rolling_{stat}_{dependency_name}_{window_seconds}s"
+                features[name] = _rolling_feature(
+                    dependency_name=dependency_name,
+                    stat=stat,
+                    window_seconds=window_seconds,
+                )
+    return features
+
+
+TIME_NATIVE_FAMILY = FeatureFamily(
+    features=_feature_definitions(),
     fingerprint_sources=(Path(__file__).resolve(), Path(helpers.__file__).resolve()),
     build_series=helpers.build_canonical_series,
 )

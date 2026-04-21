@@ -10,7 +10,7 @@ import numpy as np
 import polars as pl
 from numpy.typing import NDArray
 
-from .families.base import FeatureFamilySpec, FeaturePrerequisites
+from .families.base import FeatureFamily, FeaturePrerequisites
 
 FloatMatrix = NDArray[np.float32]
 FloatVector = NDArray[np.float64]
@@ -57,12 +57,12 @@ def validate_feature_names(
 
 
 def feature_prerequisites(
-    spec: FeatureFamilySpec,
+    family: FeatureFamily,
     feature_names: tuple[str, ...],
 ) -> FeaturePrerequisites:
     return FeaturePrerequisites(
-        history_seconds=max(spec.features[name].history_seconds for name in feature_names),
-        warmup_rows=max(spec.features[name].warmup_rows for name in feature_names),
+        history_seconds=max(family.features[name].history_seconds for name in feature_names),
+        warmup_rows=max(family.features[name].warmup_rows for name in feature_names),
     )
 
 
@@ -91,19 +91,20 @@ def build_feature_table(
     blocks: pl.DataFrame,
     *,
     feature_set_id: str,
-    spec: FeatureFamilySpec,
+    feature_family_id: str,
+    family: FeatureFamily,
     feature_names: tuple[str, ...],
 ) -> ResolvedFeatureTable:
     validate_feature_names(
         feature_set_id,
         feature_names,
-        known_feature_names=tuple(spec.features),
+        known_feature_names=tuple(family.features),
     )
     sorted_blocks = blocks.sort("block_number")
-    series = spec.build_series(sorted_blocks)
+    series = family.build_series(sorted_blocks)
     resolved: dict[str, FloatVector] = {}
-    for feature_name in _dependency_order(feature_names, spec=spec):
-        definition = spec.features[feature_name]
+    for feature_name in _dependency_order(feature_names, family=family):
+        definition = family.features[feature_name]
         dependency_values = {
             dependency_name: resolved[dependency_name]
             for dependency_name in definition.dependencies
@@ -123,14 +124,14 @@ def build_feature_table(
     ).astype(np.float32, copy=False)
     return ResolvedFeatureTable(
         feature_set_id=feature_set_id,
-        feature_family_id=spec.id,
+        feature_family_id=feature_family_id,
         feature_names=feature_names,
         feature_graph_fingerprint=feature_graph_fingerprint(
-            spec.id,
+            feature_family_id,
             feature_names,
-            fingerprint_sources=spec.fingerprint_sources,
+            fingerprint_sources=family.fingerprint_sources,
         ),
-        feature_prerequisites=feature_prerequisites(spec, feature_names),
+        feature_prerequisites=feature_prerequisites(family, feature_names),
         series=series,
         feature_matrix=feature_matrix,
     )
@@ -139,7 +140,7 @@ def build_feature_table(
 def _dependency_order(
     feature_names: tuple[str, ...],
     *,
-    spec: FeatureFamilySpec,
+    family: FeatureFamily,
 ) -> tuple[str, ...]:
     ordered: list[str] = []
     visiting: set[str] = set()
@@ -151,7 +152,7 @@ def _dependency_order(
         if feature_name in visiting:
             raise ValueError(f"Cyclic feature dependency detected: {feature_name}")
         try:
-            definition = spec.features[feature_name]
+            definition = family.features[feature_name]
         except KeyError as exc:
             raise ValueError(f"Unknown feature dependency: {feature_name}") from exc
         visiting.add(feature_name)

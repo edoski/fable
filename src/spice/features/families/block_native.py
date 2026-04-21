@@ -10,7 +10,7 @@ import polars as pl
 
 from ..core import CanonicalBlockSeries
 from . import helpers
-from .base import FeatureDefinition, FeatureFamilyConfig, FeatureFamilySpec
+from .base import FeatureDefinition, FeatureFamily, FeatureFamilyConfig
 
 FloatVector = helpers.FloatVector
 
@@ -39,7 +39,7 @@ def _log1p_column(
     )
 
 
-def _dt_seconds(
+def _seconds_since_previous_block(
     blocks: pl.DataFrame,
     series: CanonicalBlockSeries,
     resolved_dependencies: Mapping[str, FloatVector],
@@ -138,35 +138,33 @@ def _log_gas_limit(
 
 def _feature_definitions() -> dict[str, FeatureDefinition]:
     features: dict[str, FeatureDefinition] = {
-        "log_base_fee": FeatureDefinition("log_base_fee", (), 0, 0, helpers.log_base_fee_feature),
+        "log_base_fee": FeatureDefinition((), 0, 0, helpers.log_base_fee_feature),
         "gas_utilization": FeatureDefinition(
-            "gas_utilization",
             (),
             0,
             0,
             helpers.gas_utilization_feature,
         ),
-        "hour_sin": FeatureDefinition("hour_sin", (), 0, 0, helpers.hour_sin_feature),
-        "hour_cos": FeatureDefinition("hour_cos", (), 0, 0, helpers.hour_cos_feature),
-        "weekday_sin": FeatureDefinition("weekday_sin", (), 0, 0, helpers.weekday_sin_feature),
-        "weekday_cos": FeatureDefinition("weekday_cos", (), 0, 0, helpers.weekday_cos_feature),
-        "dow_sin": FeatureDefinition("dow_sin", (), 0, 0, helpers.weekday_sin_feature),
-        "dow_cos": FeatureDefinition("dow_cos", (), 0, 0, helpers.weekday_cos_feature),
-        "elapsed_blocks": FeatureDefinition("elapsed_blocks", (), 0, 0, _elapsed_blocks),
-        "time_since_start": FeatureDefinition("time_since_start", (), 0, 0, _elapsed_blocks),
+        "hour_sin": FeatureDefinition((), 0, 0, helpers.hour_sin_feature),
+        "hour_cos": FeatureDefinition((), 0, 0, helpers.hour_cos_feature),
+        "weekday_sin": FeatureDefinition((), 0, 0, helpers.weekday_sin_feature),
+        "weekday_cos": FeatureDefinition((), 0, 0, helpers.weekday_cos_feature),
+        "elapsed_blocks": FeatureDefinition((), 0, 0, _elapsed_blocks),
         "log_base_fee_per_gas": FeatureDefinition(
-            "log_base_fee_per_gas",
             (),
             0,
             0,
             _log_base_fee_per_gas,
         ),
-        "log_gas_used": FeatureDefinition("log_gas_used", (), 0, 0, _log_gas_used),
-        "log_gas_limit": FeatureDefinition("log_gas_limit", (), 0, 0, _log_gas_limit),
-        "gas_ratio": FeatureDefinition("gas_ratio", (), 0, 0, helpers.gas_utilization_feature),
-        "dt_seconds": FeatureDefinition("dt_seconds", (), 0, 0, _dt_seconds),
+        "log_gas_used": FeatureDefinition((), 0, 0, _log_gas_used),
+        "log_gas_limit": FeatureDefinition((), 0, 0, _log_gas_limit),
+        "seconds_since_previous_block": FeatureDefinition(
+            (),
+            0,
+            0,
+            _seconds_since_previous_block,
+        ),
         "dlog_base_fee": FeatureDefinition(
-            "dlog_base_fee",
             ("log_base_fee_per_gas",),
             0,
             1,
@@ -175,7 +173,6 @@ def _feature_definitions() -> dict[str, FeatureDefinition]:
             ),
         ),
         "trend_slope_200": FeatureDefinition(
-            "trend_slope_200",
             ("log_base_fee",),
             0,
             199,
@@ -185,8 +182,7 @@ def _feature_definitions() -> dict[str, FeatureDefinition]:
                 window=200,
             ),
         ),
-        "base_fee_trend": FeatureDefinition(
-            "base_fee_trend",
+        "trend_slope_log_base_fee_per_gas_200": FeatureDefinition(
             ("log_base_fee_per_gas",),
             0,
             199,
@@ -198,24 +194,18 @@ def _feature_definitions() -> dict[str, FeatureDefinition]:
         ),
     }
     rolling_specs = (
-        ("rolling_mean_log_base_fee", "log_base_fee", "mean", 0, False),
-        ("rolling_std_log_base_fee", "log_base_fee", "std", 0, False),
-        ("rolling_mean_gas_utilization", "gas_utilization", "mean", 0, False),
-        ("rolling_std_gas_utilization", "gas_utilization", "std", 0, False),
-        ("roll_mean_logfee", "log_base_fee_per_gas", "mean", 0, True),
-        ("roll_std_logfee", "log_base_fee_per_gas", "std", 1, True),
-        ("roll_min_logfee", "log_base_fee_per_gas", "min", 0, True),
-        ("roll_mean_gr", "gas_ratio", "mean", 0, True),
-        ("roll_std_gr", "gas_ratio", "std", 1, True),
+        ("rolling_mean_log_base_fee", "log_base_fee", "mean", 0),
+        ("rolling_std_log_base_fee", "log_base_fee", "std", 0),
+        ("rolling_mean_gas_utilization", "gas_utilization", "mean", 0),
+        ("rolling_std_gas_utilization", "gas_utilization", "std", 0),
+        ("rolling_mean_log_base_fee_per_gas", "log_base_fee_per_gas", "mean", 0),
+        ("rolling_std_log_base_fee_per_gas", "log_base_fee_per_gas", "std", 1),
+        ("rolling_min_log_base_fee_per_gas", "log_base_fee_per_gas", "min", 0),
     )
     for window in (10, 50, 200):
-        for prefix, dependency_name, stat, ddof, professor_name in rolling_specs:
-            if professor_name:
-                name = f"{prefix[:4]}{window}_{prefix[5:]}"
-            else:
-                name = f"{prefix}_{window}"
+        for prefix, dependency_name, stat, ddof in rolling_specs:
+            name = f"{prefix}_{window}"
             features[name] = FeatureDefinition(
-                name,
                 (dependency_name,),
                 0,
                 window - 1,
@@ -234,18 +224,16 @@ def _feature_definitions() -> dict[str, FeatureDefinition]:
                 ),
             )
     for lag in range(1, 7):
-        features[f"gas_ratio_lag{lag}"] = FeatureDefinition(
-            f"gas_ratio_lag{lag}",
-            ("gas_ratio",),
+        features[f"gas_utilization_lag{lag}"] = FeatureDefinition(
+            ("gas_utilization",),
             0,
             lag,
             lambda blocks, series, resolved_dependencies, lag=lag: _shift(
-                resolved_dependencies["gas_ratio"],
+                resolved_dependencies["gas_utilization"],
                 lag=lag,
             ),
         )
-        features[f"dlogfee_lag{lag}"] = FeatureDefinition(
-            f"dlogfee_lag{lag}",
+        features[f"dlog_base_fee_lag{lag}"] = FeatureDefinition(
             ("dlog_base_fee",),
             0,
             lag + 1,
@@ -257,9 +245,7 @@ def _feature_definitions() -> dict[str, FeatureDefinition]:
     return features
 
 
-FEATURE_FAMILY_SPEC = FeatureFamilySpec(
-    id="block_native",
-    config_type=BlockNativeFeatureFamilyConfig,
+BLOCK_NATIVE_FAMILY = FeatureFamily(
     features=_feature_definitions(),
     fingerprint_sources=(Path(__file__).resolve(), Path(helpers.__file__).resolve()),
     build_series=helpers.build_canonical_series,

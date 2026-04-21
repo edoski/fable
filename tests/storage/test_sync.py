@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -66,22 +68,24 @@ def test_push_study_to_cluster_uses_canonical_destination_root(tmp_path, monkeyp
         "spice.storage.sync.resolve_study_record",
         lambda _root, *, selector: record,
     )
-    monkeypatch.setattr(
-        "spice.storage.sync._prepare_cluster_stage",
-        lambda _target, *, destination_root, staged_root, replace: captured.update(
-            {
-                "destination_root": destination_root,
-                "staged_root": staged_root,
-                "replace": replace,
-            }
-        ),
-    )
+    execution_calls: list[tuple[str, list[str]]] = []
+
+    def fake_run_execution_module(_target, module: str, args: list[str], *, capture_output: bool = True):
+        del capture_output
+        execution_calls.append((module, args))
+        if args[0] == "prepare-stage":
+            captured.update(
+                {
+                    "destination_root": Path(args[2]),
+                    "staged_root": Path(args[4]),
+                    "replace": False,
+                }
+            )
+        return subprocess.CompletedProcess(args=[module, *args], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("spice.storage.sync.run_execution_module", fake_run_execution_module)
     monkeypatch.setattr(
         "spice.storage.sync.run_rsync_to_execution_target", lambda *args, **kwargs: None
-    )
-    monkeypatch.setattr(
-        "spice.storage.sync._finalize_cluster_stage",
-        lambda *_args, **_kwargs: None,
     )
 
     pushed = push_study_to_cluster(
@@ -103,6 +107,30 @@ def test_push_study_to_cluster_uses_canonical_destination_root(tmp_path, monkeyp
         remote_storage_root / "studies" / record.chain_name / record.study_id
     )
     assert captured["replace"] is False
+    assert execution_calls == [
+        (
+            "spice.storage.sync_cli",
+            [
+                "prepare-stage",
+                "--destination-root",
+                str(remote_storage_root / "studies" / record.chain_name / record.study_id),
+                "--staged-root",
+                str(captured["staged_root"]),
+            ],
+        ),
+        (
+            "spice.storage.sync_cli",
+            [
+                "finalize-stage",
+                "--storage-root",
+                str(remote_storage_root),
+                "--destination-root",
+                str(remote_storage_root / "studies" / record.chain_name / record.study_id),
+                "--staged-root",
+                str(captured["staged_root"]),
+            ],
+        ),
+    ]
 
 
 def test_pull_artifact_from_cluster_promotes_and_reindexes(tmp_path, monkeypatch) -> None:
@@ -117,8 +145,29 @@ def test_pull_artifact_from_cluster_promotes_and_reindexes(tmp_path, monkeypatch
         "spice.storage.sync.load_execution_target", lambda: _target(tmp_path / "remote-storage")
     )
     monkeypatch.setattr(
-        "spice.storage.sync._resolve_cluster_artifact_record",
-        lambda _target, *, selector: record,
+        "spice.storage.sync.run_execution_module",
+        lambda _target, module, args, *, capture_output=True: subprocess.CompletedProcess(
+            args=[module, *args],
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "artifact_id": record.artifact_id,
+                    "dataset_id": record.dataset_id,
+                    "dataset_name": record.dataset_name,
+                    "chain_name": record.chain_name,
+                    "feature_set_id": record.feature_set_id,
+                    "prediction_id": record.prediction_id,
+                    "model_id": record.model_id,
+                    "problem_id": record.problem_id,
+                    "variant": record.variant,
+                    "study_id": record.study_id,
+                    "study_name": record.study_name,
+                    "root_path": str(record.root_path),
+                    "state_db_path": str(record.state_db_path),
+                }
+            ),
+            stderr="",
+        ),
     )
     monkeypatch.setattr(
         "spice.storage.sync.run_rsync_from_execution_target",
@@ -168,8 +217,29 @@ def test_pull_artifact_from_cluster_rejects_existing_destination(tmp_path, monke
         "spice.storage.sync.load_execution_target", lambda: _target(tmp_path / "remote-storage")
     )
     monkeypatch.setattr(
-        "spice.storage.sync._resolve_cluster_artifact_record",
-        lambda _target, *, selector: record,
+        "spice.storage.sync.run_execution_module",
+        lambda _target, module, args, *, capture_output=True: subprocess.CompletedProcess(
+            args=[module, *args],
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "artifact_id": record.artifact_id,
+                    "dataset_id": record.dataset_id,
+                    "dataset_name": record.dataset_name,
+                    "chain_name": record.chain_name,
+                    "feature_set_id": record.feature_set_id,
+                    "prediction_id": record.prediction_id,
+                    "model_id": record.model_id,
+                    "problem_id": record.problem_id,
+                    "variant": record.variant,
+                    "study_id": record.study_id,
+                    "study_name": record.study_name,
+                    "root_path": str(record.root_path),
+                    "state_db_path": str(record.state_db_path),
+                }
+            ),
+            stderr="",
+        ),
     )
 
     with pytest.raises(StateConflictError, match="Destination already exists"):

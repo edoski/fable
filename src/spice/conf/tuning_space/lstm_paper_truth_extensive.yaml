@@ -4,9 +4,6 @@ training:
   batch_size: [64, 128, 256, 512, 1024]
 problem:
   lookback_seconds: [600, 900, 1200]
-prediction:
-  classification_loss_weight: [0.5, 1.0, 2.0]
-  regression_loss_weight: [0.25, 0.5, 1.0]
 model:
   id: lstm
   hidden_size: [128, 256, 384]

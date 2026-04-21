@@ -95,12 +95,6 @@ def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
     paths = resolve_workflow_paths(config)
     variant = ArtifactVariant.TUNED if isinstance(config, TuneConfig) else config.artifact.variant
     context = compile_training_context(config)
-    if config.workflow.value not in context.prediction_contract.supported_workflows:
-        raise ValueError(
-            "prediction family "
-            f"{context.prediction_contract.prediction_family_id} "
-            f"does not support {config.workflow.value}"
-        )
     return TrainingSpec(
         chain=config.chain,
         dataset_id=paths.corpus_id,

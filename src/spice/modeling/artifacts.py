@@ -33,7 +33,11 @@ from .families.base import ModelConfig
 from .families.registry import build_model
 from .models import TemporalModel
 from .pipeline import PreparedTrainingDataset, TrainingSpec
-from .representations import CompiledRepresentationContract, compile_representation_contract
+from .representations import (
+    CompiledRepresentationContract,
+    sequence_input_contract,
+    validate_representation_id,
+)
 from .results import TrainingArtifactManifest
 
 
@@ -146,7 +150,7 @@ def load_training_artifact(artifact_dir: Path) -> LoadedTrainingArtifact:
     manifest = load_artifact_manifest(artifact_dir / ".spice" / "state.sqlite")
     prediction_contract = compile_prediction_contract(
         prediction_id=manifest.prediction.id,
-        family_config=manifest.prediction.family,
+        family_id=manifest.prediction.family_id,
     )
     model = build_model(
         manifest.n_features,
@@ -156,10 +160,11 @@ def load_training_artifact(artifact_dir: Path) -> LoadedTrainingArtifact:
     state_dict = torch.load(artifact_dir / MODEL_STATE_FILENAME, map_location="cpu")
     model.load_state_dict(state_dict)
     model.eval()
+    validate_representation_id(manifest.representation_id)
     return LoadedTrainingArtifact(
         manifest=manifest,
         model=model,
-        representation_contract=compile_representation_contract(manifest.representation_id),
+        representation_contract=sequence_input_contract(),
         dataset_builder_contract=compile_dataset_builder_contract(manifest.dataset_builder),
     )
 

@@ -48,7 +48,7 @@ class ObjectiveSemantics:
     objective_id: str
     metric_id: str
     direction: Literal["maximize", "minimize"]
-    evaluator_id: str | None
+    benchmark_id: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +60,6 @@ class PredictionSemantics:
     training_metric_descriptors: tuple[MetricDescriptor, ...]
     primary_metric_id: str
     direction: Literal["maximize", "minimize"]
-    supported_workflows: frozenset[str]
 
 
 @dataclass(frozen=True, slots=True)

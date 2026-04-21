@@ -71,12 +71,12 @@ def _prediction_contract():
     prediction = coerce_prediction_config(
         {
             "id": "candidate_offset_selection",
-            "family": {"id": "candidate_offset_selection"},
+            "family_id": "candidate_offset_selection",
         }
     )
     return compile_prediction_contract(
         prediction_id=prediction.id,
-        family_config=prediction.family,
+        family_id=prediction.family_id,
     )
 
 
@@ -132,7 +132,8 @@ def test_poisson_replay_summary_uses_event_weighted_totals() -> None:
     evaluator = compile_evaluator_contract(
         coerce_evaluator_config(
             {
-                "id": "poisson_replay",
+                "id": "paper_replay_2h",
+                "sampler": "poisson_arrivals",
                 "window_seconds": 8,
                 "arrival_rate_per_second": 0.3,
                 "repetitions": 4,

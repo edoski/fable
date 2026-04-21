@@ -5,16 +5,12 @@ from .store import (
     delete_artifact_record,
     delete_dataset_record,
     delete_study_record,
-    ensure_catalog_db,
     list_artifact_records,
     list_artifacts_for_dataset,
     list_artifacts_for_study,
     list_dataset_records,
     list_studies_for_dataset,
     list_study_records,
-    upsert_artifact_record,
-    upsert_dataset_record,
-    upsert_study_record,
 )
 
 __all__ = [
@@ -24,14 +20,10 @@ __all__ = [
     "delete_artifact_record",
     "delete_dataset_record",
     "delete_study_record",
-    "ensure_catalog_db",
     "list_artifact_records",
     "list_artifacts_for_dataset",
     "list_artifacts_for_study",
     "list_dataset_records",
     "list_studies_for_dataset",
     "list_study_records",
-    "upsert_artifact_record",
-    "upsert_dataset_record",
-    "upsert_study_record",
 ]

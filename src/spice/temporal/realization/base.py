@@ -10,11 +10,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import field_validator
 
-from ...core.closed_dispatch import (
-    config_payload_and_id,
-    unknown_id_error,
-    validate_path_segment,
-)
+from ...core.validation import validate_path_segment
 from ...modeling.families.base import ConfigModel
 from ...semantics import RealizationPolicySemantics
 from ..problem_store import CompiledProblemStore
@@ -104,51 +100,27 @@ class CompiledRealizationPolicyContract:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class RealizationPolicySpec:
-    id: str
-    config_type: type[RealizationPolicyConfig]
-    compile: Callable[[RealizationPolicyConfig], CompiledRealizationPolicyContract]
-
-
-def _compile_strict_deadline_miss(
-    config: RealizationPolicyConfig,
-) -> CompiledRealizationPolicyContract:
-    from .strict_deadline_miss import StrictDeadlineMissConfig, compile_realization_policy
-
-    return compile_realization_policy(StrictDeadlineMissConfig.model_validate(config))
-
-
-def realization_policy_spec(policy_id: str) -> RealizationPolicySpec:
-    if policy_id == "strict_deadline_miss":
-        from .strict_deadline_miss import StrictDeadlineMissConfig
-
-        return RealizationPolicySpec(
-            id="strict_deadline_miss",
-            config_type=StrictDeadlineMissConfig,
-            compile=_compile_strict_deadline_miss,
-        )
-    raise unknown_id_error(
-        field_name="problem.realization_policy.id",
-        component_id=policy_id,
-        known_ids=("strict_deadline_miss",),
-    )
-
-
 def coerce_realization_policy_config(
     payload: Mapping[str, object] | RealizationPolicyConfig,
 ) -> RealizationPolicyConfig:
-    raw_payload, policy_id = config_payload_and_id(
-        payload,
-        config_type=RealizationPolicyConfig,
-        field_name="problem.realization_policy.id",
-        mapping_label="problem.realization_policy",
-    )
-    spec = realization_policy_spec(policy_id)
-    return spec.config_type.model_validate(raw_payload)
+    from .strict_deadline_miss import StrictDeadlineMissConfig
+
+    if isinstance(payload, RealizationPolicyConfig):
+        raw_payload = payload.model_dump(mode="json")
+        policy_id = payload.id
+    elif isinstance(payload, Mapping):
+        raw_payload = dict(payload)
+        policy_id = raw_payload.get("id")
+    else:
+        raise TypeError("problem.realization_policy must be a mapping or config model")
+    if policy_id != "strict_deadline_miss":
+        raise ValueError("problem.realization_policy.id must be strict_deadline_miss")
+    return StrictDeadlineMissConfig.model_validate(raw_payload)
 
 
 def compile_realization_policy_contract(
     config: RealizationPolicyConfig,
 ) -> CompiledRealizationPolicyContract:
-    return realization_policy_spec(config.id).compile(config)
+    from .strict_deadline_miss import StrictDeadlineMissConfig, compile_realization_policy
+
+    return compile_realization_policy(StrictDeadlineMissConfig.model_validate(config))

@@ -18,10 +18,7 @@ from spice.features import compile_feature_contract
 from spice.modeling.artifacts import validate_artifact_semantics
 from spice.modeling.dataset_builders import builder_runtime_metadata
 from spice.modeling.families.lstm import LstmModelConfig
-from spice.modeling.representations import (
-    SEQUENCE_INPUT_REPRESENTATION_ID,
-    compile_representation_contract,
-)
+from spice.modeling.representations import sequence_input_contract
 from spice.modeling.results import (
     EvaluationRuntimeSummary,
     SplitSizes,
@@ -62,7 +59,7 @@ def _prediction_config():
     return coerce_prediction_config(
         {
             "id": "candidate_offset_selection",
-            "family": {"id": "candidate_offset_selection"},
+            "family_id": "candidate_offset_selection",
         }
     )
 
@@ -71,13 +68,7 @@ def _paper_prediction_config():
     return coerce_prediction_config(
         {
             "id": "icdcs_2026",
-            "family": {
-                "id": "min_block_fee_multitask",
-                "classification_loss_weight": 1.0,
-                "regression_loss_weight": 0.5,
-                "class_weighting": "inverse_frequency",
-                "fee_target_normalization": "zscore_train_split",
-            },
+            "family_id": "min_block_fee_multitask",
         }
     )
 
@@ -86,7 +77,7 @@ def _prediction_contract():
     prediction = _prediction_config()
     return compile_prediction_contract(
         prediction_id=prediction.id,
-        family_config=prediction.family,
+        family_id=prediction.family_id,
     )
 
 
@@ -94,7 +85,7 @@ def _paper_prediction_contract():
     prediction = _paper_prediction_config()
     return compile_prediction_contract(
         prediction_id=prediction.id,
-        family_config=prediction.family,
+        family_id=prediction.family_id,
     )
 
 
@@ -118,7 +109,7 @@ def _dataset_builder_config():
 def _objective_config():
     return coerce_objective_config(
         {
-            "id": "validation_training_metric",
+            "id": "validation",
             "metric_id": "total_loss",
             "direction": "minimize",
         }
@@ -184,7 +175,7 @@ def _manifest(
         feature_contract=feature_contract,
     )
     model = _model_config()
-    representation_contract = compile_representation_contract(SEQUENCE_INPUT_REPRESENTATION_ID)
+    representation_contract = sequence_input_contract()
     return TrainingArtifactManifest(
         artifact_id="artifact-1",
         dataset_builder=_dataset_builder_config(),
@@ -218,10 +209,10 @@ def _manifest(
             problem=problem_contract.semantics,
             realization_policy=problem_contract.realization_policy.semantics,
             objective=ObjectiveSemantics(
-                objective_id="validation_training_metric",
+                objective_id="validation",
                 metric_id="total_loss",
                 direction="minimize",
-                evaluator_id=None,
+                benchmark_id=None,
             ),
             feature=feature_contract.semantics,
             prediction=prediction_contract.semantics,
@@ -381,9 +372,10 @@ def test_evaluation_artifact_summary_round_trip(tmp_path) -> None:
     manifest = _manifest()
     summary = EvaluationRuntimeSummary(
         delay_seconds=24,
-        evaluator_id="poisson_replay",
-        evaluator_config={
-            "id": "poisson_replay",
+        evaluation_id="paper_replay_2h",
+        evaluation_config={
+            "id": "paper_replay_2h",
+            "sampler": "poisson_arrivals",
             "window_seconds": 600,
             "arrival_rate_per_second": 0.02,
             "repetitions": 3,
@@ -486,8 +478,8 @@ def test_multiple_evaluation_summaries_can_coexist_per_artifact(tmp_path) -> Non
     manifest = _manifest()
     base_summary = EvaluationRuntimeSummary(
         delay_seconds=24,
-        evaluator_id="paper_fullset",
-        evaluator_config={"id": "paper_fullset"},
+        evaluation_id="paper_fullset",
+        evaluation_config={"id": "paper_fullset", "sampler": "fullset"},
         metric_descriptors=(
             MetricDescriptor(
                 id="profit_over_baseline",
@@ -511,9 +503,10 @@ def test_multiple_evaluation_summaries_can_coexist_per_artifact(tmp_path) -> Non
     )
     replay_summary = EvaluationRuntimeSummary(
         delay_seconds=24,
-        evaluator_id="poisson_replay",
-        evaluator_config={
-            "id": "poisson_replay",
+        evaluation_id="paper_replay_2h",
+        evaluation_config={
+            "id": "paper_replay_2h",
+            "sampler": "poisson_arrivals",
             "window_seconds": 600,
             "arrival_rate_per_second": 0.02,
             "repetitions": 3,

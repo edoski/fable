@@ -11,17 +11,6 @@ from ....temporal.problem_store import CompiledProblemStore
 from ....temporal.realization import CompiledRealizationPolicyContract
 
 
-def estimate_min_block_fee_target_storage_bytes(
-    *,
-    sample_count: int,
-    max_candidate_slots: int,
-) -> int:
-    bool_size = torch.empty((), dtype=torch.bool).element_size()
-    float_size = torch.empty((), dtype=torch.float32).element_size()
-    int_size = torch.empty((), dtype=torch.int64).element_size()
-    return sample_count * max_candidate_slots * bool_size + sample_count * (int_size + float_size)
-
-
 def materialize_min_block_fee_targets(
     store: CompiledProblemStore,
     sample_indices: np.ndarray,

@@ -1,10 +1,10 @@
 """Feature family seam types."""
 
-from .base import FeatureDefinition, FeatureFamilyConfig, FeatureFamilySpec, FeaturePrerequisites
+from .base import FeatureDefinition, FeatureFamily, FeatureFamilyConfig, FeaturePrerequisites
 
 __all__ = [
     "FeatureDefinition",
+    "FeatureFamily",
     "FeatureFamilyConfig",
-    "FeatureFamilySpec",
     "FeaturePrerequisites",
 ]
