@@ -229,6 +229,33 @@ def test_min_block_fee_multitask_masks_short_realized_candidate_windows() -> Non
     )
 
 
+def test_min_block_fee_multitask_uses_full_action_mask_for_fixed_ex_ante_windows() -> None:
+    store = CompiledProblemStore(
+        feature_matrix=np.zeros((9, 1), dtype=np.float32),
+        log_base_fees=np.log(
+            np.array([10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0], dtype=np.float32)
+        ),
+        timestamps=np.arange(9, dtype=np.int64),
+        anchor_rows=np.array([0, 2, 4], dtype=np.int64),
+        context_start_rows=np.zeros(3, dtype=np.int64),
+        candidate_start_rows=np.array([1, 3, 5], dtype=np.int64),
+        candidate_end_rows=np.array([3, 5, 6], dtype=np.int64),
+        action_space_mode=ActionSpaceMode.FIXED_EX_ANTE,
+        max_candidate_slots=3,
+    )
+    contract = _contract()
+    sample_indices = np.arange(store.n_samples, dtype=np.int64)
+
+    prepared_targets = contract.prepare_targets(
+        store,
+        sample_indices,
+        realization_policy=_realization_policy(),
+    )
+    batch = prepared_targets.build_batch(torch.arange(store.n_samples, dtype=torch.int64))
+
+    assert batch.candidate_mask.cpu().numpy().all()
+
+
 def pytest_approx(value: float):
     return pytest.approx(value)
 

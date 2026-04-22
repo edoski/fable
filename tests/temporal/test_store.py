@@ -186,7 +186,7 @@ def test_estimated_block_supports_nominal_lookback_and_mean_calibrated_candidate
     assert store.max_candidate_slots == 3
 
 
-def test_timestamp_future_window_uses_future_only_realized_windows() -> None:
+def test_timestamp_future_window_uses_future_only_fixed_action_windows() -> None:
     feature_contract = compile_feature_contract(
         feature_set=coerce_feature_set_config(
             {
@@ -233,16 +233,17 @@ def test_timestamp_future_window_uses_future_only_realized_windows() -> None:
 
     np.testing.assert_array_equal(
         store.anchor_rows,
-        np.array([0, 1, 2, 3, 4, 5, 6], dtype=np.int64),
+        np.array([0, 1, 2, 3, 4], dtype=np.int64),
     )
     np.testing.assert_array_equal(
         store.context_start_rows,
-        np.array([0, 0, 0, 1, 2, 3, 5], dtype=np.int64),
+        np.array([0, 0, 0, 1, 2], dtype=np.int64),
     )
     np.testing.assert_array_equal(
         store.candidate_counts,
-        np.array([3, 3, 3, 3, 2, 2, 1], dtype=np.int64),
+        np.array([3, 3, 3, 3, 2], dtype=np.int64),
     )
     assert runtime_metadata.action_interval_seconds == 12.0
     assert runtime_metadata.capability_action_count == 3
     assert store.max_candidate_slots == 3
+    assert store.action_space_mode.value == "fixed_ex_ante"

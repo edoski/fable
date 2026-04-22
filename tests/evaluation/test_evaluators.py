@@ -249,3 +249,48 @@ def test_fullset_uses_next_block_baseline_and_future_window_optimum() -> None:
             "optimum_fee_sum": optimum_total,
         }
     )
+
+
+def test_fixed_ex_ante_overflow_realizes_first_post_window_row() -> None:
+    store = CompiledProblemStore(
+        feature_matrix=np.zeros((16, 1), dtype=np.float32),
+        log_base_fees=np.log(
+            np.array(
+                [100, 95, 90, 80, 75, 70, 60, 55, 50, 40, 35, 30, 25, 20, 18, 16],
+                dtype=np.float32,
+            )
+        ).astype(np.float32, copy=False),
+        timestamps=(np.arange(16, dtype=np.int64) * 1800).astype(np.int64, copy=False),
+        anchor_rows=np.array([1, 4], dtype=np.int64),
+        context_start_rows=np.array([0, 3], dtype=np.int64),
+        candidate_start_rows=np.array([2, 5], dtype=np.int64),
+        candidate_end_rows=np.array([4, 7], dtype=np.int64),
+        action_space_mode=ActionSpaceMode.FIXED_EX_ANTE,
+        max_candidate_slots=3,
+    )
+    evaluator = compile_evaluator_contract(
+        EvaluatorConfig.model_validate({"id": "paper_fullset", "sampler": "fullset"})
+    )
+
+    summary = evaluator.run(
+        store,
+        _realization_policy(),
+        DecodedOffsets(torch.tensor([2, 2], dtype=torch.int64)),
+        np.arange(store.n_samples, dtype=np.int64),
+    )
+
+    baseline_total = 90.0 + 70.0
+    realized_total = 75.0 + 55.0
+    optimum_total = 80.0 + 60.0
+
+    assert summary.runs[0].metadata["overflow_count"] == 2
+    assert summary.metrics.values == pytest.approx(
+        {
+            "profit_over_baseline": (baseline_total - realized_total) / baseline_total,
+            "cost_over_optimum": (realized_total - optimum_total) / optimum_total,
+            "baseline_cost_over_optimum": (baseline_total - optimum_total) / optimum_total,
+            "realized_fee_sum": realized_total,
+            "baseline_fee_sum": baseline_total,
+            "optimum_fee_sum": optimum_total,
+        }
+    )

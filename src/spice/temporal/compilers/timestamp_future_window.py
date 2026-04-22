@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -183,9 +183,9 @@ def compile_problem(
         sample_count=problem.sample_count,
         max_delay_seconds=problem.max_delay_seconds,
         feature_prerequisites=feature_contract.feature_prerequisites,
-        realization_policy=realization_policy,
+        realization_policy=replace(realization_policy, requires_post_window_row=True),
         candidate_start_mode=CandidateStartMode.NEXT_BLOCK,
-        action_space_mode=ActionSpaceMode.REALIZED_PER_SAMPLE,
+        action_space_mode=ActionSpaceMode.FIXED_EX_ANTE,
         action_interval_source=compiler_config.action_interval_source,
         calibrated_interval_statistic=compiler_config.calibrated_interval_statistic,
         nominal_block_time_seconds=nominal_block_time_seconds,
