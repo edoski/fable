@@ -35,6 +35,14 @@ class CudaModelingRuntime:
     representation_runtime_context: RepresentationRuntimeContext
 
 
+@dataclass(frozen=True, slots=True)
+class CudaMemorySnapshot:
+    free_bytes: int
+    total_bytes: int
+    allocated_bytes: int
+    reserved_bytes: int
+
+
 class ForwardBatch(Protocol):
     def to_device(self, device: torch.device) -> ForwardBatch: ...
 
@@ -157,6 +165,54 @@ def build_representation_runtime_context(
     )
 
 
+def snapshot_cuda_memory(device: torch.device) -> CudaMemorySnapshot:
+    require_cuda_device(device)
+    device_index = _cuda_device_index(device)
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device_index)
+    return CudaMemorySnapshot(
+        free_bytes=int(free_bytes),
+        total_bytes=int(total_bytes),
+        allocated_bytes=int(torch.cuda.memory_allocated(device_index)),
+        reserved_bytes=int(torch.cuda.memory_reserved(device_index)),
+    )
+
+
+def reset_cuda_peak_memory(device: torch.device) -> None:
+    require_cuda_device(device)
+    torch.cuda.reset_peak_memory_stats(_cuda_device_index(device))
+
+
+def peak_cuda_reserved_bytes(device: torch.device) -> int:
+    require_cuda_device(device)
+    return int(torch.cuda.max_memory_reserved(_cuda_device_index(device)))
+
+
+def default_device_resident_safety_margin(total_bytes: int) -> int:
+    if total_bytes <= 0:
+        raise ValueError("total_bytes must be positive")
+    return max(512 * 1024**2, total_bytes // 20)
+
+
+def compute_device_resident_budget(
+    *,
+    free_bytes: int,
+    baseline_reserved_bytes: int,
+    peak_reserved_bytes: int,
+    total_bytes: int,
+) -> int:
+    if free_bytes < 0:
+        raise ValueError("free_bytes must be non-negative")
+    if baseline_reserved_bytes < 0:
+        raise ValueError("baseline_reserved_bytes must be non-negative")
+    if peak_reserved_bytes < 0:
+        raise ValueError("peak_reserved_bytes must be non-negative")
+    if total_bytes <= 0:
+        raise ValueError("total_bytes must be positive")
+    peak_increment_bytes = max(0, peak_reserved_bytes - baseline_reserved_bytes)
+    safety_margin = default_device_resident_safety_margin(total_bytes)
+    return max(0, free_bytes - peak_increment_bytes - safety_margin)
+
+
 def run_model_forward_pass(
     model: TemporalModel,
     *,
@@ -172,6 +228,30 @@ def run_model_forward_pass(
             with autocast_context(resolved_device=resolved_device, precision=precision):
                 outputs = model(**device_batch.model_kwargs())
             on_outputs(device_batch, outputs)
+
+
+def measure_forward_device_resident_budget(
+    model: TemporalModel,
+    *,
+    loader: BatchSource[ForwardBatchT],
+    resolved_device: torch.device,
+    precision: str,
+) -> int:
+    baseline = snapshot_cuda_memory(resolved_device)
+    reset_cuda_peak_memory(resolved_device)
+    model.eval()
+    with torch.no_grad():
+        batch = next(iter(loader))
+        device_batch = cast(ForwardBatchT, batch.to_device(resolved_device))
+        with autocast_context(resolved_device=resolved_device, precision=precision):
+            _ = model(**device_batch.model_kwargs())
+    torch.cuda.synchronize(_cuda_device_index(resolved_device))
+    return compute_device_resident_budget(
+        free_bytes=baseline.free_bytes,
+        baseline_reserved_bytes=baseline.reserved_bytes,
+        peak_reserved_bytes=peak_cuda_reserved_bytes(resolved_device),
+        total_bytes=baseline.total_bytes,
+    )
 
 
 def _available_system_memory_bytes() -> int:
@@ -198,6 +278,11 @@ def _available_system_memory_bytes() -> int:
             pass
 
     return 8 * 1024**3
+
+
+def _cuda_device_index(device: torch.device) -> int:
+    require_cuda_device(device)
+    return torch.cuda.current_device() if device.index is None else device.index
 
 
 def _sysconf_int(name: str) -> int | None:

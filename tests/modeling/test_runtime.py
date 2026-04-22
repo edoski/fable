@@ -7,6 +7,8 @@ import torch
 
 from spice.core.errors import SpiceOperatorError
 from spice.modeling._runtime import (
+    compute_device_resident_budget,
+    default_device_resident_safety_margin,
     ensure_cuda_runtime_ready,
     resolve_cuda_device,
 )
@@ -196,3 +198,40 @@ def test_transformer_default_precision_falls_back_to_fp16_without_bf16(monkeypat
         )
         == "16-mixed"
     )
+
+
+def test_default_device_resident_safety_margin_uses_five_percent_floor() -> None:
+    total_bytes = 44 * 1024**3
+
+    margin = default_device_resident_safety_margin(total_bytes)
+
+    assert margin == total_bytes // 20
+
+
+def test_compute_device_resident_budget_subtracts_peak_increment_and_margin() -> None:
+    free_bytes = 37 * 1024**3
+    baseline_reserved_bytes = 4 * 1024**3
+    peak_reserved_bytes = 12 * 1024**3
+    total_bytes = 44 * 1024**3
+
+    budget = compute_device_resident_budget(
+        free_bytes=free_bytes,
+        baseline_reserved_bytes=baseline_reserved_bytes,
+        peak_reserved_bytes=peak_reserved_bytes,
+        total_bytes=total_bytes,
+    )
+
+    assert budget == free_bytes - (peak_reserved_bytes - baseline_reserved_bytes) - (
+        total_bytes // 20
+    )
+
+
+def test_compute_device_resident_budget_clamps_to_zero() -> None:
+    budget = compute_device_resident_budget(
+        free_bytes=1024,
+        baseline_reserved_bytes=2048,
+        peak_reserved_bytes=4096,
+        total_bytes=1024**3,
+    )
+
+    assert budget == 0

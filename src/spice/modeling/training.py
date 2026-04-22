@@ -21,9 +21,14 @@ from ..temporal.realization import CompiledRealizationPolicyContract
 from ._runtime import (
     autocast_context,
     build_cuda_modeling_runtime,
+    compute_device_resident_budget,
     configure_torch_backends,
+    measure_forward_device_resident_budget,
+    peak_cuda_reserved_bytes,
+    reset_cuda_peak_memory,
     run_model_forward_pass,
     set_global_seed,
+    snapshot_cuda_memory,
 )
 from .batch_sources import BatchSource, build_prediction_batch_source
 from .families.base import ModelConfig
@@ -32,7 +37,7 @@ from .families.registry import (
     resolve_model_training_precision,
 )
 from .models import TemporalModel
-from .representations import CompiledRepresentationContract
+from .representations import CompiledRepresentationContract, RepresentationRuntimeContext
 
 IntVector = NDArray[np.int64]
 
@@ -122,6 +127,116 @@ def _build_grad_scaler(
     return torch.cuda.amp.GradScaler()
 
 
+def _host_streaming_runtime_context(
+    runtime_context: RepresentationRuntimeContext,
+) -> RepresentationRuntimeContext:
+    return runtime_context.with_device_memory_budget(0)
+
+
+def _run_probe_training_step(
+    model: TemporalModel,
+    *,
+    loader: BatchSource[PredictionBatch],
+    resolved_device: torch.device,
+    precision: str,
+    prediction_contract: CompiledPredictionContract,
+    prediction_training_state: object | None,
+    optimizer: torch.optim.Optimizer,
+    grad_scaler: object | None,
+    gradient_clip_norm: float | None,
+) -> None:
+    batch = next(iter(loader))
+    device_batch = batch.to_device(resolved_device)
+    optimizer.zero_grad(set_to_none=True)
+    with autocast_context(resolved_device=resolved_device, precision=precision):
+        outputs = model(**device_batch.model_kwargs())
+        loss, _ = prediction_contract.compute_batch_loss_and_state(
+            outputs,
+            device_batch.targets,
+            training_state=prediction_training_state,
+        )
+    if grad_scaler is not None:
+        scaler = cast("torch.cuda.amp.GradScaler", grad_scaler)
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
+        if gradient_clip_norm is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_norm)
+        scaler.step(optimizer)
+        scaler.update()
+    else:
+        loss.backward()
+        if gradient_clip_norm is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_norm)
+        optimizer.step()
+    optimizer.zero_grad(set_to_none=True)
+    torch.cuda.synchronize(resolved_device)
+
+
+def _planned_training_runtime_context(
+    model: TemporalModel,
+    *,
+    prediction_contract: CompiledPredictionContract,
+    realization_policy: CompiledRealizationPolicyContract,
+    representation_contract: CompiledRepresentationContract,
+    store: CompiledProblemStore,
+    train_sample_indices: IntVector,
+    base_runtime_context: RepresentationRuntimeContext,
+    resolved_device: torch.device,
+    training_config: TrainingConfig,
+    precision: str,
+) -> RepresentationRuntimeContext:
+    warmup_context = _host_streaming_runtime_context(base_runtime_context)
+    warmup_source = build_prediction_batch_source(
+        store,
+        train_sample_indices,
+        representation_contract=representation_contract,
+        prediction_contract=prediction_contract,
+        realization_policy=realization_policy,
+        runtime_context=warmup_context,
+        resolved_device=resolved_device,
+        seed=training_config.seed,
+        shuffle=False,
+    )
+    warmup_state = _clone_cpu_state(_unwrap_compiled_model(model))
+    warmup_optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=training_config.learning_rate,
+        weight_decay=training_config.weight_decay,
+    )
+    warmup_grad_scaler = _build_grad_scaler(
+        resolved_device=resolved_device,
+        precision=precision,
+    )
+    warmup_prediction_state = prediction_contract.fit_training_state(
+        store,
+        train_sample_indices,
+        realization_policy=realization_policy,
+    )
+    baseline_memory = snapshot_cuda_memory(resolved_device)
+    reset_cuda_peak_memory(resolved_device)
+    _run_probe_training_step(
+        model,
+        loader=warmup_source,
+        resolved_device=resolved_device,
+        precision=precision,
+        prediction_contract=prediction_contract,
+        prediction_training_state=warmup_prediction_state,
+        optimizer=warmup_optimizer,
+        grad_scaler=warmup_grad_scaler,
+        gradient_clip_norm=training_config.gradient_clip_norm,
+    )
+    budget = compute_device_resident_budget(
+        free_bytes=baseline_memory.free_bytes,
+        baseline_reserved_bytes=baseline_memory.reserved_bytes,
+        peak_reserved_bytes=peak_cuda_reserved_bytes(resolved_device),
+        total_bytes=baseline_memory.total_bytes,
+    )
+    _unwrap_compiled_model(model).load_state_dict(warmup_state)
+    del warmup_source, warmup_optimizer, warmup_grad_scaler, warmup_prediction_state
+    torch.cuda.empty_cache()
+    return base_runtime_context.with_device_memory_budget(budget)
+
+
 def _run_epoch(
     model: TemporalModel,
     *,
@@ -202,45 +317,8 @@ def train_model(
         device=runtime.resolved_device,
         model_config=model_config,
     )
-    train_batch_source = build_prediction_batch_source(
-        store,
-        train_sample_indices,
-        representation_contract=representation_contract,
-        prediction_contract=prediction_contract,
-        realization_policy=realization_policy,
-        runtime_context=runtime.representation_runtime_context,
-        resolved_device=runtime.resolved_device,
-        seed=training_config.seed,
-        shuffle=True,
-    )
-    validation_batch_source = build_prediction_batch_source(
-        store,
-        validation_sample_indices,
-        representation_contract=representation_contract,
-        prediction_contract=prediction_contract,
-        realization_policy=realization_policy,
-        runtime_context=runtime.representation_runtime_context,
-        resolved_device=runtime.resolved_device,
-        seed=training_config.seed,
-        shuffle=False,
-    )
-
-    prediction_training_state = prediction_contract.fit_training_state(
-        store,
-        train_sample_indices,
-        realization_policy=realization_policy,
-    )
     model.to(runtime.resolved_device)
     fit_model = cast(TemporalModel, torch.compile(model) if compile_enabled else model)
-    optimizer = torch.optim.AdamW(
-        fit_model.parameters(),
-        lr=training_config.learning_rate,
-        weight_decay=training_config.weight_decay,
-    )
-    grad_scaler = _build_grad_scaler(
-        resolved_device=runtime.resolved_device,
-        precision=precision,
-    )
 
     train_history: list[MetricSet] = []
     validation_history: list[MetricSet] = []
@@ -253,6 +331,54 @@ def train_model(
         resolved_device=runtime.resolved_device,
         deterministic=training_config.deterministic,
     ):
+        planned_runtime_context = _planned_training_runtime_context(
+            fit_model,
+            prediction_contract=prediction_contract,
+            realization_policy=realization_policy,
+            representation_contract=representation_contract,
+            store=store,
+            train_sample_indices=train_sample_indices,
+            base_runtime_context=runtime.representation_runtime_context,
+            resolved_device=runtime.resolved_device,
+            training_config=training_config,
+            precision=precision,
+        )
+        train_batch_source = build_prediction_batch_source(
+            store,
+            train_sample_indices,
+            representation_contract=representation_contract,
+            prediction_contract=prediction_contract,
+            realization_policy=realization_policy,
+            runtime_context=planned_runtime_context,
+            resolved_device=runtime.resolved_device,
+            seed=training_config.seed,
+            shuffle=True,
+        )
+        validation_batch_source = build_prediction_batch_source(
+            store,
+            validation_sample_indices,
+            representation_contract=representation_contract,
+            prediction_contract=prediction_contract,
+            realization_policy=realization_policy,
+            runtime_context=planned_runtime_context,
+            resolved_device=runtime.resolved_device,
+            seed=training_config.seed,
+            shuffle=False,
+        )
+        prediction_training_state = prediction_contract.fit_training_state(
+            store,
+            train_sample_indices,
+            realization_policy=realization_policy,
+        )
+        optimizer = torch.optim.AdamW(
+            fit_model.parameters(),
+            lr=training_config.learning_rate,
+            weight_decay=training_config.weight_decay,
+        )
+        grad_scaler = _build_grad_scaler(
+            resolved_device=runtime.resolved_device,
+            precision=precision,
+        )
         for epoch in range(1, training_config.max_epochs + 1):
             train_metrics = _run_epoch(
                 fit_model,
@@ -407,16 +533,6 @@ def evaluate_model(
         model_config=model_config,
     )
     model.to(runtime.resolved_device)
-    batch_source = build_prediction_batch_source(
-        store,
-        sample_indices,
-        representation_contract=representation_contract,
-        prediction_contract=prediction_contract,
-        realization_policy=realization_policy,
-        runtime_context=runtime.representation_runtime_context,
-        resolved_device=runtime.resolved_device,
-        seed=training_config.seed,
-    )
     accumulator = prediction_contract.create_epoch_accumulator()
 
     def _accumulate(batch: PredictionBatch, outputs) -> None:
@@ -431,6 +547,34 @@ def evaluate_model(
         resolved_device=runtime.resolved_device,
         deterministic=training_config.deterministic,
     ):
+        warmup_source = build_prediction_batch_source(
+            store,
+            sample_indices,
+            representation_contract=representation_contract,
+            prediction_contract=prediction_contract,
+            realization_policy=realization_policy,
+            runtime_context=_host_streaming_runtime_context(runtime.representation_runtime_context),
+            resolved_device=runtime.resolved_device,
+            seed=training_config.seed,
+        )
+        planned_runtime_context = runtime.representation_runtime_context.with_device_memory_budget(
+            measure_forward_device_resident_budget(
+                cast(TemporalModel, model),
+                loader=warmup_source,
+                resolved_device=runtime.resolved_device,
+                precision=precision,
+            )
+        )
+        batch_source = build_prediction_batch_source(
+            store,
+            sample_indices,
+            representation_contract=representation_contract,
+            prediction_contract=prediction_contract,
+            realization_policy=realization_policy,
+            runtime_context=planned_runtime_context,
+            resolved_device=runtime.resolved_device,
+            seed=training_config.seed,
+        )
         run_model_forward_pass(
             cast(TemporalModel, model),
             loader=batch_source,

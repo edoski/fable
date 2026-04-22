@@ -307,10 +307,13 @@ def _build_batch_source(
         runtime_context=runtime_context,
         resolved_device=resolved_device,
     ):
-        return _DeviceResidentBatchSource(
-            prepared=prepared.to_device_storage(resolved_device),
-            batch_sampler=batch_sampler,
-        )
+        try:
+            return _DeviceResidentBatchSource(
+                prepared=prepared.to_device_storage(resolved_device),
+                batch_sampler=batch_sampler,
+            )
+        except torch.cuda.OutOfMemoryError:
+            torch.cuda.empty_cache()
     return _build_host_dataloader_source(
         prepared,
         batch_sampler=batch_sampler,

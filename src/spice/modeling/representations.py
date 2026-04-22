@@ -65,6 +65,18 @@ class RepresentationRuntimeContext:
     available_host_memory_bytes: int
     available_device_memory_bytes: int | None = None
 
+    def with_device_memory_budget(
+        self,
+        available_device_memory_bytes: int | None,
+    ) -> RepresentationRuntimeContext:
+        if available_device_memory_bytes is not None and available_device_memory_bytes < 0:
+            raise ValueError("available_device_memory_bytes must be non-negative")
+        return RepresentationRuntimeContext(
+            batch_size=self.batch_size,
+            available_host_memory_bytes=self.available_host_memory_bytes,
+            available_device_memory_bytes=available_device_memory_bytes,
+        )
+
 
 class PreparedRepresentation(Protocol[BatchT]):
     @property

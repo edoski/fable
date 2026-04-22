@@ -11,6 +11,7 @@ from ..temporal.problem_store import CompiledProblemStore, IntVector
 from ._runtime import (
     build_cuda_modeling_runtime,
     configure_torch_backends,
+    measure_forward_device_resident_budget,
     run_model_forward_pass,
 )
 from .batch_sources import build_model_input_batch_source
@@ -39,14 +40,6 @@ def predict_with_model(
         model_config=model_config,
     )
     model.to(runtime.resolved_device)
-    batch_source = build_model_input_batch_source(
-        store,
-        sample_indices,
-        representation_contract=representation_contract,
-        runtime_context=runtime.representation_runtime_context,
-        resolved_device=runtime.resolved_device,
-        seed=0,
-    )
     predictions = prediction_contract.allocate_decoded_offsets(int(sample_indices.shape[0]))
 
     def _decode_batch(batch, outputs) -> None:
@@ -60,6 +53,30 @@ def predict_with_model(
         resolved_device=runtime.resolved_device,
         deterministic=None,
     ):
+        warmup_source = build_model_input_batch_source(
+            store,
+            sample_indices,
+            representation_contract=representation_contract,
+            runtime_context=runtime.representation_runtime_context.with_device_memory_budget(0),
+            resolved_device=runtime.resolved_device,
+            seed=0,
+        )
+        planned_runtime_context = runtime.representation_runtime_context.with_device_memory_budget(
+            measure_forward_device_resident_budget(
+                model,
+                loader=warmup_source,
+                resolved_device=runtime.resolved_device,
+                precision=precision,
+            )
+        )
+        batch_source = build_model_input_batch_source(
+            store,
+            sample_indices,
+            representation_contract=representation_contract,
+            runtime_context=planned_runtime_context,
+            resolved_device=runtime.resolved_device,
+            seed=0,
+        )
         run_model_forward_pass(
             model,
             loader=batch_source,
