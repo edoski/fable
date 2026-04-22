@@ -109,6 +109,10 @@ def _apply_sequence_length(
         store,
         anchor_rows=anchor_rows,
         context_start_rows=context_start_rows[valid_anchor_mask].astype(np.int64, copy=False),
+        candidate_start_rows=store.candidate_start_rows[valid_anchor_mask].astype(
+            np.int64,
+            copy=False,
+        ),
         candidate_end_rows=store.candidate_end_rows[valid_anchor_mask].astype(
             np.int64,
             copy=False,

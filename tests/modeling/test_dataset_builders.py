@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
+import numpy as np
 import polars as pl
 
 from spice.config import TrainConfig, WorkflowTask
@@ -86,3 +87,43 @@ def test_professor_dataset_builder_keeps_global_feature_timeline_across_splits(
     prepared = prepare_training_dataset(blocks, spec=spec)
 
     assert prepared.builder_runtime_metadata["split_strategy"] == "global_feature_table"
+
+
+def test_professor_dataset_builder_keeps_candidate_window_arrays_aligned_after_seq_trim(
+    tmp_path,
+    load_workflow_config,
+) -> None:
+    config = cast(
+        TrainConfig,
+        load_workflow_config(
+            WorkflowTask.TRAIN,
+            workspace=tmp_path,
+            preset="icdcs_2026_professor",
+            override={
+                "problem": {
+                    "id": "test_professor_problem",
+                    "lookback_seconds": 600,
+                    "sample_count": 4096,
+                    "max_delay_seconds": 36,
+                    "compiler": {
+                        "id": "estimated_block",
+                        "lookback_interval_source": "nominal_chain_runtime",
+                        "candidate_interval_source": "nominal_chain_runtime",
+                        "calibrated_interval_statistic": "mean",
+                    },
+                    "realization_policy": {
+                        "id": "strict_deadline_miss",
+                    },
+                }
+            },
+        ),
+    )
+
+    prepared = prepare_training_dataset(
+        pl.DataFrame(make_history_rows(config)),
+        spec=build_training_spec(config),
+    )
+
+    assert prepared.store.anchor_rows.shape == prepared.store.candidate_start_rows.shape
+    assert prepared.store.anchor_rows.shape == prepared.store.candidate_end_rows.shape
+    np.testing.assert_array_less(prepared.store.anchor_rows, prepared.store.candidate_start_rows)
