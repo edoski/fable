@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar, cast
@@ -137,6 +138,13 @@ class _HostDataLoaderBatchSource(Generic[BatchT]):
 
     def __iter__(self) -> Iterator[BatchT]:
         return iter(self._loader)
+
+
+@dataclass(frozen=True, slots=True)
+class _HostLoaderWorkerSettings:
+    num_workers: int
+    persistent_workers: bool
+    prefetch_factor: int | None
 
 
 class _DeviceResidentBatchSource(Generic[BatchT]):
@@ -316,16 +324,69 @@ def _build_host_dataloader_source(
     batch_sampler: _PositionBatchSampler,
     resolved_device: torch.device,
 ) -> _HostDataLoaderBatchSource[BatchT]:
+    worker_settings = _resolve_host_loader_worker_settings()
     loader = DataLoader(
         _SamplePositionDataset(prepared.sample_count),
         batch_sampler=batch_sampler,
         collate_fn=_HostBatchCollator(prepared),
-        num_workers=0,
+        num_workers=worker_settings.num_workers,
+        persistent_workers=worker_settings.persistent_workers,
+        prefetch_factor=worker_settings.prefetch_factor,
         pin_memory=_should_pin_host_memory(resolved_device),
     )
     return _HostDataLoaderBatchSource(
         loader=cast(DataLoader[BatchT], loader),
         batch_sampler=batch_sampler,
+    )
+
+
+def _resolve_host_loader_worker_settings() -> _HostLoaderWorkerSettings:
+    requested_workers = os.environ.get("SPICE_DATALOADER_WORKERS")
+    if requested_workers is not None:
+        return _build_host_loader_worker_settings(
+            num_workers=_parse_worker_override(requested_workers)
+        )
+
+    cpu_budget = _slurm_cpu_budget()
+    if cpu_budget is None or cpu_budget <= 2:
+        return _build_host_loader_worker_settings(num_workers=0)
+    return _build_host_loader_worker_settings(num_workers=min(8, cpu_budget - 2))
+
+
+def _parse_worker_override(raw_value: str) -> int:
+    try:
+        parsed = int(raw_value)
+    except ValueError as exc:
+        raise ValueError("SPICE_DATALOADER_WORKERS must be an integer") from exc
+    if parsed < 0:
+        raise ValueError("SPICE_DATALOADER_WORKERS must be non-negative")
+    return parsed
+
+
+def _slurm_cpu_budget() -> int | None:
+    raw_value = os.environ.get("SLURM_CPUS_PER_TASK")
+    if raw_value is None:
+        return None
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return None
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+def _build_host_loader_worker_settings(*, num_workers: int) -> _HostLoaderWorkerSettings:
+    if num_workers <= 0:
+        return _HostLoaderWorkerSettings(
+            num_workers=0,
+            persistent_workers=False,
+            prefetch_factor=None,
+        )
+    return _HostLoaderWorkerSettings(
+        num_workers=num_workers,
+        persistent_workers=True,
+        prefetch_factor=4 if num_workers >= 4 else 2,
     )
 
 
