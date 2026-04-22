@@ -23,7 +23,16 @@ def test_root_help_lists_public_command_surface() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0, result.stdout
-    for token in ("config", "show", "delete", "acquire", "train", "tune", "evaluate"):
+    for token in (
+        "config",
+        "reconstruct",
+        "show",
+        "delete",
+        "acquire",
+        "train",
+        "tune",
+        "evaluate",
+    ):
         assert token in result.stdout
 
 
