@@ -15,12 +15,36 @@ def calibrate_positive_timestamp_delta_seconds(
     statistic: object,
     empty_error: str,
 ) -> float:
+    return summarize_positive_timestamp_delta_seconds(
+        feature_table,
+        statistic=statistic,
+        empty_error=empty_error,
+    )
+
+
+def summarize_positive_timestamp_delta_seconds(
+    feature_table: ResolvedFeatureTable,
+    *,
+    statistic: object,
+    empty_error: str,
+    window_blocks: int | None = None,
+    quantile: float | None = None,
+) -> float:
     deltas = np.diff(feature_table.series.timestamps.astype(np.int64, copy=False))
     positive_deltas = deltas[deltas > 0]
+    if window_blocks is not None:
+        if window_blocks <= 0:
+            raise ValueError("window_blocks must be positive")
+        positive_deltas = positive_deltas[-window_blocks:]
     if positive_deltas.size == 0:
         raise ValueError(empty_error)
-    if _enum_value(statistic) == "mean":
+    statistic_value = _enum_value(statistic)
+    if statistic_value == "mean":
         return float(np.mean(positive_deltas))
+    if statistic_value == "quantile":
+        if quantile is None or not 0.0 < quantile < 1.0:
+            raise ValueError("quantile statistic requires quantile in (0, 1)")
+        return float(np.quantile(positive_deltas, quantile))
     return float(np.median(positive_deltas))
 
 
@@ -41,13 +65,42 @@ def resolve_runtime_interval_seconds(
     return nominal_block_time_seconds
 
 
+def resolve_interval_estimator_seconds(
+    *,
+    estimator: object,
+    feature_table: ResolvedFeatureTable,
+    nominal_block_time_seconds: float | None,
+    compiler_label: str,
+    interval_label: str,
+) -> float:
+    estimator_id = _enum_value(getattr(estimator, "id", estimator))
+    if estimator_id == "nominal":
+        if nominal_block_time_seconds is None or nominal_block_time_seconds <= 0:
+            raise ValueError(
+                f"{compiler_label} requires nominal block time "
+                f"for {interval_label} interval resolution"
+            )
+        return nominal_block_time_seconds
+    if estimator_id != "recent_deltas":
+        raise ValueError(f"Unsupported {compiler_label} interval estimator: {estimator_id}")
+    recent_deltas_estimator = estimator
+    return summarize_positive_timestamp_delta_seconds(
+        feature_table,
+        statistic=recent_deltas_estimator.statistic,
+        quantile=recent_deltas_estimator.quantile,
+        window_blocks=int(recent_deltas_estimator.window_blocks),
+        empty_error=f"{compiler_label} requires positive timestamp deltas",
+    )
+
+
 def resolve_bootstrap_interval_seconds(
     *,
-    source: object,
+    estimator: object,
     recent_block_interval_seconds: float | None,
     nominal_block_time_seconds: float | None,
 ) -> float | None:
-    if _enum_value(source) == "nominal_chain_runtime":
+    estimator_id = _enum_value(getattr(estimator, "id", estimator))
+    if estimator_id == "nominal":
         return nominal_block_time_seconds
     if recent_block_interval_seconds is None or recent_block_interval_seconds <= 0:
         return None

@@ -9,13 +9,10 @@ runner = CliRunner()
 
 _REMOVED_WORKFLOW_FLAGS = {
     "--dataset",
-    "--problem",
     "--provider",
     "--model",
     "--dataset-builder",
-    "--feature-set",
     "--prediction",
-    "--evaluation",
 }
 
 
@@ -39,14 +36,34 @@ def test_root_help_lists_public_command_surface() -> None:
 @pytest.mark.parametrize(
     ("command", "expected_flags"),
     [
-        ("acquire", {"--preset", "--chain", "--storage-root", "--dry-run"}),
-        ("train", {"--preset", "--chain", "--study", "--variant", "--submit"}),
-        ("tune", {"--preset", "--chain", "--trial-count", "--submit"}),
+        (
+            "acquire",
+            {"--preset", "--chain", "--problem", "--feature-set", "--storage-root", "--dry-run"},
+        ),
+        (
+            "train",
+            {
+                "--preset",
+                "--chain",
+                "--problem",
+                "--feature-set",
+                "--study",
+                "--variant",
+                "--submit",
+            },
+        ),
+        (
+            "tune",
+            {"--preset", "--chain", "--problem", "--feature-set", "--trial-count", "--submit"},
+        ),
         (
             "evaluate",
             {
                 "--preset",
                 "--chain",
+                "--problem",
+                "--feature-set",
+                "--evaluation",
                 "--study",
                 "--variant",
                 "--delay-seconds",

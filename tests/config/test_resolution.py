@@ -246,3 +246,38 @@ def test_evaluate_allows_diagnostic_evaluation_to_differ_from_objective_benchmar
     assert config.objective.id == "evaluation"
     assert config.objective.benchmark_id == "paper_replay_2h"
     assert config.evaluation.id == "paper_fullset"
+
+
+def test_request_overrides_allow_problem_feature_set_and_evaluation_selection(
+    tmp_path: Path,
+    isolate_conf_root,
+) -> None:
+    isolate_conf_root()
+
+    train_config = cast(
+        TrainConfig,
+        resolve_workflow_config(
+            WorkflowTask.TRAIN,
+            WorkflowRequest(
+                preset="icdcs_2026_oracle_block_open",
+                problem="icdcs_2026_oracle_intermediate_recent_deltas",
+                feature_set="icdcs_2026_professor_block_open_no_time_since_start",
+                storage_root=tmp_path / "train_outputs",
+            ),
+        ),
+    )
+    assert train_config.problem.id == "icdcs_2026_oracle_intermediate_recent_deltas"
+    assert train_config.feature_set.id == "icdcs_2026_professor_block_open_no_time_since_start"
+    assert train_config.evaluation is not None
+    assert train_config.evaluation.id == "paper_replay_2h"
+
+    evaluate_config = resolve_workflow_config(
+        WorkflowTask.EVALUATE,
+        WorkflowRequest(
+            preset="icdcs_2026_oracle_intermediate",
+            evaluation="notebook_basefee_fullset",
+            storage_root=tmp_path / "eval_outputs",
+        ),
+    )
+    assert evaluate_config.evaluation is not None
+    assert evaluate_config.evaluation.id == "notebook_basefee_fullset"

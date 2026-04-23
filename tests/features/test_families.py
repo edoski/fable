@@ -7,6 +7,7 @@ import polars as pl
 import pytest
 
 from spice.config import coerce_feature_set_config
+from spice.config.registry import load_named_group
 from spice.features import (
     FeaturePrerequisites,
     compile_feature_contract,
@@ -312,3 +313,58 @@ def test_block_open_gas_ratio_rolls_account_for_lagged_warmup() -> None:
     )
     assert np.isnan(feature_table.feature_matrix[9, 1])
     assert np.isfinite(feature_table.feature_matrix[10, 1])
+
+
+@pytest.mark.parametrize(
+    ("feature_set_name", "family_id", "present", "absent"),
+    [
+        (
+            "icdcs_2026_professor_no_time_since_start",
+            "block_native",
+            {"dt_seconds", "hour_sin", "dow_cos"},
+            {"time_since_start"},
+        ),
+        (
+            "icdcs_2026_professor_no_time_features",
+            "block_native",
+            {"dt_seconds"},
+            {"hour_sin", "hour_cos", "dow_sin", "dow_cos", "time_since_start"},
+        ),
+        (
+            "icdcs_2026_professor_calendar_only_time",
+            "block_native",
+            {"hour_sin", "hour_cos", "dow_sin", "dow_cos"},
+            {"dt_seconds", "time_since_start"},
+        ),
+        (
+            "icdcs_2026_professor_block_open_no_time_since_start",
+            "block_open_native",
+            {"dt_seconds", "hour_sin", "dow_cos"},
+            {"time_since_start"},
+        ),
+        (
+            "icdcs_2026_professor_block_open_no_time_features",
+            "block_open_native",
+            {"dt_seconds"},
+            {"hour_sin", "hour_cos", "dow_sin", "dow_cos", "time_since_start"},
+        ),
+        (
+            "icdcs_2026_professor_block_open_calendar_only_time",
+            "block_open_native",
+            {"hour_sin", "hour_cos", "dow_sin", "dow_cos"},
+            {"dt_seconds", "time_since_start"},
+        ),
+    ],
+)
+def test_named_time_ablation_feature_sets_resolve_as_intended(
+    feature_set_name: str,
+    family_id: str,
+    present: set[str],
+    absent: set[str],
+) -> None:
+    feature_set = coerce_feature_set_config(load_named_group(feature_set_name, "feature_set"))
+
+    assert feature_set.id == feature_set_name
+    assert feature_set.family.id == family_id
+    assert present.issubset(set(feature_set.outputs))
+    assert absent.isdisjoint(set(feature_set.outputs))

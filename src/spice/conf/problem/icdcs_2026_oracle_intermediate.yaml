@@ -4,7 +4,8 @@ sample_count: 400000
 max_delay_seconds: 36
 compiler:
   id: timestamp_future_window
-  action_interval_source: nominal_chain_runtime
+  action_interval_estimator:
+    id: nominal
   candidate_start_mode: current_row
 realization_policy:
   id: strict_deadline_miss

@@ -34,7 +34,7 @@ class EstimatedBlockRuntimeMetadata:
 
 @dataclass(frozen=True, slots=True)
 class TimestampFutureWindowRuntimeMetadata:
-    calibrated_interval_seconds: float
+    action_interval_estimator_id: str
     action_interval_seconds: float
     capability_action_count: int
 
@@ -148,9 +148,9 @@ def problem_runtime_metadata_from_compiler_payload(
         )
     if compiler_id == "timestamp_future_window":
         return TimestampFutureWindowRuntimeMetadata(
-            calibrated_interval_seconds=_float_payload(
+            action_interval_estimator_id=_str_payload(
                 raw_payload,
-                "calibrated_interval_seconds",
+                "action_interval_estimator_id",
             ),
             action_interval_seconds=_float_payload(raw_payload, "action_interval_seconds"),
             capability_action_count=_int_payload(raw_payload, "capability_action_count"),
@@ -170,3 +170,10 @@ def _int_payload(payload: Mapping[str, object], key: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigResolutionError(f"Invalid integer runtime metadata field: {key}")
     return int(value)
+
+
+def _str_payload(payload: Mapping[str, object], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str):
+        raise ConfigResolutionError(f"Invalid string runtime metadata field: {key}")
+    return value

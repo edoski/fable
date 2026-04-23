@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from pydantic import Field
+from pydantic import Field, SerializeAsAny, field_validator, model_validator
 
 from ...features import (
     CompiledFeatureContract,
     ResolvedFeatureTable,
 )
+from ...modeling.families.base import ConfigModel
 from ..contracts import (
     CompiledProblemContract,
     ProblemRuntimeMetadata,
@@ -23,9 +25,8 @@ from ..realization import CompiledRealizationPolicyContract
 from ..semantics import ActionSpaceMode, CandidateStartMode
 from ._shared import (
     build_timestamp_window_store,
-    calibrate_positive_timestamp_delta_seconds,
     resolve_bootstrap_interval_seconds,
-    resolve_runtime_interval_seconds,
+    resolve_interval_estimator_seconds,
 )
 from .base import ProblemCompilerConfig
 
@@ -33,37 +34,85 @@ if TYPE_CHECKING:
     from ...config.models import ChainRuntimeSpec, ProblemSpec
 
 
-class TimestampFutureWindowIntervalSource(StrEnum):
-    CALIBRATED = "calibrated"
-    NOMINAL_CHAIN_RUNTIME = "nominal_chain_runtime"
-
-
-class TimestampFutureWindowCalibratedStatistic(StrEnum):
+class TimestampFutureWindowRecentDeltasStatistic(StrEnum):
     MEDIAN = "median"
     MEAN = "mean"
+    QUANTILE = "quantile"
+
+
+class TimestampFutureWindowIntervalEstimatorConfig(ConfigModel):
+    id: str
+
+
+class TimestampFutureWindowNominalIntervalEstimatorConfig(
+    TimestampFutureWindowIntervalEstimatorConfig
+):
+    id: str = "nominal"
+
+
+class TimestampFutureWindowRecentDeltasIntervalEstimatorConfig(
+    TimestampFutureWindowIntervalEstimatorConfig
+):
+    id: str = "recent_deltas"
+    window_blocks: int = Field(gt=0)
+    statistic: TimestampFutureWindowRecentDeltasStatistic = (
+        TimestampFutureWindowRecentDeltasStatistic.MEDIAN
+    )
+    quantile: float | None = Field(default=None, gt=0.0, lt=1.0)
+
+    @model_validator(mode="after")
+    def validate_quantile(self) -> TimestampFutureWindowRecentDeltasIntervalEstimatorConfig:
+        if self.statistic is TimestampFutureWindowRecentDeltasStatistic.QUANTILE:
+            if self.quantile is None:
+                raise ValueError("recent_deltas quantile statistic requires quantile")
+            return self
+        if self.quantile is not None:
+            raise ValueError("recent_deltas quantile is only valid with statistic=quantile")
+        return self
 
 
 class TimestampFutureWindowCompilerConfig(ProblemCompilerConfig):
     id: str = "timestamp_future_window"
-    action_interval_source: TimestampFutureWindowIntervalSource = (
-        TimestampFutureWindowIntervalSource.NOMINAL_CHAIN_RUNTIME
+    action_interval_estimator: SerializeAsAny[TimestampFutureWindowIntervalEstimatorConfig] = (
+        Field(default_factory=TimestampFutureWindowNominalIntervalEstimatorConfig)
     )
     candidate_start_mode: CandidateStartMode = CandidateStartMode.NEXT_BLOCK
-    calibrated_interval_statistic: TimestampFutureWindowCalibratedStatistic = Field(
-        default=TimestampFutureWindowCalibratedStatistic.MEDIAN
-    )
+
+    @field_validator("action_interval_estimator", mode="before")
+    @classmethod
+    def validate_action_interval_estimator(
+        cls,
+        value: object,
+    ) -> TimestampFutureWindowIntervalEstimatorConfig:
+        if isinstance(value, TimestampFutureWindowIntervalEstimatorConfig):
+            raw_payload = value.model_dump(mode="json")
+        elif isinstance(value, Mapping):
+            raw_payload = dict(value)
+        else:
+            raise TypeError("timestamp_future_window.action_interval_estimator must be a mapping")
+        estimator_id = raw_payload.get("id")
+        if estimator_id == "nominal":
+            return TimestampFutureWindowNominalIntervalEstimatorConfig.model_validate(raw_payload)
+        if estimator_id == "recent_deltas":
+            return TimestampFutureWindowRecentDeltasIntervalEstimatorConfig.model_validate(
+                raw_payload
+            )
+        known = ", ".join(sorted(("nominal", "recent_deltas")))
+        raise ValueError(
+            "timestamp_future_window.action_interval_estimator.id must be one of: "
+            f"{known}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class TimestampFutureWindowCompiledProblemContract(CompiledProblemContract):
-    action_interval_source: TimestampFutureWindowIntervalSource
-    calibrated_interval_statistic: TimestampFutureWindowCalibratedStatistic
+    action_interval_estimator: TimestampFutureWindowIntervalEstimatorConfig
     nominal_block_time_seconds: float | None
 
     def initial_history_window_seconds(self, recent_block_interval_seconds: float | None) -> int:
         minimum_window = self.required_history_seconds + self.max_delay_seconds
         bootstrap_interval_seconds = resolve_bootstrap_interval_seconds(
-            source=self.action_interval_source,
+            estimator=self.action_interval_estimator,
             recent_block_interval_seconds=recent_block_interval_seconds,
             nominal_block_time_seconds=self.nominal_block_time_seconds,
         )
@@ -84,14 +133,9 @@ class TimestampFutureWindowCompiledProblemContract(CompiledProblemContract):
         self,
         feature_table: ResolvedFeatureTable,
     ) -> tuple[CompiledProblemStore, TimestampFutureWindowRuntimeMetadata]:
-        calibrated_interval_seconds = calibrate_positive_timestamp_delta_seconds(
-            feature_table,
-            statistic=self.calibrated_interval_statistic,
-            empty_error="timestamp_future_window requires positive timestamp deltas",
-        )
-        action_interval_seconds = resolve_runtime_interval_seconds(
-            source=self.action_interval_source,
-            calibrated_interval_seconds=calibrated_interval_seconds,
+        action_interval_seconds = resolve_interval_estimator_seconds(
+            estimator=self.action_interval_estimator,
+            feature_table=feature_table,
             nominal_block_time_seconds=self.nominal_block_time_seconds,
             compiler_label="timestamp_future_window",
             interval_label="action",
@@ -113,7 +157,7 @@ class TimestampFutureWindowCompiledProblemContract(CompiledProblemContract):
         return (
             store,
             TimestampFutureWindowRuntimeMetadata(
-                calibrated_interval_seconds=calibrated_interval_seconds,
+                action_interval_estimator_id=self.action_interval_estimator.id,
                 action_interval_seconds=action_interval_seconds,
                 capability_action_count=capability_action_count,
             ),
@@ -159,8 +203,7 @@ def compile_problem(
         None if chain_runtime is None else float(chain_runtime.nominal_block_time_seconds)
     )
     if (
-        compiler_config.action_interval_source
-        is TimestampFutureWindowIntervalSource.NOMINAL_CHAIN_RUNTIME
+        compiler_config.action_interval_estimator.id == "nominal"
         and (nominal_block_time_seconds is None or nominal_block_time_seconds <= 0)
     ):
         raise ValueError(
@@ -179,8 +222,7 @@ def compile_problem(
         realization_policy=replace(realization_policy, requires_post_window_row=True),
         candidate_start_mode=compiler_config.candidate_start_mode,
         action_space_mode=ActionSpaceMode.FIXED_EX_ANTE,
-        action_interval_source=compiler_config.action_interval_source,
-        calibrated_interval_statistic=compiler_config.calibrated_interval_statistic,
+        action_interval_estimator=compiler_config.action_interval_estimator,
         nominal_block_time_seconds=nominal_block_time_seconds,
     )
 

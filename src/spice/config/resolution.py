@@ -50,6 +50,9 @@ WorkflowConfig = AcquireConfig | TrainConfig | TuneConfig | EvaluateConfig
 class WorkflowRequest(ConfigModel):
     preset: str | None = None
     chain: str | None = None
+    problem: str | None = None
+    feature_set: str | None = None
+    evaluation: str | None = None
     study: str | None = None
     variant: str | None = None
     delay_seconds: int | None = Field(default=None, gt=0)
@@ -115,6 +118,9 @@ def resolve_workflow_config(
             load_preset_frame(request.preset),
             workflow=workflow_kind,
             chain=request.chain,
+            problem=request.problem,
+            feature_set=request.feature_set,
+            evaluation=request.evaluation,
             study=request.study,
             variant=request.variant,
             delay_seconds=request.delay_seconds,

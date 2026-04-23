@@ -96,6 +96,9 @@ def _build_model_workflow_request(
     *,
     preset: str | None,
     chain: str | None,
+    problem: str | None = None,
+    feature_set: str | None = None,
+    evaluation: str | None = None,
     study: str | None = None,
     variant: str | None = None,
     delay_seconds: int | None = None,
@@ -105,6 +108,9 @@ def _build_model_workflow_request(
     return WorkflowRequest(
         preset=preset,
         chain=chain,
+        problem=problem,
+        feature_set=feature_set,
+        evaluation=evaluation,
         study=study,
         variant=variant,
         delay_seconds=delay_seconds,
@@ -125,6 +131,18 @@ def acquire_command(
     chain: Annotated[
         str | None,
         _selection_option("--chain", metavar="CHAIN", help="Override the target chain."),
+    ] = None,
+    problem: Annotated[
+        str | None,
+        _selection_option("--problem", metavar="PROBLEM", help="Override the problem spec."),
+    ] = None,
+    feature_set: Annotated[
+        str | None,
+        _selection_option(
+            "--feature-set",
+            metavar="FEATURE_SET",
+            help="Override the feature-set spec.",
+        ),
     ] = None,
     storage_root: Annotated[
         Path | None,
@@ -151,6 +169,8 @@ def acquire_command(
             WorkflowRequest(
                 preset=preset,
                 chain=chain,
+                problem=problem,
+                feature_set=feature_set,
                 storage_root=storage_root,
                 dry_run=dry_run,
             ),
@@ -170,6 +190,18 @@ def train_command(
     chain: Annotated[
         str | None,
         _selection_option("--chain", metavar="CHAIN", help="Override the target chain."),
+    ] = None,
+    problem: Annotated[
+        str | None,
+        _selection_option("--problem", metavar="PROBLEM", help="Override the problem spec."),
+    ] = None,
+    feature_set: Annotated[
+        str | None,
+        _selection_option(
+            "--feature-set",
+            metavar="FEATURE_SET",
+            help="Override the feature-set spec.",
+        ),
     ] = None,
     study: Annotated[
         str | None,
@@ -223,6 +255,8 @@ def train_command(
     submit_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
+        problem=problem,
+        feature_set=feature_set,
         study=study,
         variant=variant,
     )
@@ -237,6 +271,8 @@ def train_command(
     local_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
+        problem=problem,
+        feature_set=feature_set,
         study=study,
         variant=variant,
         storage_root=storage_root,
@@ -260,6 +296,18 @@ def tune_command(
     chain: Annotated[
         str | None,
         _selection_option("--chain", metavar="CHAIN", help="Override the target chain."),
+    ] = None,
+    problem: Annotated[
+        str | None,
+        _selection_option("--problem", metavar="PROBLEM", help="Override the problem spec."),
+    ] = None,
+    feature_set: Annotated[
+        str | None,
+        _selection_option(
+            "--feature-set",
+            metavar="FEATURE_SET",
+            help="Override the feature-set spec.",
+        ),
     ] = None,
     trial_count: Annotated[
         int | None,
@@ -313,6 +361,8 @@ def tune_command(
     submit_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
+        problem=problem,
+        feature_set=feature_set,
         trial_count=trial_count,
     )
     if submit:
@@ -326,6 +376,8 @@ def tune_command(
     local_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
+        problem=problem,
+        feature_set=feature_set,
         trial_count=trial_count,
         storage_root=storage_root,
     )
@@ -348,6 +400,26 @@ def evaluate_command(
     chain: Annotated[
         str | None,
         _selection_option("--chain", metavar="CHAIN", help="Override the target chain."),
+    ] = None,
+    problem: Annotated[
+        str | None,
+        _selection_option("--problem", metavar="PROBLEM", help="Override the problem spec."),
+    ] = None,
+    feature_set: Annotated[
+        str | None,
+        _selection_option(
+            "--feature-set",
+            metavar="FEATURE_SET",
+            help="Override the feature-set spec.",
+        ),
+    ] = None,
+    evaluation: Annotated[
+        str | None,
+        _selection_option(
+            "--evaluation",
+            metavar="EVALUATION",
+            help="Override the evaluation spec.",
+        ),
     ] = None,
     study: Annotated[
         str | None,
@@ -409,6 +481,9 @@ def evaluate_command(
     submit_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
+        problem=problem,
+        feature_set=feature_set,
+        evaluation=evaluation,
         study=study,
         variant=variant,
         delay_seconds=delay_seconds,
@@ -424,6 +499,9 @@ def evaluate_command(
     local_request = _build_model_workflow_request(
         preset=preset,
         chain=chain,
+        problem=problem,
+        feature_set=feature_set,
+        evaluation=evaluation,
         study=study,
         variant=variant,
         delay_seconds=delay_seconds,

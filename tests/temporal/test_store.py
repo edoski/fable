@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
+import pytest
+from pydantic import ValidationError
 
 from spice.config import coerce_feature_set_config, coerce_problem_spec
 from spice.config.models import ChainRuntimeSpec
@@ -216,7 +218,7 @@ def test_timestamp_future_window_uses_future_only_fixed_action_windows() -> None
                 "max_delay_seconds": 36,
                 "compiler": {
                     "id": "timestamp_future_window",
-                    "action_interval_source": "nominal_chain_runtime",
+                    "action_interval_estimator": {"id": "nominal"},
                 },
                 "realization_policy": _realization_policy_config(),
             }
@@ -244,6 +246,7 @@ def test_timestamp_future_window_uses_future_only_fixed_action_windows() -> None
         np.array([3, 3, 3, 3, 2], dtype=np.int64),
     )
     assert runtime_metadata.action_interval_seconds == 12.0
+    assert runtime_metadata.action_interval_estimator_id == "nominal"
     assert runtime_metadata.capability_action_count == 3
     assert store.max_candidate_slots == 3
     assert store.action_space_mode.value == "fixed_ex_ante"
@@ -279,7 +282,7 @@ def test_timestamp_future_window_supports_current_row_fixed_action_windows() -> 
                 "max_delay_seconds": 36,
                 "compiler": {
                     "id": "timestamp_future_window",
-                    "action_interval_source": "nominal_chain_runtime",
+                    "action_interval_estimator": {"id": "nominal"},
                     "candidate_start_mode": "current_row",
                 },
                 "realization_policy": _realization_policy_config(),
@@ -343,7 +346,7 @@ def test_timestamp_future_window_fixed_ex_ante_derives_width_from_realized_train
                 "max_delay_seconds": 36,
                 "compiler": {
                     "id": "timestamp_future_window",
-                    "action_interval_source": "nominal_chain_runtime",
+                    "action_interval_estimator": {"id": "nominal"},
                     "candidate_start_mode": "current_row",
                 },
                 "realization_policy": _realization_policy_config(),
@@ -372,3 +375,96 @@ def test_timestamp_future_window_fixed_ex_ante_derives_width_from_realized_train
 
     assert delay_store.max_candidate_slots == runtime_metadata.capability_action_count
     assert int(delay_store.candidate_counts.max()) > delay_store.max_candidate_slots
+
+
+def test_timestamp_future_window_supports_recent_delta_interval_estimator() -> None:
+    feature_contract = compile_feature_contract(
+        feature_set=coerce_feature_set_config(
+            {
+                "id": "test_timestamp_future_window_recent_deltas",
+                "family": {"id": "time_native"},
+                "outputs": ["seconds_since_previous_block", "elapsed_seconds"],
+            }
+        )
+    )
+    blocks = pl.DataFrame(
+        {
+            "block_number": np.arange(700, 710, dtype=np.int64),
+            "timestamp": np.array([0, 10, 21, 31, 42, 52, 63, 73, 85, 97], dtype=np.int64),
+            "base_fee_per_gas": np.full(10, 1_000_000_000, dtype=np.int64),
+            "gas_used": np.full(10, 18_000_000, dtype=np.int64),
+            "gas_limit": np.full(10, 30_000_000, dtype=np.int64),
+            "chain_id": np.ones(10, dtype=np.int64),
+        }
+    )
+    feature_table = feature_contract.build_table(blocks)
+    contract = compile_problem_contract(
+        problem=coerce_problem_spec(
+            {
+                "id": "test_timestamp_future_window_recent_deltas",
+                "lookback_seconds": 24,
+                "sample_count": 4,
+                "max_delay_seconds": 36,
+                "compiler": {
+                    "id": "timestamp_future_window",
+                    "action_interval_estimator": {
+                        "id": "recent_deltas",
+                        "window_blocks": 4,
+                        "statistic": "median",
+                    },
+                },
+                "realization_policy": _realization_policy_config(),
+            }
+        ),
+        feature_contract=feature_contract,
+        chain_runtime=ChainRuntimeSpec(
+            chain_id=1,
+            uses_poa_extra_data=False,
+            nominal_block_time_seconds=12.0,
+        ),
+    )
+
+    _, runtime_metadata = contract.build_capability_store(feature_table)
+
+    assert runtime_metadata.action_interval_estimator_id == "recent_deltas"
+    assert runtime_metadata.action_interval_seconds == 11.5
+    assert runtime_metadata.capability_action_count == 3
+
+
+def test_timestamp_future_window_rejects_recent_delta_quantile_without_quantile() -> None:
+    feature_contract = compile_feature_contract(
+        feature_set=coerce_feature_set_config(
+            {
+                "id": "test_timestamp_future_window_recent_deltas_quantile",
+                "family": {"id": "time_native"},
+                "outputs": ["seconds_since_previous_block", "elapsed_seconds"],
+            }
+        )
+    )
+
+    with pytest.raises(ValidationError, match="recent_deltas quantile statistic requires quantile"):
+        compile_problem_contract(
+            problem=coerce_problem_spec(
+                {
+                    "id": "test_timestamp_future_window_recent_deltas_quantile",
+                    "lookback_seconds": 24,
+                    "sample_count": 4,
+                    "max_delay_seconds": 36,
+                    "compiler": {
+                        "id": "timestamp_future_window",
+                        "action_interval_estimator": {
+                            "id": "recent_deltas",
+                            "window_blocks": 4,
+                            "statistic": "quantile",
+                        },
+                    },
+                    "realization_policy": _realization_policy_config(),
+                }
+            ),
+            feature_contract=feature_contract,
+            chain_runtime=ChainRuntimeSpec(
+                chain_id=1,
+                uses_poa_extra_data=False,
+                nominal_block_time_seconds=12.0,
+            ),
+        )

@@ -52,6 +52,9 @@ def apply_request_overrides(
     *,
     workflow: WorkflowTask,
     chain: str | None,
+    problem: str | None,
+    feature_set: str | None,
+    evaluation: str | None,
     study: str | None,
     variant: str | None,
     delay_seconds: int | None,
@@ -61,6 +64,9 @@ def apply_request_overrides(
 ) -> PresetFrame:
     _reject_inapplicable_overrides(
         workflow=workflow,
+        problem=problem,
+        feature_set=feature_set,
+        evaluation=evaluation,
         study=study,
         variant=variant,
         delay_seconds=delay_seconds,
@@ -70,6 +76,12 @@ def apply_request_overrides(
     updates: dict[str, object] = {}
     if chain is not None:
         updates["chain"] = chain
+    if problem is not None:
+        updates["problem"] = problem
+    if feature_set is not None:
+        updates["feature_set"] = feature_set
+    if evaluation is not None:
+        updates["evaluation"] = evaluation
     if storage_root is not None:
         base_storage = frame.storage or StorageSpec()
         updates["storage"] = _updated_model(base_storage, root=storage_root)
@@ -93,6 +105,9 @@ def apply_request_overrides(
 def _reject_inapplicable_overrides(
     *,
     workflow: WorkflowTask,
+    problem: str | None,
+    feature_set: str | None,
+    evaluation: str | None,
     study: str | None,
     variant: str | None,
     delay_seconds: int | None,
@@ -109,6 +124,8 @@ def _reject_inapplicable_overrides(
             invalid.append("delay_seconds")
         if trial_count is not None:
             invalid.append("trial_count")
+        if evaluation is not None:
+            invalid.append("evaluation")
     elif workflow is WorkflowTask.TRAIN:
         if delay_seconds is not None:
             invalid.append("delay_seconds")

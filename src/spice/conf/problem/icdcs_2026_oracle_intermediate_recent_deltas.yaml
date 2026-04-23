@@ -1,10 +1,13 @@
-id: icdcs_2026_oracle_safe
+id: icdcs_2026_oracle_intermediate_recent_deltas
 lookback_seconds: 600
 sample_count: 400000
 max_delay_seconds: 36
 compiler:
   id: timestamp_future_window
   action_interval_estimator:
-    id: nominal
+    id: recent_deltas
+    window_blocks: 256
+    statistic: median
+  candidate_start_mode: current_row
 realization_policy:
   id: strict_deadline_miss
