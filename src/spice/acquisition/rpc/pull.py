@@ -60,7 +60,6 @@ async def pull_block_range(
     pending_requests: list[_BatchRequest] = []
     in_flight: dict[asyncio.Task[list[CanonicalBlockRow]], _BatchRequest] = {}
     completed_results: dict[int, _CompletedBatch] = {}
-    completed = 0
     next_request_start = plan.block_range.start
     next_write_start = plan.block_range.start
 
@@ -89,7 +88,6 @@ async def pull_block_range(
                 in_flight,
                 return_when=asyncio.FIRST_COMPLETED,
             )
-            completed_this_tick = 0
             for task in done:
                 request = in_flight.pop(task)
                 try:
@@ -131,9 +129,6 @@ async def pull_block_range(
                     end=request.end,
                     rows=rows,
                 )
-                completed += len(rows)
-                completed_this_tick += len(rows)
-
                 while next_write_start in completed_results:
                     finished_batch = completed_results.pop(next_write_start)
                     pending_rows.extend(finished_batch.rows)

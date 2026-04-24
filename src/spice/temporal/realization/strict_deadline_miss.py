@@ -78,6 +78,8 @@ def _prepare_supervised_targets(
     max_candidate_slots = int(store.max_candidate_slots)
     candidate_mask = np.zeros((batch_size, max_candidate_slots), dtype=np.bool_)
     candidate_log_fees = np.zeros((batch_size, max_candidate_slots), dtype=np.float32)
+    optimum_offsets = np.empty(batch_size, dtype=np.int64)
+    optimum_log_fees = np.empty(batch_size, dtype=np.float32)
     baseline_candidate_indices = np.zeros(batch_size, dtype=np.int64)
     for row, (start_row, end_row, candidate_count) in enumerate(
         zip(
@@ -91,11 +93,10 @@ def _prepare_supervised_targets(
         candidate_mask[row, :] = True
         slot_count = min(int(candidate_count), max_candidate_slots)
         candidate_log_fees[row, :slot_count] = candidate_values[:slot_count]
-        if int(window_summary.optimum_offsets[row]) >= max_candidate_slots:
-            raise ValueError(
-                "strict_deadline_miss action space must cover optimum offsets "
-                "for supervised targets"
-            )
+        reachable_values = candidate_values[:slot_count]
+        reachable_offset = int(np.argmin(reachable_values))
+        optimum_offsets[row] = reachable_offset
+        optimum_log_fees[row] = float(reachable_values[reachable_offset])
         if int(candidate_count) < max_candidate_slots:
             if int(end_row) >= store.n_rows:
                 raise ValueError(
@@ -106,8 +107,8 @@ def _prepare_supervised_targets(
     return PreparedSupervisedRealizationTargets(
         candidate_mask=candidate_mask,
         candidate_log_fees=candidate_log_fees,
-        optimum_offsets=window_summary.optimum_offsets,
-        optimum_log_fees=window_summary.optimum_log_fees,
+        optimum_offsets=optimum_offsets,
+        optimum_log_fees=optimum_log_fees,
         baseline_candidate_indices=baseline_candidate_indices,
     )
 

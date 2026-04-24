@@ -56,3 +56,24 @@ def test_fixed_ex_ante_overflow_realizes_first_post_window_row() -> None:
     np.testing.assert_array_equal(realized.realized_rows, np.array([4, 7], dtype=np.int64))
     np.testing.assert_array_equal(realized.resolved_offsets, np.array([2, 2], dtype=np.int64))
     np.testing.assert_array_equal(realized.overflow_mask, np.array([True, True]))
+
+
+def test_supervised_targets_use_best_reachable_fixed_slot() -> None:
+    store = CompiledProblemStore(
+        feature_matrix=np.zeros((6, 1), dtype=np.float32),
+        log_base_fees=np.log(np.array([100, 50, 80, 10, 5, 70], dtype=np.float32)),
+        timestamps=np.arange(6, dtype=np.int64),
+        anchor_rows=np.array([0], dtype=np.int64),
+        context_start_rows=np.array([0], dtype=np.int64),
+        candidate_start_rows=np.array([0], dtype=np.int64),
+        candidate_end_rows=np.array([5], dtype=np.int64),
+        max_candidate_slots=3,
+    )
+
+    targets = _realization_policy().prepare_supervised_targets(
+        store,
+        np.array([0], dtype=np.int64),
+    )
+
+    np.testing.assert_array_equal(targets.optimum_offsets, np.array([1], dtype=np.int64))
+    np.testing.assert_allclose(targets.optimum_log_fees, np.log(np.array([50], dtype=np.float32)))

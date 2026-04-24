@@ -5,10 +5,9 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from pydantic import Field, SerializeAsAny, field_validator, model_validator
+from pydantic import SerializeAsAny, field_validator
 
 from ...features import (
     CompiledFeatureContract,
@@ -29,12 +28,6 @@ if TYPE_CHECKING:
     from ...config.models import ChainRuntimeSpec, ProblemSpec
 
 
-class TimestampFutureWindowRecentDeltasStatistic(StrEnum):
-    MEDIAN = "median"
-    MEAN = "mean"
-    QUANTILE = "quantile"
-
-
 class TimestampFutureWindowIntervalEstimatorConfig(ConfigModel):
     id: str
 
@@ -49,28 +42,11 @@ class TimestampFutureWindowRecentDeltasIntervalEstimatorConfig(
     TimestampFutureWindowIntervalEstimatorConfig
 ):
     id: str = "recent_deltas"
-    window_blocks: int = Field(gt=0)
-    statistic: TimestampFutureWindowRecentDeltasStatistic = (
-        TimestampFutureWindowRecentDeltasStatistic.MEDIAN
-    )
-    quantile: float | None = Field(default=None, gt=0.0, lt=1.0)
-
-    @model_validator(mode="after")
-    def validate_quantile(self) -> TimestampFutureWindowRecentDeltasIntervalEstimatorConfig:
-        if self.statistic is TimestampFutureWindowRecentDeltasStatistic.QUANTILE:
-            if self.quantile is None:
-                raise ValueError("recent_deltas quantile statistic requires quantile")
-            return self
-        if self.quantile is not None:
-            raise ValueError("recent_deltas quantile is only valid with statistic=quantile")
-        return self
 
 
 class TimestampFutureWindowCompilerConfig(ProblemCompilerConfig):
     id: str = "timestamp_future_window"
-    action_interval_estimator: SerializeAsAny[TimestampFutureWindowIntervalEstimatorConfig] = (
-        Field(default_factory=TimestampFutureWindowNominalIntervalEstimatorConfig)
-    )
+    action_interval_estimator: SerializeAsAny[TimestampFutureWindowIntervalEstimatorConfig]
 
     @field_validator("action_interval_estimator", mode="before")
     @classmethod
@@ -150,6 +126,7 @@ class TimestampFutureWindowCompiledProblemContract(CompiledProblemContract):
             feature_prerequisites=self.feature_prerequisites,
             lookback_seconds=self.lookback_seconds,
             delay_seconds=self.max_delay_seconds,
+            max_candidate_slots=capability_action_count,
             requires_post_window_row=self.realization_policy.requires_post_window_row,
         )
         return (

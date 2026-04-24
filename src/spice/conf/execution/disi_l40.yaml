@@ -13,7 +13,7 @@ workflows:
     gpus: 1
     cpus_per_task: 8
     memory_gb: 48
-    time_limit: "1-00:00:00"
+    time_limit: "3-00:00:00"
   tune:
     partition: l40
     gpus: 1
@@ -25,5 +25,5 @@ workflows:
     gpus: 1
     cpus_per_task: 4
     memory_gb: 24
-    time_limit: "04:00:00"
+    time_limit: "3-00:00:00"
 follow_by_default: true

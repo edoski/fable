@@ -150,6 +150,7 @@ def resolve_workflow_identity(config: object, *, study_id: str | None = None) ->
             corpus_id=corpus_storage_id(
                 chain_name=config.chain.name,
                 dataset_name=config.dataset.name,
+                evaluation_date=config.dataset.evaluation_date,
             )
         )
     if not isinstance(config, ModelWorkflowConfig):
@@ -158,6 +159,7 @@ def resolve_workflow_identity(config: object, *, study_id: str | None = None) ->
     corpus_id = corpus_storage_id(
         chain_name=config.chain.name,
         dataset_name=config.dataset.name,
+        evaluation_date=config.dataset.evaluation_date,
     )
     tuning_mode = isinstance(config, TuneConfig)
     resolved_study_id = study_id

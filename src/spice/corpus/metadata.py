@@ -12,9 +12,7 @@ from ..acquisition.rpc import AcquisitionRuntimeSnapshot
 from ..config.models import AcquireConfig
 from ..corpus.io import iter_block_files
 from ..corpus.validation import BlockDatasetValidationReport
-from ..features import CompiledFeatureContract
 from ..storage.layout import resolve_workflow_paths
-from ..temporal.contracts import CompiledProblemContract
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,8 +214,6 @@ def acquisition_runtime_metadata(
 def build_dataset_manifest(
     *,
     config: AcquireConfig,
-    contract: CompiledProblemContract,
-    feature_contract: CompiledFeatureContract,
     history_request_start_timestamp: int,
     history_request_end_timestamp: int,
     evaluation_request_start_timestamp: int,
@@ -225,7 +221,6 @@ def build_dataset_manifest(
     history_validation: BlockDatasetValidationReport,
     evaluation_validation: BlockDatasetValidationReport,
 ) -> DatasetManifest:
-    del contract, feature_contract
     paths = resolve_workflow_paths(config)
     return DatasetManifest(
         dataset=DatasetIdentity(

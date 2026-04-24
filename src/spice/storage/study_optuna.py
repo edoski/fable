@@ -39,11 +39,6 @@ def study_storage(db_path: Path) -> RDBStorage:
     )
 
 
-def load_study(db_path: Path, *, study_name: str) -> optuna.Study:
-    _, study = _load_verified_study(db_path, study_name=study_name)
-    return study
-
-
 def open_tuning_study(db_path: Path, *, config: TuneConfig) -> OpenStudy:
     requested_manifest = manifest_from_tune_config(config)
     stored_manifest = try_load_study_manifest(db_path)

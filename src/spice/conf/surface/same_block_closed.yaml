@@ -9,8 +9,8 @@ split: default
 tuning: default
 model: lstm
 tuning_space: lstm_fixed_context
-objective: profit_poisson_replay_2h
-evaluation: poisson_replay_2h
+objective: profit_poisson_replay_2h_mean
+evaluation: poisson_replay_2h_mean
 delay_seconds: 36
 problem: current_row_nominal_window
 feature_set: same_block_closed_full

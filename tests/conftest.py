@@ -11,10 +11,13 @@ import pytest
 
 from spice.config import (
     AcquireConfig,
+    AcquireWorkflowRequest,
     EvaluateConfig,
+    EvaluateWorkflowRequest,
     TrainConfig,
+    TrainWorkflowRequest,
     TuneConfig,
-    WorkflowRequest,
+    TuneWorkflowRequest,
     WorkflowTask,
     resolve_workflow_config,
 )
@@ -24,10 +27,17 @@ from spice.config.registry import (
     named_group_keys,
     normalize_group_name,
 )
+from spice.config.resolution import workflow_request_type
 from spice.config.surfaces import SurfaceFrame
 
 _CONF_ROOT = Path(__file__).resolve().parents[1] / "src" / "spice" / "conf"
-_SELECTION_GROUP_KEYS = frozenset(WorkflowRequest.model_fields) & frozenset(named_group_keys())
+_REQUEST_FIELD_NAMES = frozenset().union(
+    AcquireWorkflowRequest.model_fields,
+    TrainWorkflowRequest.model_fields,
+    TuneWorkflowRequest.model_fields,
+    EvaluateWorkflowRequest.model_fields,
+)
+_SELECTION_GROUP_KEYS = _REQUEST_FIELD_NAMES & frozenset(named_group_keys())
 _SURFACE_FIELDS = frozenset(SurfaceFrame.model_fields)
 TEST_EVALUATION_DATE = date(2025, 11, 9)
 _IDENTITY_FIELDS = {
@@ -112,8 +122,9 @@ def model_workflow_override():
                 "input_normalization": {"id": "row_standard"},
             },
             "evaluation": {
-                "id": "poisson_replay_2h",
+                "id": "poisson_replay_2h_mean",
                 "sampler": "poisson_arrivals",
+                "aggregation": "event_mean",
                 "window_seconds": 600,
                 "arrival_rate_per_second": 0.02,
                 "repetitions": 3,
@@ -271,14 +282,15 @@ def load_workflow_config(tmp_path: Path, isolate_conf_root):
                     continue
                 surface_payload[key] = value
                 continue
-            if key in WorkflowRequest.model_fields and not isinstance(value, Mapping):
+            if key in _REQUEST_FIELD_NAMES and not isinstance(value, Mapping):
                 selection_values[key] = value
                 continue
             raise ValueError(f"Unsupported test workflow override key: {key}")
         _write_named_spec(conf_root, group="surface", name=surface_name, payload=surface_payload)
         selection_values["surface"] = surface_name
+        request_type = workflow_request_type(workflow)
         return resolve_workflow_config(
-            workflow, WorkflowRequest.model_validate(selection_values)
+            workflow, request_type.model_validate(selection_values)
         )
 
     return _load

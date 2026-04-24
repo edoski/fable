@@ -25,7 +25,7 @@ from ..features import CompiledFeatureContract
 from ..objectives import CompiledObjectiveContract, ObjectiveConfig
 from ..prediction import CompiledPredictionContract
 from ..semantics import FeatureSemantics
-from ..storage.layout import resolve_workflow_paths
+from ..storage.layout import WorkflowPaths
 from ..temporal.contracts import CompiledProblemContract
 from ..temporal.input_normalization import CompiledInputNormalizationContract
 from ..temporal.problem_store import (
@@ -91,8 +91,7 @@ class InferencePreparationSpec:
     window_end_timestamp: int
 
 
-def build_training_spec(config: TrainConfig | TuneConfig) -> TrainingSpec:
-    paths = resolve_workflow_paths(config)
+def build_training_spec(config: TrainConfig | TuneConfig, *, paths: WorkflowPaths) -> TrainingSpec:
     variant = ArtifactVariant.TUNED if isinstance(config, TuneConfig) else config.artifact.variant
     context = compile_training_context(config)
     return TrainingSpec(

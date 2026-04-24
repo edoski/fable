@@ -2,6 +2,7 @@
 
 from .base import (
     CompiledEvaluatorContract,
+    EvaluationAggregation,
     EvaluationEngine,
     EvaluationRun,
     EvaluationSampler,
@@ -12,6 +13,7 @@ from .base import (
 
 __all__ = [
     "CompiledEvaluatorContract",
+    "EvaluationAggregation",
     "EvaluationEngine",
     "EvaluationSampler",
     "EvaluationRun",

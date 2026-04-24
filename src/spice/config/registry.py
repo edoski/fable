@@ -65,7 +65,7 @@ ValidateGroupPayload = Callable[[dict[str, object]], BaseModel | dict[str, objec
 class GroupSpec:
     token: str
     directory: str
-    seed_name: str
+    seed_name: str | None
     validate: ValidateGroupPayload
     identity_field: str | None = None
     seed_from_requested_name: bool = False
@@ -89,7 +89,7 @@ _GROUP_SPECS = (
     GroupSpec(
         token=ConfigGroup.BENCHMARK.value,
         directory="benchmark",
-        seed_name="safe_delay_sensitivity",
+        seed_name=None,
         validate=lambda payload: _canonicalize_mapping(payload),
         public=True,
     ),
@@ -347,7 +347,8 @@ def _seed_template(group: str, *, name: str) -> dict[str, object]:
     candidates: list[Path] = []
     if spec.seed_from_requested_name:
         candidates.append(package_group_root / f"{name}.yaml")
-    candidates.append(package_group_root / f"{spec.seed_name}.yaml")
+    if spec.seed_name is not None:
+        candidates.append(package_group_root / f"{spec.seed_name}.yaml")
     seen: set[Path] = set()
     for candidate in candidates:
         if candidate in seen:

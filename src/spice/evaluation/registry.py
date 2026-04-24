@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..prediction import DecodedOffsets
-from .config import EvaluationEngine, EvaluationSampler, EvaluatorConfig
+from .config import EvaluationAggregation, EvaluationEngine, EvaluationSampler, EvaluatorConfig
 from .contracts import CompiledEvaluatorContract, RunEvaluatorFn
 from .mechanical import run_anchor_basefee_fullset, run_zero_stop_rollout_fullset
 from .metrics import (
@@ -38,7 +38,20 @@ def compile_evaluator_contract(
             run_fn=run_anchor_basefee_fullset,
         )
     if evaluator_config.sampler is EvaluationSampler.FULLSET:
-        run_fn = run_fullset
+        def run_fn(
+            store,
+            realization_policy,
+            decoded_result,
+            sample_indices,
+        ):
+            return run_fullset(
+                store,
+                realization_policy,
+                decoded_result,
+                sample_indices,
+                aggregation=_aggregation(evaluator_config),
+            )
+
     elif evaluator_config.sampler is EvaluationSampler.UNIFORM_WINDOW:
 
         def run_fn(
@@ -83,3 +96,7 @@ def compile_evaluator_contract(
         accepted_decoded_result_id=DecodedOffsets.decoded_result_id,
         run_fn=resolved_run_fn,
     )
+
+
+def _aggregation(config: EvaluatorConfig) -> EvaluationAggregation:
+    return config.aggregation or EvaluationAggregation.TOTAL_RATIO

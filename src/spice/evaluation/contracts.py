@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -26,6 +26,7 @@ class EvaluationRun:
     n_events: int
     metrics: dict[str, float]
     metadata: dict[str, EvaluationMetadataValue]
+    event_metric_sums: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

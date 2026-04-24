@@ -289,8 +289,6 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
             )
             manifest = build_dataset_manifest(
                 config=config,
-                contract=contract,
-                feature_contract=feature_contract,
                 history_request_start_timestamp=history_plan.window.start,
                 history_request_end_timestamp=history_plan.window.end,
                 evaluation_request_start_timestamp=evaluation_window.start,

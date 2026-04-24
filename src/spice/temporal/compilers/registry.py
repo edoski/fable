@@ -59,25 +59,19 @@ def compile_problem(
     raise ConfigResolutionError(f"Unsupported problem.compiler.id: {compiler_id}")
 
 
-def problem_runtime_metadata_payload(metadata: object) -> dict[str, object]:
-    from .estimated_block import (
-        EstimatedBlockRuntimeMetadata,
-    )
-    from .estimated_block import (
-        runtime_metadata_payload as estimated_block_payload,
-    )
-    from .timestamp_future_window import (
-        TimestampFutureWindowRuntimeMetadata,
-    )
-    from .timestamp_future_window import (
-        runtime_metadata_payload as timestamp_future_window_payload,
-    )
+def problem_runtime_metadata_payload(
+    compiler_id: str,
+    metadata: object,
+) -> dict[str, object]:
+    if compiler_id == "timestamp_future_window":
+        from .timestamp_future_window import runtime_metadata_payload
 
-    if isinstance(metadata, EstimatedBlockRuntimeMetadata):
-        return estimated_block_payload(metadata)
-    if isinstance(metadata, TimestampFutureWindowRuntimeMetadata):
-        return timestamp_future_window_payload(metadata)
-    raise ConfigResolutionError(f"Unsupported problem runtime metadata: {type(metadata)!r}")
+        return runtime_metadata_payload(metadata)
+    if compiler_id == "estimated_block":
+        from .estimated_block import runtime_metadata_payload
+
+        return runtime_metadata_payload(metadata)
+    raise ConfigResolutionError(f"Unsupported problem.compiler.id: {compiler_id}")
 
 
 def problem_runtime_metadata_from_compiler_payload(

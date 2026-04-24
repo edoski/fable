@@ -69,6 +69,7 @@ def prepare_training_dataset(blocks: pl.DataFrame, spec: TrainingSpec) -> Prepar
         split_indices=split_indices,
         scaler=scaler,
         builder_runtime_metadata=standard_temporal_runtime_metadata(
+            compiler_id=spec.contract.compiler_id,
             compiler_runtime_metadata=compiler_runtime_metadata
         ),
     )

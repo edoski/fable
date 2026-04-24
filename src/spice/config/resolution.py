@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, overload
@@ -49,25 +50,49 @@ _TUNING_SPACE_GROUP = "tuning_space"
 WorkflowConfig = AcquireConfig | TrainConfig | TuneConfig | EvaluateConfig
 
 
-class WorkflowRequest(ConfigModel):
+class WorkflowRequestBase(ConfigModel):
     surface: str | None = None
     chain: str | None = None
     problem: str | None = None
     feature_set: str | None = None
+    storage_root: Path | None = None
+
+
+class AcquireWorkflowRequest(WorkflowRequestBase):
+    acquisition: str | None = None
+    dry_run: bool | None = None
+
+
+class ModelWorkflowRequestBase(WorkflowRequestBase):
     objective: str | None = None
     evaluation: str | None = None
     model: str | None = None
     tuning_space: str | None = None
-    acquisition: str | None = None
     training: str | None = None
     split: str | None = None
     tuning: str | None = None
     study: str | None = None
+
+
+class TrainWorkflowRequest(ModelWorkflowRequestBase):
+    variant: str | None = None
+
+
+class TuneWorkflowRequest(ModelWorkflowRequestBase):
+    trial_count: int | None = Field(default=None, gt=0)
+
+
+class EvaluateWorkflowRequest(ModelWorkflowRequestBase):
     variant: str | None = None
     delay_seconds: int | None = Field(default=None, gt=0)
-    trial_count: int | None = Field(default=None, gt=0)
-    storage_root: Path | None = None
-    dry_run: bool | None = None
+
+
+WorkflowConfigRequest = (
+    AcquireWorkflowRequest
+    | TrainWorkflowRequest
+    | TuneWorkflowRequest
+    | EvaluateWorkflowRequest
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,60 +138,65 @@ def load_named_tuning_space(
 @overload
 def resolve_workflow_config(
     workflow_kind: Literal[WorkflowTask.ACQUIRE],
-    request: WorkflowRequest,
+    request: AcquireWorkflowRequest,
 ) -> AcquireConfig: ...
 
 
 @overload
 def resolve_workflow_config(
     workflow_kind: Literal[WorkflowTask.TRAIN],
-    request: WorkflowRequest,
+    request: TrainWorkflowRequest,
 ) -> TrainConfig: ...
 
 
 @overload
 def resolve_workflow_config(
     workflow_kind: Literal[WorkflowTask.TUNE],
-    request: WorkflowRequest,
+    request: TuneWorkflowRequest,
 ) -> TuneConfig: ...
 
 
 @overload
 def resolve_workflow_config(
     workflow_kind: Literal[WorkflowTask.EVALUATE],
-    request: WorkflowRequest,
+    request: EvaluateWorkflowRequest,
 ) -> EvaluateConfig: ...
+
+
+@overload
+def resolve_workflow_config(
+    workflow_kind: WorkflowTask,
+    request: WorkflowConfigRequest,
+) -> WorkflowConfig: ...
 
 
 def resolve_workflow_config(
     workflow_kind: WorkflowTask,
-    request: WorkflowRequest,
+    request: WorkflowConfigRequest,
 ) -> WorkflowConfig:
     """Resolve one workflow request into one validated workflow config."""
 
     if request.surface is None:
         raise ConfigResolutionError("surface is required")
     try:
+        _validate_request_kind(workflow_kind, request)
         frame = apply_request_overrides(
             load_surface_frame(request.surface),
-            workflow=workflow_kind,
             chain=request.chain,
             problem=request.problem,
             feature_set=request.feature_set,
-            objective=request.objective,
-            evaluation=request.evaluation,
-            model=request.model,
-            tuning_space=request.tuning_space,
-            acquisition=request.acquisition,
-            training=request.training,
-            split=request.split,
-            tuning=request.tuning,
-            study=request.study,
-            variant=request.variant,
-            delay_seconds=request.delay_seconds,
-            trial_count=request.trial_count,
+            objective=getattr(request, "objective", None),
+            evaluation=getattr(request, "evaluation", None),
+            model=getattr(request, "model", None),
+            tuning_space=getattr(request, "tuning_space", None),
+            acquisition=getattr(request, "acquisition", None),
+            training=getattr(request, "training", None),
+            split=getattr(request, "split", None),
+            tuning=getattr(request, "tuning", None),
+            study=getattr(request, "study", None),
+            variant=getattr(request, "variant", None),
+            delay_seconds=getattr(request, "delay_seconds", None),
             storage_root=request.storage_root,
-            dry_run=request.dry_run,
         )
         return _resolve_surface_frame(workflow_kind, frame, request=request)
     except ConfigResolutionError:
@@ -179,17 +209,57 @@ def _resolve_surface_frame(
     workflow: WorkflowTask,
     frame: SurfaceFrame,
     *,
-    request: WorkflowRequest,
+    request: WorkflowConfigRequest,
 ) -> WorkflowConfig:
     if workflow is WorkflowTask.ACQUIRE:
+        if not isinstance(request, AcquireWorkflowRequest):
+            raise ConfigResolutionError("acquire requires AcquireWorkflowRequest")
         return _resolve_acquire_config(frame, dry_run=request.dry_run)
     if workflow is WorkflowTask.TRAIN:
         return _resolve_train_config(frame)
     if workflow is WorkflowTask.TUNE:
+        if not isinstance(request, TuneWorkflowRequest):
+            raise ConfigResolutionError("tune requires TuneWorkflowRequest")
         return _resolve_tune_config(frame, trial_count=request.trial_count)
     if workflow is WorkflowTask.EVALUATE:
         return _resolve_evaluate_config(frame)
     raise ConfigResolutionError(f"Unsupported workflow: {workflow.value}")
+
+
+def _validate_request_kind(workflow: WorkflowTask, request: WorkflowConfigRequest) -> None:
+    expected = workflow_request_type(workflow)
+    if not isinstance(request, expected):
+        raise ConfigResolutionError(
+            f"{workflow.value} requires {expected.__name__}, got {type(request).__name__}"
+        )
+
+
+def workflow_request_type(workflow: WorkflowTask) -> type[WorkflowRequestBase]:
+    if workflow is WorkflowTask.ACQUIRE:
+        return AcquireWorkflowRequest
+    if workflow is WorkflowTask.TRAIN:
+        return TrainWorkflowRequest
+    if workflow is WorkflowTask.TUNE:
+        return TuneWorkflowRequest
+    if workflow is WorkflowTask.EVALUATE:
+        return EvaluateWorkflowRequest
+    raise ConfigResolutionError(f"Unsupported workflow: {workflow.value}")
+
+
+def workflow_request_fields(workflow: WorkflowTask) -> tuple[str, ...]:
+    return tuple(workflow_request_type(workflow).model_fields)
+
+
+def workflow_request_payload(
+    workflow: WorkflowTask,
+    values: Mapping[str, object | None],
+) -> dict[str, object]:
+    fields = frozenset(workflow_request_fields(workflow))
+    return {
+        key: value
+        for key, value in values.items()
+        if key in fields and value is not None
+    }
 
 
 def _resolve_dataset(name: str) -> DatasetSpec:
@@ -336,7 +406,6 @@ def _resolve_model_workflow_spine(
     *,
     model: ModelConfig[str],
     problem: ProblemSpec,
-    prediction: PredictionConfig,
     require_tuning: bool,
     allow_tuned_variant: bool,
 ) -> ModelWorkflowSpine:
@@ -393,7 +462,6 @@ def _resolve_train_config(frame: SurfaceFrame) -> TrainConfig:
         frame,
         model=base.model,
         problem=base.problem,
-        prediction=base.prediction,
         require_tuning=False,
         allow_tuned_variant=True,
     )
@@ -423,7 +491,6 @@ def _resolve_tune_config(frame: SurfaceFrame, *, trial_count: int | None) -> Tun
         frame,
         model=base.model,
         problem=base.problem,
-        prediction=base.prediction,
         require_tuning=True,
         allow_tuned_variant=False,
     )
@@ -460,7 +527,6 @@ def _resolve_evaluate_config(frame: SurfaceFrame) -> EvaluateConfig:
         frame,
         model=base.model,
         problem=base.problem,
-        prediction=base.prediction,
         require_tuning=False,
         allow_tuned_variant=True,
     )

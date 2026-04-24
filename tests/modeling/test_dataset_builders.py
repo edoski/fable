@@ -8,6 +8,7 @@ import polars as pl
 from spice.config import TrainConfig, WorkflowTask
 from spice.modeling.dataset_builders import FixedContextTemporalBuilderRuntimeMetadata
 from spice.modeling.pipeline import build_training_spec, prepare_training_dataset
+from spice.storage.layout import resolve_workflow_paths
 from tests.dataset_helpers import make_history_rows
 
 
@@ -42,7 +43,7 @@ def test_fixed_context_dataset_builder_prepares_seq_len_without_builder_owned_cl
     )
     prepared = prepare_training_dataset(
         pl.DataFrame(make_history_rows(config)),
-        spec=build_training_spec(config),
+        spec=build_training_spec(config, paths=resolve_workflow_paths(config)),
     )
 
     assert config.dataset_builder.id == "fixed_context_temporal"
@@ -87,7 +88,7 @@ def test_fixed_context_dataset_builder_keeps_candidate_window_arrays_aligned_aft
 
     prepared = prepare_training_dataset(
         pl.DataFrame(make_history_rows(config)),
-        spec=build_training_spec(config),
+        spec=build_training_spec(config, paths=resolve_workflow_paths(config)),
     )
 
     assert prepared.store.anchor_rows.shape == prepared.store.candidate_start_rows.shape

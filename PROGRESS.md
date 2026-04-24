@@ -5,7 +5,9 @@
 - Current unsafe surface: `same_block_closed`
 - Current safe surface: `block_open_lagged`
 - Current paper-style nominal-grid compiler: `estimated_block`
-- Primary evaluator: `poisson_replay_2h`
+- Primary evaluator: `poisson_replay_2h_mean`
+- Canonical paper-compatible evaluator: `poisson_replay_2h_mean`, which reports mean per-prediction `profit_over_baseline` and `cost_over_optimum`.
+- Diagnostic total-fee-ratio evaluator: `poisson_replay_2h_total`.
 - Diagnostic evaluators:
   - `zero_stop_rollout_fullset`
   - `anchor_basefee_fullset`
@@ -26,14 +28,66 @@
   - delays: `12s`, `24s`, `36s`
 - Second wave:
   - compare `current_row_nominal_window` vs `current_row_recent_delta_window`
-  - sweep recent-delta estimator window sizes such as `64`, `128`, `256`, `512` blocks
-  - compare `median`, `mean`, and possibly quantile interval statistics if the estimator path remains promising
+  - keep `recent_deltas` as one simple median-of-training-deltas policy
   - sweep `sample_count` such as `400k`, `1m`, `3m` to separate data-volume gains from regime-drift costs
-- Third wave:
-  - treat model/training capacity as HPO rather than benchmark semantics
-  - existing knobs: learning rate, weight decay, batch size, hidden size, layer count, dropout, `d_model`, transformer layers
-  - likely useful new tuning knobs: LSTM `input_projection_dim`, prediction-head `head_hidden_dim`, transformer `feedforward_dim`, and possibly `nhead`
-  - defer `max_epochs` and early-stopping patience unless training curves show undertraining or premature stopping
+- Third wave: large-capacity HPO
+  - purpose: test whether remaining safe-path gaps are capacity/optimization limits rather than feature or temporal-semantics limits
+  - scope should stay targeted after the current HPO finishes and remote/local configs are synced:
+    - Ethereum `transformer`
+    - Ethereum `transformer_lstm`
+    - Avalanche `transformer_lstm`
+    - optionally Avalanche `transformer` only if the current tuned result fails to materialize cleanly
+  - keep the benchmark role explicit: this is model/training HPO, not a new temporal surface
+  - current supported tuning knobs:
+    - training: `learning_rate`, `weight_decay`, `batch_size`
+    - problem: `lookback_seconds`
+    - LSTM: `hidden_size`, `num_layers`, `dropout`
+    - Transformer: `d_model`, `transformer_layers`, `dropout`
+    - Transformer-LSTM: `hidden_size`, `d_model`, `dropout`
+  - tuning knobs to add cleanly before the large-capacity sweep:
+    - training: `max_epochs`, `early_stopping.patience`
+    - Transformer: `nhead`, `feedforward_dim`, `head_hidden_dim`
+    - Transformer-LSTM: `transformer_layers`, LSTM `num_layers`, `nhead`, `feedforward_dim`, `head_hidden_dim`
+    - LSTM: `input_projection_dim`, `head_hidden_dim`
+  - proposed large-capacity defaults:
+    - `max_epochs: 100`
+    - `early_stopping.patience: 15`
+    - keep high Slurm `ulimit -n` for tune jobs; do not force `SPICE_DATALOADER_WORKERS=0` unless open-file failures recur
+  - proposed trial budget:
+    - target `120` trials per cell
+    - review at `40` and `80` trials before spending the full budget
+    - continue beyond `120` only if recent trials improve the best objective by at least `0.001` absolute `profit_over_baseline` or reveal a clearly new high-performing region
+  - proposed training search:
+    - `learning_rate: [0.00003, 0.0001, 0.0003]`
+    - `weight_decay: [0.0, 0.0001, 0.001, 0.01]`
+    - `batch_size: [64, 128, 256, 512]`
+    - include `64` because the paper uses batch size 64 and the current `training/default.yaml` also uses 64
+  - proposed Transformer search:
+    - `d_model: [384, 512, 768, 1024, 1536]`
+    - `transformer_layers: [4, 6, 8, 12]`
+    - `nhead: [4, 8, 16]`, with `d_model % nhead == 0`
+    - `feedforward_dim`: tune as a multiple of `d_model`, likely `[2x, 4x]`, or explicit equivalent values
+    - `head_hidden_dim: [256, 512, 1024]`
+    - `dropout: [0.0, 0.1, 0.2, 0.3]`
+  - proposed Transformer-LSTM search:
+    - `d_model: [384, 512, 768, 1024]`
+    - `hidden_size: [384, 512, 768, 1024, 1536]`
+    - `transformer_layers: [4, 6, 8]`
+    - LSTM `num_layers: [1, 2, 3]`
+    - `nhead: [4, 8, 16]`, with `d_model % nhead == 0`
+    - `feedforward_dim`: tune as `[2x, 4x]` of `d_model` or explicit equivalent values
+    - `head_hidden_dim: [256, 512, 1024]`
+    - `dropout: [0.0, 0.1, 0.2, 0.3]`
+  - proposed LSTM search if LSTM remains in scope:
+    - `hidden_size: [256, 384, 512, 768, 1024]`
+    - `num_layers: [1, 2, 3, 4]`
+    - `input_projection_dim: [128, 256, 512]`
+    - `head_hidden_dim: [256, 512, 1024]`
+    - `dropout: [0.0, 0.1, 0.2, 0.3]`
+  - batch-size caveat:
+    - larger batches improve hardware throughput but reduce optimizer steps per epoch
+    - pair batch-size tuning with `max_epochs: 100` and patience `15` so large-batch trials are not accidentally undertrained
+    - treat batch size as an optimization/generalization hyperparameter, not only a GPU-utilization knob
 
 ## Overnight Checkpoint-Parity Run
 
@@ -62,7 +116,7 @@
 
 ### Delay-Sensitivity Sweep
 
-Decimal values below are `profit_over_baseline` on `poisson_replay_2h`.
+Decimal values below are historical `profit_over_baseline` on the pre-split total-ratio Poisson replay evaluator.
 
 | Chain | Role | LSTM 12/24/36 | Transformer 12/24/36 | Transformer-LSTM 12/24/36 |
 | --- | --- | --- | --- | --- |
@@ -75,7 +129,7 @@ Decimal values below are `profit_over_baseline` on `poisson_replay_2h`.
 
 ### Checkpoint-Selection Parity
 
-Scope: unsafe reference only, `poisson_replay_2h`, `36s`, Polygon and Avalanche.
+Scope: unsafe reference only, pre-split total-ratio Poisson replay evaluator, `36s`, Polygon and Avalanche.
 
 | Chain | Family | Economic epoch | Validation-loss epoch | Same epoch? | Economic result | Validation-loss result |
 | --- | --- | ---: | ---: | --- | ---: | ---: |
@@ -133,7 +187,7 @@ Checkpoint parity read:
 
 ## Completed Cross-Chain Confirmation Wave
 
-Decimal values below are `profit_over_baseline` on `poisson_replay_2h`.
+Decimal values below are historical `profit_over_baseline` on the pre-split total-ratio Poisson replay evaluator.
 
 | Chain | Paper Fig. 6 approx | Unsafe reference | Safe best |
 | --- | --- | --- | --- |
@@ -146,11 +200,11 @@ Model order: `LSTM / Transformer / Transformer-LSTM`
 Late completed diagnostic evals:
 
 - Avalanche unsafe `transformer_lstm`:
-  - `poisson_replay_2h`: `0.0120`
+  - pre-split total-ratio Poisson replay: `0.0120`
   - `zero_stop_rollout_fullset`: `0.0340`
   - `anchor_basefee_fullset`: `0.0102`
 - Avalanche `safe_best` benchmark role `transformer_lstm` completed with:
-  - `poisson_replay_2h`: `0.0031`
+  - pre-split total-ratio Poisson replay: `0.0031`
   - `zero_stop_rollout_fullset`: `0.0023`
   - `anchor_basefee_fullset`: `0.0031`
 
@@ -198,7 +252,7 @@ No new wave has been queued.
   - In the professor training code, the visible selection rule appears to be validation loss.
   - This can materially change final economic results, especially on tighter-margin chains like Polygon.
 - Our primary replay evaluator is stricter than the notebook-style evaluator.
-  - `poisson_replay_2h` is a one-shot replay benchmark: the model commits to one decoded choice from the current row.
+  - `poisson_replay_2h_mean` is a one-shot replay benchmark: the model commits to one decoded choice from the current row.
   - The professor notebook rollout is a sequential re-decision policy: move forward one row at a time until the model emits `0`.
   - So notebook rollout is easier to do well on and should not be read as directly equivalent to replay.
 - “Better than paper” should be stated carefully.
@@ -210,7 +264,7 @@ No new wave has been queued.
 
 ## Cross-Chain Replay Results
 
-Percent values below are `profit_over_baseline` on `poisson_replay_2h`.
+Percent values below are historical `profit_over_baseline` on the pre-split total-ratio Poisson replay evaluator.
 
 | Chain | Paper Fig. 6 approx | Unsafe reference | Safe block-open |
 | --- | --- | --- | --- |
@@ -244,7 +298,7 @@ Model order: `LSTM / Transformer / Transformer-LSTM`
     - `no_time_features`
     - `calendar_only_time`
     - `time_since_start_only`
-- Primary evaluator: `poisson_replay_2h`
+- Primary evaluator: `poisson_replay_2h_mean`
 
 ### Unsafe reference replay results
 
@@ -289,7 +343,7 @@ Model order: `LSTM / Transformer / Transformer-LSTM`
     - no launch until results from the current wave are reviewed in-thread
   - Why this matters:
     - the task is time-budgeted, not purely block-count-budgeted
-    - a fixed nominal interval like `12s` or `1.6s` is simple but crude
+    - a configured fixed interval like `12s` or `1.6s` is simple but crude
     - if the interval is set too high, the action space is too narrow
     - if it is set too low, the action space is too wide and overflow / miss behavior increases
     - a better causal estimate may recover some performance without reintroducing leakage
@@ -300,23 +354,14 @@ Model order: `LSTM / Transformer / Transformer-LSTM`
   - Candidate estimator families:
     - `nominal`
       - use `chain.runtime.nominal_block_time_seconds`
-      - baseline and default comparator
-    - `recent_deltas_mean`
-      - mean of recent positive inter-block deltas over the last `N` blocks
-    - `recent_deltas_median`
-      - median of recent positive inter-block deltas over the last `N` blocks
-      - likely more robust than mean
-    - `recent_deltas_quantile`
-      - quantile of recent positive inter-block deltas, e.g. p25 / p50 / p75
-      - gives a tunable conservative or aggressive width
+      - baseline comparator, but not an implicit compiler default
+    - `recent_deltas`
+      - median of all positive inter-block deltas in the selected training chronology
+      - artifact-level calibration, not live dynamic action-space resizing
     - possible later extensions if needed:
       - exponentially weighted versions
       - clipped / winsorized variants
       - chain-conditioned but still generic parameter sets
-  - Likely first practical candidates:
-    - rolling median over recent deltas
-    - rolling quantile over recent deltas
-    - these are simple, robust, and easy to explain
   - Semantics:
     - estimator resolves one fixed interval for the artifact from the selected training chronology
     - that interval determines the artifact's fixed ex-ante action width
@@ -332,7 +377,7 @@ Model order: `LSTM / Transformer / Transformer-LSTM`
       - safe block-open
     - all 3 families
     - compare nominal vs recent-deltas estimators on the same evaluator
-    - `poisson_replay_2h` remains primary
+    - `poisson_replay_2h_mean` remains primary
   - What would count as success:
     - clear replay improvement on safe block-open without architectural degradation
     - ideally preserves or improves unsafe reference too, but safe-path improvement is the main target
@@ -342,7 +387,7 @@ Model order: `LSTM / Transformer / Transformer-LSTM`
     - estimator width is too conservative and collapses useful action options
     - gains are chain-specific and do not justify promotion
   - Governance:
-    - no compiler default change without explicit in-thread approval
+    - every `timestamp_future_window` problem must declare `action_interval_estimator.id`
 
 ## Latest Completed Wave
 
@@ -355,7 +400,7 @@ Model order: `LSTM / Transformer / Transformer-LSTM`
   - estimators:
     - `nominal`
     - `recent_deltas`
-- Primary evaluator: `poisson_replay_2h`
+- Primary evaluator: `poisson_replay_2h_mean`
 
 ### Safe reference replay results
 
@@ -539,14 +584,13 @@ Model order: `LSTM / Transformer / Transformer-LSTM`
 ## Remaining Cleanup / Architecture Work
 
 - Remaining architecture cleanup:
-  - restore compiler ownership of temporal runtime metadata
-  - make builder metadata typed and registry-owned
-  - generalize prediction decoded outputs beyond `DecodedOffsets`
-  - split large evaluator implementation into registry, engines, sampler policies, metrics, and summaries
-  - make workflow request models task-specific
-  - submit resolved workflow snapshots remotely instead of re-resolving request JSON on the cluster
-  - clean corpus/study/artifact identity semantics
   - remove dead codecs, stale docs, parity defaults, and redundant feature helpers with justification
+- Completed cleanup:
+  - compiler runtime metadata serializes through compiler-id dispatch
+  - builder metadata remains typed, with compiler payloads rehydrated through the compiler registry
+  - workflow request models are task-specific
+  - remote execution submits resolved workflow config snapshots
+  - corpus/study/artifact identity now uses resolved paths consistently, with dataset evaluation date included in corpus identity
 
 ## Deferred Benchmark Ledger
 

@@ -122,17 +122,22 @@ def _compile_fixed_context_temporal(
 
 def standard_temporal_runtime_metadata(
     *,
+    compiler_id: str,
     compiler_runtime_metadata: object,
 ) -> StandardTemporalBuilderRuntimeMetadata:
     from ...temporal.contracts import problem_runtime_metadata_payload
 
     return StandardTemporalBuilderRuntimeMetadata(
-        compiler_runtime_metadata=problem_runtime_metadata_payload(compiler_runtime_metadata)
+        compiler_runtime_metadata=problem_runtime_metadata_payload(
+            compiler_id,
+            compiler_runtime_metadata,
+        )
     )
 
 
 def fixed_context_temporal_runtime_metadata(
     *,
+    compiler_id: str,
     compiler_runtime_metadata: object,
     sequence_length: int,
     median_dt_seconds: float,
@@ -142,7 +147,10 @@ def fixed_context_temporal_runtime_metadata(
     from ...temporal.contracts import problem_runtime_metadata_payload
 
     return FixedContextTemporalBuilderRuntimeMetadata(
-        compiler_runtime_metadata=problem_runtime_metadata_payload(compiler_runtime_metadata),
+        compiler_runtime_metadata=problem_runtime_metadata_payload(
+            compiler_id,
+            compiler_runtime_metadata,
+        ),
         sequence_length=sequence_length,
         median_dt_seconds=median_dt_seconds,
         min_sequence_length=min_sequence_length,

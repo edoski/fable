@@ -23,8 +23,13 @@ def _canonical_identity(identity: IdentityModel) -> str:
     )
 
 
-def corpus_storage_id(*, chain_name: str, dataset_name: str) -> str:
-    return _stable_id("cor", chain_name, dataset_name)
+def corpus_storage_id(
+    *,
+    chain_name: str,
+    dataset_name: str,
+    evaluation_date: object,
+) -> str:
+    return _stable_id("cor", chain_name, dataset_name, str(evaluation_date))
 
 
 def study_storage_id(*, identity: StudyStorageIdentity) -> str:

@@ -6,7 +6,5 @@ compiler:
   id: timestamp_future_window
   action_interval_estimator:
     id: recent_deltas
-    window_blocks: 256
-    statistic: median
 realization_policy:
   id: strict_deadline_miss

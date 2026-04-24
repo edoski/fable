@@ -43,7 +43,7 @@ Config resolution lives in [src/spice/config](src/spice/config):
 - `registry.py`: named spec discovery, validation, and canonical YAML helpers
 - `surfaces.py`: surface frame validation and request overlays
 - `benchmarks.py`: expanded benchmark case validation and command rendering
-- `resolution.py`: workflow request handling and payload-to-config resolution
+- `resolution.py`: task-specific workflow request handling and payload-to-config resolution
 - `models.py`: resolved runtime config models
 
 Flow:
@@ -158,7 +158,10 @@ Current mechanism surfaces:
 
 All live compilers anchor candidate offset `0` to the current row and use fixed
 ex-ante action slots. `estimated_block` keeps the paper-style nominal block grid,
-but its action slots are current-row inclusive.
+but its action slots are current-row inclusive. `timestamp_future_window` requires
+an explicit action interval estimator: `nominal` uses the configured chain
+interval; `recent_deltas` stores one median positive training-delta interval in
+the artifact and reuses that fixed width at evaluation.
 
 Both lower into the same `CompiledProblemStore` shape:
 
@@ -194,6 +197,12 @@ Evaluation stays separate in [src/spice/evaluation](src/spice/evaluation). Evalu
 `DecodedOffsets` is one prediction-owned decoded-result implementation. Evaluator
 contracts declare the decoded-result id they accept, and workflows validate the
 prediction/evaluator pairing before inference.
+
+The canonical paper-compatible temporal evaluator is `poisson_replay_2h_mean`.
+It keeps the paper's 2-hour Poisson replay shape and reports mean per-prediction
+`profit_over_baseline` and `cost_over_optimum`. `poisson_replay_2h_total` keeps
+the total-fee-ratio aggregation as a diagnostic comparator, not as the paper
+metric.
 
 ## Modeling Boundary
 
@@ -261,7 +270,7 @@ State:
 Important invariants:
 
 - root-kind enforcement stays strict
-- corpus ids cover raw chain/dataset storage only
+- corpus ids cover raw chain/dataset/date storage only
 - study and artifact ids are deterministic
 - study ids hash durable search semantics but exclude run limits such as
   `trial_count` and `timeout_seconds`

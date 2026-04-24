@@ -31,7 +31,13 @@ from .models import (
     coerce_feature_set_config,
     coerce_problem_spec,
 )
-from .resolution import WorkflowRequest, resolve_workflow_config
+from .resolution import (
+    AcquireWorkflowRequest,
+    EvaluateWorkflowRequest,
+    TrainWorkflowRequest,
+    TuneWorkflowRequest,
+    resolve_workflow_config,
+)
 
 __all__ = [
     "AcquireConfig",
@@ -59,7 +65,10 @@ __all__ = [
     "TunedParameterSet",
     "TuningConfig",
     "TuningSpaceConfig",
-    "WorkflowRequest",
+    "AcquireWorkflowRequest",
+    "EvaluateWorkflowRequest",
+    "TrainWorkflowRequest",
+    "TuneWorkflowRequest",
     "WorkflowTask",
     "coerce_feature_set_config",
     "coerce_dataset_builder_config",

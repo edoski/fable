@@ -6,13 +6,19 @@ import yaml
 
 from spice.config import (
     EvaluateConfig,
+    EvaluateWorkflowRequest,
     TrainConfig,
+    TrainWorkflowRequest,
     TuneConfig,
-    WorkflowRequest,
+    TunedParameterSet,
+    TuneWorkflowRequest,
     WorkflowTask,
     resolve_workflow_config,
 )
+from spice.config.models import TunedTrainingParams
 from spice.config.registry import load_named_group
+from spice.modeling.pipeline import build_training_spec
+from spice.modeling.tuning import apply_tuned_parameters
 from spice.storage.identity import (
     study_request_identity_from_manifest,
     study_request_identity_from_tuned_config,
@@ -45,7 +51,7 @@ def _train_paths(
         TrainConfig,
         resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(
+            TrainWorkflowRequest(
                 surface=surface,
                 variant=variant,
                 objective=objective,
@@ -67,7 +73,7 @@ def _tune_paths(
         TuneConfig,
         resolve_workflow_config(
             WorkflowTask.TUNE,
-            WorkflowRequest(
+            TuneWorkflowRequest(
                 surface=surface,
                 objective=objective,
                 trial_count=trial_count,
@@ -83,7 +89,7 @@ def _evaluate_paths(tmp_path, *, surface: str, objective: str | None = None):
         EvaluateConfig,
         resolve_workflow_config(
             WorkflowTask.EVALUATE,
-            WorkflowRequest(
+            EvaluateWorkflowRequest(
                 surface=surface,
                 objective=objective,
                 storage_root=tmp_path / "outputs",
@@ -209,14 +215,14 @@ def test_storage_root_does_not_affect_ids(tmp_path, isolate_conf_root) -> None:
         TrainConfig,
         resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(surface="same_block_closed", storage_root=tmp_path / "one"),
+            TrainWorkflowRequest(surface="same_block_closed", storage_root=tmp_path / "one"),
         ),
     )
     second = cast(
         TrainConfig,
         resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(surface="same_block_closed", storage_root=tmp_path / "two"),
+            TrainWorkflowRequest(surface="same_block_closed", storage_root=tmp_path / "two"),
         ),
     )
 
@@ -237,14 +243,14 @@ def test_tuned_request_identity_matches_stored_study_manifest(
         TuneConfig,
         resolve_workflow_config(
             WorkflowTask.TUNE,
-            WorkflowRequest(surface="same_block_closed", storage_root=tmp_path / "outputs"),
+            TuneWorkflowRequest(surface="same_block_closed", storage_root=tmp_path / "outputs"),
         ),
     )
     train_config = cast(
         TrainConfig,
         resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(
+            TrainWorkflowRequest(
                 surface="same_block_closed",
                 variant="tuned",
                 storage_root=tmp_path / "outputs",
@@ -263,3 +269,47 @@ def test_tuned_request_identity_matches_stored_study_manifest(
             dataset_id=tune_paths.corpus_id,
         )
     )
+
+
+def test_corpus_id_uses_dataset_evaluation_date(tmp_path, isolate_conf_root) -> None:
+    conf_root = isolate_conf_root()
+    base = _train_paths(tmp_path, surface="same_block_closed")
+    changed_dataset = dict(load_named_group("icdcs_2026", "dataset"))
+    changed_dataset["evaluation_date"] = "2025-11-10"
+    (conf_root / "dataset" / "icdcs_2026.yaml").write_text(
+        yaml.safe_dump(changed_dataset, sort_keys=False),
+        encoding="utf-8",
+    )
+    changed = _train_paths(tmp_path, surface="same_block_closed")
+
+    assert changed.corpus_id != base.corpus_id
+
+
+def test_tuned_training_spec_uses_resolved_workflow_paths(tmp_path, isolate_conf_root) -> None:
+    isolate_conf_root()
+    config = cast(
+        TrainConfig,
+        resolve_workflow_config(
+            WorkflowTask.TRAIN,
+            TrainWorkflowRequest(
+                surface="same_block_closed",
+                variant="tuned",
+                storage_root=tmp_path / "outputs",
+            ),
+        ),
+    )
+    paths = resolve_workflow_paths(config)
+    tuned_config = cast(
+        TrainConfig,
+        apply_tuned_parameters(
+            config,
+            TunedParameterSet(
+                training=TunedTrainingParams(learning_rate=0.001),
+            ),
+        ),
+    )
+
+    spec = build_training_spec(tuned_config, paths=paths)
+
+    assert spec.study_id == paths.study_id
+    assert spec.artifact_id == paths.artifact_id

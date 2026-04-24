@@ -86,10 +86,13 @@ def compile_problem_contract(
     )
 
 
-def problem_runtime_metadata_payload(metadata: object) -> dict[str, object]:
+def problem_runtime_metadata_payload(
+    compiler_id: str,
+    metadata: object,
+) -> dict[str, object]:
     from .compilers import problem_runtime_metadata_payload as compiler_metadata_payload
 
-    return compiler_metadata_payload(metadata)
+    return compiler_metadata_payload(compiler_id, metadata)
 
 
 def problem_runtime_metadata_from_compiler_payload(

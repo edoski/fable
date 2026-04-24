@@ -29,11 +29,7 @@ def compile_prediction_contract(
         from .families.candidate_offset_selection import compile_prediction_family
 
         return compile_prediction_family(prediction_id)
-    if family_id == "min_block_fee_multitask":
-        from .families.min_block_fee_multitask import compile_prediction_family
+    assert family_id == "min_block_fee_multitask"
+    from .families.min_block_fee_multitask import compile_prediction_family
 
-        return compile_prediction_family(prediction_id)
-    known = ", ".join(sorted(_KNOWN_PREDICTION_FAMILY_IDS))
-    raise ConfigResolutionError(
-        f"Unknown prediction.family_id: {family_id}. Known values: {known}"
-    )
+    return compile_prediction_family(prediction_id)

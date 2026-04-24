@@ -107,6 +107,7 @@ def _objective(
     base_config: TuneConfig,
     trial: optuna.Trial,
     *,
+    paths,
     study_root: Path,
 ) -> float:
     assert base_config.tuning_space is not None
@@ -114,8 +115,8 @@ def _objective(
     record_trial_params(trial, params)
     config = apply_tuned_parameters(base_config, params)
 
-    spec = build_training_spec(config)
-    history_block_path = resolve_workflow_paths(config).history_dir
+    spec = build_training_spec(config, paths=paths)
+    history_block_path = paths.history_dir
     with _trial_work_dir(study_root, trial.number) as temp_dir_name:
         artifact_dir = Path(temp_dir_name)
         persisted = run_persisted_training(
@@ -133,12 +134,12 @@ def _objective(
     return metric_value
 
 
-def _coverage_spec(config: TuneConfig):
+def _coverage_spec(config: TuneConfig, *, paths):
     if (
         config.tuning_space.problem is None
         or config.tuning_space.problem.lookback_seconds is None
     ):
-        return build_training_spec(config)
+        return build_training_spec(config, paths=paths)
     return build_training_spec(
         apply_tuned_parameters(
             config,
@@ -147,7 +148,8 @@ def _coverage_spec(config: TuneConfig):
                     lookback_seconds=max(config.tuning_space.problem.lookback_seconds)
                 )
             ),
-        )
+        ),
+        paths=paths,
     )
 
 
@@ -160,7 +162,7 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
     study_id = paths.study_id
     if study_root is None or study_state_db is None or study_id is None:
         raise ConfigResolutionError("tuning workflow requires study output paths")
-    spec = _coverage_spec(config)
+    spec = _coverage_spec(config, paths=paths)
     validate_corpus_coverage(
         load_dataset_manifest(paths.corpus_state_db),
         contract=spec.contract,
@@ -214,6 +216,7 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
                 lambda trial: _objective(
                     config,
                     trial,
+                    paths=paths,
                     study_root=study_root,
                 ),
                 n_trials=study_access.remaining_trial_count,

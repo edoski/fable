@@ -20,6 +20,11 @@ class EvaluationSampler(StrEnum):
     POISSON_ARRIVALS = "poisson_arrivals"
 
 
+class EvaluationAggregation(StrEnum):
+    EVENT_MEAN = "event_mean"
+    TOTAL_RATIO = "total_ratio"
+
+
 class EvaluationEngine(StrEnum):
     REPLAY = "replay"
     ZERO_STOP_ROLLOUT = "zero_stop_rollout"
@@ -34,6 +39,7 @@ class EvaluatorConfig(EvaluationConfigModel):
     repetitions: int | None = Field(default=None, gt=0)
     seed: int | None = Field(default=None, ge=0)
     arrival_rate_per_second: float | None = Field(default=None, gt=0.0)
+    aggregation: EvaluationAggregation | None = None
 
     @field_validator("id")
     @classmethod
@@ -49,12 +55,14 @@ class EvaluatorConfig(EvaluationConfigModel):
                 self.repetitions,
                 self.seed,
                 self.arrival_rate_per_second,
+                self.aggregation,
                 labels=(
                     "evaluation.sampler",
                     "evaluation.window_seconds",
                     "evaluation.repetitions",
                     "evaluation.seed",
                     "evaluation.arrival_rate_per_second",
+                    "evaluation.aggregation",
                 ),
             )
             return self

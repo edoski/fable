@@ -2,18 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Protocol, cast
-
 import numpy as np
 
 from ...features import FeaturePrerequisites, ResolvedFeatureTable
 from ..problem_store import CompiledProblemStore
-
-
-class _RecentDeltasEstimator(Protocol):
-    statistic: str
-    quantile: float | None
-    window_blocks: int
 
 
 def calibrate_positive_timestamp_delta_seconds(
@@ -34,24 +26,14 @@ def summarize_positive_timestamp_delta_seconds(
     *,
     statistic: object,
     empty_error: str,
-    window_blocks: int | None = None,
-    quantile: float | None = None,
 ) -> float:
     deltas = np.diff(feature_table.series.timestamps.astype(np.int64, copy=False))
     positive_deltas = deltas[deltas > 0]
-    if window_blocks is not None:
-        if window_blocks <= 0:
-            raise ValueError("window_blocks must be positive")
-        positive_deltas = positive_deltas[-window_blocks:]
     if positive_deltas.size == 0:
         raise ValueError(empty_error)
     statistic_value = _enum_value(statistic)
     if statistic_value == "mean":
         return float(np.mean(positive_deltas))
-    if statistic_value == "quantile":
-        if quantile is None or not 0.0 < quantile < 1.0:
-            raise ValueError("quantile statistic requires quantile in (0, 1)")
-        return float(np.quantile(positive_deltas, quantile))
     return float(np.median(positive_deltas))
 
 
@@ -90,12 +72,9 @@ def resolve_interval_estimator_seconds(
         return nominal_block_time_seconds
     if estimator_id != "recent_deltas":
         raise ValueError(f"Unsupported {compiler_label} interval estimator: {estimator_id}")
-    recent_deltas_estimator = cast(_RecentDeltasEstimator, estimator)
     return summarize_positive_timestamp_delta_seconds(
         feature_table,
-        statistic=recent_deltas_estimator.statistic,
-        quantile=recent_deltas_estimator.quantile,
-        window_blocks=int(recent_deltas_estimator.window_blocks),
+        statistic="median",
         empty_error=f"{compiler_label} requires positive timestamp deltas",
     )
 

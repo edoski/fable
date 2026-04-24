@@ -142,7 +142,7 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
         study_id = applied.study_id
     paths = resolve_workflow_paths(active_config, study_id=study_id)
     active_reporter.header("train", _workflow_facts(active_config))
-    spec = build_training_spec(active_config)
+    spec = build_training_spec(active_config, paths=paths)
     validate_corpus_coverage(
         load_dataset_manifest(paths.corpus_state_db),
         contract=spec.contract,

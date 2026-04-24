@@ -10,11 +10,12 @@ import pytest
 from spice.config import (
     EvaluateConfig,
     TrainConfig,
+    TrainWorkflowRequest,
     TuneConfig,
-    WorkflowRequest,
     WorkflowTask,
     resolve_workflow_config,
 )
+from spice.config.resolution import workflow_request_type
 from spice.execution.models import ExecutionWorkflowSpec
 from spice.execution.remote_runner import workflow_config_from_json
 from spice.execution.slurm_ssh import (
@@ -152,7 +153,7 @@ def test_submit_execution_workflow_forwards_sbatch_dependency(monkeypatch, tmp_p
         WorkflowTask.TRAIN,
         config=resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(surface="same_block_closed"),
+            TrainWorkflowRequest(surface="same_block_closed"),
         ),
         dependency="afterok:99999",
     )
@@ -176,7 +177,10 @@ def test_remote_runner_rehydrates_resolved_workflow_snapshots(
     task: WorkflowTask,
     expected_type: type[object],
 ) -> None:
-    config = resolve_workflow_config(task, WorkflowRequest(surface="same_block_closed"))
+    config = resolve_workflow_config(
+        task,
+        workflow_request_type(task).model_validate({"surface": "same_block_closed"}),
+    )
 
     restored = workflow_config_from_json(
         task,

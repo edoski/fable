@@ -22,14 +22,6 @@ from ..objectives import coerce_objective_config
 from ..prediction import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..semantics import (
     ArtifactSemantics,
-    DatasetBuilderSemantics,
-    FeatureSemantics,
-    InputNormalizationSemantics,
-    ObjectiveSemantics,
-    PredictionSemantics,
-    ProblemSemantics,
-    RealizationPolicySemantics,
-    RepresentationSemantics,
     StudySemantics,
 )
 from ..temporal.scaling import ScalerStats
@@ -50,15 +42,6 @@ class CodecPayloadModel(BaseModel):
 
 
 _EVALUATION_RUN_ADAPTER = TypeAdapter(EvaluationRun)
-_FEATURE_PREREQUISITES_ADAPTER = TypeAdapter(FeaturePrerequisites)
-_PROBLEM_SEMANTICS_ADAPTER = TypeAdapter(ProblemSemantics)
-_FEATURE_SEMANTICS_ADAPTER = TypeAdapter(FeatureSemantics)
-_PREDICTION_SEMANTICS_ADAPTER = TypeAdapter(PredictionSemantics)
-_INPUT_NORMALIZATION_SEMANTICS_ADAPTER = TypeAdapter(InputNormalizationSemantics)
-_REALIZATION_POLICY_SEMANTICS_ADAPTER = TypeAdapter(RealizationPolicySemantics)
-_OBJECTIVE_SEMANTICS_ADAPTER = TypeAdapter(ObjectiveSemantics)
-_REPRESENTATION_SEMANTICS_ADAPTER = TypeAdapter(RepresentationSemantics)
-_DATASET_BUILDER_SEMANTICS_ADAPTER = TypeAdapter(DatasetBuilderSemantics)
 _STUDY_SEMANTICS_ADAPTER = TypeAdapter(StudySemantics)
 _ARTIFACT_SEMANTICS_ADAPTER = TypeAdapter(ArtifactSemantics)
 
@@ -67,15 +50,6 @@ _ADAPTER_NAMESPACE = {
     "MetricDescriptor": MetricDescriptor,
 }
 for _adapter in (
-    _FEATURE_PREREQUISITES_ADAPTER,
-    _PROBLEM_SEMANTICS_ADAPTER,
-    _FEATURE_SEMANTICS_ADAPTER,
-    _PREDICTION_SEMANTICS_ADAPTER,
-    _INPUT_NORMALIZATION_SEMANTICS_ADAPTER,
-    _REALIZATION_POLICY_SEMANTICS_ADAPTER,
-    _OBJECTIVE_SEMANTICS_ADAPTER,
-    _REPRESENTATION_SEMANTICS_ADAPTER,
-    _DATASET_BUILDER_SEMANTICS_ADAPTER,
     _STUDY_SEMANTICS_ADAPTER,
     _ARTIFACT_SEMANTICS_ADAPTER,
 ):
@@ -127,10 +101,6 @@ def _metric_descriptor_from_payload(payload: object) -> MetricDescriptor:
         label=str(mapping["label"]),
         role=cast(Any, str(mapping["role"])),
     )
-
-
-def _prediction_semantics_payload(semantics: PredictionSemantics) -> dict[str, object]:
-    return _adapter_payload(_PREDICTION_SEMANTICS_ADAPTER, semantics)
 
 
 class ArtifactManifestPayload(CodecPayloadModel):
@@ -379,6 +349,7 @@ def evaluation_run_payload(run: EvaluationRun) -> dict[str, object]:
         n_events=run.n_events,
         metrics=dict(run.metrics),
         metadata={key: _metadata_value(value) for key, value in run.metadata.items()},
+        event_metric_sums=dict(run.event_metric_sums),
     )
     return _adapter_payload(_EVALUATION_RUN_ADAPTER, normalized)
 
@@ -401,67 +372,6 @@ def study_semantics_payload(semantics: StudySemantics) -> dict[str, object]:
 
 def study_semantics_from_payload(payload: dict[str, object]) -> StudySemantics:
     return cast(StudySemantics, _adapter_value(_STUDY_SEMANTICS_ADAPTER, payload))
-
-
-def feature_semantics_payload(semantics: FeatureSemantics) -> dict[str, object]:
-    return _adapter_payload(_FEATURE_SEMANTICS_ADAPTER, semantics)
-
-
-def feature_semantics_from_payload(payload: dict[str, object]) -> FeatureSemantics:
-    return cast(FeatureSemantics, _adapter_value(_FEATURE_SEMANTICS_ADAPTER, payload))
-
-
-def problem_semantics_payload(semantics: ProblemSemantics) -> dict[str, object]:
-    return _adapter_payload(_PROBLEM_SEMANTICS_ADAPTER, semantics)
-
-
-def problem_semantics_from_payload(payload: dict[str, object]) -> ProblemSemantics:
-    return cast(ProblemSemantics, _adapter_value(_PROBLEM_SEMANTICS_ADAPTER, payload))
-
-
-def prediction_semantics_payload(semantics: PredictionSemantics) -> dict[str, object]:
-    return _prediction_semantics_payload(semantics)
-
-
-def prediction_semantics_from_payload(payload: dict[str, object]) -> PredictionSemantics:
-    return cast(PredictionSemantics, _adapter_value(_PREDICTION_SEMANTICS_ADAPTER, payload))
-
-
-def input_normalization_semantics_payload(
-    semantics: InputNormalizationSemantics,
-) -> dict[str, object]:
-    return _adapter_payload(_INPUT_NORMALIZATION_SEMANTICS_ADAPTER, semantics)
-
-
-def input_normalization_semantics_from_payload(
-    payload: dict[str, object],
-) -> InputNormalizationSemantics:
-    return cast(
-        InputNormalizationSemantics,
-        _adapter_value(_INPUT_NORMALIZATION_SEMANTICS_ADAPTER, payload),
-    )
-
-
-def representation_semantics_payload(semantics: RepresentationSemantics) -> dict[str, object]:
-    return _adapter_payload(_REPRESENTATION_SEMANTICS_ADAPTER, semantics)
-
-
-def representation_semantics_from_payload(payload: dict[str, object]) -> RepresentationSemantics:
-    return cast(
-        RepresentationSemantics,
-        _adapter_value(_REPRESENTATION_SEMANTICS_ADAPTER, payload),
-    )
-
-
-def dataset_builder_semantics_payload(semantics: DatasetBuilderSemantics) -> dict[str, object]:
-    return _adapter_payload(_DATASET_BUILDER_SEMANTICS_ADAPTER, semantics)
-
-
-def dataset_builder_semantics_from_payload(payload: dict[str, object]) -> DatasetBuilderSemantics:
-    return cast(
-        DatasetBuilderSemantics,
-        _adapter_value(_DATASET_BUILDER_SEMANTICS_ADAPTER, payload),
-    )
 
 
 def _metadata_value(value: object) -> str | int | float:

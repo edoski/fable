@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from .config import EvaluationConfigModel, EvaluationEngine, EvaluationSampler, EvaluatorConfig
+from .config import (
+    EvaluationAggregation,
+    EvaluationConfigModel,
+    EvaluationEngine,
+    EvaluationSampler,
+    EvaluatorConfig,
+)
 from .contracts import (
     CompiledEvaluatorContract,
     EvaluationMetadataValue,
@@ -15,6 +21,7 @@ from .registry import compile_evaluator_contract
 
 __all__ = [
     "CompiledEvaluatorContract",
+    "EvaluationAggregation",
     "EvaluationConfigModel",
     "EvaluationEngine",
     "EvaluationMetadataValue",

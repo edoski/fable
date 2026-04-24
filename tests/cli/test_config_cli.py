@@ -121,7 +121,8 @@ def test_config_public_commands_only(isolate_conf_root) -> None:
 
     evaluation_result = runner.invoke(app, ["config", "list", "evaluation"])
     assert evaluation_result.exit_code == 0, evaluation_result.stdout
-    assert "poisson_replay_2h" in evaluation_result.stdout.splitlines()
+    assert "poisson_replay_2h_mean" in evaluation_result.stdout.splitlines()
+    assert "poisson_replay_2h_total" in evaluation_result.stdout.splitlines()
 
 
 def test_config_edit_seeds_missing_file_and_uses_editor(

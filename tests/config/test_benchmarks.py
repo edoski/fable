@@ -26,8 +26,8 @@ def test_benchmark_expands_cases_in_order_and_matrix_axes(isolate_conf_root) -> 
                         "block_open_lagged_no_time_since_start",
                         "block_open_lagged_calendar_only_time",
                     ],
-                    "objective": "profit_poisson_replay_2h",
-                    "evaluation": "poisson_replay_2h",
+                    "objective": "profit_poisson_replay_2h_mean",
+                    "evaluation": "poisson_replay_2h_mean",
                     "delay_seconds": [12, 24],
                     "study": "safe_lstm_direct",
                     "variant": "baseline",
@@ -48,25 +48,25 @@ def test_benchmark_expands_cases_in_order_and_matrix_axes(isolate_conf_root) -> 
         (
             "spice evaluate --surface block_open_lagged "
             "--feature-set block_open_lagged_no_time_since_start "
-            "--objective profit_poisson_replay_2h --evaluation poisson_replay_2h "
+            "--objective profit_poisson_replay_2h_mean --evaluation poisson_replay_2h_mean "
             "--study safe_lstm_direct --variant baseline --delay-seconds 12"
         ),
         (
             "spice evaluate --surface block_open_lagged "
             "--feature-set block_open_lagged_no_time_since_start "
-            "--objective profit_poisson_replay_2h --evaluation poisson_replay_2h "
+            "--objective profit_poisson_replay_2h_mean --evaluation poisson_replay_2h_mean "
             "--study safe_lstm_direct --variant baseline --delay-seconds 24"
         ),
         (
             "spice evaluate --surface block_open_lagged "
             "--feature-set block_open_lagged_calendar_only_time "
-            "--objective profit_poisson_replay_2h --evaluation poisson_replay_2h "
+            "--objective profit_poisson_replay_2h_mean --evaluation poisson_replay_2h_mean "
             "--study safe_lstm_direct --variant baseline --delay-seconds 12"
         ),
         (
             "spice evaluate --surface block_open_lagged "
             "--feature-set block_open_lagged_calendar_only_time "
-            "--objective profit_poisson_replay_2h --evaluation poisson_replay_2h "
+            "--objective profit_poisson_replay_2h_mean --evaluation poisson_replay_2h_mean "
             "--study safe_lstm_direct --variant baseline --delay-seconds 24"
         ),
         (

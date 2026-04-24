@@ -21,8 +21,8 @@ tuning: default
 model: lstm
 tuning_space: lstm_fixed_context
 feature_set: same_block_closed_full
-objective: profit_poisson_replay_2h
-evaluation: poisson_replay_2h
+objective: profit_poisson_replay_2h_mean
+evaluation: poisson_replay_2h_mean
 delay_seconds: 36
 ```
 
@@ -71,8 +71,8 @@ cases:
     model: lstm
     tuning_space: lstm_fixed_context
     feature_set: block_open_lagged_calendar_only_time
-    objective: profit_poisson_replay_2h
-    evaluation: poisson_replay_2h
+    objective: profit_poisson_replay_2h_mean
+    evaluation: poisson_replay_2h_mean
     delay_seconds: [12, 24, 36]
     study: safe_lstm_direct
     variant: baseline

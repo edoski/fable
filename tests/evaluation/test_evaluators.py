@@ -178,8 +178,9 @@ def test_poisson_replay_handles_non_chronological_sample_indices() -> None:
     evaluator = compile_evaluator_contract(
         EvaluatorConfig.model_validate(
             {
-                "id": "poisson_replay_2h",
+                "id": "poisson_replay_2h_mean",
                 "sampler": "poisson_arrivals",
+                "aggregation": "event_mean",
                 "window_seconds": 7200,
                 "arrival_rate_per_second": 0.01,
                 "repetitions": 3,
@@ -206,7 +207,7 @@ def test_poisson_replay_handles_non_chronological_sample_indices() -> None:
     assert [run.n_events for run in reversed_summary.runs] == [run.n_events for run in summary.runs]
 
 
-def test_fullset_uses_candidate_start_baseline_and_future_window_optimum() -> None:
+def test_replay_total_ratio_uses_fee_sums() -> None:
     store = _store()
     sample_indices = np.arange(store.n_samples, dtype=np.int64)
     evaluator = compile_evaluator_contract(
@@ -233,6 +234,46 @@ def test_fullset_uses_candidate_start_baseline_and_future_window_optimum() -> No
             "realized_fee_sum": realized_total,
             "baseline_fee_sum": baseline_total,
             "optimum_fee_sum": optimum_total,
+        }
+    )
+
+
+def test_replay_event_mean_uses_per_event_ratios() -> None:
+    store = _store()
+    sample_indices = np.arange(store.n_samples, dtype=np.int64)
+    evaluator = compile_evaluator_contract(
+        EvaluatorConfig.model_validate(
+            {
+                "id": "fullset_mean",
+                "sampler": "fullset",
+                "aggregation": "event_mean",
+            }
+        )
+    )
+
+    summary = evaluator.run(
+        store,
+        _realization_policy(),
+        DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64)),
+        sample_indices,
+    )
+
+    baseline_fees = np.array([90.0, 70.0, 50.0, 30.0])
+    realized_fees = np.array([90.0, 60.0, 50.0, 25.0])
+    optimum_fees = np.array([80.0, 60.0, 40.0, 25.0])
+
+    assert summary.metrics.values == pytest.approx(
+        {
+            "profit_over_baseline": float(
+                np.mean((baseline_fees - realized_fees) / baseline_fees)
+            ),
+            "cost_over_optimum": float(np.mean((realized_fees - optimum_fees) / optimum_fees)),
+            "baseline_cost_over_optimum": float(
+                np.mean((baseline_fees - optimum_fees) / optimum_fees)
+            ),
+            "realized_fee_sum": float(realized_fees.sum()),
+            "baseline_fee_sum": float(baseline_fees.sum()),
+            "optimum_fee_sum": float(optimum_fees.sum()),
         }
     )
 

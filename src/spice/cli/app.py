@@ -65,6 +65,5 @@ app.command(
 )(evaluate_command)
 
 
-def main(argv: list[str] | None = None) -> None:
-    del argv
+def main() -> None:
     app()

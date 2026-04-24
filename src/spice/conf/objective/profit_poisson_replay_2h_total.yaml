@@ -1,4 +1,4 @@
 id: evaluation
 metric_id: profit_over_baseline
 direction: maximize
-benchmark_id: poisson_replay_2h
+benchmark_id: poisson_replay_2h_total

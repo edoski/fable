@@ -40,10 +40,3 @@ class PredictionHeadSpec:
 @dataclass(frozen=True, slots=True)
 class PredictionOutputSpec:
     heads: tuple[PredictionHeadSpec, ...]
-
-    def head(self, head_id: str) -> PredictionHeadSpec:
-        for head in self.heads:
-            if head.id == head_id:
-                return head
-        known = ", ".join(head.id for head in self.heads) or "<none>"
-        raise ValueError(f"Unknown output head: {head_id}. Known heads: {known}")

@@ -13,28 +13,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from ..core.errors import ConfigResolutionError
 from .models import WorkflowTask
 from .registry import load_named_group
-from .resolution import WorkflowRequest, resolve_workflow_config
-
-_COMMAND_FIELD_ORDER = (
-    "surface",
-    "chain",
-    "problem",
-    "feature_set",
-    "objective",
-    "evaluation",
-    "model",
-    "tuning_space",
-    "acquisition",
-    "training",
-    "split",
-    "tuning",
-    "study",
-    "variant",
-    "delay_seconds",
-    "trial_count",
+from .resolution import (
+    WorkflowConfigRequest,
+    resolve_workflow_config,
+    workflow_request_fields,
+    workflow_request_payload,
+    workflow_request_type,
 )
-_REQUEST_FIELDS = frozenset(WorkflowRequest.model_fields)
-_CASE_FIELDS = frozenset((*_COMMAND_FIELD_ORDER, "workflow"))
 
 
 class BenchmarkSpec(BaseModel):
@@ -94,19 +79,16 @@ def _load_benchmark_spec(name: str) -> BenchmarkSpec:
 
 
 def _expand_case(case: dict[str, Any]) -> list[dict[str, object]]:
-    unknown = sorted(set(case) - _CASE_FIELDS)
+    workflow = _workflow_from_case(case)
+    field_order = workflow_request_fields(workflow)
+    unknown = sorted(set(case) - frozenset((*field_order, "workflow")))
     if unknown:
         raise ConfigResolutionError("unknown benchmark case fields: " + ", ".join(unknown))
-    workflow = case.get("workflow")
-    if isinstance(workflow, list):
-        raise ConfigResolutionError("benchmark case workflow must be scalar")
-    if workflow is None:
-        raise ConfigResolutionError("benchmark case workflow is required")
 
     scalar_items: dict[str, object] = {}
     axes: list[tuple[str, list[object]]] = []
-    scalar_items["workflow"] = workflow
-    for key in _COMMAND_FIELD_ORDER:
+    scalar_items["workflow"] = workflow.value
+    for key in field_order:
         if key not in case:
             continue
         value = case[key]
@@ -129,6 +111,20 @@ def _expand_case(case: dict[str, Any]) -> list[dict[str, object]]:
     return rows
 
 
+def _workflow_from_case(case: dict[str, Any]) -> WorkflowTask:
+    workflow = case.get("workflow")
+    if isinstance(workflow, list):
+        raise ConfigResolutionError("benchmark case workflow must be scalar")
+    if workflow is None:
+        raise ConfigResolutionError("benchmark case workflow is required")
+    if not isinstance(workflow, str):
+        raise ConfigResolutionError("benchmark case workflow must be a string")
+    try:
+        return WorkflowTask(workflow)
+    except ValueError as exc:
+        raise ConfigResolutionError(f"unsupported benchmark workflow: {workflow}") from exc
+
+
 def _validate_expanded_row(row: dict[str, object]) -> None:
     workflow_value = row.get("workflow")
     if not isinstance(workflow_value, str):
@@ -143,20 +139,27 @@ def _validate_expanded_row(row: dict[str, object]) -> None:
     if workflow is WorkflowTask.TUNE and "variant" in row:
         raise ConfigResolutionError("tune benchmark rows must not declare variant")
 
-    request_payload = {key: value for key, value in row.items() if key in _REQUEST_FIELDS}
+    request_payload = workflow_request_payload(workflow, row)
     try:
-        request = WorkflowRequest.model_validate(request_payload)
+        request = cast(
+            WorkflowConfigRequest,
+            workflow_request_type(workflow).model_validate(request_payload),
+        )
         resolve_workflow_config(workflow, request)
     except (ConfigResolutionError, ValidationError, ValueError, TypeError) as exc:
         raise ConfigResolutionError(str(exc)) from exc
 
 
 def _row_to_command(row: dict[str, object]) -> str:
-    workflow = row["workflow"]
-    if not isinstance(workflow, str):
+    workflow_value = row["workflow"]
+    if not isinstance(workflow_value, str):
         raise ConfigResolutionError("benchmark expanded row workflow must be a string")
-    parts = ["spice", workflow]
-    for field in _COMMAND_FIELD_ORDER:
+    try:
+        workflow = WorkflowTask(workflow_value)
+    except ValueError as exc:
+        raise ConfigResolutionError(f"unsupported benchmark workflow: {workflow_value}") from exc
+    parts = ["spice", workflow.value]
+    for field in workflow_request_fields(workflow):
         if field not in row:
             continue
         value = row[field]

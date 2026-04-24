@@ -11,7 +11,6 @@ from ..corpus.coverage import evaluation_coverage_requirement, validate_corpus_c
 from ..corpus.io import load_block_frame
 from ..evaluation import compile_evaluator_contract
 from ..modeling.artifacts import load_training_artifact, validate_artifact_semantics
-from ..modeling.evaluation import run_prediction_evaluation
 from ..modeling.inference import predict_with_model
 from ..modeling.pipeline import prepare_inference_dataset
 from ..modeling.results import LoadedEvaluationSummary, build_evaluation_runtime_summary
@@ -128,8 +127,7 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
         sample_indices=prepared.sample_indices,
         batch_size=active_config.training.batch_size,
     )
-    evaluation = run_prediction_evaluation(
-        evaluator_contract,
+    evaluation = evaluator_contract.run(
         prepared.store,
         prepared.realization_policy,
         decoded_offsets,

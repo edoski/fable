@@ -11,7 +11,16 @@ from typing import Annotated, Any
 import typer
 
 from ...config.models import WorkflowTask
-from ...config.resolution import WorkflowRequest, resolve_workflow_config
+from ...config.resolution import (
+    AcquireWorkflowRequest,
+    EvaluateWorkflowRequest,
+    TrainWorkflowRequest,
+    TuneWorkflowRequest,
+    WorkflowConfig,
+    WorkflowConfigRequest,
+    resolve_workflow_config,
+    workflow_request_payload,
+)
 from ...core.errors import SpiceOperatorError
 from ...execution.slurm_ssh import follow_execution_job, submit_execution_workflow
 
@@ -35,12 +44,12 @@ def _submission_option(*param_decls: str, metavar: str, help: str) -> object:
 def _submit_selected_workflow(
     *,
     task: WorkflowTask,
-    request: WorkflowRequest,
+    request: WorkflowConfigRequest,
     target_name: str,
     dependency: str | None,
     detach: bool,
 ) -> None:
-    config = resolve_workflow_config(task, request)
+    config = _resolve_request_for_task(task, request)
     submission = submit_execution_workflow(
         task,
         config=config,
@@ -98,12 +107,27 @@ def _run_resolved_workflow(
     *,
     task: WorkflowTask,
     runner: Callable[[Any], None],
-    request: WorkflowRequest,
+    request: WorkflowConfigRequest,
 ) -> None:
-    runner(resolve_workflow_config(task, request))
+    runner(_resolve_request_for_task(task, request))
 
 
-def _build_model_workflow_request(
+def _resolve_request_for_task(
+    task: WorkflowTask,
+    request: WorkflowConfigRequest,
+) -> WorkflowConfig:
+    return resolve_workflow_config(task, request)
+
+
+def _request_payload(
+    workflow: WorkflowTask,
+    **values: object | None,
+) -> dict[str, object]:
+    return workflow_request_payload(workflow, values)
+
+
+def _model_request_payload(
+    workflow: WorkflowTask,
     *,
     surface: str | None,
     chain: str | None,
@@ -121,8 +145,9 @@ def _build_model_workflow_request(
     delay_seconds: int | None = None,
     trial_count: int | None = None,
     storage_root: Path | None = None,
-) -> WorkflowRequest:
-    return WorkflowRequest(
+) -> dict[str, object]:
+    return _request_payload(
+        workflow,
         surface=surface,
         chain=chain,
         problem=problem,
@@ -197,7 +222,7 @@ def acquire_command(
     acquire.run(
         resolve_workflow_config(
             WorkflowTask.ACQUIRE,
-            WorkflowRequest(
+            AcquireWorkflowRequest(
                 surface=surface,
                 chain=chain,
                 problem=problem,
@@ -329,20 +354,23 @@ def train_command(
         detach=detach,
         storage_root=storage_root,
     )
-    submit_request = _build_model_workflow_request(
-        surface=surface,
-        chain=chain,
-        problem=problem,
-        feature_set=feature_set,
-        objective=objective,
-        evaluation=evaluation,
-        model=model,
-        tuning_space=tuning_space,
-        training=training,
-        split=split,
-        tuning=tuning,
-        study=study,
-        variant=variant,
+    submit_request = TrainWorkflowRequest.model_validate(
+        _model_request_payload(
+            WorkflowTask.TRAIN,
+            surface=surface,
+            chain=chain,
+            problem=problem,
+            feature_set=feature_set,
+            objective=objective,
+            evaluation=evaluation,
+            model=model,
+            tuning_space=tuning_space,
+            training=training,
+            split=split,
+            tuning=tuning,
+            study=study,
+            variant=variant,
+        )
     )
     if submit:
         _submit_selected_workflow(
@@ -353,21 +381,24 @@ def train_command(
             detach=detach,
         )
         return
-    local_request = _build_model_workflow_request(
-        surface=surface,
-        chain=chain,
-        problem=problem,
-        feature_set=feature_set,
-        objective=objective,
-        evaluation=evaluation,
-        model=model,
-        tuning_space=tuning_space,
-        training=training,
-        split=split,
-        tuning=tuning,
-        study=study,
-        variant=variant,
-        storage_root=storage_root,
+    local_request = TrainWorkflowRequest.model_validate(
+        _model_request_payload(
+            WorkflowTask.TRAIN,
+            surface=surface,
+            chain=chain,
+            problem=problem,
+            feature_set=feature_set,
+            objective=objective,
+            evaluation=evaluation,
+            model=model,
+            tuning_space=tuning_space,
+            training=training,
+            split=split,
+            tuning=tuning,
+            study=study,
+            variant=variant,
+            storage_root=storage_root,
+        )
     )
     _run_resolved_workflow(
         task=WorkflowTask.TRAIN,
@@ -499,20 +530,23 @@ def tune_command(
         detach=detach,
         storage_root=storage_root,
     )
-    submit_request = _build_model_workflow_request(
-        surface=surface,
-        chain=chain,
-        problem=problem,
-        feature_set=feature_set,
-        objective=objective,
-        evaluation=evaluation,
-        model=model,
-        tuning_space=tuning_space,
-        training=training,
-        split=split,
-        tuning=tuning,
-        study=study,
-        trial_count=trial_count,
+    submit_request = TuneWorkflowRequest.model_validate(
+        _model_request_payload(
+            WorkflowTask.TUNE,
+            surface=surface,
+            chain=chain,
+            problem=problem,
+            feature_set=feature_set,
+            objective=objective,
+            evaluation=evaluation,
+            model=model,
+            tuning_space=tuning_space,
+            training=training,
+            split=split,
+            tuning=tuning,
+            study=study,
+            trial_count=trial_count,
+        )
     )
     if submit:
         _submit_selected_workflow(
@@ -523,21 +557,24 @@ def tune_command(
             detach=detach,
         )
         return
-    local_request = _build_model_workflow_request(
-        surface=surface,
-        chain=chain,
-        problem=problem,
-        feature_set=feature_set,
-        objective=objective,
-        evaluation=evaluation,
-        model=model,
-        tuning_space=tuning_space,
-        training=training,
-        split=split,
-        tuning=tuning,
-        study=study,
-        trial_count=trial_count,
-        storage_root=storage_root,
+    local_request = TuneWorkflowRequest.model_validate(
+        _model_request_payload(
+            WorkflowTask.TUNE,
+            surface=surface,
+            chain=chain,
+            problem=problem,
+            feature_set=feature_set,
+            objective=objective,
+            evaluation=evaluation,
+            model=model,
+            tuning_space=tuning_space,
+            training=training,
+            split=split,
+            tuning=tuning,
+            study=study,
+            trial_count=trial_count,
+            storage_root=storage_root,
+        )
     )
     _run_resolved_workflow(
         task=WorkflowTask.TUNE,
@@ -673,21 +710,24 @@ def evaluate_command(
         detach=detach,
         storage_root=storage_root,
     )
-    submit_request = _build_model_workflow_request(
-        surface=surface,
-        chain=chain,
-        problem=problem,
-        feature_set=feature_set,
-        objective=objective,
-        evaluation=evaluation,
-        model=model,
-        tuning_space=tuning_space,
-        training=training,
-        split=split,
-        tuning=tuning,
-        study=study,
-        variant=variant,
-        delay_seconds=delay_seconds,
+    submit_request = EvaluateWorkflowRequest.model_validate(
+        _model_request_payload(
+            WorkflowTask.EVALUATE,
+            surface=surface,
+            chain=chain,
+            problem=problem,
+            feature_set=feature_set,
+            objective=objective,
+            evaluation=evaluation,
+            model=model,
+            tuning_space=tuning_space,
+            training=training,
+            split=split,
+            tuning=tuning,
+            study=study,
+            variant=variant,
+            delay_seconds=delay_seconds,
+        )
     )
     if submit:
         _submit_selected_workflow(
@@ -698,22 +738,25 @@ def evaluate_command(
             detach=detach,
         )
         return
-    local_request = _build_model_workflow_request(
-        surface=surface,
-        chain=chain,
-        problem=problem,
-        feature_set=feature_set,
-        objective=objective,
-        evaluation=evaluation,
-        model=model,
-        tuning_space=tuning_space,
-        training=training,
-        split=split,
-        tuning=tuning,
-        study=study,
-        variant=variant,
-        delay_seconds=delay_seconds,
-        storage_root=storage_root,
+    local_request = EvaluateWorkflowRequest.model_validate(
+        _model_request_payload(
+            WorkflowTask.EVALUATE,
+            surface=surface,
+            chain=chain,
+            problem=problem,
+            feature_set=feature_set,
+            objective=objective,
+            evaluation=evaluation,
+            model=model,
+            tuning_space=tuning_space,
+            training=training,
+            split=split,
+            tuning=tuning,
+            study=study,
+            variant=variant,
+            delay_seconds=delay_seconds,
+            storage_root=storage_root,
+        )
     )
     _run_resolved_workflow(
         task=WorkflowTask.EVALUATE,

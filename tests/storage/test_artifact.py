@@ -176,6 +176,7 @@ def _manifest(
         training=_training_config(),
         scaler=ScalerStats(means=[0.0, 1.0], scales=[1.0, 1.0]),
         builder_runtime_metadata=standard_temporal_runtime_metadata(
+            compiler_id=problem_contract.compiler_id,
             compiler_runtime_metadata=EstimatedBlockRuntimeMetadata(
                 calibrated_interval_seconds=12.0,
                 lookback_interval_seconds=12.0,
@@ -284,7 +285,7 @@ def test_evaluation_artifact_summaries_round_trip_and_coexist(tmp_path) -> None:
     db_path = tmp_path / ".spice" / "state.sqlite"
     manifest = _manifest()
     base_summary = _evaluation_summary("fullset", 0.2)
-    replay_summary = _evaluation_summary("poisson_replay_2h", 0.1)
+    replay_summary = _evaluation_summary("poisson_replay_2h_mean", 0.1)
 
     write_artifact_manifest(db_path, manifest=manifest, root_kind=RootKind.ARTIFACT)
     evaluation_id, recorded_at = write_evaluation_state(

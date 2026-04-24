@@ -5,13 +5,17 @@ from typing import cast
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from spice.config import (
     AcquireConfig,
+    AcquireWorkflowRequest,
     EvaluateConfig,
+    EvaluateWorkflowRequest,
     TrainConfig,
+    TrainWorkflowRequest,
     TuneConfig,
-    WorkflowRequest,
+    TuneWorkflowRequest,
     WorkflowTask,
     resolve_workflow_config,
 )
@@ -65,8 +69,8 @@ def test_surface_refs_and_request_defaults_resolve(
     conf_root = isolate_conf_root()
     child_root = tmp_path / "child_outputs"
     payload = _base_surface(conf_root)
-    payload["objective"] = "profit_poisson_replay_2h"
-    payload["evaluation"] = "poisson_replay_2h"
+    payload["objective"] = "profit_poisson_replay_2h_mean"
+    payload["evaluation"] = "poisson_replay_2h_mean"
     (conf_root / "training" / "child_training.yaml").write_text(
         yaml.safe_dump(
             {
@@ -105,7 +109,7 @@ def test_surface_refs_and_request_defaults_resolve(
         TrainConfig,
         resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(surface="child_train"),
+            TrainWorkflowRequest(surface="child_train"),
         ),
     )
 
@@ -128,7 +132,7 @@ def test_acquire_resolution_resolves_one_chain_specific_rpc_endpoint(
         AcquireConfig,
         resolve_workflow_config(
             WorkflowTask.ACQUIRE,
-            WorkflowRequest(
+            AcquireWorkflowRequest(
                 surface="same_block_closed",
                 chain="avalanche",
                 storage_root=tmp_path / "outputs",
@@ -175,7 +179,7 @@ def test_acquire_resolution_fails_when_provider_lacks_chain_endpoint(
     ):
         resolve_workflow_config(
             WorkflowTask.ACQUIRE,
-            WorkflowRequest(
+            AcquireWorkflowRequest(
                 surface="eth_only_acquire",
                 chain="avalanche",
                 storage_root=tmp_path / "outputs",
@@ -189,17 +193,11 @@ def test_acquire_rejects_objective_override(
 ) -> None:
     isolate_conf_root()
 
-    with pytest.raises(
-        ConfigResolutionError,
-        match="acquire request does not accept override fields: objective",
-    ):
-        resolve_workflow_config(
-            WorkflowTask.ACQUIRE,
-            WorkflowRequest(
-                surface="same_block_closed",
-                objective="validation_total_loss",
-                storage_root=tmp_path / "outputs",
-            ),
+    with pytest.raises(ValidationError, match="objective"):
+        AcquireWorkflowRequest(
+            surface="same_block_closed",
+            objective="validation_total_loss",
+            storage_root=tmp_path / "outputs",
         )
 
 
@@ -224,7 +222,7 @@ def test_invalid_resolution_requests_fail_cleanly(
     with pytest.raises(ConfigResolutionError, match=message):
         resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(surface=surface, storage_root=tmp_path / "outputs"),
+            TrainWorkflowRequest(surface=surface, storage_root=tmp_path / "outputs"),
         )
 
 
@@ -234,20 +232,20 @@ def test_benchmark_objective_requires_matching_evaluation(
 ) -> None:
     conf_root = isolate_conf_root()
     payload = _base_surface(conf_root)
-    payload["objective"] = "profit_poisson_replay_2h"
+    payload["objective"] = "profit_poisson_replay_2h_mean"
     payload["evaluation"] = "fullset"
     _write_surface(conf_root, "mismatch", payload)
 
     with pytest.raises(
         ConfigResolutionError,
         match=(
-            "objective profit_poisson_replay_2h requires evaluation "
-            "poisson_replay_2h, got fullset"
+            "objective profit_poisson_replay_2h_mean requires evaluation "
+            "poisson_replay_2h_mean, got fullset"
         ),
     ):
         resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(surface="mismatch", storage_root=tmp_path / "outputs"),
+            TrainWorkflowRequest(surface="mismatch", storage_root=tmp_path / "outputs"),
         )
 
 
@@ -257,17 +255,17 @@ def test_evaluate_allows_diagnostic_evaluation_to_differ_from_objective_benchmar
 ) -> None:
     conf_root = isolate_conf_root()
     payload = _base_surface(conf_root)
-    payload["objective"] = "profit_poisson_replay_2h"
+    payload["objective"] = "profit_poisson_replay_2h_mean"
     payload["evaluation"] = "fullset"
     _write_surface(conf_root, "diagnostic", payload)
 
     config = resolve_workflow_config(
         WorkflowTask.EVALUATE,
-        WorkflowRequest(surface="diagnostic", storage_root=tmp_path / "outputs"),
+        EvaluateWorkflowRequest(surface="diagnostic", storage_root=tmp_path / "outputs"),
     )
 
     assert config.objective.id == "evaluation"
-    assert config.objective.benchmark_id == "poisson_replay_2h"
+    assert config.objective.benchmark_id == "poisson_replay_2h_mean"
     assert config.evaluation.id == "fullset"
 
 
@@ -281,7 +279,7 @@ def test_request_overrides_allow_problem_feature_set_and_evaluation_selection(
         TrainConfig,
         resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(
+            TrainWorkflowRequest(
                 surface="block_open_lagged",
                 problem="current_row_recent_delta_window",
                 feature_set="block_open_lagged_no_time_since_start",
@@ -292,11 +290,11 @@ def test_request_overrides_allow_problem_feature_set_and_evaluation_selection(
     assert train_config.problem.id == "current_row_recent_delta_window"
     assert train_config.feature_set.id == "block_open_lagged_no_time_since_start"
     assert train_config.evaluation is not None
-    assert train_config.evaluation.id == "poisson_replay_2h"
+    assert train_config.evaluation.id == "poisson_replay_2h_mean"
 
     evaluate_config = resolve_workflow_config(
         WorkflowTask.EVALUATE,
-        WorkflowRequest(
+        EvaluateWorkflowRequest(
             surface="same_block_closed",
             evaluation="anchor_basefee_fullset",
             storage_root=tmp_path / "eval_outputs",
@@ -316,7 +314,7 @@ def test_request_overrides_allow_objective_selection(
         TrainConfig,
         resolve_workflow_config(
             WorkflowTask.TRAIN,
-            WorkflowRequest(
+            TrainWorkflowRequest(
                 surface="same_block_closed",
                 objective="validation_total_loss",
                 storage_root=tmp_path / "train_outputs",
@@ -331,7 +329,7 @@ def test_request_overrides_allow_objective_selection(
         TuneConfig,
         resolve_workflow_config(
             WorkflowTask.TUNE,
-            WorkflowRequest(
+            TuneWorkflowRequest(
                 surface="same_block_closed",
                 objective="validation_total_loss",
                 storage_root=tmp_path / "tune_outputs",
@@ -345,7 +343,7 @@ def test_request_overrides_allow_objective_selection(
         EvaluateConfig,
         resolve_workflow_config(
             WorkflowTask.EVALUATE,
-            WorkflowRequest(
+            EvaluateWorkflowRequest(
                 surface="same_block_closed",
                 objective="validation_total_loss",
                 storage_root=tmp_path / "eval_outputs",
@@ -354,7 +352,7 @@ def test_request_overrides_allow_objective_selection(
     )
     assert evaluate_config.objective.id == "validation"
     assert evaluate_config.evaluation is not None
-    assert evaluate_config.evaluation.id == "poisson_replay_2h"
+    assert evaluate_config.evaluation.id == "poisson_replay_2h_mean"
 
 
 def test_request_overrides_allow_model_and_tuning_space_selection(
@@ -367,7 +365,7 @@ def test_request_overrides_allow_model_and_tuning_space_selection(
         TuneConfig,
         resolve_workflow_config(
             WorkflowTask.TUNE,
-            WorkflowRequest(
+            TuneWorkflowRequest(
                 surface="same_block_closed",
                 model="transformer",
                 tuning_space="transformer_default",
