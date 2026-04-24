@@ -18,6 +18,22 @@
 
 - Sweep fixed `estimated_block` against the modern current-row timestamp paths. It now keeps the paper-style nominal block grid while mapping offset `0` to the current row.
 - Re-run lookback-window sweeps for modern `same_block_closed` and `block_open_lagged`, including `900s` and longer windows. Earlier lookback work was mostly on estimated-block paths and should not be treated as modern-path evidence.
+- First wave:
+  - surfaces: `same_block_closed`, `block_open_lagged`
+  - lookback: `600s`, `900s`, `1200s`; consider `1800s` only after the smaller sweep is interpretable
+  - feature sets: `full`, `no_time_since_start`, `calendar_only_time`
+  - models: `lstm`, `transformer`, `transformer_lstm`
+  - delays: `12s`, `24s`, `36s`
+- Second wave:
+  - compare `current_row_nominal_window` vs `current_row_recent_delta_window`
+  - sweep recent-delta estimator window sizes such as `64`, `128`, `256`, `512` blocks
+  - compare `median`, `mean`, and possibly quantile interval statistics if the estimator path remains promising
+  - sweep `sample_count` such as `400k`, `1m`, `3m` to separate data-volume gains from regime-drift costs
+- Third wave:
+  - treat model/training capacity as HPO rather than benchmark semantics
+  - existing knobs: learning rate, weight decay, batch size, hidden size, layer count, dropout, `d_model`, transformer layers
+  - likely useful new tuning knobs: LSTM `input_projection_dim`, prediction-head `head_hidden_dim`, transformer `feedforward_dim`, and possibly `nhead`
+  - defer `max_epochs` and early-stopping patience unless training curves show undertraining or premature stopping
 
 ## Overnight Checkpoint-Parity Run
 
