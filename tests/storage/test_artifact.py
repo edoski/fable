@@ -257,7 +257,11 @@ def _evaluation_summary(evaluation_id: str, value: float) -> EvaluationRuntimeSu
     return EvaluationRuntimeSummary(
         delay_seconds=24,
         evaluation_id=evaluation_id,
-        evaluation_config={"id": evaluation_id, "sampler": "fullset"},
+        evaluation_config={
+            "id": evaluation_id,
+            "sampler": "fullset",
+            "aggregation": {"id": "total_ratio"},
+        },
         metric_descriptors=(
             MetricDescriptor(
                 id="profit_over_baseline",

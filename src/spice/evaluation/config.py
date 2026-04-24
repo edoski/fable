@@ -16,13 +16,16 @@ class EvaluationConfigModel(BaseModel):
 
 class EvaluationSampler(StrEnum):
     FULLSET = "fullset"
-    UNIFORM_WINDOW = "uniform_window"
     POISSON_ARRIVALS = "poisson_arrivals"
 
 
-class EvaluationAggregation(StrEnum):
+class EvaluationAggregationId(StrEnum):
     EVENT_MEAN = "event_mean"
     TOTAL_RATIO = "total_ratio"
+
+
+class EvaluationAggregationConfig(EvaluationConfigModel):
+    id: EvaluationAggregationId
 
 
 class EvaluationEngine(StrEnum):
@@ -39,7 +42,7 @@ class EvaluatorConfig(EvaluationConfigModel):
     repetitions: int | None = Field(default=None, gt=0)
     seed: int | None = Field(default=None, ge=0)
     arrival_rate_per_second: float | None = Field(default=None, gt=0.0)
-    aggregation: EvaluationAggregation | None = None
+    aggregation: EvaluationAggregationConfig | None = None
 
     @field_validator("id")
     @classmethod
@@ -68,6 +71,10 @@ class EvaluatorConfig(EvaluationConfigModel):
             return self
         if self.sampler is None:
             raise ValueError("Missing required fields: evaluation.sampler")
+        _require_present(
+            self.aggregation,
+            labels=("evaluation.aggregation",),
+        )
         if self.sampler is EvaluationSampler.FULLSET:
             _require_absent(
                 self.window_seconds,
@@ -80,22 +87,6 @@ class EvaluatorConfig(EvaluationConfigModel):
                     "evaluation.seed",
                     "evaluation.arrival_rate_per_second",
                 ),
-            )
-            return self
-        if self.sampler is EvaluationSampler.UNIFORM_WINDOW:
-            _require_present(
-                self.window_seconds,
-                self.repetitions,
-                self.seed,
-                labels=(
-                    "evaluation.window_seconds",
-                    "evaluation.repetitions",
-                    "evaluation.seed",
-                ),
-            )
-            _require_absent(
-                self.arrival_rate_per_second,
-                labels=("evaluation.arrival_rate_per_second",),
             )
             return self
         _require_present(

@@ -1,6 +1,7 @@
 id: poisson_replay_2h_mean
 sampler: poisson_arrivals
-aggregation: event_mean
+aggregation:
+  id: event_mean
 window_seconds: 7200
 repetitions: 50
 arrival_rate_per_second: 0.05

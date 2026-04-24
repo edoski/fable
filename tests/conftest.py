@@ -124,7 +124,7 @@ def model_workflow_override():
             "evaluation": {
                 "id": "poisson_replay_2h_mean",
                 "sampler": "poisson_arrivals",
-                "aggregation": "event_mean",
+                "aggregation": {"id": "event_mean"},
                 "window_seconds": 600,
                 "arrival_rate_per_second": 0.02,
                 "repetitions": 3,

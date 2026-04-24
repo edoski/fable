@@ -1,6 +1,7 @@
 id: poisson_replay_2h_total
 sampler: poisson_arrivals
-aggregation: total_ratio
+aggregation:
+  id: total_ratio
 window_seconds: 7200
 repetitions: 50
 arrival_rate_per_second: 0.05

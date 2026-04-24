@@ -1,2 +1,4 @@
 id: fullset
 sampler: fullset
+aggregation:
+  id: total_ratio

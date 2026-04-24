@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..prediction import DecodedOffsets
-from .config import EvaluationAggregation, EvaluationEngine, EvaluationSampler, EvaluatorConfig
+from .config import EvaluationAggregationId, EvaluationEngine, EvaluationSampler, EvaluatorConfig
 from .contracts import CompiledEvaluatorContract, RunEvaluatorFn
 from .mechanical import run_anchor_basefee_fullset, run_zero_stop_rollout_fullset
 from .metrics import (
@@ -11,7 +11,7 @@ from .metrics import (
     REPLAY_METRIC_DESCRIPTORS,
     ZERO_STOP_ROLLOUT_METRIC_DESCRIPTORS,
 )
-from .replay import run_fullset, run_poisson_arrivals, run_uniform_window
+from .replay import run_fullset, run_poisson_arrivals
 
 
 def compile_evaluator_contract(
@@ -52,22 +52,6 @@ def compile_evaluator_contract(
                 aggregation=_aggregation(evaluator_config),
             )
 
-    elif evaluator_config.sampler is EvaluationSampler.UNIFORM_WINDOW:
-
-        def run_fn(
-            store,
-            realization_policy,
-            decoded_result,
-            sample_indices,
-        ):
-            return run_uniform_window(
-                store,
-                realization_policy,
-                decoded_result,
-                sample_indices,
-                config=evaluator_config,
-            )
-
     elif evaluator_config.sampler is EvaluationSampler.POISSON_ARRIVALS:
 
         def run_fn(
@@ -98,5 +82,7 @@ def compile_evaluator_contract(
     )
 
 
-def _aggregation(config: EvaluatorConfig) -> EvaluationAggregation:
-    return config.aggregation or EvaluationAggregation.TOTAL_RATIO
+def _aggregation(config: EvaluatorConfig) -> EvaluationAggregationId:
+    if config.aggregation is None:
+        raise ValueError("Missing required field: evaluation.aggregation")
+    return config.aggregation.id

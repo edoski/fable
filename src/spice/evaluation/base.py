@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from .config import (
-    EvaluationAggregation,
+    EvaluationAggregationConfig,
+    EvaluationAggregationId,
     EvaluationConfigModel,
     EvaluationEngine,
     EvaluationSampler,
@@ -21,7 +22,8 @@ from .registry import compile_evaluator_contract
 
 __all__ = [
     "CompiledEvaluatorContract",
-    "EvaluationAggregation",
+    "EvaluationAggregationConfig",
+    "EvaluationAggregationId",
     "EvaluationConfigModel",
     "EvaluationEngine",
     "EvaluationMetadataValue",

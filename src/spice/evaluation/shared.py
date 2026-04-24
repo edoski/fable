@@ -11,7 +11,7 @@ from ..prediction.base import MetricSet, WindowMetricSummary
 from ..prediction.contracts import DecodedPredictionResult, require_decoded_offsets
 from ..temporal.problem_store import CompiledProblemStore
 from ..temporal.realization import CompiledRealizationPolicyContract
-from .config import EvaluationAggregation
+from .config import EvaluationAggregationId
 from .contracts import EvaluationMetadataValue, EvaluationRun, EvaluationSummary, IntVector
 
 
@@ -128,7 +128,7 @@ def summarize_selected_costs(
     sample_indices: IntVector,
     selected_positions: IntVector,
     *,
-    aggregation: EvaluationAggregation = EvaluationAggregation.TOTAL_RATIO,
+    aggregation: EvaluationAggregationId,
     metadata: dict[str, str | int | float],
 ) -> EvaluationRun:
     decoded_offsets = require_decoded_offsets(decoded_result)
@@ -165,7 +165,7 @@ def summarize_selected_costs(
     profit_values = (baseline_fees - realized_fees) / baseline_fees
     cost_values = (realized_fees - optimum_fees) / optimum_fees
     baseline_cost_values = (baseline_fees - optimum_fees) / optimum_fees
-    if aggregation is EvaluationAggregation.EVENT_MEAN:
+    if aggregation is EvaluationAggregationId.EVENT_MEAN:
         profit_over_baseline = float(profit_values.mean())
         cost_over_optimum = float(cost_values.mean())
         baseline_cost_over_optimum = float(baseline_cost_values.mean())
@@ -199,7 +199,7 @@ def summarize_selected_costs(
 def summarize_runs(
     runs: list[EvaluationRun],
     *,
-    aggregation: EvaluationAggregation = EvaluationAggregation.TOTAL_RATIO,
+    aggregation: EvaluationAggregationId,
 ) -> EvaluationSummary:
     if not runs:
         raise ValueError("evaluation produced no runs")
@@ -212,7 +212,7 @@ def summarize_runs(
     if optimum_fee_sum <= 0.0:
         raise ValueError("optimum fee sum must be positive")
     total_events = sum(run.n_events for run in runs)
-    if aggregation is EvaluationAggregation.EVENT_MEAN:
+    if aggregation is EvaluationAggregationId.EVENT_MEAN:
         profit_over_baseline = _event_metric_mean(runs, "profit_over_baseline", total_events)
         cost_over_optimum = _event_metric_mean(runs, "cost_over_optimum", total_events)
         baseline_cost_over_optimum = _event_metric_mean(

@@ -59,51 +59,16 @@ def _current_row_store() -> CompiledProblemStore:
     )
 
 
-@pytest.mark.parametrize("window_seconds", [None, 99_999])
-def test_uniform_window_falls_back_to_fullset(window_seconds: int | None) -> None:
-    store = _store()
-    decoded_offsets = DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64))
-    sample_indices = np.arange(store.n_samples, dtype=np.int64)
-    if window_seconds is None:
-        sample_timestamps = store.timestamps[store.anchor_rows[sample_indices]]
-        window_seconds = int(sample_timestamps[-1] - sample_timestamps[0])
-    windowed = compile_evaluator_contract(
-        EvaluatorConfig.model_validate(
-            {
-                "id": "uniform_window_2h",
-                "sampler": "uniform_window",
-                "window_seconds": 99_999,
-                "repetitions": 3,
-                "seed": 2026,
-            }
-        )
-    )
-    fullset = compile_evaluator_contract(
-        EvaluatorConfig.model_validate({"id": "fullset", "sampler": "fullset"})
-    )
-
-    summary = windowed.run(
-        store,
-        _realization_policy(),
-        decoded_offsets,
-        sample_indices,
-    )
-    reference = fullset.run(
-        store,
-        _realization_policy(),
-        decoded_offsets,
-        sample_indices,
-    )
-
-    assert len(summary.runs) == 1
-    assert summary.runs[0].metadata["mode"] == "fullset_fallback"
-    assert summary.metrics.values == pytest.approx(reference.metrics.values)
-
-
 def test_evaluator_rejects_incompatible_decoded_result_semantics() -> None:
     store = _store()
     evaluator = compile_evaluator_contract(
-        EvaluatorConfig.model_validate({"id": "fullset", "sampler": "fullset"})
+        EvaluatorConfig.model_validate(
+            {
+                "id": "fullset",
+                "sampler": "fullset",
+                "aggregation": {"id": "total_ratio"},
+            }
+        )
     )
 
     with pytest.raises(TypeError, match="decoded-result requirement"):
@@ -113,61 +78,6 @@ def test_evaluator_rejects_incompatible_decoded_result_semantics() -> None:
             _OtherDecodedResult(),
             np.arange(store.n_samples, dtype=np.int64),
         )
-
-
-def test_uniform_window_samples_requested_number_of_runs() -> None:
-    store = _store()
-    decoded_offsets = DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64))
-    sample_indices = np.arange(store.n_samples, dtype=np.int64)
-    evaluator = compile_evaluator_contract(
-        EvaluatorConfig.model_validate(
-            {
-                "id": "uniform_window_2h",
-                "sampler": "uniform_window",
-                "window_seconds": 3600,
-                "repetitions": 3,
-                "seed": 2026,
-            }
-        )
-    )
-
-    summary = evaluator.run(
-        store,
-        _realization_policy(),
-        decoded_offsets,
-        sample_indices,
-    )
-
-    assert len(summary.runs) == 3
-    assert summary.window_metrics
-
-
-def test_uniform_window_handles_sparse_non_empty_windows_without_retry_failure() -> None:
-    store = _store()
-    decoded_offsets = DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64))
-    sample_indices = np.arange(store.n_samples, dtype=np.int64)
-    evaluator = compile_evaluator_contract(
-        EvaluatorConfig.model_validate(
-            {
-                "id": "uniform_window_2h",
-                "sampler": "uniform_window",
-                "window_seconds": 1,
-                "repetitions": 8,
-                "seed": 2026,
-            }
-        )
-    )
-
-    summary = evaluator.run(
-        store,
-        _realization_policy(),
-        decoded_offsets,
-        sample_indices,
-    )
-
-    assert len(summary.runs) == 8
-    assert all(run.n_events == 1 for run in summary.runs)
-
 
 def test_poisson_replay_handles_non_chronological_sample_indices() -> None:
     store = _store()
@@ -180,7 +90,7 @@ def test_poisson_replay_handles_non_chronological_sample_indices() -> None:
             {
                 "id": "poisson_replay_2h_mean",
                 "sampler": "poisson_arrivals",
-                "aggregation": "event_mean",
+                "aggregation": {"id": "event_mean"},
                 "window_seconds": 7200,
                 "arrival_rate_per_second": 0.01,
                 "repetitions": 3,
@@ -211,7 +121,13 @@ def test_replay_total_ratio_uses_fee_sums() -> None:
     store = _store()
     sample_indices = np.arange(store.n_samples, dtype=np.int64)
     evaluator = compile_evaluator_contract(
-        EvaluatorConfig.model_validate({"id": "fullset", "sampler": "fullset"})
+        EvaluatorConfig.model_validate(
+            {
+                "id": "fullset",
+                "sampler": "fullset",
+                "aggregation": {"id": "total_ratio"},
+            }
+        )
     )
 
     summary = evaluator.run(
@@ -246,7 +162,7 @@ def test_replay_event_mean_uses_per_event_ratios() -> None:
             {
                 "id": "fullset_mean",
                 "sampler": "fullset",
-                "aggregation": "event_mean",
+                "aggregation": {"id": "event_mean"},
             }
         )
     )

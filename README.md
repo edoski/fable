@@ -137,7 +137,7 @@ Current shipped ids:
 - feature families: `same_block_closed`, `block_open_lagged`, `timestamp_features`
 - compilers: `estimated_block`, `timestamp_future_window`
 - prediction families: `candidate_offset_selection`, `min_block_fee_multitask`
-- evaluators: `poisson_replay_2h_mean`, `poisson_replay_2h_total`, `fullset`, `uniform_window_2h`
+- evaluators: `poisson_replay_2h_mean`, `poisson_replay_2h_total`, `fullset`
 - input normalization: `row_standard`, `window_weighted_standard`
 - representation: `sequence_inputs`
 
