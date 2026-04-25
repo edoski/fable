@@ -141,7 +141,14 @@ Optional LSTM expansion, only if LSTM remains in scope:
 - `head_hidden_dim: [256, 512, 1024]`.
 - `dropout: [0.0, 0.1, 0.2, 0.3]`.
 
-Large-capacity tuning-space support is implemented for model-capacity fields. Benchmark dimension planning, remote submission support, and concrete planned sweep specs are implemented; launch decisions remain deferred until remote wave results and final launch cells/study names are settled.
+Large-capacity tuning-space support is implemented for model-capacity fields. Benchmark dimension planning, remote submission support, run-state capture, result collection, and concrete planned sweep specs are implemented; launch decisions remain deferred until remote wave results and final launch cells/study names are settled.
+
+Benchmark sweep operator flow:
+
+- Preview the exact remote workflow DAG with `spice benchmark plan <name>`.
+- Submit with `spice benchmark submit <name>`. This uses the default remote target, records the remote git commit, writes `outputs/benchmarks/runs/<name>/<timestamp>/plan.jsonl`, and appends Slurm submission records to `submission.jsonl`.
+- Poll collection with `spice benchmark collect <name>`. This reads the latest run directory, pulls required remote studies/artifacts over SSH through existing storage sync APIs, and prints JSONL status without changing `benchmarks/results.csv`.
+- Finalize with `spice benchmark collect <name> --write` only after all expected evaluation jobs are complete. Writes are all-or-nothing for missing expected evaluation rows and skip duplicate `(artifact_id, evaluation_storage_id)` ledger rows.
 
 Configured sweep specs awaiting launch decisions:
 

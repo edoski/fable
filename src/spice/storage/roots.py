@@ -71,6 +71,7 @@ class DatasetSelector:
 
 @dataclass(frozen=True, slots=True)
 class StudySelector:
+    study_id: str | None = None
     chain_name: str | None = None
     dataset_name: str | None = None
     feature_set_id: str | None = None
@@ -82,6 +83,7 @@ class StudySelector:
 
 @dataclass(frozen=True, slots=True)
 class ArtifactSelector:
+    artifact_id: str | None = None
     chain_name: str | None = None
     dataset_name: str | None = None
     feature_set_id: str | None = None

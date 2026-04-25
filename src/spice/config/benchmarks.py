@@ -216,6 +216,7 @@ class BenchmarkPlanEntry:
     workflow: WorkflowTask
     depends_on: tuple[str, ...]
     external_dependencies: tuple[str, ...]
+    selection: Mapping[str, object]
     config: WorkflowConfig
 
     def to_json_dict(self) -> dict[str, object]:
@@ -226,6 +227,7 @@ class BenchmarkPlanEntry:
             "workflow": self.workflow.value,
             "depends_on": list(self.depends_on),
             "external_dependencies": list(self.external_dependencies),
+            "selection": dict(self.selection),
             "config": self.config.model_dump(mode="json", exclude_none=True),
         }
 
@@ -311,6 +313,7 @@ def _resolve_case_plan(
                     workflow=expanded.workflow,
                     depends_on=depends_on,
                     external_dependencies=expanded.external_dependencies,
+                    selection=_selection_payload(expanded.row),
                     config=config,
                 )
             )
@@ -376,6 +379,16 @@ def _resolve_frame(
     frame: SurfaceFrame,
 ) -> WorkflowConfig:
     return resolve_workflow_frame_config(workflow, frame, request=request)
+
+
+def _selection_payload(row: Mapping[str, object]) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    for key, value in row.items():
+        if isinstance(value, ProblemSpec):
+            payload[key] = value.id
+            continue
+        payload[key] = value
+    return payload
 
 
 def _expand_dimensions(

@@ -200,6 +200,7 @@ def list_dataset_records(
 def list_study_records(
     path: Path,
     *,
+    study_id: str | None = None,
     chain_name: str | None = None,
     dataset_name: str | None = None,
     feature_set_id: str | None = None,
@@ -212,6 +213,7 @@ def list_study_records(
         path,
         spec=_STUDY_SPEC,
         filters={
+            "study_id": study_id,
             "chain_name": chain_name,
             "dataset_name": dataset_name,
             "feature_set_id": feature_set_id,
@@ -235,6 +237,7 @@ def list_study_records(
 def list_artifact_records(
     path: Path,
     *,
+    artifact_id: str | None = None,
     chain_name: str | None = None,
     dataset_name: str | None = None,
     feature_set_id: str | None = None,
@@ -248,6 +251,7 @@ def list_artifact_records(
         path,
         spec=_ARTIFACT_SPEC,
         filters={
+            "artifact_id": artifact_id,
             "chain_name": chain_name,
             "dataset_name": dataset_name,
             "feature_set_id": feature_set_id,

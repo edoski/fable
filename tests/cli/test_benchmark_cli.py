@@ -103,6 +103,7 @@ def test_benchmark_submit_uses_existing_remote_submitter(isolate_conf_root, monk
         )
 
     monkeypatch.setattr("spice.execution.slurm_ssh.submit_execution_workflow", fake_submit)
+    monkeypatch.setattr("spice.benchmark_runs.resolve_remote_git_commit", lambda target: "abc123")
 
     result = runner.invoke(app, ["benchmark", "submit", "submit_case", "--target", "disi_l40"])
 
@@ -112,4 +113,9 @@ def test_benchmark_submit_uses_existing_remote_submitter(isolate_conf_root, monk
         ("evaluate", "disi_l40", "afterok:100"),
     ]
     rows = [json.loads(line) for line in result.stdout.splitlines()]
+    assert rows[0]["git_commit"] == "abc123"
+    assert rows[0]["execution_ref"] == "slurm:100"
     assert rows[1]["dependency"] == "afterok:100"
+    run_dir = Path(rows[0]["run_dir"])
+    assert (run_dir / "plan.jsonl").is_file()
+    assert (run_dir / "submission.jsonl").is_file()
