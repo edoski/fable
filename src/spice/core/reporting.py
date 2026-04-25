@@ -5,8 +5,8 @@ from __future__ import annotations
 import shlex
 import sys
 from collections.abc import Iterable
-from io import TextIOBase
 from pathlib import Path
+from typing import TextIO
 
 RenderableValue = str | int | float | Path
 
@@ -17,8 +17,8 @@ class Reporter:
     def __init__(
         self,
         *,
-        stream: TextIOBase | None = None,
-        error_stream: TextIOBase | None = None,
+        stream: TextIO | None = None,
+        error_stream: TextIO | None = None,
     ) -> None:
         self._stream = stream or sys.stdout
         self._error_stream = error_stream or sys.stderr
@@ -57,13 +57,29 @@ class Reporter:
         title: str,
         sections: Iterable[tuple[str, Iterable[tuple[str, RenderableValue]]]],
     ) -> None:
-        self._emit(title)
-        for section_title, rows in sections:
-            self._emit(f"{section_title}:")
-            for label, value in rows:
-                self._emit(f"  {label}: {_stringify(value)}")
+        self._emit_sections(title, sections, stream=self._stream)
 
-    def _emit(self, line: str, *, stream: TextIOBase | None = None) -> None:
+    def diagnostic_sections(
+        self,
+        title: str,
+        sections: Iterable[tuple[str, Iterable[tuple[str, RenderableValue]]]],
+    ) -> None:
+        self._emit_sections(title, sections, stream=self._error_stream)
+
+    def _emit_sections(
+        self,
+        title: str,
+        sections: Iterable[tuple[str, Iterable[tuple[str, RenderableValue]]]],
+        *,
+        stream: TextIO,
+    ) -> None:
+        self._emit(title, stream=stream)
+        for section_title, rows in sections:
+            self._emit(f"{section_title}:", stream=stream)
+            for label, value in rows:
+                self._emit(f"  {label}: {_stringify(value)}", stream=stream)
+
+    def _emit(self, line: str, *, stream: TextIO | None = None) -> None:
         target = stream or self._stream
         print(line, file=target)
         target.flush()

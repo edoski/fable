@@ -216,7 +216,7 @@ def test_acquire_cancellation_during_planning_logs_warning(
 
     rendered = output.getvalue()
     assert "acquire dataset=" in rendered
-    assert errors.getvalue() == "warning: acquire cancelled; partial download removed\n"
+    assert errors.getvalue() == "warning: acquire cancelled; temporary outputs cleaned up\n"
     assert paths.corpus_state_db.exists() is False
 
 

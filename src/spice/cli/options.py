@@ -62,5 +62,8 @@ def print_sections(
     *,
     err: bool = False,
 ) -> None:
-    reporter = Reporter(stream=sys.stderr if err else None)
-    reporter.sections(title, sections)
+    reporter = Reporter(stream=sys.stdout, error_stream=sys.stderr)
+    if err:
+        reporter.diagnostic_sections(title, sections)
+    else:
+        reporter.sections(title, sections)

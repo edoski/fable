@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -52,34 +51,14 @@ def _trial_work_dir(study_root: Path, trial_number: int) -> TemporaryDirectory[s
     )
 
 
-class _ReporterWarningHandler(logging.Handler):
-    def __init__(self, reporter: Reporter) -> None:
-        super().__init__(level=logging.WARNING)
-        self._reporter = reporter
-
-    def emit(self, record: logging.LogRecord) -> None:
-        level = "error" if record.levelno >= logging.ERROR else "warning"
-        self._reporter.milestone(self.format(record), level=level)
-
-
 @contextmanager
-def _optuna_warning_logging(reporter: Reporter) -> Iterator[None]:
-    logger = logging.getLogger("optuna")
-    state = (list(logger.handlers), logger.level, logger.propagate)
-    handler = _ReporterWarningHandler(reporter)
-    optuna.logging.disable_default_handler()
+def _optuna_warning_verbosity() -> Iterator[None]:
+    previous_verbosity = optuna.logging.get_verbosity()
     optuna.logging.set_verbosity(optuna.logging.WARNING)
-    logger.handlers.clear()
-    logger.addHandler(handler)
-    logger.propagate = False
     try:
         yield
     finally:
-        logger.handlers.clear()
-        for handler in state[0]:
-            logger.addHandler(handler)
-        logger.setLevel(state[1])
-        logger.propagate = state[2]
+        optuna.logging.set_verbosity(previous_verbosity)
 
 
 def _trial_message(
@@ -170,49 +149,48 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
         requirement=training_coverage_requirement(spec.contract),
     )
 
-    with _optuna_warning_logging(active_reporter):
+    with _optuna_warning_verbosity():
         study_access = open_tuning_study(study_state_db, config=config)
-    study = study_access.study
-    if study_access.existing_trial_count:
-        active_reporter.milestone(
-            "resume "
-            f"trials={study_access.existing_trial_count}/"
-            f"{study_access.target_trial_count}"
-        )
-
-    existing_best = next(
-        (trial for trial in study.trials if trial.state == TrialState.COMPLETE),
-        None,
-    )
-    best_trial_number = None if existing_best is None else study.best_trial.number
-
-    def on_trial_complete(active_study: optuna.Study, frozen_trial: FrozenTrial) -> None:
-        nonlocal best_trial_number
-        active_reporter.milestone(
-            _trial_message(
-                frozen_trial,
-                total_trials=study_access.target_trial_count,
-            )
-        )
-        if frozen_trial.state != TrialState.COMPLETE:
-            return
-        try:
-            study_best = active_study.best_trial
-        except ValueError:
-            return
-        if study_best.number == best_trial_number:
-            return
-        best_trial_number = study_best.number
-        if study_best.value is not None:
+        study = study_access.study
+        if study_access.existing_trial_count:
             active_reporter.milestone(
-                "best improved "
-                f"trial={study_best.number + 1} "
-                f"value={metric_string(study_best.value)}"
+                "resume "
+                f"trials={study_access.existing_trial_count}/"
+                f"{study_access.target_trial_count}"
             )
 
-    if study_access.remaining_trial_count > 0:
-        active_reporter.milestone(f"study started trials={study_access.remaining_trial_count}")
-        with _optuna_warning_logging(active_reporter):
+        existing_best = next(
+            (trial for trial in study.trials if trial.state == TrialState.COMPLETE),
+            None,
+        )
+        best_trial_number = None if existing_best is None else study.best_trial.number
+
+        def on_trial_complete(active_study: optuna.Study, frozen_trial: FrozenTrial) -> None:
+            nonlocal best_trial_number
+            active_reporter.milestone(
+                _trial_message(
+                    frozen_trial,
+                    total_trials=study_access.target_trial_count,
+                )
+            )
+            if frozen_trial.state != TrialState.COMPLETE:
+                return
+            try:
+                study_best = active_study.best_trial
+            except ValueError:
+                return
+            if study_best.number == best_trial_number:
+                return
+            best_trial_number = study_best.number
+            if study_best.value is not None:
+                active_reporter.milestone(
+                    "best improved "
+                    f"trial={study_best.number + 1} "
+                    f"value={metric_string(study_best.value)}"
+                )
+
+        if study_access.remaining_trial_count > 0:
+            active_reporter.milestone(f"study started trials={study_access.remaining_trial_count}")
             study.optimize(
                 lambda trial: _objective(
                     config,
@@ -224,6 +202,6 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
                 timeout=config.tuning.timeout_seconds,
                 callbacks=[on_trial_complete],
             )
-    summary = build_study_summary(study_access.manifest, study)
+        summary = build_study_summary(study_access.manifest, study)
     reindex_root(paths.output_root, root_path=study_root)
     active_reporter.result("tune", study_result_fields(summary))

@@ -78,7 +78,7 @@ def _resolve_study_record_command(args: argparse.Namespace) -> None:
         Path(args.storage_root),
         selector=StudySelector(**selector_payload),
     )
-    _print_record(record)
+    _emit_record_json(record)
 
 
 def _resolve_artifact_record_command(args: argparse.Namespace) -> None:
@@ -87,10 +87,10 @@ def _resolve_artifact_record_command(args: argparse.Namespace) -> None:
         Path(args.storage_root),
         selector=ArtifactSelector(**selector_payload),
     )
-    _print_record(record)
+    _emit_record_json(record)
 
 
-def _print_record(record: object) -> None:
+def _emit_record_json(record: object) -> None:
     if not is_dataclass(record) or isinstance(record, type):
         raise TypeError("record must be a dataclass instance")
     payload = asdict(cast(Any, record))

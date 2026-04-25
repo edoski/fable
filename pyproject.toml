@@ -61,5 +61,4 @@ select = ["E", "F", "I", "UP", "B"]
 testpaths = ["tests"]
 filterwarnings = [
   "ignore:websockets\\.legacy is deprecated.*:DeprecationWarning:websockets\\.legacy",
-  "ignore:.*LeafSpec.*",
 ]

@@ -127,7 +127,7 @@ def _run_async_interruptibly(coro: Coroutine[Any, Any, None]) -> None:
             interrupted = True
             if not task.done():
                 task.cancel()
-                with suppress(BaseException):
+                with suppress(asyncio.CancelledError, KeyboardInterrupt):
                     loop.run_until_complete(task)
     finally:
         if previous_sigint is not None:
@@ -139,9 +139,9 @@ def _run_async_interruptibly(coro: Coroutine[Any, Any, None]) -> None:
         for pending_task in pending:
             pending_task.cancel()
         if pending and not interrupted:
-            with suppress(BaseException):
+            with suppress(Exception):
                 loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        with suppress(BaseException):
+        with suppress(Exception):
             loop.run_until_complete(loop.shutdown_asyncgens())
         executor.shutdown(wait=False, cancel_futures=True)
         asyncio.set_event_loop(None)
@@ -332,13 +332,13 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
             stop_at=paths.corpus_root.parent.parent,
         )
         active_reporter.milestone(
-            "acquire cancelled; partial download removed",
+            "acquire cancelled; temporary outputs cleaned up",
             level="warning",
         )
         raise
     except Exception:
         active_reporter.milestone(
-            "acquire failed; partial download removed",
+            "acquire failed; temporary outputs cleaned up",
             level="warning",
         )
         raise

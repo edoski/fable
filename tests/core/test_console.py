@@ -35,9 +35,20 @@ def test_reporter_renders_warnings_and_sections() -> None:
         "artifact summary",
         [("training", [("best epoch", "6"), ("best objective", "0.0118")])],
     )
+    reporter.diagnostic_sections(
+        "artifact matches",
+        [("artifacts", [("artifact", "art_1"), ("artifact", "art_2")])],
+    )
 
     rendered = output.getvalue()
     assert "artifact summary" in rendered
     assert "training:" in rendered
     assert "  best epoch: 6" in rendered
-    assert errors.getvalue() == "warning: train cancelled; partial outputs removed\n"
+    assert "artifact matches" not in rendered
+    assert errors.getvalue() == (
+        "warning: train cancelled; partial outputs removed\n"
+        "artifact matches\n"
+        "artifacts:\n"
+        "  artifact: art_1\n"
+        "  artifact: art_2\n"
+    )
