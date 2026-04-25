@@ -1,124 +1,58 @@
 # Progress
 
-## Current Benchmark Context
+_Last verified: 2026-04-25 12:36 CEST_
 
-- Current unsafe surface: `same_block_closed`
-- Current safe surface: `block_open_lagged`
-- Current paper-style nominal-grid compiler: `estimated_block`
-- Primary evaluator: `poisson_replay_2h_mean`
-- Canonical paper-compatible evaluator: `poisson_replay_2h_mean`, which reports mean per-prediction `profit_over_baseline` and `cost_over_optimum`.
-- Diagnostic total-fee-ratio evaluator: `poisson_replay_2h_total`.
-- Diagnostic evaluators:
-  - `zero_stop_rollout_fullset`
-  - `anchor_basefee_fullset`
-- Latest completed wave:
-  - cross-chain confirmation of frozen same-block unsafe reference vs improved block-open safe candidate (`safe_best` historical role)
-  - chains: Ethereum, Polygon, Avalanche
-  - delay: `36s`
+## Status Snapshot
 
-## Future Benchmark Sweeps
+Local `main` is ahead of the remote experiment branch. That split is intentional: remote jobs are still running on `codex/temporal-parity`, so local cleanup commits should not be pushed into that environment until the current remote wave finishes.
 
-- Sweep fixed `estimated_block` against the modern current-row timestamp paths. It now keeps the paper-style nominal block grid while mapping offset `0` to the current row.
-- Re-run lookback-window sweeps for modern `same_block_closed` and `block_open_lagged`, including `900s` and longer windows. Earlier lookback work was mostly on estimated-block paths and should not be treated as modern-path evidence.
-- First wave:
-  - surfaces: `same_block_closed`, `block_open_lagged`
-  - lookback: `600s`, `900s`, `1200s`; consider `1800s` only after the smaller sweep is interpretable
-  - feature sets: `full`, `no_time_since_start`, `calendar_only_time`
-  - models: `lstm`, `transformer`, `transformer_lstm`
-  - delays: `12s`, `24s`, `36s`
-- Second wave:
-  - compare `current_row_nominal_window` vs `current_row_recent_delta_window`
-  - keep `recent_deltas` as one simple median-of-training-deltas policy
-  - sweep `sample_count` such as `400k`, `1m`, `3m` to separate data-volume gains from regime-drift costs
-- Third wave: large-capacity HPO
-  - purpose: test whether remaining safe-path gaps are capacity/optimization limits rather than feature or temporal-semantics limits
-  - scope should stay targeted after the current HPO finishes and remote/local configs are synced:
-    - Ethereum `transformer`
-    - Ethereum `transformer_lstm`
-    - Avalanche `transformer_lstm`
-    - optionally Avalanche `transformer` only if the current tuned result fails to materialize cleanly
-  - keep the benchmark role explicit: this is model/training HPO, not a new temporal surface
-  - current supported tuning knobs:
-    - training: `learning_rate`, `weight_decay`, `batch_size`
-    - problem: `lookback_seconds`
-    - LSTM: `hidden_size`, `num_layers`, `dropout`
-    - Transformer: `d_model`, `transformer_layers`, `dropout`
-    - Transformer-LSTM: `hidden_size`, `d_model`, `dropout`
-  - tuning knobs to add cleanly before the large-capacity sweep:
-    - training: `max_epochs`, `early_stopping.patience`
-    - Transformer: `nhead`, `feedforward_dim`, `head_hidden_dim`
-    - Transformer-LSTM: `transformer_layers`, LSTM `num_layers`, `nhead`, `feedforward_dim`, `head_hidden_dim`
-    - LSTM: `input_projection_dim`, `head_hidden_dim`
-  - proposed large-capacity defaults:
-    - `max_epochs: 100`
-    - `early_stopping.patience: 15`
-    - keep high Slurm `ulimit -n` for tune jobs; do not force `SPICE_DATALOADER_WORKERS=0` unless open-file failures recur
-  - proposed trial budget:
-    - target `120` trials per cell
-    - review at `40` and `80` trials before spending the full budget
-    - continue beyond `120` only if recent trials improve the best objective by at least `0.001` absolute `profit_over_baseline` or reveal a clearly new high-performing region
-  - proposed training search:
-    - `learning_rate: [0.00003, 0.0001, 0.0003]`
-    - `weight_decay: [0.0, 0.0001, 0.001, 0.01]`
-    - `batch_size: [64, 128, 256, 512]`
-    - include `64` because the paper uses batch size 64 and the current `training/default.yaml` also uses 64
-  - proposed Transformer search:
-    - `d_model: [384, 512, 768, 1024, 1536]`
-    - `transformer_layers: [4, 6, 8, 12]`
-    - `nhead: [4, 8, 16]`, with `d_model % nhead == 0`
-    - `feedforward_dim`: tune as a multiple of `d_model`, likely `[2x, 4x]`, or explicit equivalent values
-    - `head_hidden_dim: [256, 512, 1024]`
-    - `dropout: [0.0, 0.1, 0.2, 0.3]`
-  - proposed Transformer-LSTM search:
-    - `d_model: [384, 512, 768, 1024]`
-    - `hidden_size: [384, 512, 768, 1024, 1536]`
-    - `transformer_layers: [4, 6, 8]`
-    - LSTM `num_layers: [1, 2, 3]`
-    - `nhead: [4, 8, 16]`, with `d_model % nhead == 0`
-    - `feedforward_dim`: tune as `[2x, 4x]` of `d_model` or explicit equivalent values
-    - `head_hidden_dim: [256, 512, 1024]`
-    - `dropout: [0.0, 0.1, 0.2, 0.3]`
-  - proposed LSTM search if LSTM remains in scope:
-    - `hidden_size: [256, 384, 512, 768, 1024]`
-    - `num_layers: [1, 2, 3, 4]`
-    - `input_projection_dim: [128, 256, 512]`
-    - `head_hidden_dim: [256, 512, 1024]`
-    - `dropout: [0.0, 0.1, 0.2, 0.3]`
-  - batch-size caveat:
-    - larger batches improve hardware throughput but reduce optimizer steps per epoch
-    - pair batch-size tuning with `max_epochs: 100` and patience `15` so large-batch trials are not accidentally undertrained
-    - treat batch size as an optimization/generalization hyperparameter, not only a GPU-utilization knob
+The current local architecture names are `same_block_closed`, `block_open_lagged`, `current_row_nominal_window`, `poisson_replay_2h_mean`, and `poisson_replay_2h_total`. Remote benchmark logs still use older preset and evaluator names such as `icdcs_2026_oracle_intermediate`, `icdcs_2026_professor_block_open_*`, and `paper_replay_2h`.
 
-## Overnight Checkpoint-Parity Run
+`safe_best` is a historical benchmark role, not a local runnable config. It means the best family-specific safe block-open choices found before the current cleanup: LSTM with no broad time features, Transformer without `time_since_start`, and Transformer-LSTM with calendar-only time plus `recent_deltas`.
 
-- Code milestone:
-  - generic `--objective` override landed for `train`, `tune`, and `evaluate`
-  - `acquire` rejects objective overrides
-  - targeted pytest, full `pytest -q`, `ruff check`, and `pyright` passed before remote launch
-- Remote matrix:
-  - queued on `disi_l40`
-  - checkpoint parity: unsafe reference, Polygon/Avalanche, all 3 families, `36s`
-  - delay sensitivity: unsafe reference and `safe_best` benchmark role, Ethereum/Polygon/Avalanche, all 3 families, `12s/24s/36s`
-  - targeted `safe_best` benchmark role HPO: Avalanche Transformer-LSTM/Transformer; Ethereum Transformer-LSTM/Transformer/LSTM
-- HPO recovery:
-  - Avalanche `safe_best` benchmark role Transformer tune job `57391` failed after 4 trials with a transient pin-memory / open-file runtime error
-  - stale dependents `57392` and `57393` were cancelled
-  - replacement tune/train/eval chain `57403` / `57404` / `57405` was queued to resume the same study to 40 total trials
-  - Ethereum `safe_best` benchmark role Transformer tune job `57397` failed after 5 trials with the same runtime class
-  - because the repeated failure points at the Slurm file-descriptor limit, remaining open HPO chains were requeued with `ulimit -n 4096` in the batch wrapper
-  - old open HPO jobs `57388`-`57390`, `57394`-`57405` were cancelled or superseded
-  - replacement HPO chains:
-    - Avalanche Transformer-LSTM: `57406` / `57407` / `57408`
-    - Avalanche Transformer: `57409` / `57410` / `57411`
-    - Ethereum Transformer-LSTM: `57412` / `57413` / `57414`
-    - Ethereum Transformer: `57415` / `57416` / `57417`
-    - Ethereum LSTM: `57418` / `57419` / `57420`
+As of this verification, the fully completed baseline evidence is the delay-sensitivity sweep plus checkpoint-selection parity. The targeted `safe_best` HPO wave is not complete until Avalanche Transformer-LSTM job `57549` finishes and its dependent train/eval jobs `57550` and `57551` complete.
 
-### Delay-Sensitivity Sweep
+## Benchmarking
 
-Decimal values below are historical `profit_over_baseline` on the pre-split total-ratio Poisson replay evaluator.
+### Current Benchmark Context
 
-| Chain | Role | LSTM 12/24/36 | Transformer 12/24/36 | Transformer-LSTM 12/24/36 |
+- Unsafe reference surface: `same_block_closed`.
+- Safe current-block surface: `block_open_lagged`.
+- Current-row problem family: `current_row_nominal_window`.
+- Explicit paper-style nominal-grid compiler path: `estimated_block`.
+- Primary current evaluator: `poisson_replay_2h_mean`, reporting mean per-prediction `profit_over_baseline` and `cost_over_optimum`.
+- Diagnostic total-ratio evaluator: `poisson_replay_2h_total`.
+- Diagnostic fullset evaluators: `zero_stop_rollout_fullset` and `anchor_basefee_fullset`.
+
+Historical remote results below use the older `paper_replay_2h` total-ratio style unless stated otherwise. Do not silently compare those numbers against current `poisson_replay_2h_mean` output.
+
+### Active Remote Runs
+
+Remote host: `edoardo.galli3@giano.cs.unibo.it`, storage root `/scratch.hpc/edoardo.galli3/spice/outputs`, log root `/scratch.hpc/edoardo.galli3/slurm`.
+
+| Job | State | Role | Evidence |
+| --- | --- | --- | --- |
+| `57549` | Running | Avalanche Transformer-LSTM `safe_best` HPO to 40 trials | `spice-tune-57549.out`, best so far `0.0236` at trial 17 |
+| `57550` | Pending | Train tuned Avalanche Transformer-LSTM after `57549` | dependency `afterok:57549` |
+| `57551` | Pending | Evaluate tuned Avalanche Transformer-LSTM after `57550` | dependency `afterok:57550` |
+
+Completed targeted HPO chains:
+
+| Cell | HPO Result | Tuned Eval |
+| --- | --- | --- |
+| Ethereum LSTM | best `0.0140` | `0.0112` |
+| Ethereum Transformer | best `0.0137` | `0.0112` |
+| Ethereum Transformer-LSTM | best `0.0141` | `0.0115` |
+| Avalanche Transformer | best `0.0224` | `0.0122` |
+| Avalanche Transformer-LSTM | running, best so far `0.0236` | pending |
+
+The HPO values are tuning/validation objective values. The tuned eval values are held-out `paper_replay_2h` results at `36s`.
+
+### Last Verified Results
+
+Delay-sensitivity sweep, `paper_replay_2h`, historical total-ratio `profit_over_baseline`, delays `12s / 24s / 36s`:
+
+| Chain | Role | LSTM | Transformer | Transformer-LSTM |
 | --- | --- | --- | --- | --- |
 | Ethereum | Unsafe reference | `0.0243 / 0.0260 / 0.0257` | `0.0238 / 0.0251 / 0.0248` | `0.0244 / 0.0263 / 0.0262` |
 | Ethereum | `safe_best` role | `0.0110 / 0.0124 / 0.0124` | `0.0105 / 0.0114 / 0.0115` | `0.0106 / 0.0121 / 0.0119` |
@@ -127,480 +61,176 @@ Decimal values below are historical `profit_over_baseline` on the pre-split tota
 | Avalanche | Unsafe reference | `0.0125 / 0.0126 / 0.0135` | `0.0136 / 0.0156 / 0.0160` | `0.0116 / 0.0118 / 0.0117` |
 | Avalanche | `safe_best` role | `0.0126 / 0.0127 / 0.0130` | `0.0083 / 0.0070 / 0.0074` | `0.0025 / 0.0009 / 0.0005` |
 
-### Checkpoint-Selection Parity
-
-Scope: unsafe reference only, pre-split total-ratio Poisson replay evaluator, `36s`, Polygon and Avalanche.
-
-| Chain | Family | Economic epoch | Validation-loss epoch | Same epoch? | Economic result | Validation-loss result |
-| --- | --- | ---: | ---: | --- | ---: | ---: |
-| Polygon | LSTM | `2` | `3` | No | `0.0051` | `0.0048` |
-| Polygon | Transformer | `3` | `21` | No | `0.0026` | `0.0036` |
-| Polygon | Transformer-LSTM | `3` | `13` | No | `0.0035` | `0.0034` |
-| Avalanche | LSTM | `9` | `1` | No | `0.0135` | `0.0151` |
-| Avalanche | Transformer | `9` | `9` | Yes | `0.0160` | `0.0153` |
-| Avalanche | Transformer-LSTM | `5` | `9` | No | `0.0117` | `0.0148` |
-
-Checkpoint parity read:
-
-- Validation-loss selection materially changes the selected epoch in 5 of 6 cells.
-- It does not uniformly reduce results toward the paper bars.
-- Polygon LSTM and Transformer-LSTM are nearly unchanged; Polygon Transformer improves under validation loss.
-- Avalanche LSTM and Transformer-LSTM improve under validation loss; Avalanche Transformer selects the same epoch and is close.
-- The checkpoint-selection caveat remains real, but it does not by itself explain all Polygon/Avalanche above-paper behavior.
-
-## Main Paths
-
-- Unsafe reference path:
-  - surface: `same_block_closed`
-  - problem family: `current_row_nominal_window*`
-  - feature sets: `same_block_closed_full*`
-  - semantics: current-block action space, fixed ex-ante classes, current-row pricing, post-block features
-  - why unsafe: model can act on the same block row whose finalized block facts it already sees
-  - status: frozen unsafe same-block reference and main comparator
-  - governance: do not reinterpret, optimize, or rename it until the current experimental surface is locked
-
-- Safe current-block path:
-  - surface: `block_open_lagged`
-  - problem family: `current_row_nominal_window*`
-  - feature sets: `block_open_lagged_full*`
-  - semantics: current-block action space, fixed ex-ante classes, current-row pricing, block-open feature contract
-  - safety rule: finalized current-block features are lagged; current base fee is kept
-  - status: clean causal sibling path; current improved benchmark role is `safe_best`
-
-- `safe_best` historical benchmark role:
-  - `lstm`:
-    - benchmark role: explicit `block_open_lagged` case
-    - feature policy: `no_time_features`
-    - interval policy: `recent_deltas`
-  - `transformer`:
-    - benchmark role: explicit `block_open_lagged` case
-    - feature policy: `no_time_since_start`
-    - interval policy: nominal
-  - `transformer_lstm`:
-    - benchmark role: explicit `block_open_lagged` case
-    - feature policy: `calendar_only_time`
-    - interval policy: `recent_deltas`
-  - rationale:
-    - time-feature ablations showed different winners by model family
-    - interval estimation helped some families but not all
-    - do not collapse to one uniform safe feature set merely to reduce YAML count
-
-## Completed Cross-Chain Confirmation Wave
-
-Decimal values below are historical `profit_over_baseline` on the pre-split total-ratio Poisson replay evaluator.
-
-| Chain | Paper Fig. 6 approx | Unsafe reference | Safe best |
-| --- | --- | --- | --- |
-| Ethereum | `0.0255 / 0.0262 / 0.0258` | `0.0248 / 0.0257 / 0.0255` | `0.0123 / 0.0113 / 0.0114` |
-| Polygon | `0.0020 / 0.0020 / 0.0019` | `0.0043 / 0.0042 / 0.0028` | `0.0045 / 0.0039 / 0.0042` |
-| Avalanche | `0.0095 / -0.0015 / 0.0058` | `0.0144 / 0.0133 / 0.0120` | `0.0132 / 0.0072 / 0.0031` |
-
-Model order: `LSTM / Transformer / Transformer-LSTM`
-
-Late completed diagnostic evals:
-
-- Avalanche unsafe `transformer_lstm`:
-  - pre-split total-ratio Poisson replay: `0.0120`
-  - `zero_stop_rollout_fullset`: `0.0340`
-  - `anchor_basefee_fullset`: `0.0102`
-- Avalanche `safe_best` benchmark role `transformer_lstm` completed with:
-  - pre-split total-ratio Poisson replay: `0.0031`
-  - `zero_stop_rollout_fullset`: `0.0023`
-  - `anchor_basefee_fullset`: `0.0031`
-
-Old safe block-open baseline vs current `safe_best` benchmark role:
-
-| Chain | Old safe block-open | Current `safe_best` role |
-| --- | --- | --- |
-| Ethereum | `0.0104 / 0.0112 / 0.0089` | `0.0123 / 0.0113 / 0.0114` |
-| Polygon | `0.0040 / 0.0023 / 0.0036` | `0.0045 / 0.0039 / 0.0042` |
-| Avalanche | `0.0121 / 0.0047 / 0.0009` | `0.0132 / 0.0072 / 0.0031` |
-
-Final read:
-
-- Ethereum:
-  - unsafe remains near the paper band
-  - `safe_best` improves the old safe baseline but remains below paper and unsafe
-- Polygon:
-  - `safe_best` generalizes well and beats both paper and the old safe baseline
-  - unsafe also beats paper
-- Avalanche:
-  - unsafe beats paper across all 3 families
-  - `safe_best` LSTM beats paper
-  - `safe_best` Transformer is positive and above the paper Transformer bar, but below unsafe
-  - `safe_best` Transformer-LSTM is positive but below the paper Transformer-LSTM bar
-- Overall:
-  - `safe_best` improves the old safe baseline on all 9 chain-family cells
-  - `safe_best` generalizes beyond Ethereum in the sense that it improves the safe baseline on Polygon and Avalanche
-  - `safe_best` is not a uniform paper-beating replacement for the unsafe reference
-  - unsafe reference remains the strongest historical professor-like comparator and should stay frozen
-
-No new wave has been queued.
-
-## Verified Facts
-
-- The professor artifacts are likely using an unsafe current-block convention.
-- The professor-like path appears to use fixed ex-ante classes.
-- The old realized-future action-mask oracle was too unsafe and is not the reference target.
-- Unsafe intermediate is closer to the professor setup than the old realized-mask oracle.
-- Notebook rollout is more permissive than replay because it re-decides one row at a time until the model emits `0`.
-
-## Important Comparability Caveats
-
-- Checkpoint selection differs from the professor reference code.
-  - In SPICE, model selection / early-stopping priority is economic: `profit_over_baseline`.
-  - In the professor training code, the visible selection rule appears to be validation loss.
-  - This can materially change final economic results, especially on tighter-margin chains like Polygon.
-- Our primary replay evaluator is stricter than the notebook-style evaluator.
-  - `poisson_replay_2h_mean` is a one-shot replay benchmark: the model commits to one decoded choice from the current row.
-  - The professor notebook rollout is a sequential re-decision policy: move forward one row at a time until the model emits `0`.
-  - So notebook rollout is easier to do well on and should not be read as directly equivalent to replay.
-- “Better than paper” should be stated carefully.
-  - What we can say confidently: on our benchmark context, our implementation reproduces or exceeds the reported economic gains.
-  - What remains partially unresolved: exact parity with the professor's unpublished preprocessing, split construction, and model-selection pipeline.
-- The unsafe reference is the best professor-like reproduction, but it is still not claimed to be a perfect clone.
-  - It is the closest current match to the visible professor artifacts.
-  - It remains useful as a reference path and upper-bound-like comparator, not as proof of exact experimental identity.
-
-## Cross-Chain Replay Results
-
-Percent values below are historical `profit_over_baseline` on the pre-split total-ratio Poisson replay evaluator.
-
-| Chain | Paper Fig. 6 approx | Unsafe reference | Safe block-open |
-| --- | --- | --- | --- |
-| Ethereum | `2.55 / 2.62 / 2.58` | `2.59 / 2.62 / 2.59` | `1.04 / 1.12 / 0.89` |
-| Polygon | `0.20 / 0.20 / 0.19` | `0.46 / 0.34 / 0.32` | `0.40 / 0.23 / 0.36` |
-| Avalanche | `0.95 / -0.15 / 0.58` | `1.25 / 1.35 / 1.23` | `1.21 / 0.47 / 0.09` |
-
-Model order: `LSTM / Transformer / Transformer-LSTM`
-
-## What Worked
-
-- Unsafe current-block reference reproduces or exceeds the paper band across all three chains.
-- Safe block-open remains viable but is materially below the unsafe reference on Ethereum.
-- Cross-chain baseline picture is now complete for both safe and unsafe paths.
-
-## What Did Not Work
-
-- The fully safe next-block oracle path did not preserve the professor-like gain.
-- Safe block-open still loses too much of the Ethereum gain.
-- Split-local preprocessing is deferred; it is not the current architectural direction.
-
-## Latest Completed Wave
-
-- Wave: Ethereum-only time-feature ablations
-- Scope:
-  - both paths: unsafe reference and safe block-open
-  - all 3 families
-  - feature variants:
-    - `full`
-    - `no_time_since_start`
-    - `no_time_features`
-    - `calendar_only_time`
-    - `time_since_start_only`
-- Primary evaluator: `poisson_replay_2h_mean`
-
-### Unsafe reference replay results
-
-| Family | Full | No `time_since_start` | No time features | Calendar only | `time_since_start` only |
-| --- | --- | --- | --- | --- | --- |
-| LSTM | `0.0228` | `0.0264` | `0.0266` | `0.0265` | `0.0255` |
-| Transformer | `0.0265` | `0.0258` | `0.0261` | `0.0253` | `0.0263` |
-| Transformer-LSTM | `0.0262` | `0.0264` | `0.0262` | `0.0261` | `0.0259` |
-
-### Safe block-open replay results
-
-| Family | Full | No `time_since_start` | No time features | Calendar only | `time_since_start` only |
-| --- | --- | --- | --- | --- | --- |
-| LSTM | `0.0096` | `0.0113` | `0.0119` | `0.0116` | `0.0096` |
-| Transformer | `0.0099` | `0.0122` | `0.0106` | `0.0116` | `0.0110` |
-| Transformer-LSTM | `0.0107` | `0.0121` | `0.0117` | `0.0123` | `0.0109` |
-
-### Main conclusions
-
-- `time_since_start` alone does **not** preserve most of the gain.
-- Dropping `time_since_start` is often neutral-to-helpful and is a credible simplification candidate.
-- On the safe path, full time features were never the best completed variant for any family.
-- The strongest simplifying wins are:
-  - safe `lstm`: `no_time_features` (`0.0119`) over full (`0.0096`)
-  - safe `transformer`: `no_time_since_start` (`0.0122`) over full (`0.0099`)
-  - safe `transformer_lstm`: `calendar_only_time` (`0.0123`) over full (`0.0107`)
-- There is no single universal winner across all families.
-- Notebook metrics were directionally consistent with the replay findings.
-
-## Interval-Estimator Rationale
-
-- This section records why the interval-estimation wave was run.
-- The implementation exists and the first Ethereum matrix is completed below.
-- Interval estimation:
-  - Goal:
-    - improve fixed ex-ante action sizing without using future realized timestamps
-    - recover some of the unsafe-path gain while staying causal
-  - Core requirement:
-    - chain agnostic
-    - online-safe
-    - past-only
-    - no launch until results from the current wave are reviewed in-thread
-  - Why this matters:
-    - the task is time-budgeted, not purely block-count-budgeted
-    - a configured fixed interval like `12s` or `1.6s` is simple but crude
-    - if the interval is set too high, the action space is too narrow
-    - if it is set too low, the action space is too wide and overflow / miss behavior increases
-    - a better causal estimate may recover some performance without reintroducing leakage
-  - Planned seam:
-    - explicit `action_interval_estimator` inside the timestamp-window compiler
-    - no chain-specific branching in acquisition or evaluation
-    - artifact stores the resolved estimator provenance needed for rebuilds and auditability
-  - Candidate estimator families:
-    - `nominal`
-      - use `chain.runtime.nominal_block_time_seconds`
-      - baseline comparator, but not an implicit compiler default
-    - `recent_deltas`
-      - median of all positive inter-block deltas in the selected training chronology
-      - artifact-level calibration, not live dynamic action-space resizing
-    - possible later extensions if needed:
-      - exponentially weighted versions
-      - clipped / winsorized variants
-      - chain-conditioned but still generic parameter sets
-  - Semantics:
-    - estimator resolves one fixed interval for the artifact from the selected training chronology
-    - that interval determines the artifact's fixed ex-ante action width
-    - evaluation must reuse the trained artifact width
-    - evaluation must not inspect future realized evaluation-day timestamps to resize the action space
-  - Safety rule:
-    - estimator may use only past positive deltas available at training / deployment time
-    - no realized future candidate-count help in loss, decode, or eval
-  - Benchmark plan when this phase begins:
-    - Ethereum `36s` first
-    - both paths:
-      - same-block unsafe reference
-      - safe block-open
-    - all 3 families
-    - compare nominal vs recent-deltas estimators on the same evaluator
-    - `poisson_replay_2h_mean` remains primary
-  - What would count as success:
-    - clear replay improvement on safe block-open without architectural degradation
-    - ideally preserves or improves unsafe reference too, but safe-path improvement is the main target
-  - Failure modes to watch:
-    - estimator overfits training chronology and does not transfer
-    - estimator width is too optimistic and increases misses
-    - estimator width is too conservative and collapses useful action options
-    - gains are chain-specific and do not justify promotion
-  - Governance:
-    - every `timestamp_future_window` problem must declare `action_interval_estimator.id`
-
-## Latest Completed Wave
-
-- Wave: Ethereum-only interval-estimation matrix
-- Scope:
-  - safe reference
-  - safe candidate
-  - unsafe reference
-  - all 3 families
-  - estimators:
-    - `nominal`
-    - `recent_deltas`
-- Primary evaluator: `poisson_replay_2h_mean`
-
-### Safe reference replay results
-
-| Family | Nominal | `recent_deltas` |
-| --- | --- | --- |
-| LSTM | `0.0096` | `0.0115` |
-| Transformer | `0.0108` | `0.0117` |
-| Transformer-LSTM | `0.0115` | `0.0107` |
-
-### Safe candidate replay results
-
-| Family | Nominal | `recent_deltas` |
-| --- | --- | --- |
-| LSTM | `0.0124` | `0.0125` |
-| Transformer | `0.0129` | `0.0120` |
-| Transformer-LSTM | `0.0110` | `0.0116` |
-
-### Unsafe reference replay results
-
-| Family | Nominal | `recent_deltas` |
-| --- | --- | --- |
-| LSTM | `0.0254` | `0.0258` |
-| Transformer | `0.0264` | `0.0259` |
-| Transformer-LSTM | `0.0258` | `0.0254` |
-
-### Main conclusions
-
-- The per-family safe candidate path beats the safe reference path under both estimators for all 3 families.
-- `recent_deltas` is helpful but not universal.
-- On the safe reference path, `recent_deltas` helps `lstm` and `transformer`, but hurts `transformer_lstm`.
-- On the safe candidate path, `recent_deltas` is:
-  - neutral/slightly positive for `lstm`
-  - negative for `transformer`
-  - positive for `transformer_lstm`
-- On the unsafe reference path, `recent_deltas` only moves results slightly and does not change the overall picture.
-- Best safe replay results from this wave are:
-  - `lstm`: safe candidate + `recent_deltas` = `0.0125`
-  - `transformer`: safe candidate + nominal = `0.0129`
-  - `transformer_lstm`: safe candidate + `recent_deltas` = `0.0116`
-
-## Near-Term Decision Queue
-
-- Decide whether the `safe_best` benchmark role becomes the working safe reference.
-  - this is not automatic default promotion
-  - keep the unsafe reference frozen as the historical professor-like comparator
-  - keep per-family `safe_best` feature/interval choices unless results justify simplification
-- Run a small checkpoint-selection parity check before major new feature work.
-  - compare economic-objective selection against validation-loss selection
-  - reason: this directly addresses why our Polygon/Avalanche results can exceed paper bars
-  - goal: improve comparability claims without changing the feature contract
-- Do not queue additional experiment waves automatically.
-  - feature engineering, UQ, dynamic windows, and cleanup promotion all require explicit in-thread approval
-
-## Thesis / Internship Position
-
-- Internship 1 baseline-replication goal:
-  - economically, the unsafe professor-like reference reproduces or exceeds the reported paper gains on the project benchmark context
-  - exact professor-pipeline parity remains caveated because preprocessing, splits, evaluator semantics, and checkpoint selection are not fully identical
-  - this is sufficient for a careful claim that the same research problem and model families have been reproduced on a comparable benchmark context, not for claiming a perfect clone
-- Internship 1 optimization goal:
-  - partially accomplished through time-feature ablations and interval-estimator experiments
-  - full Bayesian HPO, loss-weight sweeps, and lookback-horizon sweeps remain optional future work rather than completed work
-- Thesis / Internship 2 direction:
-  - uncertainty quantification and dynamic prediction-window sizing remain aligned with the codebase direction
-  - the cleanup plan supports these ideas by making evaluator compatibility, decoded prediction outputs, and temporal metadata ownership explicit
-  - a committed benchmark ledger should be added before thesis-scale experiment expansion
-
-## Deferred Future Feature Ideas
-
-- Range-position features
-  - Goal: tell the model where the current fee sits inside a recent local range, not just the raw fee level.
-  - Candidate features:
-    - distance to rolling min / rolling max
-    - normalized position inside rolling min-max band
-    - percentile rank of current fee within the last `N` blocks
-    - drawdown from recent local maximum
-  - Why this may help:
-    - the decision problem is economic and wait-based
-    - “am I already near a local cheap point?” is often more important than absolute level
-    - we already expose rolling minima and means, but not the current fee's relative position inside the recent range
-  - Safety notes:
-    - straightforward to make causal on both unsafe and safe paths
-    - for safe block-open, use current known base fee and past-only windows
-
-- Regime spread features
-  - Goal: make regime shifts explicit instead of forcing the model to infer them from separate short and long rolling stats.
-  - Candidate features:
-    - `roll10_mean_logfee - roll200_mean_logfee`
-    - `roll10_std_logfee / roll200_std_logfee`
-    - short-vs-long spreads for gas pressure / utilization
-    - short-vs-long trend-slope differences
-  - Why this may help:
-    - these directly encode whether the chain is heating up, cooling off, or remaining stable
-    - they are especially relevant for “wait one more block or not?” decisions
-  - Safety notes:
-    - cheap to add; fully causal if built from the existing rolling stats
-
-- Curvature features
-  - Goal: capture acceleration / deceleration, not just direction.
-  - Candidate features:
-    - second difference of log base fee
-    - second difference of gas pressure
-    - change in trend slope over recent windows
-    - acceleration of utilization relative to target
-  - Why this may help:
-    - first differences say where the series is moving
-    - curvature says whether that move is strengthening or weakening
-    - this is directly relevant to timing decisions near turning points
-  - Safety notes:
-    - causal if derived from current-and-past safe observables only
-
-- Persistence / streak features
-  - Goal: encode how persistent the current congestion or relief regime has been.
-  - Candidate features:
-    - consecutive blocks with positive `dlog_base_fee`
-    - consecutive blocks with negative `dlog_base_fee`
-    - consecutive blocks with gas utilization above target
-    - fraction of last `N` blocks above target
-    - fraction of last `N` blocks with falling base fee
-  - Why this may help:
-    - rolling averages can hide whether the signal came from one spike or a sustained run
-    - persistence is useful for judging whether mean reversion is likely
-  - Safety notes:
-    - for safe block-open, compute from lagged realized history and current known base fee only
-
-- Protocol-aware pressure features
-  - Goal: encode fee-relevant pressure in the protocol's own terms, not just generic utilization.
-  - Candidate features:
-    - `gas_utilization - target_utilization`
-    - rolling mean of positive excess over target
-    - rolling mean of slack below target
-    - share of recent blocks materially above target
-    - signed cumulative excess over the last `N` blocks
-  - Why this may help:
-    - EIP-1559 reacts to utilization relative to the target, not just raw gas usage
-    - this is more directly tied to next-block fee dynamics
-  - Safety notes:
-    - works with current data; no new source required
-
-- Cadence uncertainty / opportunity-density features
-  - Goal: model not just fee movement, but how many timing opportunities likely fit inside the wait budget.
-  - Candidate features:
-    - rolling mean / std / coefficient of variation of `dt_seconds`
-    - recent count of blocks in the last `60s`, `120s`, `300s`
-    - fraction of recent blocks faster than nominal interval
-    - recent opportunity density implied by observed inter-block times
-  - Why this may help:
-    - the action space is fundamentally time-budgeted
-    - more blocks arriving quickly means more chances to wait without overshooting the deadline
-  - Safety notes:
-    - especially relevant for the future interval-estimation wave
-    - must remain past-only on the safe path
-
-- Robust quantile features
-  - Goal: make the feature surface less sensitive to heavy tails and transient spikes.
-  - Candidate features:
-    - rolling fee quantiles: p10 / p25 / p50 / p75 / p90
-    - rolling pressure quantiles
-    - interquartile range
-    - distance from current level to rolling median / p10 / p90
-  - Why this may help:
-    - mean / std are often brittle on fee series with bursts
-    - quantiles can encode local distribution shape more robustly
-  - Safety notes:
-    - more expensive than mean/std, but still feasible with current data volumes
-
-- New-data-source features if we expand ingestion later
-  - Goal: move beyond post-block summaries into more directly causal inclusion-pressure signals.
-  - Candidate sources:
-    - mempool backlog / arrival-rate features
-    - pending transaction age distribution
-    - priority-fee / tip distribution
-    - transaction-count / block-composition features
-  - Why this may help:
-    - these would likely be more powerful than extra calendar tricks if collected cleanly
-    - they may allow a stronger same-slot or late-slot causal formulation
-  - Constraint:
-    - not part of the current data surface
-    - requires explicit ingestion and problem-definition work
-
-## Remaining Cleanup / Architecture Work
-
-- Remaining architecture cleanup:
-  - remove dead codecs, stale docs, parity defaults, and redundant feature helpers with justification
-- Completed cleanup:
-  - compiler runtime metadata serializes through compiler-id dispatch
-  - builder metadata remains typed, with compiler payloads rehydrated through the compiler registry
-  - workflow request models are task-specific
-  - remote execution submits resolved workflow config snapshots
-  - corpus/study/artifact identity now uses resolved paths consistently, with dataset evaluation date included in corpus identity
-
-## Deferred Benchmark Ledger
-
-- Keep SQLite artifact state as operational provenance and the query source for local/remote runs.
-- Do not use SQLite as the committed canonical benchmark ledger.
-  - reason: binary state is hard to diff, review, merge, and separate from partial local runs
-- Keep `PROGRESS.md` as the narrative experiment log, not the structured source of truth.
-- Add a committed benchmark ledger later under `benchmarks/`:
-  - wave metadata: `benchmarks/waves/<wave_id>.yaml`
-  - result rows: `benchmarks/results/<wave_id>.csv` or JSONL
-  - fields: commit, branch, chains, models, surfaces, feature policies, evaluators, objectives, delay, metric, artifact ids, evaluation ids, job ids, row counts, final metric values
-  - export command: read artifact SQLite state and write stable CSV/JSONL rows once a wave is ready to preserve
+Checkpoint-selection parity, unsafe reference, `36s`, Polygon and Avalanche:
+
+| Chain | Family | Economic Epoch | Validation-Loss Epoch | Economic Result | Validation-Loss Result |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Polygon | LSTM | `2` | `3` | `0.0051` | `0.0048` |
+| Polygon | Transformer | `3` | `21` | `0.0026` | `0.0036` |
+| Polygon | Transformer-LSTM | `3` | `13` | `0.0035` | `0.0034` |
+| Avalanche | LSTM | `9` | `1` | `0.0135` | `0.0151` |
+| Avalanche | Transformer | `9` | `9` | `0.0160` | `0.0153` |
+| Avalanche | Transformer-LSTM | `5` | `9` | `0.0117` | `0.0148` |
+
+Checkpoint selection materially changes selected epochs in 5 of 6 cells. It does not uniformly reduce results toward paper bars, so the comparability caveat remains real but does not explain all Polygon/Avalanche above-paper behavior.
+
+Distilled historical conclusions:
+
+- The unsafe same-block reference remains the strongest professor-like comparator.
+- `safe_best` improved the old safe baseline on all 9 chain-family cells in the cross-chain confirmation wave.
+- `safe_best` is not a uniform paper-beating replacement for the unsafe reference.
+- Ethereum safe-path HPO evals completed so far do not beat their `safe_best` baselines.
+- Avalanche Transformer HPO improves over the weak safe baseline, but the wave remains incomplete until Avalanche Transformer-LSTM finishes.
+
+### Open Benchmark Decisions
+
+- Wait for jobs `57549`, `57550`, and `57551` before judging the targeted HPO wave.
+- After the current HPO wave completes, decide whether tuned artifacts change the `safe_best` conclusion or only confirm that larger capacity/search is needed.
+- Keep the unsafe same-block reference frozen as the professor-like comparator until the experimental surface is explicitly redefined.
+- Do not promote `safe_best` to default architecture without an explicit decision.
+- Add a committed benchmark ledger before thesis-scale experiment expansion.
+
+### Planned Benchmark Sweeps
+
+Large-capacity HPO remains planned after the active remote HPO wave finishes and local/remote configs are reconciled. Purpose: test whether remaining safe-path gaps are capacity or optimization limits rather than temporal-surface or feature-contract limits.
+
+Target cells:
+
+- Ethereum `transformer`.
+- Ethereum `transformer_lstm`.
+- Avalanche `transformer_lstm`.
+- Avalanche `transformer`, if the current tuned result still needs deeper validation.
+
+Trial budget:
+
+- Start with `120` trials per cell.
+- Review at `40` and `80` trials before spending the full budget.
+- Continue past `120` only if recent trials improve best objective by at least `0.001` absolute `profit_over_baseline` or reveal a clearly new high-performing region.
+
+Training search:
+
+- `learning_rate: [0.00003, 0.0001, 0.0003]`.
+- `weight_decay: [0.0, 0.0001, 0.001, 0.01]`.
+- `batch_size: [64, 128, 256, 512]`.
+- `max_epochs: 100`.
+- `early_stopping.patience: 15`.
+- Keep high Slurm `ulimit -n`; do not force `SPICE_DATALOADER_WORKERS=0` unless open-file failures recur.
+
+Transformer search:
+
+- `d_model: [384, 512, 768, 1024, 1536]`.
+- `transformer_layers: [4, 6, 8, 12]`.
+- `nhead: [4, 8, 16]`, subject to `d_model % nhead == 0`.
+- `feedforward_dim`: tune as `[2x, 4x]` of `d_model` or equivalent explicit values.
+- `head_hidden_dim: [256, 512, 1024]`.
+- `dropout: [0.0, 0.1, 0.2, 0.3]`.
+
+Transformer-LSTM search:
+
+- `d_model: [384, 512, 768, 1024]`.
+- `hidden_size: [384, 512, 768, 1024, 1536]`.
+- `transformer_layers: [4, 6, 8]`.
+- LSTM `num_layers: [1, 2, 3]`.
+- `nhead: [4, 8, 16]`, subject to `d_model % nhead == 0`.
+- `feedforward_dim`: tune as `[2x, 4x]` of `d_model` or equivalent explicit values.
+- `head_hidden_dim: [256, 512, 1024]`.
+- `dropout: [0.0, 0.1, 0.2, 0.3]`.
+
+Optional LSTM expansion, only if LSTM remains in scope:
+
+- `hidden_size: [256, 384, 512, 768, 1024]`.
+- `num_layers: [1, 2, 3, 4]`.
+- `input_projection_dim: [128, 256, 512]`.
+- `head_hidden_dim: [256, 512, 1024]`.
+- `dropout: [0.0, 0.1, 0.2, 0.3]`.
+
+Implementation prerequisite: current tuning spaces support only part of this plan. Add clean tuning support for `max_epochs`, early-stopping patience, `nhead`, `feedforward_dim`, `head_hidden_dim`, Transformer-LSTM transformer/LSTM depths, and LSTM `input_projection_dim` before launching the large sweep.
+
+Other planned sweeps:
+
+- Re-run lookback-window sweeps for modern `same_block_closed` and `block_open_lagged`, including `900s` and longer windows. Earlier lookback evidence was mostly on estimated-block paths.
+- Compare `current_row_nominal_window` against `current_row_recent_delta_window` using one simple median-of-training-deltas policy.
+- Sweep sample counts such as `400k`, `1m`, and `3m` to separate data-volume gains from regime-drift costs.
+- Sweep fixed `estimated_block` against modern current-row timestamp paths, keeping its paper-style nominal block grid while mapping offset `0` to the current row.
+
+### Benchmarking Rules
+
+- Treat `paper_replay_2h` results as historical remote evidence until rerun under current local evaluator names.
+- Treat `poisson_replay_2h_mean` as the current canonical evaluator for new local benchmark claims.
+- Keep `poisson_replay_2h_total` for total-ratio diagnostics and legacy comparability.
+- Do not read notebook rollout/fullset diagnostics as equivalent to one-shot replay.
+- Do not claim exact professor-pipeline parity; preprocessing, split construction, evaluator semantics, and checkpoint selection remain partially unresolved.
+
+## Feature And Architecture Progress
+
+### Current Surfaces
+
+`same_block_closed` is the frozen unsafe same-block reference. It uses the current-block action space, fixed ex-ante classes, current-row pricing, and post-block features. It is unsafe because the model can act on the same block row whose finalized block facts it already sees.
+
+`block_open_lagged` is the safe current-block surface. It keeps current base fee available but lags finalized current-block facts. It is the clean causal sibling of the unsafe reference.
+
+`safe_best` is not a surface. It is a historical benchmark role combining per-family safe block-open feature and interval choices:
+
+- LSTM: block-open, no broad time features, `recent_deltas`.
+- Transformer: block-open, no `time_since_start`, nominal interval.
+- Transformer-LSTM: block-open, calendar-only time, `recent_deltas`.
+
+### Current Evaluators
+
+`poisson_replay_2h_mean` is the primary evaluator for current work. `poisson_replay_2h_total` preserves total-ratio diagnostics. `zero_stop_rollout_fullset` and `anchor_basefee_fullset` remain diagnostic fullset evaluators.
+
+Replay is a one-shot decoded-offset benchmark: the model commits to one decoded choice from the current row. Notebook-style rollout is a sequential re-decision policy and is easier to do well on, so it is diagnostic only.
+
+### Feature Work
+
+Completed feature findings kept for current relevance:
+
+- Full time features were not the best safe-path choice for any family in the completed Ethereum ablation.
+- Dropping `time_since_start` was neutral-to-helpful often enough to justify the family-specific `safe_best` role.
+- `recent_deltas` helped some family/surface combinations but was not universal.
+- Do not collapse safe-path feature choices to one uniform feature set only to reduce config count.
+
+### Architecture Cleanup
+
+Completed cleanup:
+
+- Compiler runtime metadata serializes through compiler-id dispatch.
+- Builder metadata remains typed, with compiler payloads rehydrated through the compiler registry.
+- Workflow request models are task-specific.
+- Remote execution submits resolved workflow config snapshots.
+- Corpus, study, and artifact identity use resolved paths consistently, with dataset evaluation date included in corpus identity.
+
+Remaining cleanup:
+
+- Remove stale docs, dead codecs/configs, parity defaults, and redundant feature helpers after remote jobs finish or are archived.
+- Add a committed benchmark ledger under `benchmarks/` for durable result rows and wave metadata.
 - Keep raw `outputs/` artifacts and Slurm logs untracked.
+
+## Research Direction
+
+### Thesis / Internship Position
+
+Internship 1 baseline replication is economically supported on this benchmark context: the unsafe professor-like reference reproduces or exceeds reported paper gains. This is not a perfect clone claim because professor preprocessing, split construction, model selection, and evaluator semantics are not fully identical.
+
+Internship 1 optimization is partially supported by time-feature ablations, interval-estimator experiments, and the current HPO wave. Full Bayesian HPO, lookback sweeps, sample-count sweeps, and larger model-capacity searches remain planned work.
+
+Thesis / Internship 2 direction remains aligned with uncertainty quantification and dynamic prediction-window sizing. Before thesis-scale expansion, benchmark results should move from narrative notes into a committed ledger.
+
+### Candidate Ideas
+
+- Range and quantile position features: encode whether the current fee is near a recent local min, median, or high quantile rather than only exposing raw level and rolling means.
+- Regime-spread and persistence features: encode short-vs-long pressure shifts, sustained rising/falling fee streaks, and whether congestion relief appears persistent.
+- Cadence and opportunity-density features: encode recent inter-block timing, block-count density inside fixed time windows, and uncertainty in how many opportunities fit within the delay budget.
+- Protocol-aware pressure features: encode EIP-1559 pressure directly through utilization relative to target and signed recent excess/slack.
+- New data sources: consider mempool backlog, pending transaction age, priority-fee distributions, and block-composition features only if ingestion scope expands.
+
+## Update Rules
+
+- Every current-status claim needs a date, job id, artifact id, or config name.
+- Do not use “latest” without timestamp and context.
+- Replace active job status in place when jobs complete.
+- Keep historical numeric tables only when they affect current decisions.
+- Put planned benchmark work in `Planned Benchmark Sweeps`.
+- Put speculative feature work in `Candidate Ideas`.
+- Do not mix local current config names with remote old-branch preset names without stating which context applies.
+- Keep completed experiment detail out of this file unless it changes an active decision; use the future benchmark ledger for durable numeric provenance.
