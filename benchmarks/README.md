@@ -1,0 +1,44 @@
+# Benchmark Results
+
+`results.csv` is the committed ledger for current benchmark results. One row is one
+completed artifact evaluation under one evaluator and delay.
+
+The ledger records modern evaluator results only. Current result rows use
+`evaluation=poisson_replay_2h_mean`; historical `paper_replay_2h` results stay in
+notes such as `PROGRESS.md` until rerun under current semantics.
+
+## Row Contract
+
+Required provenance fields:
+
+- `recorded_at_utc`: UTC time the result row was recorded.
+- `git_commit`: commit used for the run.
+- `execution_ref`: `slurm:<job_id>` for remote runs or `local:<timestamp>` for local runs.
+- `artifact_id`: persisted artifact identity.
+- `evaluation_storage_id`: persisted evaluation identity inside the artifact state.
+
+Required evaluator metric columns:
+
+- `profit_over_baseline`
+- `cost_over_optimum`
+- `baseline_cost_over_optimum`
+
+Optional existing ML metric columns:
+
+- `total_loss`
+- `offset_accuracy`
+- `classification_loss`
+- `regression_loss`
+- `exact_optimum_hit_rate`
+
+Blank optional metric cells mean the metric was not collected for that prediction family or
+result. They do not mean zero.
+
+## Sweep Context
+
+`spice benchmark expand` already supports YAML command sweeps from
+`src/spice/conf/benchmark/`. Raw HPO grids belong in
+`src/spice/conf/tuning_space/*.yaml`.
+
+This ledger does not define sweeps, add tuning fields, or store raw artifacts. Runtime
+artifact SQLite remains the detailed machine record.

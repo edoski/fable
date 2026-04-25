@@ -376,3 +376,36 @@ def test_request_overrides_allow_model_and_tuning_space_selection(
 
     assert config.model.id == "transformer"
     assert config.tuning_space.model.id == "transformer"
+
+
+@pytest.mark.parametrize(
+    ("model", "tuning_space"),
+    [
+        ("lstm", "lstm_large_capacity"),
+        ("transformer", "transformer_large_capacity"),
+        ("transformer_lstm", "transformer_lstm_large_capacity"),
+    ],
+)
+def test_large_capacity_tuning_spaces_resolve(
+    model: str,
+    tuning_space: str,
+    tmp_path: Path,
+    isolate_conf_root,
+) -> None:
+    isolate_conf_root()
+
+    config = cast(
+        TuneConfig,
+        resolve_workflow_config(
+            WorkflowTask.TUNE,
+            TuneWorkflowRequest(
+                surface="same_block_closed",
+                model=model,
+                tuning_space=tuning_space,
+                storage_root=tmp_path / "outputs",
+            ),
+        ),
+    )
+
+    assert config.model.id == model
+    assert config.tuning_space.model.id == model

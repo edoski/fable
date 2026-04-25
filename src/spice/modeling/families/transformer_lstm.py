@@ -37,10 +37,23 @@ class TransformerLstmModelConfig(ModelConfig[Literal["transformer_lstm"]]):
 class TransformerLstmTuningSpaceModelConfig(ModelTuningSpaceConfig[Literal["transformer_lstm"]]):
     id: Literal["transformer_lstm"] = "transformer_lstm"
     hidden_size: list[int] | None = Field(default=None, min_length=1)
+    num_layers: list[int] | None = Field(default=None, min_length=1)
     d_model: list[int] | None = Field(default=None, min_length=1)
+    nhead: list[int] | None = Field(default=None, min_length=1)
+    transformer_layers: list[int] | None = Field(default=None, min_length=1)
+    feedforward_multiplier: list[int] | None = Field(default=None, min_length=1)
+    head_hidden_dim: list[int] | None = Field(default=None, min_length=1)
     dropout: list[float] | None = Field(default=None, min_length=1)
 
-    @field_validator("hidden_size", "d_model")
+    @field_validator(
+        "hidden_size",
+        "num_layers",
+        "d_model",
+        "nhead",
+        "transformer_layers",
+        "feedforward_multiplier",
+        "head_hidden_dim",
+    )
     @classmethod
     def validate_int_candidates(cls, values: list[int] | None) -> list[int] | None:
         if values is not None and any(value <= 0 for value in values):
@@ -58,12 +71,26 @@ class TransformerLstmTuningSpaceModelConfig(ModelTuningSpaceConfig[Literal["tran
 class TransformerLstmTunedModelParams(TunedModelParams[Literal["transformer_lstm"]]):
     id: Literal["transformer_lstm"] = "transformer_lstm"
     hidden_size: int | None = Field(default=None, gt=0)
+    num_layers: int | None = Field(default=None, gt=0)
     d_model: int | None = Field(default=None, gt=0)
+    nhead: int | None = Field(default=None, gt=0)
+    transformer_layers: int | None = Field(default=None, gt=0)
+    feedforward_dim: int | None = Field(default=None, gt=0)
+    head_hidden_dim: int | None = Field(default=None, gt=0)
     dropout: float | None = Field(default=None, ge=0.0, lt=1.0)
 
     @model_validator(mode="after")
     def validate_non_empty_group(self) -> TransformerLstmTunedModelParams:
-        if self.hidden_size is None and self.d_model is None and self.dropout is None:
+        if (
+            self.hidden_size is None
+            and self.num_layers is None
+            and self.d_model is None
+            and self.nhead is None
+            and self.transformer_layers is None
+            and self.feedforward_dim is None
+            and self.head_hidden_dim is None
+            and self.dropout is None
+        ):
             raise ValueError("tuned model params must declare at least one field")
         return self
 
@@ -80,12 +107,18 @@ def _validate_tuning_space(
     model_config: TransformerLstmModelConfig,
     tuning_space: TransformerLstmTuningSpaceModelConfig,
 ) -> None:
-    if tuning_space.d_model is not None:
-        for value in tuning_space.d_model:
-            if value % model_config.nhead != 0:
-                raise ValueError("tuning_space.model.d_model values must be divisible by nhead")
-            if value % 2 != 0:
-                raise ValueError("tuning_space.model.d_model values must be even")
+    d_model_values = tuning_space.d_model or [model_config.d_model]
+    nhead_values = tuning_space.nhead or [model_config.nhead]
+    for d_model in d_model_values:
+        if d_model % 2 != 0:
+            raise ValueError("tuning_space.model.d_model values must be even")
+        for nhead in nhead_values:
+            if d_model % nhead != 0:
+                raise ValueError(
+                    "tuning_space.model d_model values must be divisible by nhead values"
+                )
+    if tuning_space.feedforward_multiplier is not None and tuning_space.d_model is None:
+        raise ValueError("tuning_space.model.feedforward_multiplier requires d_model")
 
 
 def _sample_model_params(
@@ -97,8 +130,34 @@ def _sample_model_params(
         values["hidden_size"] = int(
             trial.suggest_categorical("model.hidden_size", tuning_space.hidden_size)
         )
+    if tuning_space.num_layers is not None:
+        values["num_layers"] = int(
+            trial.suggest_categorical("model.num_layers", tuning_space.num_layers)
+        )
     if tuning_space.d_model is not None:
         values["d_model"] = int(trial.suggest_categorical("model.d_model", tuning_space.d_model))
+    if tuning_space.nhead is not None:
+        values["nhead"] = int(trial.suggest_categorical("model.nhead", tuning_space.nhead))
+    if tuning_space.transformer_layers is not None:
+        values["transformer_layers"] = int(
+            trial.suggest_categorical(
+                "model.transformer_layers",
+                tuning_space.transformer_layers,
+            )
+        )
+    if tuning_space.feedforward_multiplier is not None:
+        assert tuning_space.d_model is not None
+        multiplier = int(
+            trial.suggest_categorical(
+                "model.feedforward_multiplier",
+                tuning_space.feedforward_multiplier,
+            )
+        )
+        values["feedforward_dim"] = int(values["d_model"]) * multiplier
+    if tuning_space.head_hidden_dim is not None:
+        values["head_hidden_dim"] = int(
+            trial.suggest_categorical("model.head_hidden_dim", tuning_space.head_hidden_dim)
+        )
     if tuning_space.dropout is not None:
         values["dropout"] = float(trial.suggest_categorical("model.dropout", tuning_space.dropout))
     if not values:

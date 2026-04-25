@@ -1,0 +1,12 @@
+training:
+  learning_rate: [0.00003, 0.0001, 0.0003]
+  weight_decay: [0.0, 0.0001, 0.001, 0.01]
+  batch_size: [64, 128, 256, 512]
+model:
+  id: transformer
+  d_model: [384, 512, 768, 1024, 1536]
+  transformer_layers: [4, 6, 8, 12]
+  nhead: [4, 8, 16]
+  feedforward_multiplier: [2, 4]
+  head_hidden_dim: [256, 512, 1024]
+  dropout: [0.0, 0.1, 0.2, 0.3]

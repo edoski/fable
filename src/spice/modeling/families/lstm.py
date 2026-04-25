@@ -25,22 +25,17 @@ class LstmModelConfig(ModelConfig[Literal["lstm"]]):
 
 class LstmTuningSpaceModelConfig(ModelTuningSpaceConfig[Literal["lstm"]]):
     id: Literal["lstm"] = "lstm"
+    input_projection_dim: list[int] | None = Field(default=None, min_length=1)
     hidden_size: list[int] | None = Field(default=None, min_length=1)
     num_layers: list[int] | None = Field(default=None, min_length=1)
+    head_hidden_dim: list[int] | None = Field(default=None, min_length=1)
     dropout: list[float] | None = Field(default=None, min_length=1)
 
-    @field_validator("hidden_size")
+    @field_validator("input_projection_dim", "hidden_size", "num_layers", "head_hidden_dim")
     @classmethod
-    def validate_hidden_size_candidates(cls, values: list[int] | None) -> list[int] | None:
+    def validate_int_candidates(cls, values: list[int] | None) -> list[int] | None:
         if values is not None and any(value <= 0 for value in values):
-            raise ValueError("tuning_space.model.hidden_size values must be positive")
-        return values
-
-    @field_validator("num_layers")
-    @classmethod
-    def validate_num_layers_candidates(cls, values: list[int] | None) -> list[int] | None:
-        if values is not None and any(value <= 0 for value in values):
-            raise ValueError("tuning_space.model.num_layers values must be positive")
+            raise ValueError("tuning_space.model integer candidates must be positive")
         return values
 
     @field_validator("dropout")
@@ -53,15 +48,19 @@ class LstmTuningSpaceModelConfig(ModelTuningSpaceConfig[Literal["lstm"]]):
 
 class LstmTunedModelParams(TunedModelParams[Literal["lstm"]]):
     id: Literal["lstm"] = "lstm"
+    input_projection_dim: int | None = Field(default=None, gt=0)
     hidden_size: int | None = Field(default=None, gt=0)
     num_layers: int | None = Field(default=None, gt=0)
+    head_hidden_dim: int | None = Field(default=None, gt=0)
     dropout: float | None = Field(default=None, ge=0.0, lt=1.0)
 
     @model_validator(mode="after")
     def validate_non_empty_group(self) -> LstmTunedModelParams:
         if (
-            self.hidden_size is None
+            self.input_projection_dim is None
+            and self.hidden_size is None
             and self.num_layers is None
+            and self.head_hidden_dim is None
             and self.dropout is None
         ):
             raise ValueError("tuned model params must declare at least one field")
@@ -74,11 +73,20 @@ def _build_model(
     config: LstmModelConfig,
 ) -> TemporalModel:
     return LSTMBaseline(n_features, output_spec, config)
+
+
 def _sample_model_params(
     trial: optuna.Trial,
     tuning_space: LstmTuningSpaceModelConfig,
 ) -> LstmTunedModelParams | None:
     values: dict[str, float | int] = {}
+    if tuning_space.input_projection_dim is not None:
+        values["input_projection_dim"] = int(
+            trial.suggest_categorical(
+                "model.input_projection_dim",
+                tuning_space.input_projection_dim,
+            )
+        )
     if tuning_space.hidden_size is not None:
         values["hidden_size"] = int(
             trial.suggest_categorical("model.hidden_size", tuning_space.hidden_size)
@@ -86,6 +94,10 @@ def _sample_model_params(
     if tuning_space.num_layers is not None:
         values["num_layers"] = int(
             trial.suggest_categorical("model.num_layers", tuning_space.num_layers)
+        )
+    if tuning_space.head_hidden_dim is not None:
+        values["head_hidden_dim"] = int(
+            trial.suggest_categorical("model.head_hidden_dim", tuning_space.head_hidden_dim)
         )
     if tuning_space.dropout is not None:
         values["dropout"] = float(trial.suggest_categorical("model.dropout", tuning_space.dropout))

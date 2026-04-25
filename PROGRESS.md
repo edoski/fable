@@ -88,7 +88,6 @@ Distilled historical conclusions:
 - After the current HPO wave completes, decide whether tuned artifacts change the `safe_best` conclusion or only confirm that larger capacity/search is needed.
 - Keep the unsafe same-block reference frozen as the professor-like comparator until the experimental surface is explicitly redefined.
 - Do not promote `safe_best` to default architecture without an explicit decision.
-- Add a committed benchmark ledger before thesis-scale experiment expansion.
 
 ### Planned Benchmark Sweeps
 
@@ -112,8 +111,6 @@ Training search:
 - `learning_rate: [0.00003, 0.0001, 0.0003]`.
 - `weight_decay: [0.0, 0.0001, 0.001, 0.01]`.
 - `batch_size: [64, 128, 256, 512]`.
-- `max_epochs: 100`.
-- `early_stopping.patience: 15`.
 - Keep high Slurm `ulimit -n`; do not force `SPICE_DATALOADER_WORKERS=0` unless open-file failures recur.
 
 Transformer search:
@@ -121,7 +118,7 @@ Transformer search:
 - `d_model: [384, 512, 768, 1024, 1536]`.
 - `transformer_layers: [4, 6, 8, 12]`.
 - `nhead: [4, 8, 16]`, subject to `d_model % nhead == 0`.
-- `feedforward_dim`: tune as `[2x, 4x]` of `d_model` or equivalent explicit values.
+- `feedforward_multiplier: [2, 4]`, resolved to concrete `feedforward_dim`.
 - `head_hidden_dim: [256, 512, 1024]`.
 - `dropout: [0.0, 0.1, 0.2, 0.3]`.
 
@@ -132,7 +129,7 @@ Transformer-LSTM search:
 - `transformer_layers: [4, 6, 8]`.
 - LSTM `num_layers: [1, 2, 3]`.
 - `nhead: [4, 8, 16]`, subject to `d_model % nhead == 0`.
-- `feedforward_dim`: tune as `[2x, 4x]` of `d_model` or equivalent explicit values.
+- `feedforward_multiplier: [2, 4]`, resolved to concrete `feedforward_dim`.
 - `head_hidden_dim: [256, 512, 1024]`.
 - `dropout: [0.0, 0.1, 0.2, 0.3]`.
 
@@ -144,7 +141,7 @@ Optional LSTM expansion, only if LSTM remains in scope:
 - `head_hidden_dim: [256, 512, 1024]`.
 - `dropout: [0.0, 0.1, 0.2, 0.3]`.
 
-Implementation prerequisite: current tuning spaces support only part of this plan. Add clean tuning support for `max_epochs`, early-stopping patience, `nhead`, `feedforward_dim`, `head_hidden_dim`, Transformer-LSTM transformer/LSTM depths, and LSTM `input_projection_dim` before launching the large sweep.
+Large-capacity tuning-space support is implemented for model-capacity fields. Benchmark command YAMLs are intentionally deferred until remote wave results and final launch cells/study names are settled.
 
 Other planned sweeps:
 
@@ -203,7 +200,6 @@ Completed cleanup:
 Remaining cleanup:
 
 - Remove stale docs, dead codecs/configs, parity defaults, and redundant feature helpers after remote jobs finish or are archived.
-- Add a committed benchmark ledger under `benchmarks/` for durable result rows and wave metadata.
 - Keep raw `outputs/` artifacts and Slurm logs untracked.
 
 ## Research Direction
@@ -214,7 +210,7 @@ Internship 1 baseline replication is economically supported on this benchmark co
 
 Internship 1 optimization is partially supported by time-feature ablations, interval-estimator experiments, and the current HPO wave. Full Bayesian HPO, lookback sweeps, sample-count sweeps, and larger model-capacity searches remain planned work.
 
-Thesis / Internship 2 direction remains aligned with uncertainty quantification and dynamic prediction-window sizing. Before thesis-scale expansion, benchmark results should move from narrative notes into a committed ledger.
+Thesis / Internship 2 direction remains aligned with uncertainty quantification and dynamic prediction-window sizing. Thesis-scale expansion should record completed current benchmark results in `benchmarks/results.csv`.
 
 ### Candidate Ideas
 
@@ -233,4 +229,4 @@ Thesis / Internship 2 direction remains aligned with uncertainty quantification 
 - Put planned benchmark work in `Planned Benchmark Sweeps`.
 - Put speculative feature work in `Candidate Ideas`.
 - Do not mix local current config names with remote old-branch preset names without stating which context applies.
-- Keep completed experiment detail out of this file unless it changes an active decision; use the future benchmark ledger for durable numeric provenance.
+- Keep completed experiment detail out of this file unless it changes an active decision; use `benchmarks/results.csv` for durable current-result provenance.
