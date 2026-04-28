@@ -51,8 +51,8 @@ def _test_store() -> CompiledProblemStore:
 def _prediction_contract():
     prediction = PredictionConfig.model_validate(
         {
-            "id": "candidate_offset_selection",
-            "family_id": "candidate_offset_selection",
+            "id": "icdcs_2026",
+            "family_id": "min_block_fee_multitask",
         }
     )
     return compile_prediction_contract(
@@ -132,7 +132,8 @@ def test_prediction_batch_source_binds_current_family_targets() -> None:
     first_batch = next(iter(batch_source))
 
     assert first_batch.inputs.sample_positions.tolist() == [0, 1]
-    assert tuple(first_batch.targets.candidate_log_fees.shape) == (2, 3)
+    assert tuple(first_batch.targets.min_block_offsets.shape) == (2,)
+    assert tuple(first_batch.targets.min_block_log_fees.shape) == (2,)
     assert tuple(first_batch.targets.candidate_mask.shape) == (2, 3)
     assert first_batch.targets.candidate_mask.tolist() == [
         [True, True, True],

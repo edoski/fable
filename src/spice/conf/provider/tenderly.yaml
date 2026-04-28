@@ -1,0 +1,22 @@
+name: tenderly
+transport:
+  timeout_seconds: 120.0
+  retry_count: 5
+  backoff_factor: 0.25
+acquisition:
+  dry_run: false
+  chunk_size: 4096
+  rpc:
+    batch_size: 16
+    concurrency: 1
+    min_batch_size: 1
+    concurrency_rungs:
+    - 1
+    - 2
+endpoints:
+  ethereum:
+    url: https://mainnet.gateway.tenderly.co/
+  polygon:
+    url: https://tenderly.rpc.polygon.community/
+  avalanche:
+    url: https://avalanche.gateway.tenderly.co/

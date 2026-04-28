@@ -177,10 +177,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
 
     block_client = BlockRpcClient(config.rpc_endpoint, config.chain)
     try:
-        evaluation_plan = await block_client.plan_window(
-            evaluation_window,
-            chunk_size=config.acquisition.chunk_size,
-        )
+        evaluation_plan = await block_client.plan_window(evaluation_window)
         recent_block_interval_seconds = await block_client.estimate_recent_block_interval()
         bootstrap_history_window_seconds = contract.initial_history_window_seconds(
             recent_block_interval_seconds,
@@ -191,7 +188,6 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
         )
         history_plan = await block_client.plan_window(
             _history_window(config, requested_history_window_seconds),
-            chunk_size=config.acquisition.chunk_size,
         )
 
         if config.acquisition.dry_run:
@@ -261,7 +257,6 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
                 )
                 history_plan = await block_client.plan_window(
                     _history_window(config, requested_history_window_seconds),
-                    chunk_size=config.acquisition.chunk_size,
                 )
                 active_reporter.milestone(
                     "history refilling "

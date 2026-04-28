@@ -181,12 +181,12 @@ def acquire_command(
             help="Override the features spec.",
         ),
     ] = None,
-    acquisition: Annotated[
+    provider: Annotated[
         str | None,
         _selection_option(
-            "--acquisition",
-            metavar="ACQUISITION",
-            help="Override the acquisition spec.",
+            "--provider",
+            metavar="PROVIDER",
+            help="Override the RPC provider spec.",
         ),
     ] = None,
     storage_root: Annotated[
@@ -216,7 +216,7 @@ def acquire_command(
                 chain=chain,
                 problem=problem,
                 features=features,
-                acquisition=acquisition,
+                provider=provider,
                 storage_root=storage_root,
                 dry_run=dry_run,
             ),

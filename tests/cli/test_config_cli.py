@@ -124,6 +124,17 @@ def test_config_public_commands_only(isolate_conf_root) -> None:
     assert "poisson_replay_2h_mean" in evaluation_result.stdout.splitlines()
     assert "poisson_replay_2h_total" in evaluation_result.stdout.splitlines()
 
+    acquisition_result = runner.invoke(app, ["config", "list", "acquisition"])
+    assert acquisition_result.exit_code != 0
+
+    builder_result = runner.invoke(app, ["config", "list", "dataset-builder"])
+    assert builder_result.exit_code == 0, builder_result.stdout
+    assert builder_result.stdout.splitlines() == ["fixed_sequence_temporal"]
+
+    prediction_result = runner.invoke(app, ["config", "list", "prediction"])
+    assert prediction_result.exit_code == 0, prediction_result.stdout
+    assert prediction_result.stdout.splitlines() == ["icdcs_2026"]
+
 
 def test_config_edit_seeds_missing_file_and_uses_editor(
     tmp_path: Path,

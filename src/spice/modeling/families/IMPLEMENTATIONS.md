@@ -110,7 +110,6 @@ Model families do not hard-code economic targets. They ask the prediction contra
 
 | Prediction family | Output heads |
 | --- | --- |
-| `candidate_offset_selection` | `candidate_logits` |
 | `min_block_fee_multitask` | `min_block_offset_logits`, `min_block_log_fee` |
 
 ## Failure Modes

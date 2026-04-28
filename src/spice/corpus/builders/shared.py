@@ -270,12 +270,10 @@ def partial_plan(
     start_block: int,
     end_block: int,
     window: TimestampRange,
-    chunk_size: int,
 ) -> BlockPullPlan | None:
     if end_block <= start_block:
         return None
     return block_client.plan_block_range(
         BlockRange(start=start_block, end=end_block),
         window=window,
-        chunk_size=chunk_size,
     )

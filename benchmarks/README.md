@@ -27,9 +27,15 @@ Optional existing ML metric columns:
 
 - `total_loss`
 - `offset_accuracy`
+- `macro_f1`
 - `classification_loss`
 - `regression_loss`
+- `log_fee_mae`
+- `log_fee_mse`
 - `exact_optimum_hit_rate`
+
+`log_fee_mae` and `log_fee_mse` are measured in unnormalized log-fee units. They are
+prediction-family diagnostics, not raw-fee economic metrics.
 
 Blank optional metric cells mean the metric was not collected for that prediction family or
 result. They do not mean zero.

@@ -56,6 +56,47 @@ Replacement: current runnable architecture uses `observed_time_window` with
 `slot_spacing.id: nominal` by default. `slot_spacing.id: recent_median` remains
 available only as an explicit slot-spacing comparison problem.
 
+## Variable Sequence Temporal Builder
+
+Former runnable names included `variable_sequence_temporal` dataset-builder
+configs and runtime metadata.
+
+What it did: this builder let compiler-derived context start rows define
+per-sample sequence length. It selected the tail `sample_count` valid anchors,
+split them chronologically, and persisted compiler runtime metadata.
+
+Why it existed: it was the first generic temporal dataset builder and matched
+the variable lookback geometry emitted by the problem compiler.
+
+Why it was removed: the thesis benchmark path now uses one fixed context length
+derived from training data. Keeping both builders runnable preserved two dataset
+semantics for the same benchmark surface without adding current experimental
+value.
+
+Replacement: current runnable architecture uses `fixed_sequence_temporal`, which
+persists the calibrated sequence length, median block cadence, bounds, and
+compiler metadata.
+
+## Candidate Offset Selection Prediction Family
+
+Former runnable names included `candidate_offset_selection` prediction configs
+and the candidate-logit-only prediction family.
+
+What it did: this family trained a softmax policy over candidate offsets using
+expected fee cost and decoded the masked argmax offset.
+
+Why it existed: it was a compact experimental offset-selection target useful for
+early model and evaluator development.
+
+Why it was removed: current thesis and paper-aligned work uses the ICDCS 2026
+min-block-fee multitask target. Keeping the older family runnable duplicated the
+prediction surface and pulled extra target/loss/metric code into the current
+architecture.
+
+Replacement: current runnable architecture uses `icdcs_2026`, backed by
+`min_block_fee_multitask`, with offset classification plus min-log-fee
+regression.
+
 ## Removed Benchmark Matrices
 
 The clean refactor removed historical benchmark YAMLs that depended on unsafe or

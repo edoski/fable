@@ -66,8 +66,11 @@ LEDGER_COLUMNS = (
     "baseline_cost_over_optimum",
     "total_loss",
     "offset_accuracy",
+    "macro_f1",
     "classification_loss",
     "regression_loss",
+    "log_fee_mae",
+    "log_fee_mse",
     "exact_optimum_hit_rate",
     "notes",
 )

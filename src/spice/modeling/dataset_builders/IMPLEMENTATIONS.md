@@ -17,25 +17,6 @@ canonical rows
 
 The builder must preserve temporal ordering. Random train/test splitting would leak future data into training.
 
-## `variable_sequence_temporal`
-
-`variable_sequence_temporal` builds the full feature/problem store first, then selects the last `sample_count` valid samples.
-
-Training flow:
-
-```text
-sort rows by block_number
-  -> compile feature matrix
-  -> compile problem store
-  -> take tail valid samples
-  -> chronological split
-  -> fit scaler on train windows
-```
-
-The split is chronological over selected samples. Earlier samples train the model; later samples validate and test it.
-
-Inference flow concatenates sorted history and optional evaluation rows, rebuilds the delay store from persisted compiler metadata, and filters anchors to the requested evaluation timestamp window.
-
 ## `fixed_sequence_temporal`
 
 `fixed_sequence_temporal` derives a fixed sequence length from training data and stores it in runtime metadata.
@@ -69,12 +50,11 @@ The calibration span is derived from selected training samples, not the raw corp
 
 | Builder | Selection unit | Context length | Runtime metadata |
 | --- | --- | --- | --- |
-| `variable_sequence_temporal` | Tail valid samples | Variable by compiler geometry | Compiler metadata. |
 | `fixed_sequence_temporal` | Tail valid samples | Fixed from train sample median delta | Sequence length plus compiler metadata. |
 
 ## Scaler Ownership
 
-Both builders fit input normalization on training windows only. The scaler is persisted in the artifact and reused at inference.
+The builder fits input normalization on training windows only. The scaler is persisted in the artifact and reused at inference.
 
 ```text
 train indices

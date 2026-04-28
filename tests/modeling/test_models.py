@@ -13,8 +13,8 @@ from spice.modeling.models import (
     TransformerLSTMBaseline,
 )
 from spice.modeling.representations import build_sequence_input_batch
-from spice.prediction.families.candidate_offset_selection.outputs import (
-    CANDIDATE_LOGITS_HEAD_ID,
+from spice.prediction.families.min_block_fee_multitask.outputs import (
+    OFFSET_LOGITS_HEAD_ID,
     build_output_spec,
 )
 from spice.temporal.problem_store import CompiledProblemStore
@@ -53,10 +53,10 @@ def _test_store() -> CompiledProblemStore:
 def _assert_model_ignores_padded_timesteps(model, inputs, input_mask, max_candidate_slots) -> None:
     model.eval()
     with torch.no_grad():
-        baseline = model(inputs, input_mask).head(CANDIDATE_LOGITS_HEAD_ID)
+        baseline = model(inputs, input_mask).head(OFFSET_LOGITS_HEAD_ID)
         perturbed = inputs.clone()
         perturbed[~input_mask.bool()] = 1000.0
-        changed = model(perturbed, input_mask).head(CANDIDATE_LOGITS_HEAD_ID)
+        changed = model(perturbed, input_mask).head(OFFSET_LOGITS_HEAD_ID)
 
     assert tuple(baseline.shape) == (inputs.shape[0], max_candidate_slots)
     assert torch.allclose(baseline, changed, atol=1e-5, rtol=1e-5)
@@ -106,7 +106,7 @@ def _assert_model_ignores_padded_timesteps(model, inputs, input_mask, max_candid
     "The PyTorch API of nested tensors is in prototype stage and will change "
     "in the near future.*:UserWarning"
 )
-def test_sequence_models_emit_candidate_logits_and_ignore_padding(model_type, config) -> None:
+def test_sequence_models_emit_offset_logits_and_ignore_padding(model_type, config) -> None:
     torch.manual_seed(5)
     store = _test_store()
     batch = build_sequence_input_batch(store, sample_indices=np.array([0, 1, 2, 3]))

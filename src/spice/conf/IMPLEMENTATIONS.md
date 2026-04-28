@@ -15,10 +15,10 @@ dataset_builder: fixed_sequence_temporal
 model: lstm
 prediction: icdcs_2026
 objective: profit_poisson_replay_2h_mean
-acquisition: {provider: publicnode, id: default}
+acquisition: {provider: publicnode}
 training: {id: default, split: default}
 tuning: {id: default, space: lstm_fixed_context}
-evaluation: {id: poisson_replay_2h_mean, delay_seconds: 36}
+evaluation: {id: poisson_replay_2h_mean}
 ```
 
 Requests may override surface fields by name. `evaluation.delay_seconds` is optional in the surface; resolution defaults it to `problem.max_delay_seconds` for evaluation workflows.
@@ -35,8 +35,7 @@ The surface YAML uses targeted nesting where the nesting matches ownership:
 | `model` | Model family config. |
 | `prediction` | Prediction head/decoder semantics. |
 | `objective` | Training/tuning objective. |
-| `acquisition.provider` | RPC provider preset. |
-| `acquisition.id` | Acquisition behavior preset. |
+| `acquisition.provider` | RPC provider preset. Provider YAML owns endpoint and acquisition runtime settings. |
 | `training.id` | Training hyperparameter preset. |
 | `training.split` | Split preset. |
 | `tuning.id` | Optuna runtime preset. |
@@ -50,7 +49,7 @@ Chains: `ethereum`, `polygon`, `avalanche`.
 
 Provider: `publicnode`.
 
-Dataset: `icdcs_2026`, plus `icdcs_2026_3m` for large sample-count work through the `current_row_fee_dynamics_3m` surface.
+Dataset: `icdcs_2026`.
 
 Features: `core_fee_dynamics`. `core_fee_dynamics_elapsed_position` is a post-refactor ablation preset only; it is identical to `core_fee_dynamics` plus `elapsed_seconds`, a corpus-position signal.
 
@@ -64,13 +63,12 @@ Problems:
 Dataset builders:
 
 - `fixed_sequence_temporal`: derives and persists one fixed context length from training data.
-- `variable_sequence_temporal`: keeps compiler-derived variable context lengths.
 
 Evaluators: `fullset`, `poisson_replay_2h_mean`, `poisson_replay_2h_total`, `zero_stop_rollout_fullset`, `anchor_basefee_fullset`.
 
-Benchmarks: `large_capacity_hpo`, `lookback_window_sweep`, `sample_count_sweep`, and `slot_spacing_sweep`.
+Benchmarks: `safe_baseline_grid`, `large_capacity_hpo`, `lookback_window_sweep`, `slot_spacing_sweep`, `elapsed_position_ablation`, and `delay_degradation_sweep`.
 
-`large_capacity_hpo` preserves the original large-capacity cells and moves them to the current safe surface. `sample_count_sweep` uses `current_row_fee_dynamics` for `400k`/`1m` cells and `current_row_fee_dynamics_3m` for `3m` cells. `slot_spacing_sweep` compares `nominal` and `recent_median`; it replaces the old problem-family sweep name because the only remaining problem-family dimension is slot spacing.
+`safe_baseline_grid` is the untuned ETH/POL/AVAX by LSTM/Transformer/Transformer-LSTM baseline. `large_capacity_hpo` is the bounded calibration search: the same 3x3 grid, large-capacity spaces, and 40 trials per cell. `lookback_window_sweep`, `slot_spacing_sweep`, `elapsed_position_ablation`, and `delay_degradation_sweep` are fixed train/evaluate grids, not per-cell HPO grids. `delay_degradation_sweep` trains one artifact per `max_delay_seconds` value and evaluates with the same delay through the default `evaluation.delay_seconds = problem.max_delay_seconds` resolution. Sample-count sweeps are deferred because larger history windows need explicit date-range and protocol-regime checks.
 
 ## Invariants
 

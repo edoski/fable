@@ -59,7 +59,7 @@ class WorkflowRequestBase(ConfigModel):
 
 
 class AcquireWorkflowRequest(WorkflowRequestBase):
-    acquisition: str | None = None
+    provider: str | None = None
     dry_run: bool | None = None
 
 
@@ -189,7 +189,7 @@ def resolve_workflow_config(
             evaluation=getattr(request, "evaluation", None),
             model=getattr(request, "model", None),
             tuning_space=getattr(request, "tuning_space", None),
-            acquisition=getattr(request, "acquisition", None),
+            provider=getattr(request, "provider", None),
             training=getattr(request, "training", None),
             split=getattr(request, "split", None),
             tuning=getattr(request, "tuning", None),
@@ -385,10 +385,6 @@ def _resolve_model(name: str) -> ModelConfig[str]:
     return coerce_model_config(load_named_group(name, _MODEL_GROUP))
 
 
-def _resolve_acquisition(name: str) -> AcquisitionConfig:
-    return AcquisitionConfig.model_validate(load_named_group(name, "acquisition"))
-
-
 def _resolve_training(name: str) -> TrainingConfig:
     return TrainingConfig.model_validate(load_named_group(name, "training"))
 
@@ -443,21 +439,8 @@ def _resolve_artifact(artifact: ArtifactConfig | None) -> ArtifactConfig:
     return artifact or ArtifactConfig()
 
 
-def _resolve_rpc_endpoint(
-    provider_name: str,
-    *,
-    chain: ChainSpec,
-) -> ResolvedRpcEndpointConfig:
-    provider = ProviderSpec.model_validate(load_named_group(provider_name, "provider"))
-    endpoint = provider.endpoint_config_for(chain.name)
-    return ResolvedRpcEndpointConfig(
-        provider_name=provider.name,
-        url=endpoint.url,
-        reference=endpoint.reference or endpoint.url,
-        timeout_seconds=provider.transport.timeout_seconds,
-        retry_count=provider.transport.retry_count,
-        backoff_factor=provider.transport.backoff_factor,
-    )
+def _resolve_provider(name: str) -> ProviderSpec:
+    return ProviderSpec.model_validate(load_named_group(name, "provider"))
 
 
 def _resolve_model_workflow_base(
@@ -533,9 +516,22 @@ def _resolve_acquire_config(frame: SurfaceFrame, *, dry_run: bool | None) -> Acq
     chain = _resolve_chain(frame.chain)
     storage = _resolve_storage(frame.storage)
     problem = _resolve_problem(frame.problem)
-    rpc_endpoint = _resolve_rpc_endpoint(frame.provider, chain=chain)
+    provider = _resolve_provider(frame.provider)
+    endpoint = provider.endpoint_config_for(chain.name)
+    rpc_endpoint = ResolvedRpcEndpointConfig(
+        provider_name=provider.name,
+        url=endpoint.url,
+        reference=endpoint.reference or endpoint.url,
+        timeout_seconds=provider.transport.timeout_seconds,
+        retry_count=provider.transport.retry_count,
+        backoff_factor=provider.transport.backoff_factor,
+    )
     features = _resolve_features(_required(frame.features, "features"))
-    acquisition = _resolve_acquisition(frame.acquisition_id)
+    if provider.acquisition is None:
+        raise ConfigResolutionError(
+            f"provider {provider.name} must define acquisition settings"
+        )
+    acquisition = provider.acquisition
     if dry_run is not None:
         acquisition = AcquisitionConfig.model_validate(
             {**acquisition.model_dump(mode="json"), "dry_run": dry_run}

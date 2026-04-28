@@ -8,7 +8,6 @@ prediction: icdcs_2026
 objective: profit_poisson_replay_2h_mean
 acquisition:
   provider: publicnode
-  id: default
 training:
   id: default
   split: default
@@ -17,4 +16,3 @@ tuning:
   space: lstm_fixed_context
 evaluation:
   id: poisson_replay_2h_mean
-  delay_seconds: 36

@@ -21,7 +21,6 @@ from ..modeling.dataset_builders import coerce_dataset_builder_config
 from ..modeling.families.registry import coerce_model_config
 from ..objectives import coerce_objective_config
 from .models import (
-    AcquisitionConfig,
     ChainSpec,
     DatasetSpec,
     PredictionConfig,
@@ -38,7 +37,6 @@ _CONF_ROOT = _PACKAGE_CONF_ROOT
 
 
 class ConfigGroup(StrEnum):
-    ACQUISITION = "acquisition"
     BENCHMARK = "benchmark"
     CHAIN = "chain"
     DATASET = "dataset"
@@ -91,13 +89,6 @@ _GROUP_SPECS = (
         directory="benchmark",
         seed_name=None,
         validate=lambda payload: _canonicalize_mapping(payload),
-        public=True,
-    ),
-    GroupSpec(
-        token=ConfigGroup.ACQUISITION.value,
-        directory="acquisition",
-        seed_name="default",
-        validate=AcquisitionConfig.model_validate,
         public=True,
     ),
     GroupSpec(
@@ -160,7 +151,7 @@ _GROUP_SPECS = (
     GroupSpec(
         token=ConfigGroup.DATASET_BUILDER.value,
         directory="dataset_builder",
-        seed_name="variable_sequence_temporal",
+        seed_name="fixed_sequence_temporal",
         validate=coerce_dataset_builder_config,
         identity_field="id",
         seed_from_requested_name=True,
@@ -210,7 +201,7 @@ _GROUP_SPECS = (
     GroupSpec(
         token=ConfigGroup.PREDICTION.value,
         directory="prediction",
-        seed_name="candidate_offset_selection",
+        seed_name="icdcs_2026",
         validate=PredictionConfig.model_validate,
         identity_field="id",
         seed_from_requested_name=True,

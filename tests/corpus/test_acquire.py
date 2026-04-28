@@ -15,9 +15,9 @@ from spice.acquisition.rpc import (
 )
 from spice.config import AcquireConfig, WorkflowTask
 from spice.core.reporting import Reporter
-from spice.storage.catalog import list_dataset_records
 from spice.storage.corpus import list_acquire_runs, load_dataset_manifest
 from spice.storage.layout import resolve_workflow_paths
+from spice.storage.roots import DatasetSelector, list_dataset_records
 from spice.workflows.acquire import run as run_acquire
 from tests.dataset_helpers import make_block_rows
 
@@ -58,7 +58,6 @@ def _plan_for_window(
         window=window,
         block_range=BlockRange(start=start_block, end=start_block + row_count),
         expected_rows=row_count,
-        expected_files=max(1, math.ceil(row_count / chunk_size)),
     )
 
 
@@ -98,7 +97,7 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
             del sample_size
             return 12.0
 
-        async def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
+        async def plan_window(self, window: TimestampRange) -> BlockPullPlan:
             if window == evaluation_plan.window:
                 plan = evaluation_plan
             else:
@@ -106,7 +105,7 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
                 plan = _plan_for_window(
                     window,
                     start_block=100,
-                    chunk_size=chunk_size,
+                    chunk_size=config.acquisition.chunk_size,
                 )
             self._planned_windows.append(plan)
             return plan
@@ -116,13 +115,11 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
             block_range: BlockRange,
             *,
             window: TimestampRange,
-            chunk_size: int,
         ) -> BlockPullPlan:
             plan = BlockPullPlan(
                 window,
                 block_range=block_range,
                 expected_rows=block_range.count,
-                expected_files=max(1, math.ceil(block_range.count / chunk_size)),
             )
             self._planned_windows.append(plan)
             return plan
@@ -158,9 +155,11 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
     assert paths.history_dir.is_dir()
     assert paths.evaluation_dir.is_dir()
     datasets = list_dataset_records(
-        paths.catalog_db,
-        chain_name=config.chain.name,
-        dataset_name=config.dataset.name,
+        paths.output_root,
+        selector=DatasetSelector(
+            chain_name=config.chain.name,
+            dataset_name=config.dataset.name,
+        ),
     )
     assert len(datasets) == 1
     assert datasets[0].dataset_id == paths.corpus_id
@@ -194,8 +193,7 @@ def test_acquire_cancellation_during_planning_logs_warning(
             await asyncio.sleep(0.2)
             return 12.0
 
-        async def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
-            del chunk_size
+        async def plan_window(self, window: TimestampRange) -> BlockPullPlan:
             await asyncio.sleep(0.2)
             return _plan_for_window(
                 window,
@@ -247,8 +245,12 @@ def test_acquire_dry_run_emits_compact_output(
             del sample_size
             return 12.0
 
-        async def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
-            return _plan_for_window(window, start_block=100, chunk_size=chunk_size)
+        async def plan_window(self, window: TimestampRange) -> BlockPullPlan:
+            return _plan_for_window(
+                window,
+                start_block=100,
+                chunk_size=config.acquisition.chunk_size,
+            )
 
     monkeypatch.setattr("spice.workflows.acquire.BlockRpcClient", FakeAcquireClient)
 
@@ -332,8 +334,7 @@ def _exercise_short_history_refill(
             del sample_size
             return 12.0
 
-        async def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
-            del chunk_size
+        async def plan_window(self, window: TimestampRange) -> BlockPullPlan:
             if window == evaluation_plan.window:
                 return evaluation_plan
             nonlocal history_plan_calls
@@ -344,7 +345,6 @@ def _exercise_short_history_refill(
                 window=window,
                 block_range=template.block_range,
                 expected_rows=template.expected_rows,
-                expected_files=template.expected_files,
             )
 
         def plan_block_range(
@@ -352,14 +352,12 @@ def _exercise_short_history_refill(
             block_range: BlockRange,
             *,
             window: TimestampRange,
-            chunk_size: int,
         ) -> BlockPullPlan:
             partial_ranges.append((block_range.start, block_range.end))
             return BlockPullPlan(
                 window=window,
                 block_range=block_range,
                 expected_rows=block_range.count,
-                expected_files=max(1, math.ceil(block_range.count / chunk_size)),
             )
 
         async def get_block_rows(self, start: int, end: int):

@@ -1,6 +1,6 @@
 id: current_row_recent_median
 lookback_seconds: 600
-sample_count: 400000
+sample_count: 1000000
 max_delay_seconds: 36
 compiler:
   id: observed_time_window

@@ -47,11 +47,6 @@ class CompiledProblemStore:
     def n_samples(self) -> int:
         return int(self.anchor_rows.shape[0])
 
-    @property
-    def candidate_counts(self) -> IntVector:
-        return self.candidate_end_rows - self.candidate_start_rows
-
-
 def tail_sample_indices(
     store: CompiledProblemStore,
     *,

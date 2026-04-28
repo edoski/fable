@@ -1,59 +1,23 @@
 cases:
-  - id: large_capacity_ethereum_transformer
+  - id: large_capacity_hpo
     base:
       surface: current_row_fee_dynamics
-      chain: ethereum
       training: default
       split: default
       tuning: extensive
-      study: large_capacity_ethereum_transformer
+      study: large_capacity_hpo
     dimensions:
+      data:
+        - set: {chain: ethereum}
+        - set: {chain: polygon}
+        - set: {chain: avalanche}
       models:
+        - set:
+            model: lstm
+            tuning_space: lstm_large_capacity
         - set:
             model: transformer
             tuning_space: transformer_large_capacity
-      problems:
-        - ref: current_row_nominal
-    steps:
-      - id: tune
-        workflow: tune
-        set:
-          objective: validation_total_loss
-          evaluation: fullset
-          trial_count: 120
-      - id: train_tuned
-        workflow: train
-        after: [tune]
-        set:
-          objective: validation_total_loss
-          evaluation: fullset
-          variant: tuned
-      - id: evaluate_tuned
-        workflow: evaluate
-        after: [train_tuned]
-        dimensions:
-          scoring:
-            - set:
-                objective: profit_poisson_replay_2h_mean
-                evaluation: poisson_replay_2h_mean
-            - set:
-                objective: profit_poisson_replay_2h_total
-                evaluation: poisson_replay_2h_total
-          runtime:
-            - set:
-                variant: tuned
-                delay_seconds: 36
-
-  - id: large_capacity_ethereum_transformer_lstm
-    base:
-      surface: current_row_fee_dynamics
-      chain: ethereum
-      training: default
-      split: default
-      tuning: extensive
-      study: large_capacity_ethereum_transformer_lstm
-    dimensions:
-      models:
         - set:
             model: transformer_lstm
             tuning_space: transformer_lstm_large_capacity
@@ -63,118 +27,20 @@ cases:
       - id: tune
         workflow: tune
         set:
-          objective: validation_total_loss
-          evaluation: fullset
-          trial_count: 120
+          objective: profit_poisson_replay_2h_mean
+          evaluation: poisson_replay_2h_mean
+          trial_count: 40
       - id: train_tuned
         workflow: train
         after: [tune]
         set:
-          objective: validation_total_loss
-          evaluation: fullset
+          objective: profit_poisson_replay_2h_mean
+          evaluation: poisson_replay_2h_mean
           variant: tuned
       - id: evaluate_tuned
         workflow: evaluate
         after: [train_tuned]
-        dimensions:
-          scoring:
-            - set:
-                objective: profit_poisson_replay_2h_mean
-                evaluation: poisson_replay_2h_mean
-            - set:
-                objective: profit_poisson_replay_2h_total
-                evaluation: poisson_replay_2h_total
-          runtime:
-            - set:
-                variant: tuned
-                delay_seconds: 36
-
-  - id: large_capacity_avalanche_transformer_lstm
-    base:
-      surface: current_row_fee_dynamics
-      chain: avalanche
-      training: default
-      split: default
-      tuning: extensive
-      study: large_capacity_avalanche_transformer_lstm
-    dimensions:
-      models:
-        - set:
-            model: transformer_lstm
-            tuning_space: transformer_lstm_large_capacity
-      problems:
-        - ref: current_row_nominal
-    steps:
-      - id: tune
-        workflow: tune
         set:
-          objective: validation_total_loss
-          evaluation: fullset
-          trial_count: 120
-      - id: train_tuned
-        workflow: train
-        after: [tune]
-        set:
-          objective: validation_total_loss
-          evaluation: fullset
+          objective: profit_poisson_replay_2h_mean
+          evaluation: poisson_replay_2h_mean
           variant: tuned
-      - id: evaluate_tuned
-        workflow: evaluate
-        after: [train_tuned]
-        dimensions:
-          scoring:
-            - set:
-                objective: profit_poisson_replay_2h_mean
-                evaluation: poisson_replay_2h_mean
-            - set:
-                objective: profit_poisson_replay_2h_total
-                evaluation: poisson_replay_2h_total
-          runtime:
-            - set:
-                variant: tuned
-                delay_seconds: 36
-
-  - id: large_capacity_avalanche_transformer
-    base:
-      surface: current_row_fee_dynamics
-      chain: avalanche
-      training: default
-      split: default
-      tuning: extensive
-      study: large_capacity_avalanche_transformer
-    dimensions:
-      models:
-        - set:
-            model: transformer
-            tuning_space: transformer_large_capacity
-      problems:
-        - ref: current_row_nominal
-    steps:
-      - id: tune
-        workflow: tune
-        set:
-          objective: validation_total_loss
-          evaluation: fullset
-          trial_count: 120
-      - id: train_tuned
-        workflow: train
-        after: [tune]
-        set:
-          objective: validation_total_loss
-          evaluation: fullset
-          variant: tuned
-      - id: evaluate_tuned
-        workflow: evaluate
-        after: [train_tuned]
-        dimensions:
-          scoring:
-            - set:
-                objective: profit_poisson_replay_2h_mean
-                evaluation: poisson_replay_2h_mean
-            - set:
-                objective: profit_poisson_replay_2h_total
-                evaluation: poisson_replay_2h_total
-          runtime:
-            - set:
-                variant: tuned
-                delay_seconds: 36

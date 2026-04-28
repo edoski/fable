@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import numpy as np
 import pytest
@@ -10,7 +11,11 @@ from spice.config import PredictionConfig
 from spice.modeling.models import ModelOutputs
 from spice.prediction import ActionSpaceDecodeContext, DecodedOffsets, compile_prediction_contract
 from spice.prediction.families.min_block_fee_multitask.batch import (
+    MinBlockFeeTargetBatch,
     MinBlockFeeTrainingState,
+)
+from spice.prediction.families.min_block_fee_multitask.metrics import (
+    compute_batch_loss_and_state,
 )
 from spice.prediction.families.min_block_fee_multitask.outputs import (
     MIN_LOG_FEE_HEAD_ID,
@@ -85,7 +90,10 @@ def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
         sample_indices,
         execution_policy=_execution_policy(),
     )
-    batch = prepared_targets.build_batch(torch.arange(store.n_samples, dtype=torch.int64))
+    batch = cast(
+        MinBlockFeeTargetBatch,
+        prepared_targets.build_batch(torch.arange(store.n_samples, dtype=torch.int64)),
+    )
 
     np.testing.assert_array_equal(
         batch.min_block_offsets.cpu().numpy(),
@@ -134,7 +142,10 @@ def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
     metrics = accumulator.finalize()
     assert loss.item() < 0.5
     assert metrics.require("offset_accuracy") == pytest_approx(1.0)
+    assert metrics.require("macro_f1") == pytest_approx(1.0)
     assert metrics.require("regression_loss") == pytest_approx(0.0)
+    assert metrics.require("log_fee_mae") == pytest_approx(0.0)
+    assert metrics.require("log_fee_mse") == pytest_approx(0.0)
 
     predictions = contract.allocate_decoded_result(store.n_samples)
     assert isinstance(predictions, DecodedOffsets)
@@ -173,7 +184,10 @@ def test_min_block_fee_multitask_uses_execution_policy_targets() -> None:
         sample_indices,
         execution_policy=_execution_policy(),
     )
-    batch = prepared_targets.build_batch(torch.arange(store.n_samples, dtype=torch.int64))
+    batch = cast(
+        MinBlockFeeTargetBatch,
+        prepared_targets.build_batch(torch.arange(store.n_samples, dtype=torch.int64)),
+    )
 
     np.testing.assert_array_equal(
         batch.min_block_offsets.cpu().numpy(),
@@ -214,9 +228,58 @@ def test_min_block_fee_multitask_uses_full_action_mask_for_fixed_ex_ante_windows
         sample_indices,
         execution_policy=_execution_policy(),
     )
-    batch = prepared_targets.build_batch(torch.arange(store.n_samples, dtype=torch.int64))
+    batch = cast(
+        MinBlockFeeTargetBatch,
+        prepared_targets.build_batch(torch.arange(store.n_samples, dtype=torch.int64)),
+    )
 
     assert batch.candidate_mask.cpu().numpy().all()
+
+
+def test_min_block_fee_multitask_macro_f1_and_log_fee_errors() -> None:
+    training_state = MinBlockFeeTrainingState(
+        class_weights=torch.ones(3, dtype=torch.float32),
+        fee_mean=torch.tensor(1.0, dtype=torch.float32),
+        fee_std=torch.tensor(2.0, dtype=torch.float32),
+    )
+    target_log_fees = torch.tensor([1.0, 2.0, 4.0, 5.0], dtype=torch.float32)
+    predicted_log_fees = torch.tensor([1.0, 1.0, 5.0, 3.0], dtype=torch.float32)
+    batch = MinBlockFeeTargetBatch(
+        candidate_mask=torch.ones((4, 3), dtype=torch.bool),
+        min_block_offsets=torch.tensor([0, 1, 1, 2], dtype=torch.int64),
+        min_block_log_fees=target_log_fees,
+    )
+    offset_logits = torch.tensor(
+        [
+            [5.0, 0.0, 0.0],
+            [5.0, 0.0, 0.0],
+            [0.0, 5.0, 0.0],
+            [0.0, 5.0, 0.0],
+        ],
+        dtype=torch.float32,
+    )
+    fee_predictions = (
+        predicted_log_fees - training_state.fee_mean
+    ) / training_state.fee_std
+
+    _, state = compute_batch_loss_and_state(
+        offset_logits,
+        fee_predictions,
+        batch,
+        training_state=training_state,
+    )
+    accumulator = create_metric_accumulator()
+    accumulator.update(state)
+    metrics = accumulator.finalize()
+
+    assert metrics.require("macro_f1") == pytest_approx(7.0 / 18.0)
+    assert metrics.require("log_fee_mae") == pytest_approx(1.0)
+    assert metrics.require("log_fee_mse") == pytest_approx(1.5)
+
+
+def create_metric_accumulator():
+    contract = _contract()
+    return contract.create_epoch_accumulator()
 
 
 def pytest_approx(value: float):

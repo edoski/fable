@@ -17,38 +17,38 @@ from .catalog import (
     CatalogDatasetRecord,
     CatalogStudyRecord,
 )
-from .catalog import (
+from .catalog.store import (
     delete_artifact_record as _delete_artifact_catalog_record,
 )
-from .catalog import (
+from .catalog.store import (
     delete_dataset_record as _delete_dataset_catalog_record,
 )
-from .catalog import (
+from .catalog.store import (
     delete_study_record as _delete_study_catalog_record,
-)
-from .catalog import (
-    list_artifact_records as _list_artifact_catalog_records,
-)
-from .catalog import (
-    list_artifacts_for_dataset as _list_artifacts_for_dataset_catalog_records,
-)
-from .catalog import (
-    list_artifacts_for_study as _list_artifacts_for_study_catalog_records,
-)
-from .catalog import (
-    list_dataset_records as _list_dataset_catalog_records,
-)
-from .catalog import (
-    list_studies_for_dataset as _list_studies_for_dataset_catalog_records,
-)
-from .catalog import (
-    list_study_records as _list_study_catalog_records,
 )
 from .catalog.store import (
     ensure_catalog_db,
     upsert_artifact_record,
     upsert_dataset_record,
     upsert_study_record,
+)
+from .catalog.store import (
+    list_artifact_records as _list_artifact_catalog_records,
+)
+from .catalog.store import (
+    list_artifacts_for_dataset as _list_artifacts_for_dataset_catalog_records,
+)
+from .catalog.store import (
+    list_artifacts_for_study as _list_artifacts_for_study_catalog_records,
+)
+from .catalog.store import (
+    list_dataset_records as _list_dataset_catalog_records,
+)
+from .catalog.store import (
+    list_studies_for_dataset as _list_studies_for_dataset_catalog_records,
+)
+from .catalog.store import (
+    list_study_records as _list_study_catalog_records,
 )
 from .corpus import load_dataset_manifest
 from .engine import RootKind, detect_root_kind, state_db_path

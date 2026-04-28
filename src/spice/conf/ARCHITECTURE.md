@@ -22,7 +22,6 @@ Add a new YAML file when a reusable named concept exists. Add a new group only a
 conf/
   surface/          reusable workflow compositions
   benchmark/        experiment matrices that expand into workflow DAGs
-  acquisition/      raw data acquisition settings
   chain/            chain identity and timing assumptions
   dataset/          dataset date/window identity
   provider/         RPC endpoint/provider specs

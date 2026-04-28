@@ -14,12 +14,6 @@ class PredictionFamilySpec:
     compile_contract: Callable[[str], CompiledPredictionContract]
 
 
-def _compile_candidate_offset_selection(prediction_id: str) -> CompiledPredictionContract:
-    from .families.candidate_offset_selection import compile_prediction_family
-
-    return compile_prediction_family(prediction_id)
-
-
 def _compile_min_block_fee_multitask(prediction_id: str) -> CompiledPredictionContract:
     from .families.min_block_fee_multitask import compile_prediction_family
 
@@ -27,9 +21,6 @@ def _compile_min_block_fee_multitask(prediction_id: str) -> CompiledPredictionCo
 
 
 _PREDICTION_FAMILY_SPECS: dict[str, PredictionFamilySpec] = {
-    "candidate_offset_selection": PredictionFamilySpec(
-        compile_contract=_compile_candidate_offset_selection,
-    ),
     "min_block_fee_multitask": PredictionFamilySpec(
         compile_contract=_compile_min_block_fee_multitask,
     ),

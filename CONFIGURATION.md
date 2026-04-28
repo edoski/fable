@@ -19,7 +19,6 @@ objective: profit_poisson_replay_2h_mean
 
 acquisition:
   provider: publicnode
-  id: default
 training:
   id: default
   split: default
@@ -28,19 +27,19 @@ tuning:
   space: lstm_fixed_context
 evaluation:
   id: poisson_replay_2h_mean
-  delay_seconds: 36
 ```
 
-The default runnable surface is `current_row_fee_dynamics`. `model`, `features`, `objective`, `evaluation`, `tuning_space`, `delay_seconds`, `study`, `variant`, and `trial_count` may be supplied by benchmark cases or CLI overrides when a surface leaves variation to the run request.
+The default runnable surface is `current_row_fee_dynamics`. `evaluation.delay_seconds` is usually omitted; evaluation workflows default it from `problem.max_delay_seconds`. `model`, `features`, `objective`, `evaluation`, `tuning_space`, `delay_seconds`, `study`, `variant`, and `trial_count` may be supplied by benchmark cases or CLI overrides when a surface leaves variation to the run request.
 
 ## Workflow Refs
 
 Workflow sections inside a surface point to named refs:
 
-- `acquisition/default.yaml`
 - `training/default.yaml`
 - `split/default.yaml`
 - `tuning/default.yaml`
+
+Acquisition endpoints and rate controls live on the selected provider, for example `provider/publicnode.yaml` or `provider/tenderly.yaml`.
 
 Add a new named ref only when behavior differs. Small run variation should normally live in benchmark cases or CLI flags.
 
@@ -48,7 +47,7 @@ Add a new named ref only when behavior differs. Small run variation should norma
 
 Workflow commands use `--surface`. `--preset` is intentionally unsupported.
 
-Shared model-workflow selectors include `--chain`, `--problem`, `--features`, `--objective`, `--evaluation`, `--model`, `--tuning-space`, `--training`, `--split`, `--tuning`, and `--study`. `train` and `evaluate` accept `--variant`; `evaluate` accepts `--delay-seconds`; `tune` accepts `--trial-count`. `acquire` accepts `--chain`, `--problem`, `--features`, `--acquisition`, `--dry-run`, and `--storage-root`.
+Shared model-workflow selectors include `--chain`, `--problem`, `--features`, `--objective`, `--evaluation`, `--model`, `--tuning-space`, `--training`, `--split`, `--tuning`, and `--study`. `train` and `evaluate` accept `--variant`; `evaluate` accepts `--delay-seconds`; `tune` accepts `--trial-count`. `acquire` accepts `--chain`, `--problem`, `--features`, `--provider`, `--dry-run`, and `--storage-root`.
 
 Resolution order:
 
@@ -74,7 +73,6 @@ cases:
       surface: current_row_fee_dynamics
       training: default
       split: default
-      tuning: extensive
       study: lookback_window_sweep
     dimensions:
       data:
@@ -97,34 +95,19 @@ cases:
             fields:
               lookback_seconds: [600, 900, 1200]
     steps:
-      - id: tune
-        workflow: tune
-        set:
-          objective: validation_total_loss
-          evaluation: fullset
-          trial_count: 120
-      - id: train_tuned
+      - id: train_baseline
         workflow: train
-        after: [tune]
         set:
-          objective: validation_total_loss
-          evaluation: fullset
-          variant: tuned
-      - id: evaluate_tuned
+          objective: profit_poisson_replay_2h_mean
+          evaluation: poisson_replay_2h_mean
+          variant: baseline
+      - id: evaluate_baseline
         workflow: evaluate
-        after: [train_tuned]
-        dimensions:
-          scoring:
-            - set:
-                objective: profit_poisson_replay_2h_mean
-                evaluation: poisson_replay_2h_mean
-            - set:
-                objective: profit_poisson_replay_2h_total
-                evaluation: poisson_replay_2h_total
-          runtime:
-            - set:
-                variant: tuned
-                delay_seconds: 36
+        after: [train_baseline]
+        set:
+          objective: profit_poisson_replay_2h_mean
+          evaluation: poisson_replay_2h_mean
+          variant: baseline
 ```
 
 Planning validates every row before printing anything:

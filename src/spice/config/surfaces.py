@@ -16,7 +16,6 @@ ConfigT = TypeVar("ConfigT", bound=ConfigModel)
 
 class SurfaceAcquisitionFrame(ConfigModel):
     provider: str
-    id: str
 
 
 class SurfaceTrainingFrame(ConfigModel):
@@ -54,10 +53,6 @@ class SurfaceFrame(ConfigModel):
     @property
     def provider(self) -> str:
         return self.acquisition.provider
-
-    @property
-    def acquisition_id(self) -> str:
-        return self.acquisition.id
 
     @property
     def training_id(self) -> str:
@@ -98,7 +93,7 @@ def apply_request_overrides(
     evaluation: str | None,
     model: str | None,
     tuning_space: str | None,
-    acquisition: str | None,
+    provider: str | None,
     training: str | None,
     split: str | None,
     tuning: str | None,
@@ -125,8 +120,11 @@ def apply_request_overrides(
             cast(SurfaceTuningFrame, updates.get("tuning", frame.tuning)),
             space=tuning_space,
         )
-    if acquisition is not None:
-        updates["acquisition"] = _updated_model(frame.acquisition, id=acquisition)
+    if provider is not None:
+        updates["acquisition"] = _updated_model(
+            cast(SurfaceAcquisitionFrame, updates.get("acquisition", frame.acquisition)),
+            provider=provider,
+        )
     if training is not None:
         updates["training"] = _updated_model(frame.training, id=training)
     if split is not None:

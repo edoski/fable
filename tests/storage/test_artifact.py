@@ -17,7 +17,7 @@ from spice.evaluation import EvaluationRun
 from spice.features import compile_feature_contract
 from spice.modeling.dataset_builders import (
     coerce_dataset_builder_config,
-    variable_sequence_temporal_runtime_metadata,
+    fixed_sequence_temporal_runtime_metadata,
 )
 from spice.modeling.families.lstm import LstmModelConfig
 from spice.modeling.representations import sequence_input_contract
@@ -61,8 +61,8 @@ from spice.temporal.scaling import ScalerStats
 def _prediction_config():
     return PredictionConfig.model_validate(
         {
-            "id": "candidate_offset_selection",
-            "family_id": "candidate_offset_selection",
+            "id": "icdcs_2026",
+            "family_id": "min_block_fee_multitask",
         }
     )
 
@@ -88,7 +88,7 @@ def _features_config():
 
 
 def _dataset_builder_config():
-    return coerce_dataset_builder_config({"id": "variable_sequence_temporal"})
+    return coerce_dataset_builder_config({"id": "fixed_sequence_temporal"})
 
 
 def _objective_config():
@@ -191,13 +191,17 @@ def _manifest(
         split=_split_config(),
         training=_training_config(),
         scaler=ScalerStats(means=[0.0, 1.0], scales=[1.0, 1.0]),
-        builder_runtime_metadata=variable_sequence_temporal_runtime_metadata(
+        builder_runtime_metadata=fixed_sequence_temporal_runtime_metadata(
             compiler_id=problem_contract.compiler_id,
             compiler_runtime_metadata=ObservedTimeWindowRuntimeMetadata(
                 slot_spacing_id="nominal",
                 slot_spacing_seconds=12.0,
                 capability_action_count=4,
             ),
+            sequence_length=16,
+            median_dt_seconds=12.0,
+            min_sequence_length=8,
+            max_sequence_length=64,
         ),
         semantics=ArtifactSemantics(
             problem=problem_contract.semantics,
@@ -214,7 +218,7 @@ def _manifest(
                 input_normalization_id="window_weighted_standard"
             ),
             representation=representation_contract.semantics,
-            dataset_builder=DatasetBuilderSemantics(dataset_builder_id="variable_sequence_temporal"),
+            dataset_builder=DatasetBuilderSemantics(dataset_builder_id="fixed_sequence_temporal"),
             max_candidate_slots=2,
         ),
     )

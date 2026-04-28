@@ -112,6 +112,7 @@ def test_benchmark_collect_writes_and_skips_duplicate_rows(
                     values={
                         "total_loss": 0.3,
                         "offset_accuracy": 0.8,
+                        "macro_f1": 0.7,
                     }
                 )
             )
@@ -147,6 +148,8 @@ def test_benchmark_collect_writes_and_skips_duplicate_rows(
     assert rows[0]["profit_over_baseline"] == "0.12"
     assert rows[0]["total_loss"] == "0.3"
     assert rows[0]["offset_accuracy"] == "0.8"
+    assert rows[0]["macro_f1"] == "0.7"
+    assert rows[0]["log_fee_mae"] == ""
     assert artifact_pulls == [True, True]
 
 

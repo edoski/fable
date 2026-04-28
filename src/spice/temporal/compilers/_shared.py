@@ -8,19 +8,6 @@ from ...features import FeaturePrerequisites, ResolvedFeatureTable
 from ..problem_store import CompiledProblemStore
 
 
-def calibrate_positive_timestamp_delta_seconds(
-    feature_table: ResolvedFeatureTable,
-    *,
-    statistic: object,
-    empty_error: str,
-) -> float:
-    return summarize_positive_timestamp_delta_seconds(
-        feature_table,
-        statistic=statistic,
-        empty_error=empty_error,
-    )
-
-
 def summarize_positive_timestamp_delta_seconds(
     feature_table: ResolvedFeatureTable,
     *,
@@ -35,23 +22,6 @@ def summarize_positive_timestamp_delta_seconds(
     if statistic_value == "mean":
         return float(np.mean(positive_deltas))
     return float(np.median(positive_deltas))
-
-
-def resolve_runtime_interval_seconds(
-    *,
-    source: object,
-    calibrated_interval_seconds: float,
-    nominal_block_time_seconds: float | None,
-    compiler_label: str,
-    interval_label: str,
-) -> float:
-    if _enum_value(source) == "calibrated":
-        return calibrated_interval_seconds
-    if nominal_block_time_seconds is None or nominal_block_time_seconds <= 0:
-        raise ValueError(
-            f"{compiler_label} requires nominal block time for {interval_label} interval resolution"
-        )
-    return nominal_block_time_seconds
 
 
 def build_timestamp_window_store(

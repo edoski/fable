@@ -228,9 +228,9 @@ spice pull artifact --chain ethereum --dataset icdcs_2026 --features core_fee_dy
 | Temporal compilers | `observed_time_window` |
 | Execution policies | `strict_deadline_miss` |
 | Input normalization | `row_standard`, `window_weighted_standard` |
-| Dataset builders | `variable_sequence_temporal`, `fixed_sequence_temporal` |
+| Dataset builders | `fixed_sequence_temporal` |
 | Model families | `lstm`, `transformer`, `transformer_lstm` |
-| Prediction families | `candidate_offset_selection`, `min_block_fee_multitask` |
+| Prediction families | `min_block_fee_multitask` |
 | Evaluator engines | `replay`, `zero_stop_rollout`, `anchor_basefee` |
 | Remote target | `disi_l40` |
 

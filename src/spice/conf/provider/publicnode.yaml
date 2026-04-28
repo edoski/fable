@@ -3,6 +3,20 @@ transport:
   timeout_seconds: 30.0
   retry_count: 5
   backoff_factor: 0.125
+acquisition:
+  dry_run: false
+  chunk_size: 4096
+  rpc:
+    batch_size: 256
+    concurrency: 12
+    min_batch_size: 32
+    concurrency_rungs:
+    - 1
+    - 2
+    - 4
+    - 6
+    - 8
+    - 12
 endpoints:
   ethereum:
     url: https://ethereum-rpc.publicnode.com

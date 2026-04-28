@@ -33,10 +33,6 @@ class DatasetBuilderConfig(ConfigModel):
         return validate_path_segment(value, label="dataset_builder.id")
 
 
-class VariableSequenceTemporalDatasetBuilderConfig(DatasetBuilderConfig):
-    id: str = "variable_sequence_temporal"
-
-
 class FixedSequenceTemporalDatasetBuilderConfig(DatasetBuilderConfig):
     id: str = "fixed_sequence_temporal"
     min_sequence_length: int = Field(default=64, gt=0)
@@ -51,10 +47,6 @@ class FixedSequenceTemporalDatasetBuilderConfig(DatasetBuilderConfig):
 
 class BuilderRuntimeMetadata(ConfigModel):
     compiler_runtime_metadata: dict[str, object]
-
-
-class VariableSequenceTemporalBuilderRuntimeMetadata(BuilderRuntimeMetadata):
-    pass
 
 
 class FixedSequenceTemporalBuilderRuntimeMetadata(BuilderRuntimeMetadata):
@@ -106,14 +98,6 @@ class CompiledDatasetBuilderContract:
         return self.prepare_inference_fn(history_blocks, evaluation_blocks, spec)
 
 
-def _compile_variable_sequence_temporal(
-    config: VariableSequenceTemporalDatasetBuilderConfig,
-) -> CompiledDatasetBuilderContract:
-    from .variable_sequence_temporal import compile_dataset_builder
-
-    return compile_dataset_builder(config)
-
-
 def _compile_fixed_sequence_temporal(
     config: FixedSequenceTemporalDatasetBuilderConfig,
 ) -> CompiledDatasetBuilderContract:
@@ -130,11 +114,6 @@ class DatasetBuilderSpec:
 
 
 _DATASET_BUILDER_SPECS: dict[str, DatasetBuilderSpec] = {
-    "variable_sequence_temporal": DatasetBuilderSpec(
-        config_type=VariableSequenceTemporalDatasetBuilderConfig,
-        runtime_metadata_type=VariableSequenceTemporalBuilderRuntimeMetadata,
-        compile_contract=_compile_variable_sequence_temporal,
-    ),
     "fixed_sequence_temporal": DatasetBuilderSpec(
         config_type=FixedSequenceTemporalDatasetBuilderConfig,
         runtime_metadata_type=FixedSequenceTemporalBuilderRuntimeMetadata,
@@ -145,21 +124,6 @@ _DATASET_BUILDER_SPECS: dict[str, DatasetBuilderSpec] = {
 
 def dataset_builder_spec(builder_id: str) -> DatasetBuilderSpec:
     return lookup_local_spec(_DATASET_BUILDER_SPECS, builder_id, "dataset_builder.id")
-
-
-def variable_sequence_temporal_runtime_metadata(
-    *,
-    compiler_id: str,
-    compiler_runtime_metadata: object,
-) -> VariableSequenceTemporalBuilderRuntimeMetadata:
-    from ...temporal.contracts import problem_runtime_metadata_payload
-
-    return VariableSequenceTemporalBuilderRuntimeMetadata(
-        compiler_runtime_metadata=problem_runtime_metadata_payload(
-            compiler_id,
-            compiler_runtime_metadata,
-        )
-    )
 
 
 def fixed_sequence_temporal_runtime_metadata(

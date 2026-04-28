@@ -34,7 +34,6 @@ class BlockPullPlan:
     window: TimestampRange
     block_range: BlockRange
     expected_rows: int
-    expected_files: int
 
 
 @dataclass(frozen=True, slots=True)

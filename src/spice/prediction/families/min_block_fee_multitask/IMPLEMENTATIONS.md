@@ -87,8 +87,11 @@ This keeps the classification and regression components on more comparable numer
 | --- | --- |
 | `total_loss` | Combined training objective. |
 | `offset_accuracy` | Fraction of samples with correct optimum offset. |
+| `macro_f1` | Macro F1 of predicted offset against optimum offset over supported target classes. |
 | `classification_loss` | Weighted cross-entropy component. |
 | `regression_loss` | SmoothL1 component. |
+| `log_fee_mae` | Mean absolute error of the denormalized log-fee prediction. |
+| `log_fee_mse` | Mean squared error of the denormalized log-fee prediction. |
 
 Primary metric is `total_loss`, minimized.
 

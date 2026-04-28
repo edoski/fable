@@ -120,26 +120,6 @@ def test_benchmark_dimensions_expand_resolved_plan(isolate_conf_root) -> None:
     )
 
 
-def test_sample_count_sweep_routes_3m_cells_to_3m_dataset() -> None:
-    plan = plan_benchmark("sample_count_sweep")
-    three_m_entries = [
-        entry
-        for entry in plan
-        if entry.config.problem.sample_count == 3_000_000
-    ]
-
-    assert len(plan) == 108
-    assert three_m_entries
-    assert all(
-        entry.selection["surface"] == "current_row_fee_dynamics_3m"
-        for entry in three_m_entries
-    )
-    assert all(
-        cast(ModelWorkflowConfig, entry.config).dataset.name == "icdcs_2026_3m"
-        for entry in three_m_entries
-    )
-
-
 def test_benchmark_rejects_invalid_problem_grid(isolate_conf_root) -> None:
     conf_root = isolate_conf_root()
     _write_benchmark(

@@ -4,7 +4,6 @@ cases:
       surface: current_row_fee_dynamics
       training: default
       split: default
-      tuning: extensive
       study: slot_spacing_sweep
     dimensions:
       data:
@@ -25,31 +24,16 @@ cases:
         - ref: current_row_nominal
         - ref: current_row_recent_median
     steps:
-      - id: tune
-        workflow: tune
-        set:
-          objective: validation_total_loss
-          evaluation: fullset
-          trial_count: 120
-      - id: train_tuned
+      - id: train_baseline
         workflow: train
-        after: [tune]
         set:
-          objective: validation_total_loss
-          evaluation: fullset
-          variant: tuned
-      - id: evaluate_tuned
+          objective: profit_poisson_replay_2h_mean
+          evaluation: poisson_replay_2h_mean
+          variant: baseline
+      - id: evaluate_baseline
         workflow: evaluate
-        after: [train_tuned]
-        dimensions:
-          scoring:
-            - set:
-                objective: profit_poisson_replay_2h_mean
-                evaluation: poisson_replay_2h_mean
-            - set:
-                objective: profit_poisson_replay_2h_total
-                evaluation: poisson_replay_2h_total
-          runtime:
-            - set:
-                variant: tuned
-                delay_seconds: 36
+        after: [train_baseline]
+        set:
+          objective: profit_poisson_replay_2h_mean
+          evaluation: poisson_replay_2h_mean
+          variant: baseline

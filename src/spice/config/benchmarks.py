@@ -354,7 +354,7 @@ def _resolve_expanded_step(expanded: _ExpandedStep) -> WorkflowConfig:
             evaluation=getattr(request, "evaluation", None),
             model=getattr(request, "model", None),
             tuning_space=getattr(request, "tuning_space", None),
-            acquisition=getattr(request, "acquisition", None),
+            provider=getattr(request, "provider", None),
             training=getattr(request, "training", None),
             split=getattr(request, "split", None),
             tuning=getattr(request, "tuning", None),

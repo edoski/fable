@@ -55,7 +55,6 @@ async def ensure_history_dataset(
                 start_block=history_plan.block_range.start,
                 end_block=existing_start,
                 window=history_plan.window,
-                chunk_size=config.acquisition.chunk_size,
             )
             if prefix_plan is None:
                 raise RuntimeError("history prefix plan unexpectedly resolved to empty")

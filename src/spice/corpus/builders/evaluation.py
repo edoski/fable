@@ -71,7 +71,6 @@ async def ensure_evaluation_dataset(
                 start_block=target_start,
                 end_block=overlap_start,
                 window=evaluation_plan.window,
-                chunk_size=config.acquisition.chunk_size,
             )
             if prefix_plan is not None:
                 frames.insert(
@@ -90,7 +89,6 @@ async def ensure_evaluation_dataset(
                 start_block=overlap_end,
                 end_block=target_end,
                 window=evaluation_plan.window,
-                chunk_size=config.acquisition.chunk_size,
             )
             if suffix_plan is not None:
                 frames.append(

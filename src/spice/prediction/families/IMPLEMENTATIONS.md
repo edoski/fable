@@ -39,7 +39,6 @@ Current problem stores build all-true action masks. Short candidate windows stil
 
 | Family | Training objective | Outputs | Decode |
 | --- | --- | --- | --- |
-| `candidate_offset_selection` | Expected fee cost under softmax policy. | Candidate logits. | Masked argmax offset. |
 | `min_block_fee_multitask` | Weighted offset classification plus fee regression. | Offset logits and scalar min log fee. | Masked argmax offset. |
 
 ## Metrics
@@ -63,4 +62,3 @@ evaluation metrics: replay or rollout economics over decoded offsets
 ## Extension Pattern
 
 A new prediction family should define output specs, target preparation, loss, metrics, and decode together. If it decodes to a new result type, evaluators must declare that accepted decoded-result id.
-

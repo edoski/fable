@@ -439,6 +439,7 @@ class ResolvedRpcEndpointConfig(ConfigModel):
 class ProviderSpec(ConfigModel):
     name: str
     transport: ProviderTransportConfig
+    acquisition: AcquisitionConfig | None = None
     endpoints: dict[str, ProviderEndpointConfig]
 
     @field_validator("name")

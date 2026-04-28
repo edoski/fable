@@ -5,7 +5,6 @@ from __future__ import annotations
 import inspect
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from math import ceil
 from typing import Any, Literal, SupportsInt, cast
 
 from web3 import AsyncWeb3
@@ -76,11 +75,10 @@ class BlockRpcClient:
             end=await self.find_first_block_at_or_after(window.end),
         )
 
-    async def plan_window(self, window: TimestampRange, *, chunk_size: int) -> BlockPullPlan:
+    async def plan_window(self, window: TimestampRange) -> BlockPullPlan:
         return self.plan_block_range(
             await self.resolve_block_range(window),
             window=window,
-            chunk_size=chunk_size,
         )
 
     def plan_block_range(
@@ -88,15 +86,12 @@ class BlockRpcClient:
         block_range: BlockRange,
         *,
         window: TimestampRange,
-        chunk_size: int,
     ) -> BlockPullPlan:
         expected_rows = block_range.count
-        expected_files = 0 if expected_rows == 0 else ceil(expected_rows / chunk_size)
         return BlockPullPlan(
             window=window,
             block_range=block_range,
             expected_rows=expected_rows,
-            expected_files=expected_files,
         )
 
     async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:

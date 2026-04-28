@@ -40,7 +40,7 @@ def test_named_spec_identity_is_enforced_on_normal_load_paths(isolate_conf_root)
             {
                 "id": "different_problem",
                 "lookback_seconds": 900,
-                "sample_count": 400000,
+                "sample_count": 1000000,
                 "max_delay_seconds": 36,
                 "compiler": {
                     "id": "observed_time_window",
@@ -155,6 +155,16 @@ def test_acquire_resolution_fails_when_provider_lacks_chain_endpoint(
                     "retry_count": 5,
                     "backoff_factor": 0.125,
                 },
+                "acquisition": {
+                    "dry_run": False,
+                    "chunk_size": 4096,
+                    "rpc": {
+                        "batch_size": 16,
+                        "concurrency": 1,
+                        "min_batch_size": 1,
+                        "concurrency_rungs": [1],
+                    },
+                },
                 "endpoints": {
                     "ethereum": {
                         "url": "https://ethereum-rpc.publicnode.com",
@@ -166,7 +176,7 @@ def test_acquire_resolution_fails_when_provider_lacks_chain_endpoint(
         encoding="utf-8",
     )
     payload = _base_surface(conf_root)
-    payload["acquisition"] = {"provider": "eth_only", "id": "default"}
+    payload["acquisition"] = {"provider": "eth_only"}
     _write_surface(conf_root, "eth_only_acquire", payload)
 
     with pytest.raises(

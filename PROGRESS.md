@@ -1,6 +1,6 @@
 # Progress
 
-_Last verified: 2026-04-27 04:22 CEST_
+_Last verified: 2026-04-28 08:12 CEST_
 
 ## Status Snapshot
 
@@ -12,7 +12,14 @@ Remote benchmark logs still use older historical preset and evaluator names such
 
 `safe_best` is a historical benchmark role, not a local runnable config. It means the best family-specific safe block-open choices found before the current cleanup: LSTM with no broad time features, Transformer without `time_since_start`, and Transformer-LSTM with calendar-only time plus `recent_median`.
 
-As of this verification, the delay-sensitivity sweep, checkpoint-selection parity, and targeted `safe_best` HPO wave are complete. The next step is to preserve this historical evidence, then reconcile local and remote code before launching any new current-semantics benchmark sweep.
+As of this verification, the delay-sensitivity sweep, checkpoint-selection parity, and targeted `safe_best` HPO wave are complete. The local code has moved to the current safe-only architecture, and the default `current_row_nominal` problem now uses `1,000,000` samples.
+
+Current corpus status:
+
+- Ethereum `current_row_nominal`: local 1M corpus `cor_9a73b1e88edb488afb1e` validated on 2026-04-28. History has `1,093,256` contiguous rows, evaluation has `7,162` contiguous rows, enriched fee-history columns are finite, `core_fee_dynamics` builds a finite `(1,093,256, 22)` float32 matrix, and the observed-time-window store has `1,093,103` valid samples against the `1,000,000` requirement. It was acquired before the temporary 1M spec was folded into the default.
+- Avalanche `current_row_nominal`: local 1M acquisition running on 2026-04-28 via provider `tenderly`, because PublicNode-style Avalanche endpoints did not support sufficiently deep historical `eth_feeHistory`. The process was launched before the temporary 1M spec was folded into the default.
+- Polygon `current_row_nominal`: local 1M acquisition running on 2026-04-28 via provider `publicnode` with provider-owned conservative runtime limits. The process was launched before the temporary 1M spec was folded into the default.
+- After ETH/AVAX/POL 1M corpora are validated locally, push corpora to remote, run a small remote smoke train/evaluate, then launch the current safe baseline replication grid.
 
 ## Benchmarking
 
@@ -20,7 +27,7 @@ As of this verification, the delay-sensitivity sweep, checkpoint-selection parit
 
 - Runnable surface: `current_row_fee_dynamics`.
 - Runnable features: `core_fee_dynamics`.
-- Default problem: `current_row_nominal`.
+- Default problem: `current_row_nominal` with `sample_count: 1,000,000`.
 - Slot-spacing comparison problem: `current_row_recent_median`.
 - Compiler: `observed_time_window`.
 - Execution policy: `strict_deadline_miss`.
@@ -102,7 +109,7 @@ Purpose: decide whether the old elapsed-time-style feature deserves to survive a
 
 Required setup:
 
-- Regenerate ETH/AVAX/POL corpora with the expanded current RPC schema before running this ablation. Existing local corpora are pre-refactor and do not contain the full canonical fields required by `core_fee_dynamics`.
+- Regenerate and validate ETH/AVAX/POL corpora with the expanded current RPC schema before running this ablation. Ethereum 1M is already locally validated as `cor_9a73b1e88edb488afb1e`; Avalanche and Polygon 1M acquisitions are running as of 2026-04-28.
 - Train new artifacts from current configs only. Do not use old block-open, same-block, estimated-block, feature-family, or old-schema compatibility paths.
 - Keep `core_fee_dynamics` as the baseline feature catalog.
 - Use the explicit experimental features config `core_fee_dynamics_elapsed_position`, identical to `core_fee_dynamics` except for adding `elapsed_seconds`.
@@ -120,7 +127,6 @@ Proof-quality grid:
 - Problem: `current_row_nominal`.
 - Surface: `current_row_fee_dynamics`, with only the `features` selection varied.
 - Primary evaluator: `poisson_replay_2h_mean`.
-- Diagnostic evaluator: `poisson_replay_2h_total`.
 - Compare held-out evaluation results, not just training loss or HPO validation objective.
 - Prefer repeated seeds if the single-seed deltas are small or inconsistent.
 
@@ -129,20 +135,19 @@ Decision rule:
 - If `elapsed_seconds` does not materially and consistently improve held-out evaluation across chains/model families, remove it from the current runnable feature implementation and current docs. Preserve only the historical note that paper/professor-lineage code used an elapsed-time-style signal.
 - If it helps materially and consistently, keep it out of the default until there is an explicit architecture decision about whether corpus-position signals are acceptable. It should remain an experimental features config, not part of `core_fee_dynamics`.
 
-Large-capacity HPO remains planned after the active remote HPO wave finishes and local/remote configs are reconciled. Purpose: test whether remaining safe-path gaps are capacity or optimization limits rather than temporal or feature limits.
+`large_capacity_hpo` is the planned calibration HPO benchmark after ETH/AVAX/POL 1M corpora are validated locally and pushed to remote. Purpose: calibrate each chain/model cell once, under the current safe surface and canonical mean-Poisson evaluator, without turning every structural sweep into an HPO sweep.
 
 Target cells:
 
-- Ethereum `transformer`.
-- Ethereum `transformer_lstm`.
-- Avalanche `transformer_lstm`.
-- Avalanche `transformer`, if the current tuned result still needs deeper validation.
+- Chains: Ethereum, Polygon, Avalanche.
+- Models: LSTM, Transformer, Transformer-LSTM.
+- Features/problem: `core_fee_dynamics`, `current_row_nominal`.
 
 Trial budget:
 
-- Start with `120` trials per cell.
-- Review at `40` and `80` trials before spending the full budget.
-- Continue past `120` only if recent trials improve best objective by at least `0.001` absolute `profit_over_baseline` or reveal a clearly new high-performing region.
+- `40` trials per chain/model cell.
+- Do not expand trial count until the 3x3 calibration results are collected and compared against the untuned baseline grid.
+- Do not rerun HPO inside `lookback_window_sweep`, `slot_spacing_sweep`, `elapsed_position_ablation`, or `delay_degradation_sweep`.
 
 Training search:
 
@@ -171,7 +176,7 @@ Transformer-LSTM search:
 - `head_hidden_dim: [256, 512, 1024]`.
 - `dropout: [0.0, 0.1, 0.2, 0.3]`.
 
-Optional LSTM expansion, only if LSTM remains in scope:
+LSTM search:
 
 - `hidden_size: [256, 384, 512, 768, 1024]`.
 - `num_layers: [1, 2, 3, 4]`.
@@ -179,10 +184,11 @@ Optional LSTM expansion, only if LSTM remains in scope:
 - `head_hidden_dim: [256, 512, 1024]`.
 - `dropout: [0.0, 0.1, 0.2, 0.3]`.
 
-Launch decisions remain deferred until remote wave results and final launch cells/study names are settled.
+Launch decisions remain deferred until all three current 1M corpora are validated and pushed to remote.
 
 Benchmark sweep operator flow:
 
+- Before launching a full sweep, push validated ETH/AVAX/POL 1M corpora to remote and run one small current-config smoke train/evaluate to verify the remote checkout, storage, and evaluator path.
 - Preview the exact remote workflow DAG with `spice benchmark plan <name>`.
 - Submit with `spice benchmark submit <name>`. This uses the default remote target, records the remote git commit, writes `outputs/benchmarks/runs/<name>/<timestamp>/plan.jsonl`, and appends Slurm submission records to `submission.jsonl`.
 - Poll collection with `spice benchmark collect <name>`. This reads the latest run directory, pulls required remote studies/artifacts over SSH through existing storage sync APIs, and prints JSONL status without changing `benchmarks/results.csv`.
@@ -190,16 +196,29 @@ Benchmark sweep operator flow:
 
 Configured sweep specs awaiting launch decisions:
 
-- `large_capacity_hpo`: four preserved large-capacity cells on `current_row_fee_dynamics`.
-- `lookback_window_sweep`: `current_row_fee_dynamics` across ETH/POL/AVAX, LSTM/Transformer/Transformer-LSTM, and `600s`/`900s`/`1200s` lookbacks.
-- `sample_count_sweep`: `current_row_fee_dynamics` across ETH/POL/AVAX, LSTM/Transformer/Transformer-LSTM, and `400k`/`1m` sample counts; `3m` cells use `current_row_fee_dynamics_3m` so they resolve to `icdcs_2026_3m`.
-- `slot_spacing_sweep`: compare `current_row_nominal` against `current_row_recent_median` across the same current safe grid.
+- `safe_baseline_grid`: untuned ETH/POL/AVAX by LSTM/Transformer/Transformer-LSTM on `current_row_fee_dynamics`, `core_fee_dynamics`, default 1M `current_row_nominal`, and `poisson_replay_2h_mean`.
+- `large_capacity_hpo`: bounded calibration HPO over the same 3x3 chain/model grid, large-capacity tuning spaces, 40 trials per cell, tuned train, and tuned `poisson_replay_2h_mean` evaluation.
+- `lookback_window_sweep`: fixed train/evaluate grid over ETH/POL/AVAX, LSTM/Transformer/Transformer-LSTM, and `600s`/`900s`/`1200s` lookbacks. No per-cell HPO.
+- `slot_spacing_sweep`: fixed train/evaluate comparison of `current_row_nominal` and `current_row_recent_median` across the same 3x3 safe grid. No per-cell HPO.
+- `elapsed_position_ablation`: fixed train/evaluate comparison of `core_fee_dynamics` against `core_fee_dynamics_elapsed_position` across the same 3x3 safe grid.
+- `delay_degradation_sweep`: fixed train/evaluate ladder over `max_delay_seconds = 12, 24, 36, 48, 60, 72, 84, 96, 108, 120`. It trains one artifact per delay and evaluates with the same delay via the default `evaluation.delay_seconds = problem.max_delay_seconds` rule.
+
+GPU-hour policy:
+
+- Do not tune every structural sweep cell. Run `large_capacity_hpo` as the broad calibration search, then run structural sweeps as fixed train/evaluate grids.
+- If tuned parameters should be reused outside their exact study identity, first materialize explicit model/training presets from the selected HPO results. Current benchmark YAML does not automatically transplant best parameters across different problem/features cells.
+- Keep `poisson_replay_2h_mean` as the canonical benchmark evaluator for new claims. Use total-ratio diagnostics only when there is a specific historical-comparability reason.
+
+Metrics plan:
+
+- Domain replay metrics stay in evaluators and benchmark collection. `poisson_replay_2h_mean` is the current canonical domain result.
+- Pre-benchmark v1 ML metrics: add `macro_f1` for both offset-output prediction families and `log_fee_mae` / `log_fee_mse` for `min_block_fee_multitask`, then persist them through `benchmarks/results.csv`. Do not do a broader metric redesign before this benchmark wave.
 
 ### Benchmarking Rules
 
 - Treat `paper_replay_2h` results as historical remote evidence until rerun under current local evaluator names.
 - Treat `poisson_replay_2h_mean` as the current canonical evaluator for new local benchmark claims.
-- Keep `poisson_replay_2h_total` for total-ratio diagnostics and legacy comparability.
+- Keep `poisson_replay_2h_total` only for targeted total-ratio diagnostics and legacy comparability.
 - Do not read notebook rollout/fullset diagnostics as equivalent to one-shot replay.
 - Do not claim exact professor-pipeline parity; preprocessing, split construction, evaluator semantics, and checkpoint selection remain partially unresolved.
 
@@ -207,7 +226,7 @@ Configured sweep specs awaiting launch decisions:
 
 ### Current Safe Architecture
 
-`current_row_fee_dynamics` is the primary current runnable surface. It composes `core_fee_dynamics`, `current_row_nominal`, `fixed_sequence_temporal`, `lstm`, `icdcs_2026`, `profit_poisson_replay_2h_mean`, and `poisson_replay_2h_mean` by default. `current_row_fee_dynamics_3m` is the matching 3m-dataset surface used for the 3m cells in `sample_count_sweep`.
+`current_row_fee_dynamics` is the primary current runnable surface. It composes `core_fee_dynamics`, 1M-sample `current_row_nominal`, `fixed_sequence_temporal`, `lstm`, `icdcs_2026`, `profit_poisson_replay_2h_mean`, and `poisson_replay_2h_mean` by default. Sample-count sweeps are deferred until exact chain/date ranges and protocol-regime boundaries are explicit.
 
 `core_fee_dynamics` is safe by construction. The source layer allows current `base_fee_per_gas[t]` because EIP-1559 base fee for block `t` is deterministic from parent state before block `t` execution. Finalized current-block facts such as gas used, gas limit, transaction count, and fee-history priority-fee summaries are lagged to `t-1`.
 
@@ -265,6 +284,7 @@ Thesis / Internship 2 direction remains aligned with uncertainty quantification 
 - Producer/author metadata: defer proposer/miner/author features. Potential value is validator/proposer behavior or builder/producer-specific fee dynamics, but cross-chain semantics are unclear and raw identifiers risk memorization. Any future version should require a source policy, hashing/grouping policy, minimum support threshold, and explicit ablation.
 - Blob and block-size experiments: keep canonical nullable fields for `block_size_bytes`, `blob_gas_used`, and `excess_blob_gas`, but do not select these features by default. Future experiments should treat support as chain/date dependent and require finite selected values after warmup.
 - Slot-spacing sweep: compare `current_row_nominal` and `current_row_recent_median` after current jobs are archived/synced. `recent_median` is scoped only to `observed_time_window.slot_spacing`; do not reuse that name for feature concepts.
+- Sample-count sweep: deferred on 2026-04-28. The current default is 1M samples. Future 3M or larger comparisons must first verify exact chain/date ranges and avoid crossing major fee/protocol regime transitions such as Ethereum Pectra/Fusaka or comparable Polygon/Avalanche fee-rule changes. Reintroduce the runnable benchmark only after the date-range policy is explicit.
 - Range and quantile position features: encode whether the current fee is near a recent local min, median, or high quantile rather than only exposing raw level and rolling means.
 - Regime-spread and persistence features: encode short-vs-long pressure shifts, sustained rising/falling fee streaks, and whether congestion relief appears persistent.
 - Cadence and opportunity-density features: encode recent inter-block timing, block-count density inside fixed time windows, and uncertainty in how many opportunities fit within the delay budget.

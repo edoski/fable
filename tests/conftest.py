@@ -284,6 +284,18 @@ def load_workflow_config(tmp_path: Path, isolate_conf_root):
                 selection_values[key] = value
                 continue
             if key in _SURFACE_FIELDS:
+                if key == "acquisition" and isinstance(value, Mapping):
+                    spec_name = f"test_{workflow.value}_provider"
+                    provider = _named_group_copy("publicnode", "provider")
+                    provider["acquisition"] = dict(value)
+                    _write_named_spec(
+                        conf_root,
+                        group="provider",
+                        name=spec_name,
+                        payload=provider,
+                    )
+                    surface_payload[key] = {"provider": spec_name}
+                    continue
                 if isinstance(value, Mapping) and key in named_group_keys():
                     spec_name = _spec_name_for_payload(
                         key,

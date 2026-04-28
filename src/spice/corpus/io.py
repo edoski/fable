@@ -35,14 +35,14 @@ def iter_block_files(path: Path) -> list[Path]:
     return sorted(files)
 
 
-def scan_block_dataset(path: Path, *, columns: Sequence[str] | None = None) -> pl.LazyFrame:
+def _scan_block_dataset(path: Path, *, columns: Sequence[str] | None = None) -> pl.LazyFrame:
     files = iter_block_files(path)
     frame = pl.scan_parquet([str(file_path) for file_path in files])
     return frame.select(list(columns)) if columns is not None else frame
 
 
-def read_block_dataset(path: Path, *, columns: Sequence[str] | None = None) -> pl.DataFrame:
-    return scan_block_dataset(path, columns=columns).collect()
+def _read_block_dataset(path: Path, *, columns: Sequence[str] | None = None) -> pl.DataFrame:
+    return _scan_block_dataset(path, columns=columns).collect()
 
 
 def write_block_file(path: Path, frame: pl.DataFrame) -> None:
@@ -51,6 +51,6 @@ def write_block_file(path: Path, frame: pl.DataFrame) -> None:
 
 
 def load_block_frame(path: Path) -> pl.DataFrame:
-    frame = read_block_dataset(path, columns=BLOCK_COLUMNS).sort("block_number")
+    frame = _read_block_dataset(path, columns=BLOCK_COLUMNS).sort("block_number")
     validate_block_frame(frame)
     return frame

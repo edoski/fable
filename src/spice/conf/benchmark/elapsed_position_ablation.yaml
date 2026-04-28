@@ -1,15 +1,18 @@
 cases:
-  - id: lookback_window_sweep
+  - id: elapsed_position_ablation
     base:
       surface: current_row_fee_dynamics
       training: default
       split: default
-      study: lookback_window_sweep
+      study: elapsed_position_ablation
     dimensions:
       data:
         - set: {chain: ethereum}
         - set: {chain: polygon}
         - set: {chain: avalanche}
+      features:
+        - set: {features: core_fee_dynamics}
+        - set: {features: core_fee_dynamics_elapsed_position}
       models:
         - set:
             model: lstm
@@ -21,10 +24,7 @@ cases:
             model: transformer_lstm
             tuning_space: transformer_lstm_large_capacity
       problems:
-        - grid:
-            base: current_row_nominal
-            fields:
-              lookback_seconds: [600, 900, 1200]
+        - ref: current_row_nominal
     steps:
       - id: train_baseline
         workflow: train
