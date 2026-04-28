@@ -214,8 +214,123 @@ def test_acquire_cancellation_during_planning_logs_warning(
 
     rendered = output.getvalue()
     assert "acquire dataset=" in rendered
-    assert errors.getvalue() == "warning: acquire cancelled; temporary outputs cleaned up\n"
+    assert (
+        errors.getvalue()
+        == "warning: acquire cancelled; partial staging preserved for resume\n"
+    )
     assert paths.corpus_state_db.exists() is False
+
+
+def test_acquire_failure_preserves_staging_and_rerun_resumes(
+    tmp_path,
+    monkeypatch,
+    load_workflow_config,
+    acquire_override,
+) -> None:
+    override = acquire_override()
+    override["acquisition"] = {
+        "dry_run": False,
+        "chunk_size": 4,
+        "rpc": {
+            "batch_size": 4,
+            "concurrency": 1,
+            "min_batch_size": 4,
+            "concurrency_rungs": [1],
+        },
+    }
+    config = _load_test_acquire_config(
+        load_workflow_config,
+        tmp_path,
+        override=override,
+    )
+    paths = resolve_workflow_paths(config)
+    stage_root = paths.corpus_root.parent / f".{paths.corpus_id}.acquire-staging"
+    evaluation_plan = _plan_for_window(
+        TimestampRange(
+            start=config.evaluation_window_start_timestamp,
+            end=config.evaluation_window_end_timestamp,
+        ),
+        start_block=10_000,
+        expected_rows=4,
+        chunk_size=config.acquisition.chunk_size,
+    )
+    history_plan = _plan_for_window(
+        TimestampRange(
+            start=config.history_window_end_timestamp - 120,
+            end=config.history_window_end_timestamp,
+        ),
+        start_block=100,
+        expected_rows=10,
+        chunk_size=config.acquisition.chunk_size,
+    )
+    requested_ranges: list[tuple[int, int]] = []
+    fail_history_tail = True
+
+    class FakeAcquireClient:
+        def __init__(self, rpc_endpoint, chain) -> None:
+            del rpc_endpoint
+            self.chain = chain
+
+        async def close(self) -> None:
+            return None
+
+        async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:
+            del sample_size
+            return 12.0
+
+        async def plan_window(self, window: TimestampRange) -> BlockPullPlan:
+            return evaluation_plan if window == evaluation_plan.window else history_plan
+
+        def plan_block_range(
+            self,
+            block_range: BlockRange,
+            *,
+            window: TimestampRange,
+        ) -> BlockPullPlan:
+            return BlockPullPlan(
+                window=window,
+                block_range=block_range,
+                expected_rows=block_range.count,
+            )
+
+        async def get_block_rows(self, start: int, end: int):
+            requested_ranges.append((start, end))
+            if fail_history_tail and start == 108:
+                raise TimeoutError("synthetic transient failure")
+            plan = evaluation_plan if start >= evaluation_plan.block_range.start else history_plan
+            return make_block_rows(
+                end - start,
+                start_block=start,
+                start_timestamp=plan.window.start + (start - plan.block_range.start) * 12,
+                chain_id=config.chain.runtime.chain_id,
+                block_interval_seconds=12,
+            )
+
+    monkeypatch.setattr("spice.workflows.acquire.BlockRpcClient", FakeAcquireClient)
+    monkeypatch.setattr(
+        "spice.workflows.acquire._count_valid_history_samples",
+        lambda **_: config.problem.sample_count,
+    )
+
+    with pytest.raises(RuntimeError, match="exceeded 8 transient retry attempts"):
+        run_acquire(config)
+
+    assert stage_root.is_dir()
+    assert len(list(stage_root.rglob("*.parquet"))) == 2
+    assert paths.corpus_state_db.exists() is False
+    assert requested_ranges.count((100, 104)) == 1
+    assert requested_ranges.count((104, 108)) == 1
+
+    fail_history_tail = False
+    run_acquire(config)
+
+    assert stage_root.exists() is False
+    assert paths.corpus_state_db.is_file()
+    assert paths.history_dir.is_dir()
+    assert paths.evaluation_dir.is_dir()
+    assert requested_ranges.count((100, 104)) == 1
+    assert requested_ranges.count((104, 108)) == 1
+    assert (108, 110) in requested_ranges
 
 
 def test_acquire_dry_run_emits_compact_output(

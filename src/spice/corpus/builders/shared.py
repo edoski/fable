@@ -18,6 +18,7 @@ from ...acquisition.rpc import (
     pull_block_range,
 )
 from ...config.models import AcquireConfig
+from ...core.files import remove_path
 from ...corpus.io import iter_block_files, load_block_frame, write_block_file
 from ...corpus.metadata import has_block_files
 from ...corpus.validation import (
@@ -133,6 +134,21 @@ def reused_result(
     )
 
 
+def staged_result(
+    existing: ExistingDatasetState,
+    *,
+    outcome: DatasetBuildOutcome,
+    validation: BlockDatasetValidationReport | None = None,
+) -> DatasetBuildResult:
+    return DatasetBuildResult(
+        path=existing.path,
+        validation=existing.validation if validation is None else validation,
+        file_count=existing.file_count,
+        promote_dir=existing.path,
+        outcome=outcome,
+    )
+
+
 def materialize_dataset(
     *,
     mode: str,
@@ -145,6 +161,7 @@ def materialize_dataset(
 ) -> DatasetBuildResult:
     dataset_dir = working_dir / mode
     if frames is not None:
+        remove_path(dataset_dir)
         file_count = write_block_dataset_dir(
             dataset_dir,
             frame=combined_frame(*frames),
@@ -180,6 +197,14 @@ async def pull_plan_to_frame(
         rpc_controller=rpc_controller,
     )
     return load_block_frame(output_dir)
+
+
+def plan_pull_dir(working_dir: Path, *, label: str, plan: BlockPullPlan) -> Path:
+    return (
+        working_dir
+        / "pulls"
+        / f"{label}__{plan.block_range.start}_to_{plan.block_range.end}"
+    )
 
 
 def filter_block_range(frame: pl.DataFrame, block_range: BlockRange) -> pl.DataFrame:

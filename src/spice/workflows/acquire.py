@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import signal
 import threading
@@ -12,12 +13,11 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures.thread import _worker
 from contextlib import suppress
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Any, cast
 
 from ..acquisition.rpc import BlockRpcClient, RpcController, TimestampRange, evaluation_range
 from ..config.models import AcquireConfig
-from ..core.files import prune_empty_directories
+from ..core.files import prune_empty_directories, remove_path
 from ..core.reporting import Reporter
 from ..corpus.builders import ensure_evaluation_dataset, ensure_history_dataset
 from ..corpus.io import load_block_frame
@@ -29,12 +29,13 @@ from ..corpus.metadata import (
 from ..corpus.summary import acquire_dry_run_fields, acquisition_result_fields
 from ..features import CompiledFeatureContract, compile_feature_contract
 from ..storage.corpus import write_dataset_state
-from ..storage.layout import resolve_workflow_paths
+from ..storage.layout import WorkflowPaths, resolve_workflow_paths
 from ..storage.staging import PartialRootCommit
 from ..temporal.contracts import CompiledProblemContract, compile_problem_contract
 
 HISTORY_WINDOW_CUSHION_RATIO = 0.10
 HISTORY_REFILL_CUSHION_RATIO = 0.10
+ACQUIRE_STAGE_DIR_NAME = ".acquire-staging"
 
 
 def _workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:
@@ -66,6 +67,27 @@ def _history_window(config: AcquireConfig, window_seconds: int) -> TimestampRang
         start=max(0, config.history_window_end_timestamp - window_seconds),
         end=config.history_window_end_timestamp,
     )
+
+
+def _acquire_stage_root(paths: WorkflowPaths) -> Path:
+    return paths.corpus_root.parent / f".{paths.corpus_id}{ACQUIRE_STAGE_DIR_NAME}"
+
+
+def _write_acquire_stage_record(
+    path: Path,
+    *,
+    config: AcquireConfig,
+    corpus_id: str,
+) -> None:
+    record = {
+        "chain": config.chain.name,
+        "chain_id": config.chain.runtime.chain_id,
+        "dataset": config.dataset.name,
+        "evaluation_date": config.dataset.evaluation_date.isoformat(),
+        "corpus_id": corpus_id,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")
 
 
 class _DaemonThreadPoolExecutor(ThreadPoolExecutor):
@@ -206,112 +228,115 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
 
         current_provider = provider_metadata(config)
         paths.corpus_root.parent.mkdir(parents=True, exist_ok=True)
-        with TemporaryDirectory(
-            dir=paths.corpus_root.parent,
-            prefix=f".{paths.corpus_id}.acquire.",
-        ) as temp_root_name:
-            temp_root = Path(temp_root_name)
+        temp_root = _acquire_stage_root(paths)
+        temp_root.mkdir(parents=True, exist_ok=True)
+        _write_acquire_stage_record(
+            temp_root / ".spice" / "acquire-stage.json",
+            config=config,
+            corpus_id=paths.corpus_id,
+        )
 
-            async def _ensure_counted_history(output_dir: Path, working_dir: Path):
-                result = await ensure_history_dataset(
-                    config=config,
-                    block_client=block_client,
-                    output_dir=output_dir,
-                    working_dir=working_dir,
-                    history_plan=history_plan,
-                    rpc_controller=rpc_controller,
-                    status=active_reporter.milestone,
-                )
-                return result, _count_valid_history_samples(
-                    history_dir=result.path,
-                    feature_contract=feature_contract,
-                    contract=contract,
-                )
-
-            history_result, resolved_capability_samples = await _ensure_counted_history(
-                history_dir,
-                temp_root / "history-initial",
-            )
-            if resolved_capability_samples < contract.sample_count:
-                validation = history_result.validation
-                if (
-                    validation.first_timestamp is None
-                    or validation.last_timestamp is None
-                    or validation.row_count <= 1
-                ):
-                    raise RuntimeError(
-                        "Cannot compute observed history cadence from validation report"
-                    )
-                sample_shortfall = contract.sample_count - resolved_capability_samples
-                observed_seconds_per_block = max(
-                    1.0,
-                    (validation.last_timestamp - validation.first_timestamp)
-                    / (validation.row_count - 1),
-                )
-                requested_history_window_seconds = max(
-                    requested_history_window_seconds,
-                    config.history_window_end_timestamp - validation.first_timestamp,
-                ) + _with_cushion(
-                    sample_shortfall * observed_seconds_per_block,
-                    HISTORY_REFILL_CUSHION_RATIO,
-                )
-                history_plan = await block_client.plan_window(
-                    _history_window(config, requested_history_window_seconds),
-                )
-                active_reporter.milestone(
-                    "history refilling "
-                    f"samples={resolved_capability_samples}/{contract.sample_count}"
-                )
-                history_result, resolved_capability_samples = await _ensure_counted_history(
-                    history_result.path,
-                    temp_root / "history-refill",
-                )
-            if resolved_capability_samples < contract.sample_count:
-                raise RuntimeError(
-                    "History sizing policy under-requested capability samples: "
-                    f"valid={resolved_capability_samples}, "
-                    f"required={contract.sample_count}"
-                )
-
-            evaluation_result = await ensure_evaluation_dataset(
+        async def _ensure_counted_history(output_dir: Path, working_dir: Path):
+            result = await ensure_history_dataset(
                 config=config,
                 block_client=block_client,
-                output_dir=evaluation_dir,
-                working_dir=temp_root,
-                evaluation_plan=evaluation_plan,
+                output_dir=output_dir,
+                working_dir=working_dir,
+                history_plan=history_plan,
                 rpc_controller=rpc_controller,
                 status=active_reporter.milestone,
             )
-            manifest = build_dataset_manifest(
-                config=config,
-                history_request_start_timestamp=history_plan.window.start,
-                history_request_end_timestamp=history_plan.window.end,
-                evaluation_request_start_timestamp=evaluation_window.start,
-                evaluation_request_end_timestamp=evaluation_window.end,
-                history_validation=history_result.validation,
-                evaluation_validation=evaluation_result.validation,
+            return result, _count_valid_history_samples(
+                history_dir=result.path,
+                feature_contract=feature_contract,
+                contract=contract,
             )
-            acquire_run = build_acquire_run_record(
-                config=config,
-                provider=current_provider,
-                acquisition_runtime=rpc_controller.snapshot(),
-                requested_history_window_seconds=requested_history_window_seconds,
-                resolved_capability_samples=resolved_capability_samples,
+
+        history_result, resolved_capability_samples = await _ensure_counted_history(
+            history_dir,
+            temp_root / "history-initial",
+        )
+        if resolved_capability_samples < contract.sample_count:
+            validation = history_result.validation
+            if (
+                validation.first_timestamp is None
+                or validation.last_timestamp is None
+                or validation.row_count <= 1
+            ):
+                raise RuntimeError(
+                    "Cannot compute observed history cadence from validation report"
+                )
+            sample_shortfall = contract.sample_count - resolved_capability_samples
+            observed_seconds_per_block = max(
+                1.0,
+                (validation.last_timestamp - validation.first_timestamp)
+                / (validation.row_count - 1),
             )
-            temp_state_db = temp_root / ".spice" / "state.sqlite"
-            write_dataset_state(
-                temp_state_db,
-                manifest=manifest,
-                acquire_run=acquire_run,
+            requested_history_window_seconds = max(
+                requested_history_window_seconds,
+                config.history_window_end_timestamp - validation.first_timestamp,
+            ) + _with_cushion(
+                sample_shortfall * observed_seconds_per_block,
+                HISTORY_REFILL_CUSHION_RATIO,
             )
-            commit = PartialRootCommit(
-                storage_root=paths.output_root,
-                root_path=paths.corpus_root,
+            history_plan = await block_client.plan_window(
+                _history_window(config, requested_history_window_seconds),
             )
-            commit.add(history_dir, history_result.promote_dir)
-            commit.add(evaluation_dir, evaluation_result.promote_dir)
-            commit.add(state_db_path, temp_state_db)
-            commit.commit()
+            active_reporter.milestone(
+                "history refilling "
+                f"samples={resolved_capability_samples}/{contract.sample_count}"
+            )
+            history_result, resolved_capability_samples = await _ensure_counted_history(
+                history_result.path,
+                temp_root / "history-refill",
+            )
+        if resolved_capability_samples < contract.sample_count:
+            raise RuntimeError(
+                "History sizing policy under-requested capability samples: "
+                f"valid={resolved_capability_samples}, "
+                f"required={contract.sample_count}"
+            )
+
+        evaluation_result = await ensure_evaluation_dataset(
+            config=config,
+            block_client=block_client,
+            output_dir=evaluation_dir,
+            working_dir=temp_root,
+            evaluation_plan=evaluation_plan,
+            rpc_controller=rpc_controller,
+            status=active_reporter.milestone,
+        )
+        manifest = build_dataset_manifest(
+            config=config,
+            history_request_start_timestamp=history_plan.window.start,
+            history_request_end_timestamp=history_plan.window.end,
+            evaluation_request_start_timestamp=evaluation_window.start,
+            evaluation_request_end_timestamp=evaluation_window.end,
+            history_validation=history_result.validation,
+            evaluation_validation=evaluation_result.validation,
+        )
+        acquire_run = build_acquire_run_record(
+            config=config,
+            provider=current_provider,
+            acquisition_runtime=rpc_controller.snapshot(),
+            requested_history_window_seconds=requested_history_window_seconds,
+            resolved_capability_samples=resolved_capability_samples,
+        )
+        temp_state_db = temp_root / ".spice" / "state.sqlite"
+        write_dataset_state(
+            temp_state_db,
+            manifest=manifest,
+            acquire_run=acquire_run,
+        )
+        commit = PartialRootCommit(
+            storage_root=paths.output_root,
+            root_path=paths.corpus_root,
+        )
+        commit.add(history_dir, history_result.promote_dir)
+        commit.add(evaluation_dir, evaluation_result.promote_dir)
+        commit.add(state_db_path, temp_state_db)
+        commit.commit()
+        remove_path(temp_root)
         active_reporter.result(
             "acquire",
             acquisition_result_fields(
@@ -327,13 +352,13 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
             stop_at=paths.corpus_root.parent.parent,
         )
         active_reporter.milestone(
-            "acquire cancelled; temporary outputs cleaned up",
+            "acquire cancelled; partial staging preserved for resume",
             level="warning",
         )
         raise
     except Exception:
         active_reporter.milestone(
-            "acquire failed; temporary outputs cleaned up",
+            "acquire failed; partial staging preserved for resume",
             level="warning",
         )
         raise

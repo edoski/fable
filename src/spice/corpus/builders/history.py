@@ -16,8 +16,10 @@ from .shared import (
     materialize_dataset,
     noop_status,
     partial_plan,
+    plan_pull_dir,
     pull_plan_to_frame,
     reused_result,
+    staged_result,
     validate_history_result,
 )
 
@@ -35,9 +37,33 @@ async def ensure_history_dataset(
     emit = status or noop_status
     expected_chain_id = config.chain.runtime.chain_id
     existing = load_existing_dataset(output_dir, expected_chain_id=expected_chain_id)
+    staged = load_existing_dataset(
+        working_dir / "history",
+        expected_chain_id=expected_chain_id,
+    )
 
     def validate_result(validation, _: Path) -> None:
         validate_history_result(validation, history_plan=history_plan)
+
+    if staged is not None:
+        if staged.validation.status != "clean":
+            raise RuntimeError(f"Cannot resume invalid staged history dataset: {staged.validation}")
+        staged_validation = staged.validation.model_copy(deep=True)
+        try:
+            validate_result(staged_validation, staged.path)
+        except ValueError:
+            pass
+        else:
+            emit("history reused staged dataset")
+            return staged_result(
+                staged,
+                validation=staged_validation,
+                outcome=(
+                    DatasetBuildOutcome.REBUILT
+                    if existing is not None
+                    else DatasetBuildOutcome.CREATED
+                ),
+            )
 
     if existing is not None and existing.validation.status == "clean":
         if existing.frame is None:
@@ -62,7 +88,11 @@ async def ensure_history_dataset(
             prefix_frame = await pull_plan_to_frame(
                 block_client=block_client,
                 plan=prefix_plan,
-                output_dir=working_dir / "history-prefix",
+                output_dir=plan_pull_dir(
+                    working_dir,
+                    label="history-prefix",
+                    plan=prefix_plan,
+                ),
                 chunk_size=config.acquisition.chunk_size,
                 rpc_controller=rpc_controller,
             )
@@ -77,10 +107,10 @@ async def ensure_history_dataset(
             )
 
     emit("history downloading")
-    await pull_plan_to_frame(
+    frame = await pull_plan_to_frame(
         block_client=block_client,
         plan=history_plan,
-        output_dir=working_dir / "history",
+        output_dir=plan_pull_dir(working_dir, label="history", plan=history_plan),
         chunk_size=config.acquisition.chunk_size,
         rpc_controller=rpc_controller,
     )
@@ -90,6 +120,7 @@ async def ensure_history_dataset(
         working_dir=working_dir,
         expected_chain_id=expected_chain_id,
         validate_result=validate_result,
+        frames=(frame,),
         outcome=(
             DatasetBuildOutcome.REBUILT
             if existing is not None

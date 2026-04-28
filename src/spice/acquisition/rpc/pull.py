@@ -13,7 +13,8 @@ import polars as pl
 from web3.exceptions import Web3RPCError
 
 from ...corpus.contract import CanonicalBlockRow, canonicalize_block_frame
-from ...corpus.io import write_block_file
+from ...corpus.io import load_block_frame, write_block_file
+from ...corpus.validation import validate_contiguous_block_frame
 from .client import BlockRpcClient
 from .controller import RpcController
 from .types import BlockPullPlan
@@ -60,8 +61,13 @@ async def pull_block_range(
     pending_requests: list[_BatchRequest] = []
     in_flight: dict[asyncio.Task[list[CanonicalBlockRow]], _BatchRequest] = {}
     completed_results: dict[int, _CompletedBatch] = {}
-    next_request_start = plan.block_range.start
-    next_write_start = plan.block_range.start
+    resumed_until = _completed_prefix_end(
+        output_dir,
+        plan=plan,
+        expected_chain_id=block_client.chain.runtime.chain_id,
+    )
+    next_request_start = resumed_until
+    next_write_start = resumed_until
 
     try:
         while next_write_start < plan.block_range.end:
@@ -182,6 +188,46 @@ def _split_request(
         )
         for batch_start in range(request.start, request.end, batch_size)
     ]
+
+
+def _completed_prefix_end(
+    output_dir: Path,
+    *,
+    plan: BlockPullPlan,
+    expected_chain_id: int,
+) -> int:
+    if not output_dir.exists():
+        return plan.block_range.start
+    try:
+        frame = load_block_frame(output_dir)
+    except ValueError as exc:
+        if "No parquet block files found" in str(exc):
+            return plan.block_range.start
+        raise RuntimeError(
+            f"Cannot resume from invalid partial block dataset: {output_dir}"
+        ) from exc
+    except Exception as exc:
+        raise RuntimeError(
+            f"Cannot resume from invalid partial block dataset: {output_dir}"
+        ) from exc
+
+    validation = validate_contiguous_block_frame(
+        frame,
+        dataset_path=output_dir,
+        expected_chain_id=expected_chain_id,
+    )
+    if validation.status != "clean":
+        raise RuntimeError(f"Cannot resume from invalid partial block dataset: {validation}")
+    if validation.first_block_number != plan.block_range.start:
+        raise RuntimeError(
+            "Cannot resume partial block dataset with a different start block: "
+            f"expected {plan.block_range.start}, got {validation.first_block_number}"
+        )
+    if validation.last_block_number is None:
+        return plan.block_range.start
+    if validation.last_block_number >= plan.block_range.end:
+        return plan.block_range.end
+    return validation.last_block_number + 1
 
 
 def _error_message(exc: BaseException) -> str:
