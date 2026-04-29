@@ -19,6 +19,7 @@ from ..core import (
     hour_cos,
     hour_sin,
     rolling_stat,
+    shift,
     shifted_column,
 )
 
@@ -33,6 +34,20 @@ def _log1p(values: FloatVector) -> FloatVector:
 
 def _log_source(sources: Mapping[str, FloatVector], name: str) -> FloatVector:
     return np.log(np.clip(sources[name], 1.0, None))
+
+
+def _delta(values: FloatVector) -> FloatVector:
+    result = np.full(values.shape[0], np.nan, dtype=np.float64)
+    if values.size > 1:
+        result[1:] = np.diff(values)
+    return result
+
+
+def _binary_trend(values: FloatVector) -> FloatVector:
+    result = np.full(values.shape[0], np.nan, dtype=np.float64)
+    valid = np.isfinite(values)
+    result[valid] = np.where(values[valid] >= 0.0, 1.0, -1.0)
+    return result
 
 
 def _gas_utilization(values_used: FloatVector, values_limit: FloatVector) -> FloatVector:
@@ -251,6 +266,24 @@ def _features() -> dict[str, FeatureSpec]:
                 "prev_fee_history_gas_used_ratio"
             ],
         ),
+        "dlog_base_fee": FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("log_base_fee_per_gas",),
+            history_seconds=0,
+            warmup_rows=1,
+            compute=lambda blocks, series, sources, features: _delta(
+                features["log_base_fee_per_gas"]
+            ),
+        ),
+        "base_fee_trend": FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("dlog_base_fee",),
+            history_seconds=0,
+            warmup_rows=1,
+            compute=lambda blocks, series, sources, features: _binary_trend(
+                features["dlog_base_fee"]
+            ),
+        ),
     }
     for window in (25, 100):
         features[f"roll{window}_mean_logfee"] = FeatureSpec(
@@ -286,6 +319,85 @@ def _features() -> dict[str, FeatureSpec]:
                 stat="min",
             ),
         )
+    for window in (10, 50, 200):
+        features[f"roll{window}_mean_logfee"] = FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("log_base_fee_per_gas",),
+            history_seconds=0,
+            warmup_rows=window - 1,
+            compute=lambda blocks, series, sources, features, window=window: rolling_stat(
+                features["log_base_fee_per_gas"],
+                window=window,
+                stat="mean",
+            ),
+        )
+        features[f"roll{window}_std_logfee"] = FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("log_base_fee_per_gas",),
+            history_seconds=0,
+            warmup_rows=window - 1,
+            compute=lambda blocks, series, sources, features, window=window: rolling_stat(
+                features["log_base_fee_per_gas"],
+                window=window,
+                stat="std",
+                ddof=1,
+            ),
+        )
+        features[f"roll{window}_min_logfee"] = FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("log_base_fee_per_gas",),
+            history_seconds=0,
+            warmup_rows=window - 1,
+            compute=lambda blocks, series, sources, features, window=window: rolling_stat(
+                features["log_base_fee_per_gas"],
+                window=window,
+                stat="min",
+            ),
+        )
+        features[f"roll{window}_mean_prev_gas_utilization"] = FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("prev_gas_utilization",),
+            history_seconds=0,
+            warmup_rows=window,
+            compute=lambda blocks, series, sources, features, window=window: rolling_stat(
+                features["prev_gas_utilization"],
+                window=window,
+                stat="mean",
+            ),
+        )
+        features[f"roll{window}_std_prev_gas_utilization"] = FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("prev_gas_utilization",),
+            history_seconds=0,
+            warmup_rows=window,
+            compute=lambda blocks, series, sources, features, window=window: rolling_stat(
+                features["prev_gas_utilization"],
+                window=window,
+                stat="std",
+                ddof=1,
+            ),
+        )
+    for lag in range(1, 7):
+        features[f"dlog_base_fee_lag{lag}"] = FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("dlog_base_fee",),
+            history_seconds=0,
+            warmup_rows=lag + 1,
+            compute=lambda blocks, series, sources, features, lag=lag: shift(
+                features["dlog_base_fee"],
+                lag=lag,
+            ),
+        )
+        features[f"prev_gas_utilization_lag{lag}"] = FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("prev_gas_utilization",),
+            history_seconds=0,
+            warmup_rows=lag + 1,
+            compute=lambda blocks, series, sources, features, lag=lag: shift(
+                features["prev_gas_utilization"],
+                lag=lag,
+            ),
+        )
     return features
 
 
@@ -298,7 +410,52 @@ CORE_FEE_DYNAMICS = FeatureCatalog(
     ),
 )
 
-CORE_FEE_DYNAMICS_OUTPUTS = tuple(
-    name for name in CORE_FEE_DYNAMICS.features if name != "elapsed_seconds"
+CORE_FEE_DYNAMICS_OUTPUTS = (
+    "log_base_fee_per_gas",
+    "log_prev_gas_used",
+    "log_prev_gas_limit",
+    "prev_gas_utilization",
+    "prev_eip1559_pressure",
+    "log_prev_tx_count",
+    "seconds_since_previous_block",
+    "hour_sin",
+    "hour_cos",
+    "dow_sin",
+    "dow_cos",
+    "roll25_mean_logfee",
+    "roll25_std_logfee",
+    "roll25_min_logfee",
+    "roll100_mean_logfee",
+    "roll100_std_logfee",
+    "roll100_min_logfee",
+    "prev_priority_fee_p10",
+    "prev_priority_fee_p50",
+    "prev_priority_fee_p90",
+    "prev_priority_fee_spread",
+    "prev_fee_history_gas_used_ratio",
 )
-CORE_FEE_DYNAMICS_ELAPSED_POSITION_OUTPUTS = tuple(CORE_FEE_DYNAMICS.features)
+
+CORE_FEE_DYNAMICS_LOCAL_TRENDS_OUTPUTS = CORE_FEE_DYNAMICS_OUTPUTS + (
+    "dlog_base_fee",
+    "base_fee_trend",
+    *(f"dlog_base_fee_lag{lag}" for lag in range(1, 7)),
+    *(f"prev_gas_utilization_lag{lag}" for lag in range(1, 7)),
+    "roll10_mean_logfee",
+    "roll10_std_logfee",
+    "roll10_min_logfee",
+    "roll50_mean_logfee",
+    "roll50_std_logfee",
+    "roll50_min_logfee",
+    "roll200_mean_logfee",
+    "roll200_std_logfee",
+    "roll200_min_logfee",
+    "roll10_mean_prev_gas_utilization",
+    "roll10_std_prev_gas_utilization",
+    "roll50_mean_prev_gas_utilization",
+    "roll50_std_prev_gas_utilization",
+    "roll200_mean_prev_gas_utilization",
+    "roll200_std_prev_gas_utilization",
+)
+CORE_FEE_DYNAMICS_ELAPSED_POSITION_OUTPUTS = CORE_FEE_DYNAMICS_OUTPUTS + (
+    "elapsed_seconds",
+)

@@ -1,0 +1,39 @@
+cases:
+  - id: polygon_local_trends_ablation
+    base:
+      surface: current_row_fee_dynamics
+      training: default
+      split: default
+      study: polygon_local_trends_ablation
+    dimensions:
+      data:
+        - set: {chain: polygon}
+      features:
+        - set: {features: core_fee_dynamics}
+        - set: {features: core_fee_dynamics_local_trends}
+      models:
+        - set:
+            model: lstm
+            tuning_space: lstm_large_capacity
+        - set:
+            model: transformer
+            tuning_space: transformer_large_capacity
+        - set:
+            model: transformer_lstm
+            tuning_space: transformer_lstm_large_capacity
+      problems:
+        - ref: current_row_nominal
+    steps:
+      - id: train_baseline
+        workflow: train
+        set:
+          objective: profit_poisson_replay_2h_mean
+          evaluation: poisson_replay_2h_mean
+          variant: baseline
+      - id: evaluate_baseline
+        workflow: evaluate
+        after: [train_baseline]
+        set:
+          objective: profit_poisson_replay_2h_mean
+          evaluation: poisson_replay_2h_mean
+          variant: baseline

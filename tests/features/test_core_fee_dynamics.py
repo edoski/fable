@@ -19,6 +19,31 @@ from spice.features import core as feature_core
 from spice.features.sets import core_fee_dynamics as core_fee_dynamics_module
 from spice.features.sets.core_fee_dynamics import CORE_FEE_DYNAMICS
 
+BASELINE_OUTPUTS = [
+    "log_base_fee_per_gas",
+    "log_prev_gas_used",
+    "log_prev_gas_limit",
+    "prev_gas_utilization",
+    "prev_eip1559_pressure",
+    "log_prev_tx_count",
+    "seconds_since_previous_block",
+    "hour_sin",
+    "hour_cos",
+    "dow_sin",
+    "dow_cos",
+    "roll25_mean_logfee",
+    "roll25_std_logfee",
+    "roll25_min_logfee",
+    "roll100_mean_logfee",
+    "roll100_std_logfee",
+    "roll100_min_logfee",
+    "prev_priority_fee_p10",
+    "prev_priority_fee_p50",
+    "prev_priority_fee_p90",
+    "prev_priority_fee_spread",
+    "prev_fee_history_gas_used_ratio",
+]
+
 
 def _frame(row_count: int = 140) -> pl.DataFrame:
     block_numbers = np.arange(10_000, 10_000 + row_count, dtype=np.int64)
@@ -43,9 +68,9 @@ def _frame(row_count: int = 140) -> pl.DataFrame:
     ).sample(fraction=1.0, shuffle=True, seed=7)
 
 
-def _contract(outputs: list[str]):
+def _contract(outputs: list[str], *, features_id: str = "core_fee_dynamics"):
     return compile_feature_contract(
-        features=coerce_features_config({"id": "core_fee_dynamics", "outputs": outputs})
+        features=coerce_features_config({"id": features_id, "outputs": outputs})
     )
 
 
@@ -174,3 +199,68 @@ def test_elapsed_position_ablation_config_adds_time_since_start_signal() -> None
     assert ablation_outputs[:-1] == baseline_outputs
     assert ablation_outputs[-1] == "elapsed_seconds"
     coerce_features_config(ablation)
+
+
+def test_core_fee_dynamics_local_trends_config_adds_restored_safe_outputs() -> None:
+    baseline = cast(dict[str, object], load_named_group("core_fee_dynamics", "features"))
+    local_trends = cast(
+        dict[str, object],
+        load_named_group("core_fee_dynamics_local_trends", "features"),
+    )
+    baseline_outputs = cast(list[str], baseline["outputs"])
+    local_outputs = cast(list[str], local_trends["outputs"])
+
+    assert baseline_outputs == BASELINE_OUTPUTS
+    assert local_trends["id"] == "core_fee_dynamics_local_trends"
+    assert local_outputs[: len(baseline_outputs)] == baseline_outputs
+    assert "elapsed_seconds" not in local_outputs
+    assert "time_since_start" not in local_outputs
+    assert "dlog_base_fee" in local_outputs
+    assert "prev_gas_utilization_lag6" in local_outputs
+    assert "roll200_std_prev_gas_utilization" in local_outputs
+    coerce_features_config(local_trends)
+
+    with pytest.raises(ValueError, match="Unknown feature outputs: dlog_base_fee"):
+        coerce_features_config(
+            {
+                "id": "core_fee_dynamics",
+                "outputs": [*baseline_outputs, "dlog_base_fee"],
+            }
+        )
+
+
+def test_core_fee_dynamics_local_trends_builds_finite_aligned_feature_table() -> None:
+    contract = _contract(
+        [
+            "dlog_base_fee",
+            "base_fee_trend",
+            "dlog_base_fee_lag6",
+            "prev_gas_utilization_lag6",
+            "roll200_mean_logfee",
+            "roll200_std_prev_gas_utilization",
+        ],
+        features_id="core_fee_dynamics_local_trends",
+    )
+
+    table = contract.build_table(_frame(220))
+
+    assert contract.feature_prerequisites == FeaturePrerequisites(warmup_rows=200)
+    assert table.feature_matrix.shape == (220, 6)
+    assert np.isfinite(table.feature_matrix).all()
+    assert table.feature_matrix[200, 1] == pytest.approx(1.0)
+
+
+def test_core_fee_dynamics_local_trend_lags_use_prior_rows() -> None:
+    table = _contract(
+        [
+            "prev_gas_utilization",
+            "prev_gas_utilization_lag1",
+            "dlog_base_fee",
+            "dlog_base_fee_lag1",
+        ],
+        features_id="core_fee_dynamics_local_trends",
+    ).build_table(_frame(12))
+
+    assert table.feature_matrix[3, 0] == pytest.approx((15_000_000 + 2) / 30_000_000)
+    assert table.feature_matrix[3, 1] == pytest.approx((15_000_000 + 1) / 30_000_000)
+    assert table.feature_matrix[3, 3] == pytest.approx(table.feature_matrix[2, 2])

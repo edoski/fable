@@ -120,6 +120,30 @@ def test_benchmark_dimensions_expand_resolved_plan(isolate_conf_root) -> None:
     )
 
 
+def test_polygon_local_trends_ablation_expands_expected_plan() -> None:
+    plan = plan_benchmark("polygon_local_trends_ablation")
+    configs = [cast(ModelWorkflowConfig, entry.config) for entry in plan]
+
+    assert len(plan) == 12
+    assert {entry.step_id for entry in plan} == {"train_baseline", "evaluate_baseline"}
+    assert {config.chain.name for config in configs} == {"polygon"}
+    assert {config.features.id for config in configs} == {
+        "core_fee_dynamics",
+        "core_fee_dynamics_local_trends",
+    }
+    assert {config.model.id for config in configs} == {
+        "lstm",
+        "transformer",
+        "transformer_lstm",
+    }
+    assert {config.problem.id for config in configs} == {"current_row_nominal"}
+    assert {config.study.name for config in configs} == {"polygon_local_trends_ablation"}
+    assert all(config.artifact.variant.value == "baseline" for config in configs)
+    assert all(
+        entry.depends_on for entry in plan if entry.step_id == "evaluate_baseline"
+    )
+
+
 def test_benchmark_rejects_invalid_problem_grid(isolate_conf_root) -> None:
     conf_root = isolate_conf_root()
     _write_benchmark(
