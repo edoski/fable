@@ -42,6 +42,25 @@ BASELINE_OUTPUTS = [
     "prev_priority_fee_p90",
     "prev_priority_fee_spread",
     "prev_fee_history_gas_used_ratio",
+    "dlog_base_fee",
+    "base_fee_trend",
+    *[f"dlog_base_fee_lag{lag}" for lag in range(1, 7)],
+    *[f"prev_gas_utilization_lag{lag}" for lag in range(1, 7)],
+    "roll10_mean_logfee",
+    "roll10_std_logfee",
+    "roll10_min_logfee",
+    "roll50_mean_logfee",
+    "roll50_std_logfee",
+    "roll50_min_logfee",
+    "roll200_mean_logfee",
+    "roll200_std_logfee",
+    "roll200_min_logfee",
+    "roll10_mean_prev_gas_utilization",
+    "roll10_std_prev_gas_utilization",
+    "roll50_mean_prev_gas_utilization",
+    "roll50_std_prev_gas_utilization",
+    "roll200_mean_prev_gas_utilization",
+    "roll200_std_prev_gas_utilization",
 ]
 
 
@@ -201,35 +220,20 @@ def test_elapsed_position_ablation_config_adds_time_since_start_signal() -> None
     coerce_features_config(ablation)
 
 
-def test_core_fee_dynamics_local_trends_config_adds_restored_safe_outputs() -> None:
+def test_core_fee_dynamics_config_includes_restored_safe_local_trends() -> None:
     baseline = cast(dict[str, object], load_named_group("core_fee_dynamics", "features"))
-    local_trends = cast(
-        dict[str, object],
-        load_named_group("core_fee_dynamics_local_trends", "features"),
-    )
     baseline_outputs = cast(list[str], baseline["outputs"])
-    local_outputs = cast(list[str], local_trends["outputs"])
 
     assert baseline_outputs == BASELINE_OUTPUTS
-    assert local_trends["id"] == "core_fee_dynamics_local_trends"
-    assert local_outputs[: len(baseline_outputs)] == baseline_outputs
-    assert "elapsed_seconds" not in local_outputs
-    assert "time_since_start" not in local_outputs
-    assert "dlog_base_fee" in local_outputs
-    assert "prev_gas_utilization_lag6" in local_outputs
-    assert "roll200_std_prev_gas_utilization" in local_outputs
-    coerce_features_config(local_trends)
-
-    with pytest.raises(ValueError, match="Unknown feature outputs: dlog_base_fee"):
-        coerce_features_config(
-            {
-                "id": "core_fee_dynamics",
-                "outputs": [*baseline_outputs, "dlog_base_fee"],
-            }
-        )
+    assert "elapsed_seconds" not in baseline_outputs
+    assert "time_since_start" not in baseline_outputs
+    assert "dlog_base_fee" in baseline_outputs
+    assert "prev_gas_utilization_lag6" in baseline_outputs
+    assert "roll200_std_prev_gas_utilization" in baseline_outputs
+    coerce_features_config(baseline)
 
 
-def test_core_fee_dynamics_local_trends_builds_finite_aligned_feature_table() -> None:
+def test_core_fee_dynamics_restored_local_trends_build_finite_aligned_table() -> None:
     contract = _contract(
         [
             "dlog_base_fee",
@@ -238,8 +242,7 @@ def test_core_fee_dynamics_local_trends_builds_finite_aligned_feature_table() ->
             "prev_gas_utilization_lag6",
             "roll200_mean_logfee",
             "roll200_std_prev_gas_utilization",
-        ],
-        features_id="core_fee_dynamics_local_trends",
+        ]
     )
 
     table = contract.build_table(_frame(220))
@@ -257,8 +260,7 @@ def test_core_fee_dynamics_local_trend_lags_use_prior_rows() -> None:
             "prev_gas_utilization_lag1",
             "dlog_base_fee",
             "dlog_base_fee_lag1",
-        ],
-        features_id="core_fee_dynamics_local_trends",
+        ]
     ).build_table(_frame(12))
 
     assert table.feature_matrix[3, 0] == pytest.approx((15_000_000 + 2) / 30_000_000)

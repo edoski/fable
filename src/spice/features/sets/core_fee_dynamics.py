@@ -433,9 +433,6 @@ CORE_FEE_DYNAMICS_OUTPUTS = (
     "prev_priority_fee_p90",
     "prev_priority_fee_spread",
     "prev_fee_history_gas_used_ratio",
-)
-
-CORE_FEE_DYNAMICS_LOCAL_TRENDS_OUTPUTS = CORE_FEE_DYNAMICS_OUTPUTS + (
     "dlog_base_fee",
     "base_fee_trend",
     *(f"dlog_base_fee_lag{lag}" for lag in range(1, 7)),

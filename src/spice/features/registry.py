@@ -18,7 +18,6 @@ def _features_entries() -> dict[str, FeaturesEntry]:
     from .sets.core_fee_dynamics import (
         CORE_FEE_DYNAMICS,
         CORE_FEE_DYNAMICS_ELAPSED_POSITION_OUTPUTS,
-        CORE_FEE_DYNAMICS_LOCAL_TRENDS_OUTPUTS,
         CORE_FEE_DYNAMICS_OUTPUTS,
     )
 
@@ -30,10 +29,6 @@ def _features_entries() -> dict[str, FeaturesEntry]:
         "core_fee_dynamics_elapsed_position": FeaturesEntry(
             catalog=CORE_FEE_DYNAMICS,
             allowed_outputs=CORE_FEE_DYNAMICS_ELAPSED_POSITION_OUTPUTS,
-        ),
-        "core_fee_dynamics_local_trends": FeaturesEntry(
-            catalog=CORE_FEE_DYNAMICS,
-            allowed_outputs=CORE_FEE_DYNAMICS_LOCAL_TRENDS_OUTPUTS,
         ),
     }
 

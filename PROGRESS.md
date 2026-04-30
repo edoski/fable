@@ -189,8 +189,8 @@ Launch decisions are now governed by the feature-set stabilization sequence belo
 
 Feature-set stabilization sequence:
 
-1. Finish the submitted `local_trends_ablation_grid` before changing feature configs again.
-2. If final held-out evaluations do not contradict the current pattern, promote the restored safe local-trend outputs into canonical `core_fee_dynamics`. This means `core_fee_dynamics` becomes the expanded safe fee-dynamics set; do not keep a long-term separate `core_fee_dynamics_local_trends` axis unless a concrete diagnostic need remains.
+1. The submitted local-trends A/B grid completed cleanly. Local trends won 6/9 cells, tied Avalanche Transformer-LSTM, narrowly lost Polygon LSTM, and lost Avalanche Transformer.
+2. The restored safe local-trend outputs are promoted into canonical `core_fee_dynamics`. This means `core_fee_dynamics` is now the expanded safe fee-dynamics set; do not keep a long-term separate local-trends feature axis.
 3. Rerun `safe_baseline_grid` and `large_capacity_hpo` once on the promoted `core_fee_dynamics` definition. These runs establish the first clean post-promotion baseline and tuned reference.
 4. After that, run a focused priority-fee local-trends feature ablation. Candidate outputs should stay inside the current safe data boundary: lagged/public `eth_feeHistory` priority-fee summaries only, with no private mempool, same-row, or bundle contents. Start narrow: priority-fee p50 and spread deltas/lags/rolling stats before expanding p10/p90 or adding many combinations.
 5. If the priority-fee local-trends ablation materially improves held-out evaluation, expand canonical `core_fee_dynamics` again and rerun `safe_baseline_grid` plus `large_capacity_hpo`. If it is neutral or noisy, keep it as diagnostic evidence only and leave canonical `core_fee_dynamics` unchanged.
@@ -276,7 +276,7 @@ Completed historical feature findings kept for current relevance:
 - Dropping `time_since_start` was neutral-to-helpful often enough to justify recording the historical `safe_best` role.
 - The old recent-delta interval estimate helped some family/surface combinations but was not universal.
 
-Current runnable feature work intentionally starts from one lean safe catalog, `core_fee_dynamics`. New feature ideas should enter as explicit catalog outputs or future catalogs only after they have a clear source policy, warmup/null policy, and benchmark reason.
+Current runnable feature work intentionally uses one canonical safe catalog, `core_fee_dynamics`. New feature ideas should enter as explicit catalog outputs or future catalogs only after they have a clear source policy, warmup/null policy, and benchmark reason.
 
 ### Architecture Cleanup
 

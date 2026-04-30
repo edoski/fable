@@ -28,7 +28,7 @@ ResolvedFeatureTable
 
 ## `core_fee_dynamics`
 
-The current catalog is deliberately lean and protocol-first:
+The current catalog is protocol-first and includes the safe local-trend signals that improved the 1M A/B grid:
 
 | Group | Outputs | Reason |
 | --- | --- | --- |
@@ -38,6 +38,9 @@ The current catalog is deliberately lean and protocol-first:
 | Cadence/calendar | `seconds_since_previous_block`, `hour_*`, `dow_*` | Captures timing irregularity and coarse daily/weekly effects. |
 | Rolling fee context | `roll25_*_logfee`, `roll100_*_logfee` | Captures local fee level, volatility, and recent minima. |
 | Fee history | `prev_priority_fee_p10/p50/p90/spread`, `prev_fee_history_gas_used_ratio` | Captures recent priority-fee market pressure from RPC `eth_feeHistory`. |
+| Base-fee local trends | `dlog_base_fee`, `base_fee_trend`, `dlog_base_fee_lag1..6` | Captures short-term base-fee direction and persistence from known current/past base fees. |
+| Gas-utilization local trends | `prev_gas_utilization_lag1..6`, `roll10/50/200_*_prev_gas_utilization` | Captures safe pressure history using lagged finalized gas facts. |
+| Additional rolling fee context | `roll10/50/200_*_logfee` | Captures shorter and longer fee regimes than the original 25/100 windows. |
 
 All previous-block facts are lagged inside their `SourceSpec`, not ad hoc in dataset builders or models. That keeps causality local to the source that owns availability.
 

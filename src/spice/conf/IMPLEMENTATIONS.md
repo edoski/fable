@@ -52,7 +52,7 @@ Dataset: `icdcs_2026`.
 
 Features: `core_fee_dynamics`. `core_fee_dynamics_elapsed_position` is a post-refactor ablation spec only; it is identical to `core_fee_dynamics` plus `elapsed_seconds`, a corpus-position signal.
 
-`core_fee_dynamics` selects safe fee, gas-pressure, cadence/calendar, rolling log-fee, tx-count, and fee-history priority-fee outputs. It does not include elapsed-time/corpus-position outputs and does not expose raw block author/proposer metadata.
+`core_fee_dynamics` selects safe fee, gas-pressure, local trend, cadence/calendar, rolling log-fee, tx-count, and fee-history priority-fee outputs. It does not include elapsed-time/corpus-position outputs and does not expose raw block author/proposer metadata.
 
 Problems:
 

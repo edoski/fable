@@ -115,13 +115,11 @@ def test_benchmark_dimensions_expand_tuned_train_and_artifact_from(
 
 def test_packaged_benchmark_yamls_keep_expected_shapes() -> None:
     expected_counts = {
-        "polygon_local_trends_ablation": 12,
         "evaluator_objective_grid": 54,
         "large_capacity_hpo": 27,
         "safe_baseline_grid": 18,
         "delay_degradation_sweep": 180,
         "elapsed_position_ablation": 36,
-        "local_trends_ablation_grid": 36,
         "lookback_window_sweep": 54,
         "slot_spacing_sweep": 36,
     }
