@@ -9,7 +9,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import cast
 
-from ..config.models import ChainRuntimeSpec
+from ..config.models import ChainRuntimeSpec, ChainSpec
+from ..config.registry import load_named_group
 from ..core.errors import MissingStateError, StateLayoutError
 from ..corpus.metadata import (
     AcquireRunFacts,
@@ -139,9 +140,7 @@ def _dataset_manifest_from_payload(payload: dict[str, object]) -> DatasetManifes
         ),
         chain=ChainMetadata(
             name=str(chain["name"]),
-            runtime=ChainRuntimeSpec.model_validate(
-                mapping_payload(chain["runtime"], label="chain.runtime")
-            ),
+            runtime=_chain_runtime_from_payload(chain),
         ),
         request=DatasetRequestMetadata(
             history=_window_from_payload(request["history"]),
@@ -156,6 +155,16 @@ def _dataset_manifest_from_payload(payload: dict[str, object]) -> DatasetManifes
             evaluation=_validation_from_payload(validation["evaluation"]),
         ),
     )
+
+
+def _chain_runtime_from_payload(chain: dict[str, object]) -> ChainRuntimeSpec:
+    runtime_payload = chain.get("runtime")
+    if runtime_payload is not None:
+        return ChainRuntimeSpec.model_validate(
+            mapping_payload(runtime_payload, label="chain.runtime")
+        )
+    chain_config = ChainSpec.model_validate(load_named_group(str(chain["name"]), "chain"))
+    return chain_config.runtime
 
 
 def _window_from_payload(payload: object) -> DatasetWindowMetadata:
