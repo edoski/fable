@@ -62,6 +62,26 @@ BASELINE_OUTPUTS = [
     "roll200_mean_prev_gas_utilization",
     "roll200_std_prev_gas_utilization",
 ]
+PRIORITY_TREND_OUTPUTS = [
+    "log_prev_priority_fee_p50",
+    "dlog_prev_priority_fee_p50",
+    *[f"dlog_prev_priority_fee_p50_lag{lag}" for lag in range(1, 7)],
+    "roll10_mean_log_prev_priority_fee_p50",
+    "roll10_std_log_prev_priority_fee_p50",
+    "roll50_mean_log_prev_priority_fee_p50",
+    "roll50_std_log_prev_priority_fee_p50",
+    "roll200_mean_log_prev_priority_fee_p50",
+    "roll200_std_log_prev_priority_fee_p50",
+    "log_prev_priority_fee_spread",
+    "dlog_prev_priority_fee_spread",
+    *[f"dlog_prev_priority_fee_spread_lag{lag}" for lag in range(1, 7)],
+    "roll10_mean_log_prev_priority_fee_spread",
+    "roll10_std_log_prev_priority_fee_spread",
+    "roll50_mean_log_prev_priority_fee_spread",
+    "roll50_std_log_prev_priority_fee_spread",
+    "roll200_mean_log_prev_priority_fee_spread",
+    "roll200_std_log_prev_priority_fee_spread",
+]
 
 
 def _frame(row_count: int = 140) -> pl.DataFrame:
@@ -266,3 +286,65 @@ def test_core_fee_dynamics_local_trend_lags_use_prior_rows() -> None:
     assert table.feature_matrix[3, 0] == pytest.approx((15_000_000 + 2) / 30_000_000)
     assert table.feature_matrix[3, 1] == pytest.approx((15_000_000 + 1) / 30_000_000)
     assert table.feature_matrix[3, 3] == pytest.approx(table.feature_matrix[2, 2])
+
+
+def test_priority_fee_trends_config_adds_p50_and_spread_outputs_only() -> None:
+    baseline = cast(dict[str, object], load_named_group("core_fee_dynamics", "features"))
+    priority = cast(
+        dict[str, object],
+        load_named_group("core_fee_dynamics_priority_trends", "features"),
+    )
+    baseline_outputs = cast(list[str], baseline["outputs"])
+    priority_outputs = cast(list[str], priority["outputs"])
+
+    assert priority["id"] == "core_fee_dynamics_priority_trends"
+    assert priority_outputs == [*baseline_outputs, *PRIORITY_TREND_OUTPUTS]
+    assert "log_prev_priority_fee_p10" not in priority_outputs
+    assert "log_prev_priority_fee_p90" not in priority_outputs
+    assert "elapsed_seconds" not in priority_outputs
+    coerce_features_config(priority)
+
+
+def test_priority_fee_trends_build_finite_aligned_table() -> None:
+    contract = _contract(
+        [
+            "log_prev_priority_fee_p50",
+            "dlog_prev_priority_fee_p50_lag6",
+            "roll200_std_log_prev_priority_fee_p50",
+            "log_prev_priority_fee_spread",
+            "dlog_prev_priority_fee_spread_lag6",
+            "roll200_mean_log_prev_priority_fee_spread",
+        ],
+        features_id="core_fee_dynamics_priority_trends",
+    )
+
+    table = contract.build_table(_frame(220))
+
+    assert contract.feature_prerequisites == FeaturePrerequisites(warmup_rows=200)
+    assert table.feature_matrix.shape == (220, 6)
+    assert np.isfinite(table.feature_matrix).all()
+
+
+def test_priority_fee_trend_lags_use_prior_fee_history_rows() -> None:
+    frame = _frame(12).with_columns(
+        (1_000 + (pl.col("block_number") - 10_000) * 10).alias("priority_fee_p50"),
+        (500 + (pl.col("block_number") - 10_000) * 5).alias("priority_fee_spread"),
+    )
+    table = _contract(
+        [
+            "log_prev_priority_fee_p50",
+            "dlog_prev_priority_fee_p50",
+            "dlog_prev_priority_fee_p50_lag1",
+            "log_prev_priority_fee_spread",
+            "dlog_prev_priority_fee_spread",
+            "dlog_prev_priority_fee_spread_lag1",
+        ],
+        features_id="core_fee_dynamics_priority_trends",
+    ).build_table(frame)
+
+    expected_p50_delta = np.log1p(1_030) - np.log1p(1_020)
+    expected_spread_delta = np.log1p(515) - np.log1p(510)
+    assert table.feature_matrix[4, 1] == pytest.approx(expected_p50_delta)
+    assert table.feature_matrix[5, 2] == pytest.approx(expected_p50_delta)
+    assert table.feature_matrix[4, 4] == pytest.approx(expected_spread_delta)
+    assert table.feature_matrix[5, 5] == pytest.approx(expected_spread_delta)

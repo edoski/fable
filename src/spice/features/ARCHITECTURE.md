@@ -44,6 +44,8 @@ The current catalog is protocol-first and includes the safe local-trend signals 
 
 All previous-block facts are lagged inside their `SourceSpec`, not ad hoc in dataset builders or models. That keeps causality local to the source that owns availability.
 
+`core_fee_dynamics_priority_trends` is a temporary diagnostic feature spec that extends canonical `core_fee_dynamics` with lagged public priority-fee p50/spread dynamics. It deliberately excludes p10/p90 tails until the central-fee/spread signal is tested.
+
 `elapsed_seconds` remains implemented only for the `core_fee_dynamics_elapsed_position` ablation spec. It measures timestamp distance from the first row in the materialized feature table. It is not part of the default catalog because it can encode corpus position, long-term regime, or split-specific trends rather than reusable fee dynamics.
 
 ## Invariants

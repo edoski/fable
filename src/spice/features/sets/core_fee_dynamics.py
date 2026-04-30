@@ -73,6 +73,36 @@ def _dt_seconds(series: CanonicalBlockSeries) -> FloatVector:
     return result
 
 
+def _rolling_feature(
+    feature_name: str,
+    *,
+    window: int,
+    stat: str,
+    ddof: int = 0,
+):
+    def _compute(
+        blocks: pl.DataFrame,
+        series: CanonicalBlockSeries,
+        sources: Mapping[str, FloatVector],
+        features: Mapping[str, FloatVector],
+    ) -> FloatVector:
+        return rolling_stat(features[feature_name], window=window, stat=stat, ddof=ddof)
+
+    return _compute
+
+
+def _shift_feature(feature_name: str, *, lag: int):
+    def _compute(
+        blocks: pl.DataFrame,
+        series: CanonicalBlockSeries,
+        sources: Mapping[str, FloatVector],
+        features: Mapping[str, FloatVector],
+    ) -> FloatVector:
+        return shift(features[feature_name], lag=lag)
+
+    return _compute
+
+
 def _sources() -> dict[str, SourceSpec]:
     return {
         # EIP-1559 base fee for block t is deterministic from parent state and known
@@ -266,6 +296,42 @@ def _features() -> dict[str, FeatureSpec]:
                 "prev_fee_history_gas_used_ratio"
             ],
         ),
+        "log_prev_priority_fee_p50": FeatureSpec(
+            source_dependencies=("prev_priority_fee_p50",),
+            feature_dependencies=(),
+            history_seconds=0,
+            warmup_rows=1,
+            compute=lambda blocks, series, sources, features: _log1p(
+                sources["prev_priority_fee_p50"]
+            ),
+        ),
+        "log_prev_priority_fee_spread": FeatureSpec(
+            source_dependencies=("prev_priority_fee_spread",),
+            feature_dependencies=(),
+            history_seconds=0,
+            warmup_rows=1,
+            compute=lambda blocks, series, sources, features: _log1p(
+                sources["prev_priority_fee_spread"]
+            ),
+        ),
+        "dlog_prev_priority_fee_p50": FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("log_prev_priority_fee_p50",),
+            history_seconds=0,
+            warmup_rows=2,
+            compute=lambda blocks, series, sources, features: _delta(
+                features["log_prev_priority_fee_p50"]
+            ),
+        ),
+        "dlog_prev_priority_fee_spread": FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("log_prev_priority_fee_spread",),
+            history_seconds=0,
+            warmup_rows=2,
+            compute=lambda blocks, series, sources, features: _delta(
+                features["log_prev_priority_fee_spread"]
+            ),
+        ),
         "dlog_base_fee": FeatureSpec(
             source_dependencies=(),
             feature_dependencies=("log_base_fee_per_gas",),
@@ -377,6 +443,22 @@ def _features() -> dict[str, FeatureSpec]:
                 ddof=1,
             ),
         )
+        for priority_name in ("p50", "spread"):
+            log_feature = f"log_prev_priority_fee_{priority_name}"
+            features[f"roll{window}_mean_{log_feature}"] = FeatureSpec(
+                source_dependencies=(),
+                feature_dependencies=(log_feature,),
+                history_seconds=0,
+                warmup_rows=window,
+                compute=_rolling_feature(log_feature, window=window, stat="mean"),
+            )
+            features[f"roll{window}_std_{log_feature}"] = FeatureSpec(
+                source_dependencies=(),
+                feature_dependencies=(log_feature,),
+                history_seconds=0,
+                warmup_rows=window,
+                compute=_rolling_feature(log_feature, window=window, stat="std", ddof=1),
+            )
     for lag in range(1, 7):
         features[f"dlog_base_fee_lag{lag}"] = FeatureSpec(
             source_dependencies=(),
@@ -398,6 +480,15 @@ def _features() -> dict[str, FeatureSpec]:
                 lag=lag,
             ),
         )
+        for priority_name in ("p50", "spread"):
+            dlog_feature = f"dlog_prev_priority_fee_{priority_name}"
+            features[f"{dlog_feature}_lag{lag}"] = FeatureSpec(
+                source_dependencies=(),
+                feature_dependencies=(dlog_feature,),
+                history_seconds=0,
+                warmup_rows=lag + 2,
+                compute=_shift_feature(dlog_feature, lag=lag),
+            )
     return features
 
 
@@ -452,6 +543,26 @@ CORE_FEE_DYNAMICS_OUTPUTS = (
     "roll50_std_prev_gas_utilization",
     "roll200_mean_prev_gas_utilization",
     "roll200_std_prev_gas_utilization",
+)
+CORE_FEE_DYNAMICS_PRIORITY_TRENDS_OUTPUTS = CORE_FEE_DYNAMICS_OUTPUTS + (
+    "log_prev_priority_fee_p50",
+    "dlog_prev_priority_fee_p50",
+    *(f"dlog_prev_priority_fee_p50_lag{lag}" for lag in range(1, 7)),
+    "roll10_mean_log_prev_priority_fee_p50",
+    "roll10_std_log_prev_priority_fee_p50",
+    "roll50_mean_log_prev_priority_fee_p50",
+    "roll50_std_log_prev_priority_fee_p50",
+    "roll200_mean_log_prev_priority_fee_p50",
+    "roll200_std_log_prev_priority_fee_p50",
+    "log_prev_priority_fee_spread",
+    "dlog_prev_priority_fee_spread",
+    *(f"dlog_prev_priority_fee_spread_lag{lag}" for lag in range(1, 7)),
+    "roll10_mean_log_prev_priority_fee_spread",
+    "roll10_std_log_prev_priority_fee_spread",
+    "roll50_mean_log_prev_priority_fee_spread",
+    "roll50_std_log_prev_priority_fee_spread",
+    "roll200_mean_log_prev_priority_fee_spread",
+    "roll200_std_log_prev_priority_fee_spread",
 )
 CORE_FEE_DYNAMICS_ELAPSED_POSITION_OUTPUTS = CORE_FEE_DYNAMICS_OUTPUTS + (
     "elapsed_seconds",

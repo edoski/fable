@@ -50,7 +50,7 @@ Provider: `publicnode`.
 
 Dataset: `icdcs_2026`.
 
-Features: `core_fee_dynamics`. `core_fee_dynamics_elapsed_position` is a post-refactor ablation spec only; it is identical to `core_fee_dynamics` plus `elapsed_seconds`, a corpus-position signal.
+Features: `core_fee_dynamics`. `core_fee_dynamics_priority_trends` is a focused p50/spread priority-fee diagnostic extension. `core_fee_dynamics_elapsed_position` is a post-refactor ablation spec only; it is identical to `core_fee_dynamics` plus `elapsed_seconds`, a corpus-position signal.
 
 `core_fee_dynamics` selects safe fee, gas-pressure, local trend, cadence/calendar, rolling log-fee, tx-count, and fee-history priority-fee outputs. It does not include elapsed-time/corpus-position outputs and does not expose raw block author/proposer metadata.
 
@@ -65,7 +65,7 @@ Dataset builders:
 
 Evaluators: `poisson_replay_2h` and `full_temporal_replay`. The default surface uses `poisson_replay_2h`; `full_temporal_replay` is available as a sibling evaluator and objective.
 
-Benchmarks: `safe_baseline_grid`, `large_capacity_hpo`, `lookback_window_sweep`, `slot_spacing_sweep`, `elapsed_position_ablation`, `delay_degradation_sweep`, and `evaluator_objective_grid`.
+Benchmarks: `priority_fee_trends_ablation`, `safe_baseline_grid`, `large_capacity_hpo`, `lookback_window_sweep`, `slot_spacing_sweep`, `elapsed_position_ablation`, `delay_degradation_sweep`, and `evaluator_objective_grid`.
 
 `safe_baseline_grid` is the untuned ETH/POL/AVAX by LSTM/Transformer/Transformer-LSTM baseline. `large_capacity_hpo` is the bounded calibration search: the same 3x3 grid, large-capacity spaces, and 40 trials per cell. `lookback_window_sweep`, `slot_spacing_sweep`, `elapsed_position_ablation`, and `delay_degradation_sweep` are fixed train/evaluate grids, not per-cell HPO grids. `delay_degradation_sweep` trains one artifact per `max_delay_seconds` value and evaluates with the artifact capability delay unless an evaluate step sets `delay_seconds`. Sample-count sweeps are deferred because larger history windows need explicit date-range and protocol-regime checks.
 

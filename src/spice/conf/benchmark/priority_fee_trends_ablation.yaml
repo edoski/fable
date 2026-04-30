@@ -1,0 +1,40 @@
+cases:
+  - id: priority_fee_trends_ablation
+    base:
+      surface: current_row_fee_dynamics
+      training: default
+      split: default
+      study: priority_fee_trends_ablation
+    dimensions:
+      data:
+        - set: {chain: ethereum, dataset_id: cor_9a73b1e88edb488afb1e}
+        - set: {chain: polygon, dataset_id: cor_415186063685f5b7588f}
+        - set: {chain: avalanche, dataset_id: cor_91fa9b80b6014317c148}
+      features:
+        - set: {features: core_fee_dynamics}
+        - set: {features: core_fee_dynamics_priority_trends}
+      models:
+        - set:
+            model: lstm
+            tuning_space: lstm_large_capacity
+        - set:
+            model: transformer
+            tuning_space: transformer_large_capacity
+        - set:
+            model: transformer_lstm
+            tuning_space: transformer_lstm_large_capacity
+      problems:
+        - ref: current_row_nominal
+    steps:
+      - id: train_baseline
+        workflow: train
+        set:
+          objective: profit_poisson_replay_2h
+          evaluation: poisson_replay_2h
+          variant: baseline
+      - id: evaluate_baseline
+        workflow: evaluate
+        after: [train_baseline]
+        artifact_from: train_baseline
+        set:
+          evaluation: poisson_replay_2h
