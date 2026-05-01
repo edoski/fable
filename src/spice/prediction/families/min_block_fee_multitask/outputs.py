@@ -22,5 +22,5 @@ def build_output_spec(max_candidate_slots: int) -> PredictionOutputSpec:
     )
 
 
-def masked_offset_logits(logits: torch.Tensor, candidate_mask: torch.Tensor) -> torch.Tensor:
-    return masked_distribution_logits(logits, candidate_mask)
+def masked_offset_logits(logits: torch.Tensor, action_mask: torch.Tensor) -> torch.Tensor:
+    return masked_distribution_logits(logits, action_mask)

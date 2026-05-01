@@ -6,8 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-import polars as pl
-
 from ..config.models import (
     ArtifactVariant,
     ChainSpec,
@@ -23,36 +21,28 @@ from ..config.models import (
 from ..corpus.io import load_block_frame
 from ..corpus.metadata import DatasetManifest
 from ..features import CompiledFeatureContract
-from ..objectives import CompiledObjectiveContract, ObjectiveConfig
+from ..objectives import ObjectiveConfig
 from ..prediction import CompiledPredictionContract
-from ..semantics import FeatureSemantics
-from ..storage.workflow_paths import WorkflowPaths
+from ..storage.root_handles import ArtifactRootHandle, CorpusRootHandle, StudyRootHandle
 from ..temporal.contracts import CompiledProblemContract
-from ..temporal.execution_policy import CompiledExecutionPolicyContract
 from ..temporal.input_normalization import CompiledInputNormalizationContract
-from ..temporal.problem_store import (
-    CompiledProblemStore,
-    DatasetSplitIndices,
-    IntVector,
-)
-from ..temporal.scaling import ScalerStats
 from ._training_context import compile_training_context
 from .dataset_builders import (
-    BuilderRuntimeMetadata,
     CompiledDatasetBuilderContract,
     DatasetBuilderConfig,
+    PreparedTrainingDataset,
+    TrainingDatasetPreparationSpec,
 )
 from .families.base import ModelConfig
 from .families.registry import build_model
-from .models import TemporalModel
-from .objective_metrics import CompiledObjectiveMetricSource
+from .objective_runtime import CompiledObjectiveRuntime
 from .representations import CompiledRepresentationContract
+from .training_run import TrainingRunResult
 from .training_runner import (
     EarlyStopCallback,
     EpochEndCallback,
     TrainingCallbacks,
     TrainingFitSpec,
-    TrainingResult,
     run_training_fit,
 )
 
@@ -72,8 +62,7 @@ class TrainingSpec:
     prediction: PredictionConfig
     objective: ObjectiveConfig
     prediction_contract: CompiledPredictionContract
-    objective_contract: CompiledObjectiveContract
-    objective_metric_source: CompiledObjectiveMetricSource
+    objective_runtime: CompiledObjectiveRuntime
     input_normalization_contract: CompiledInputNormalizationContract
     representation_contract: CompiledRepresentationContract
     model: ModelConfig
@@ -84,26 +73,52 @@ class TrainingSpec:
     study_id: str | None = None
 
 
-@dataclass(slots=True)
-class InferencePreparationSpec:
-    feature_contract: CompiledFeatureContract
-    problem_contract: CompiledProblemContract
-    delay_seconds: int
-    builder_runtime_metadata: BuilderRuntimeMetadata
-    compiler_runtime_metadata: object
-    scaler: ScalerStats
-    max_candidate_slots: int
-    window_start_timestamp: int
-    window_end_timestamp: int
-
-
-def build_training_spec(
-    config: TrainConfig | TuneConfig,
+def build_artifact_training_spec(
+    config: TrainConfig,
     *,
-    paths: WorkflowPaths,
+    corpus: CorpusRootHandle,
+    artifact: ArtifactRootHandle,
     corpus_manifest: DatasetManifest | None = None,
 ) -> TrainingSpec:
-    variant = ArtifactVariant.TUNED if isinstance(config, TuneConfig) else config.artifact.variant
+    return _build_training_spec(
+        config,
+        corpus=corpus,
+        artifact_id=artifact.artifact_id,
+        variant=artifact.variant,
+        study=config.study if artifact.variant is ArtifactVariant.TUNED else None,
+        study_id=artifact.study_id,
+        corpus_manifest=corpus_manifest,
+    )
+
+
+def build_trial_training_spec(
+    config: TuneConfig,
+    *,
+    corpus: CorpusRootHandle,
+    study: StudyRootHandle,
+    corpus_manifest: DatasetManifest | None = None,
+) -> TrainingSpec:
+    return _build_training_spec(
+        config,
+        corpus=corpus,
+        artifact_id=study.study_id,
+        variant=ArtifactVariant.TUNED,
+        study=config.study,
+        study_id=study.study_id,
+        corpus_manifest=corpus_manifest,
+    )
+
+
+def _build_training_spec(
+    config: TrainConfig | TuneConfig,
+    *,
+    corpus: CorpusRootHandle,
+    artifact_id: str,
+    variant: ArtifactVariant,
+    study: StudyConfig | None,
+    study_id: str | None,
+    corpus_manifest: DatasetManifest | None,
+) -> TrainingSpec:
     chain = (
         ChainSpec(name=corpus_manifest.chain.name, runtime=corpus_manifest.chain.runtime)
         if corpus_manifest is not None
@@ -115,15 +130,11 @@ def build_training_spec(
     )
     return TrainingSpec(
         chain=chain,
-        dataset_id=paths.corpus_id,
+        dataset_id=corpus.dataset_id,
         dataset_name=(
-            config.dataset.name if corpus_manifest is None else corpus_manifest.dataset.name
+            corpus.dataset_name if corpus_manifest is None else corpus_manifest.dataset.name
         ),
-        artifact_id=(
-            paths.artifact_id
-            if paths.artifact_id is not None
-            else paths.study_id or "trial"
-        ),
+        artifact_id=artifact_id,
         problem=config.problem,
         dataset_builder=config.dataset_builder,
         dataset_builder_contract=context.dataset_builder_contract,
@@ -133,100 +144,27 @@ def build_training_spec(
         prediction=config.prediction,
         objective=config.objective,
         prediction_contract=context.prediction_contract,
-        objective_contract=context.objective_contract,
-        objective_metric_source=context.objective_metric_source,
+        objective_runtime=context.objective_runtime,
         input_normalization_contract=context.input_normalization_contract,
         representation_contract=context.representation_contract,
         model=config.model,
         variant=variant,
-        study=config.study if variant is ArtifactVariant.TUNED else None,
-        study_id=paths.study_id if variant is ArtifactVariant.TUNED else None,
+        study=study if variant is ArtifactVariant.TUNED else None,
+        study_id=study_id if variant is ArtifactVariant.TUNED else None,
         split=config.split,
         training=config.training,
     )
 
 
-@dataclass(slots=True)
-class PreparedTrainingDataset:
-    n_rows_available: int
-    n_rows_used: int
-    sample_count: int
-    feature: FeatureSemantics
-    execution_policy: CompiledExecutionPolicyContract
-    store: CompiledProblemStore
-    split_indices: DatasetSplitIndices
-    scaler: ScalerStats
-    builder_runtime_metadata: BuilderRuntimeMetadata
-
-    @property
-    def n_features(self) -> int:
-        return self.store.n_features
-
-    @property
-    def max_candidate_slots(self) -> int:
-        return self.store.max_candidate_slots
-
-
-@dataclass(slots=True)
-class PreparedInferenceDataset:
-    n_history_rows: int
-    n_evaluation_rows: int
-    sample_count: int
-    feature: FeatureSemantics
-    execution_policy: CompiledExecutionPolicyContract
-    store: CompiledProblemStore
-    sample_indices: IntVector
-
-    @property
-    def n_features(self) -> int:
-        return self.store.n_features
-
-
-@dataclass(slots=True)
-class TrainingRunResult:
-    model: TemporalModel
-    prepared: PreparedTrainingDataset
-    training_result: TrainingResult
-    prediction_training_state: object | None
-
-
-def prepare_training_dataset(
-    blocks: pl.DataFrame,
-    *,
-    spec: TrainingSpec,
-) -> PreparedTrainingDataset:
-    return spec.dataset_builder_contract.prepare_training_dataset(blocks, spec=spec)
-
-
-def prepare_inference_dataset(
-    history_blocks: pl.DataFrame,
-    evaluation_blocks: pl.DataFrame,
-    *,
-    dataset_builder_contract: CompiledDatasetBuilderContract,
-    feature_contract: CompiledFeatureContract,
-    problem_contract: CompiledProblemContract,
-    delay_seconds: int,
-    builder_runtime_metadata: BuilderRuntimeMetadata,
-    compiler_runtime_metadata: object,
-    scaler: ScalerStats,
-    max_candidate_slots: int,
-    window_start_timestamp: int,
-    window_end_timestamp: int,
-) -> PreparedInferenceDataset:
-    return dataset_builder_contract.prepare_inference_dataset(
-        history_blocks,
-        evaluation_blocks,
-        spec=InferencePreparationSpec(
-            feature_contract=feature_contract,
-            problem_contract=problem_contract,
-            delay_seconds=delay_seconds,
-            builder_runtime_metadata=builder_runtime_metadata,
-            compiler_runtime_metadata=compiler_runtime_metadata,
-            scaler=scaler,
-            max_candidate_slots=max_candidate_slots,
-            window_start_timestamp=window_start_timestamp,
-            window_end_timestamp=window_end_timestamp,
-        ),
+def _training_preparation_spec(spec: TrainingSpec) -> TrainingDatasetPreparationSpec:
+    return TrainingDatasetPreparationSpec(
+        dataset_builder=spec.dataset_builder,
+        feature_contract=spec.feature_contract,
+        problem_contract=spec.problem_contract,
+        sample_count=spec.problem.sample_count,
+        lookback_seconds=spec.problem.lookback_seconds,
+        split=spec.split,
+        input_normalization_contract=spec.input_normalization_contract,
     )
 
 
@@ -240,7 +178,10 @@ def run_training(
     on_early_stop: EarlyStopCallback | None = None,
 ) -> TrainingRunResult:
     blocks = load_block_frame(history_block_path)
-    prepared = prepare_training_dataset(blocks, spec=spec)
+    prepared = spec.dataset_builder_contract.prepare_training_dataset(
+        blocks,
+        spec=_training_preparation_spec(spec),
+    )
     if on_prepare_complete is not None:
         on_prepare_complete(prepared)
     model = build_model(
@@ -255,8 +196,7 @@ def run_training(
             model=model,
             model_config=spec.model,
             prediction_contract=spec.prediction_contract,
-            objective_contract=spec.objective_contract,
-            objective_metric_source=spec.objective_metric_source,
+            objective_runtime=spec.objective_runtime,
             execution_policy=prepared.execution_policy,
             representation_contract=spec.representation_contract,
             store=prepared.store,

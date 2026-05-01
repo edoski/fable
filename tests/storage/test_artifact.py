@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from spice.config import (
@@ -22,6 +24,7 @@ from spice.modeling.dataset_builders import (
 from spice.modeling.families.lstm import LstmModelConfig
 from spice.modeling.representations import sequence_input_contract
 from spice.modeling.results import (
+    EvaluationExecutionProvenance,
     EvaluationRuntimeSummary,
     SplitSizes,
     TrainingArtifactManifest,
@@ -302,6 +305,52 @@ def _evaluation_summary(evaluation_id: str, value: float) -> EvaluationRuntimeSu
             ),
         ],
     )
+
+
+def test_remote_evaluation_provenance_creates_distinct_summaries(tmp_path) -> None:
+    db_path = tmp_path / ".spice" / "state.sqlite"
+    write_artifact_manifest(db_path, manifest=_manifest())
+    first = _evaluation_summary("poisson_replay_2h", 0.1)
+    second = _evaluation_summary("poisson_replay_2h", 0.1)
+
+    first_id, _ = upsert_evaluation_state(
+        db_path,
+        summary=replace(
+            first,
+            execution_provenance=EvaluationExecutionProvenance(
+                execution_ref="slurm:1",
+                job_id="1",
+                log_path="/logs/spice-evaluate-1.out",
+                workflow_task="evaluate",
+                target="disi_l40",
+            ),
+        ),
+    )
+    second_id, _ = upsert_evaluation_state(
+        db_path,
+        summary=replace(
+            second,
+            execution_provenance=EvaluationExecutionProvenance(
+                execution_ref="slurm:2",
+                job_id="2",
+                log_path="/logs/spice-evaluate-2.out",
+                workflow_task="evaluate",
+                target="disi_l40",
+            ),
+        ),
+    )
+
+    summaries = list_evaluation_summaries(db_path)
+
+    assert first_id != second_id
+    assert {
+        summary.runtime.execution_provenance.execution_ref
+        for summary in summaries
+        if summary.runtime.execution_provenance is not None
+    } == {
+        "slurm:1",
+        "slurm:2",
+    }
 
 
 def test_evaluation_artifact_summaries_round_trip_and_coexist(tmp_path) -> None:

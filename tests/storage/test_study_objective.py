@@ -12,9 +12,9 @@ from spice.corpus.metadata import (
     DatasetValidationMetadata,
     DatasetWindowMetadata,
 )
-from spice.storage.root_consumer_paths import produced_study_id
+from spice.storage.root_producer_handles import produced_study_id
 from spice.storage.study_optuna import open_tuning_study
-from spice.storage.workflow_paths import WorkflowIdentity, build_workflow_paths
+from tests.root_handle_helpers import corpus_handle, study_handle
 
 TEST_DATASET_ID = "cor_9a73b1e88edb488afb1e"
 
@@ -58,19 +58,22 @@ def test_tuning_objective_controls_study_direction(
         ),
     )
 
-    paths = build_workflow_paths(
-        output_root=config.storage.root,
+    corpus = corpus_handle(
+        config.storage.root,
         chain_name=config.chain.name,
-        identity=WorkflowIdentity(
-            corpus_id=TEST_DATASET_ID,
-            study_id=produced_study_id(config),
-        ),
+        dataset_id=TEST_DATASET_ID,
+        dataset_name=config.dataset.name,
     )
-    assert paths.study_state_db is not None
+    study = study_handle(
+        config.storage.root,
+        corpus=corpus,
+        study_id=produced_study_id(config),
+        study_name=config.study.name,
+    )
     access = open_tuning_study(
-        paths.study_state_db,
+        study,
         config=config,
-        paths=paths,
+        corpus=corpus,
         corpus_manifest=_corpus_manifest(config),
     )
 

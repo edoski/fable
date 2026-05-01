@@ -25,23 +25,24 @@ Workflows receive typed configs. They do not resolve remote target defaults. The
 
 ```text
 AcquireConfig
-  -> resolve provider and corpus paths
-  -> acquire/validate history data
-  -> acquire/validate evaluation data
-  -> write dataset state in temp root
-  -> PartialRootCommit selected files
-  -> reindex corpus root
+  -> derive produced corpus root
+  -> report acquisition plan
+  -> create block source
+  -> delegate corpus assembly
+  -> close block source
 ```
 
-Acquire stays mostly together because it is a stable orchestration around RPC block acquisition. Storage commit clutter belongs in storage primitives; tiny private phase helpers are fine when they clarify the orchestration.
+Acquire is deliberately thin. Corpus Assembly owns capability planning, bounded refill attempts, split materialization, state writing, and commit/reindex mechanics.
 
 ## Train
 
 ```text
 TrainConfig
-  -> optionally apply best tuned params
-  -> resolve paths
-  -> build training spec
+  -> resolve consumed roots through catalog
+  -> for tuned train, apply best tuned params
+  -> load resolved corpus manifest
+  -> derive produced artifact root
+  -> build artifact training spec
   -> validate corpus coverage
   -> staged artifact root
   -> persisted training
@@ -55,7 +56,9 @@ Train uses complete-root staging because it produces a full artifact root.
 
 ```text
 TuneConfig
-  -> build objective/training specs
+  -> resolve consumed dataset root through catalog
+  -> derive produced study root
+  -> build trial training specs
   -> validate corpus coverage
   -> materialize or update study state
   -> run trials
@@ -68,10 +71,11 @@ Tune mutates study state rather than staging an entire root for each trial.
 
 ```text
 EvaluateConfig
+  -> resolve dataset and artifact roots
   -> load artifact
   -> prepare inference dataset
   -> score model with evaluator through modeling.scoring
-  -> upsert evaluation state
+  -> upsert evaluation state with execution provenance when remote
   -> report result
 ```
 

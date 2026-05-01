@@ -5,24 +5,27 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import os
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 
 from pydantic import BaseModel, ConfigDict
 
-from ..config.hydration import hydrate_resolved_workflow_config
 from ..config.models import WorkflowTask
-from ..config.resolution import WorkflowConfig
+from ..config.workflow_snapshots import (
+    hydrate_workflow_config_snapshot,
+    workflow_config_snapshot_payload,
+)
 from ..core.errors import SpiceOperatorError
 from ..core.validation import validate_path_segment
-from .compilation import BenchmarkPlanEntry
+from .models import BenchmarkPlanEntry, LoadedBenchmarkPlanEntry
 
 BENCHMARK_RUNS_ROOT = Path("outputs") / "benchmarks" / "runs"
 PLAN_FILENAME = "plan.jsonl"
 SUBMISSION_FILENAME = "submission.jsonl"
 METADATA_FILENAME = "metadata.json"
+COLLECTION_FILENAME = "collection.json"
 
 
 class BenchmarkRunMetadata(BaseModel):
@@ -31,7 +34,6 @@ class BenchmarkRunMetadata(BaseModel):
     benchmark: str
     created_at_utc: str
     target: str
-    git_commit: str
 
 
 class BenchmarkSubmissionRecord(BaseModel):
@@ -46,33 +48,20 @@ class BenchmarkSubmissionRecord(BaseModel):
     log_path: str
 
 
-class BenchmarkCollectionRecord(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class BenchmarkRun(BaseModel):
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    run_id: str
-    workflow: WorkflowTask
-    status: Literal["ready", "skipped", "missing"]
-    row: dict[str, str] | None = None
-    reason: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class LoadedBenchmarkPlanEntry:
-    run_id: str
-    case_id: str
-    step_id: str
-    workflow: WorkflowTask
-    depends_on: tuple[str, ...]
-    external_dependencies: tuple[str, ...]
-    selection: dict[str, object]
-    config: WorkflowConfig
+    run_dir: Path
+    metadata: BenchmarkRunMetadata
+    plan: tuple[LoadedBenchmarkPlanEntry, ...]
+    submissions: dict[str, BenchmarkSubmissionRecord]
+    has_collection: bool
 
 
 def create_benchmark_run_dir(
     name: str,
     *,
     target: str,
-    git_commit: str,
     runs_root: Path = BENCHMARK_RUNS_ROOT,
 ) -> Path:
     safe_name = validate_path_segment(name, label="benchmark name")
@@ -88,30 +77,42 @@ def create_benchmark_run_dir(
         benchmark=safe_name,
         created_at_utc=format_datetime(created_at),
         target=target,
-        git_commit=git_commit,
     )
     write_json(run_dir / METADATA_FILENAME, metadata.model_dump(mode="json"))
-    (run_dir / "collections").mkdir()
     return run_dir
 
 
-def latest_benchmark_run_dir(
-    name: str,
-    *,
-    runs_root: Path = BENCHMARK_RUNS_ROOT,
-) -> Path:
-    safe_name = validate_path_segment(name, label="benchmark name")
-    root = runs_root / safe_name
-    if not root.is_dir():
-        raise SpiceOperatorError(f"No benchmark run directory found for {safe_name}")
-    candidates = sorted(path for path in root.iterdir() if path.is_dir())
-    if not candidates:
-        raise SpiceOperatorError(f"No benchmark run directory found for {safe_name}")
-    return candidates[-1]
+def load_benchmark_run(run_dir: Path) -> BenchmarkRun:
+    return BenchmarkRun(
+        run_dir=run_dir,
+        metadata=load_run_metadata(run_dir),
+        plan=tuple(load_plan_jsonl(run_dir)),
+        submissions=load_submission_jsonl(run_dir),
+        has_collection=collection_snapshot_path(run_dir).is_file(),
+    )
+
+
+def load_run_metadata(run_dir: Path) -> BenchmarkRunMetadata:
+    return BenchmarkRunMetadata.model_validate(read_json(run_dir / METADATA_FILENAME))
 
 
 def write_plan_jsonl(run_dir: Path, entries: list[BenchmarkPlanEntry]) -> None:
-    write_jsonl(run_dir / PLAN_FILENAME, [entry.to_json_dict() for entry in entries])
+    write_jsonl(run_dir / PLAN_FILENAME, [plan_entry_json_dict(entry) for entry in entries])
+
+
+def plan_entry_json_dict(entry: BenchmarkPlanEntry) -> dict[str, object]:
+    return {
+        "run_id": entry.run_id,
+        "case_id": entry.case_id,
+        "step_id": entry.step_id,
+        "workflow": entry.workflow.value,
+        "depends_on": list(entry.depends_on),
+        "external_dependencies": list(entry.external_dependencies),
+        "dimension_labels": dict(entry.dimension_labels),
+        "selection": dict(entry.selection),
+        "artifact_from": entry.artifact_from,
+        "config": workflow_config_snapshot_payload(entry.config),
+    }
 
 
 def append_submission_jsonl(run_dir: Path, record: BenchmarkSubmissionRecord) -> None:
@@ -136,8 +137,16 @@ def load_plan_jsonl(run_dir: Path) -> list[LoadedBenchmarkPlanEntry]:
                     str(value)
                     for value in sequence_payload(payload.get("external_dependencies", []))
                 ),
+                dimension_labels={
+                    str(key): str(value)
+                    for key, value in mapping_payload(
+                        payload.get("dimension_labels", {}),
+                        label="dimension_labels",
+                    ).items()
+                },
                 selection=dict(mapping_payload(payload.get("selection", {}), label="selection")),
-                config=hydrate_resolved_workflow_config(workflow, config_payload),
+                artifact_from=_optional_string(payload.get("artifact_from")),
+                config=hydrate_workflow_config_snapshot(workflow, config_payload),
             )
         )
     return entries
@@ -145,24 +154,48 @@ def load_plan_jsonl(run_dir: Path) -> list[LoadedBenchmarkPlanEntry]:
 
 def load_submission_jsonl(run_dir: Path) -> dict[str, BenchmarkSubmissionRecord]:
     records: dict[str, BenchmarkSubmissionRecord] = {}
-    for payload in read_jsonl(run_dir / SUBMISSION_FILENAME):
+    path = run_dir / SUBMISSION_FILENAME
+    if not path.is_file():
+        return records
+    for payload in read_jsonl(path):
         record = BenchmarkSubmissionRecord.model_validate(payload)
         records[record.run_id] = record
     return records
 
 
-def write_collection_jsonl(
-    run_dir: Path,
-    records: list[BenchmarkCollectionRecord],
-) -> None:
-    collection_dir = run_dir / "collections"
-    collection_dir.mkdir(exist_ok=True)
-    path = collection_dir / f"{timestamp_for_path(utc_now())}.jsonl"
-    write_jsonl(path, [record.model_dump(mode="json") for record in records])
+def collection_snapshot_path(run_dir: Path) -> Path:
+    return run_dir / COLLECTION_FILENAME
+
+
+def write_collection_snapshot(run_dir: Path, snapshot: object) -> None:
+    payload = cast(BaseModel, snapshot).model_dump(mode="json")
+    write_json_atomic(collection_snapshot_path(run_dir), payload)
+
+
+def load_collection_snapshot(run_dir: Path):
+    from .result_records import BenchmarkCollectionSnapshot
+
+    return BenchmarkCollectionSnapshot.model_validate(read_json(collection_snapshot_path(run_dir)))
+
+
+def read_json(path: Path) -> dict[str, object]:
+    if not path.is_file():
+        raise SpiceOperatorError(f"Missing benchmark run file: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise SpiceOperatorError(f"Invalid JSON object in {path}")
+    return cast(dict[str, object], payload)
 
 
 def write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_json_atomic(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.parent / f".{path.name}.tmp"
+    temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temp_path, path)
 
 
 def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -201,6 +234,12 @@ def sequence_payload(value: object) -> list[object]:
     if not isinstance(value, list):
         raise SpiceOperatorError("benchmark JSONL field must be a list")
     return cast(list[object], value)
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 def utc_now() -> datetime:

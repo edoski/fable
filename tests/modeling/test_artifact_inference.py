@@ -5,12 +5,16 @@ from typing import cast
 
 import numpy as np
 import pytest
+import torch
 
 from spice.config import EvaluateConfig, WorkflowTask
 from spice.config.models import ChainRuntimeSpec
 from spice.core.errors import ConfigResolutionError
 from spice.modeling.artifact_inference import prepare_artifact_inference_context
-from spice.storage.workflow_paths import WorkflowIdentity, build_workflow_paths
+from spice.modeling.evaluation_runtime import EvaluationScoringRuntimePlan
+from spice.modeling.representations import RepresentationRuntimeContext
+from spice.storage.root_handles import EvaluateWorkflowRoots
+from tests.root_handle_helpers import artifact_handle, corpus_handle, evaluate_roots
 
 
 def _evaluate_config(load_workflow_config, tmp_path, model_workflow_override) -> EvaluateConfig:
@@ -24,21 +28,28 @@ def _evaluate_config(load_workflow_config, tmp_path, model_workflow_override) ->
     )
 
 
-def _paths(config: EvaluateConfig):
-    return build_workflow_paths(
-        output_root=config.storage.root,
+def _roots(config: EvaluateConfig) -> EvaluateWorkflowRoots:
+    corpus = corpus_handle(
+        config.storage.root,
         chain_name="ethereum",
-        identity=WorkflowIdentity(
-            corpus_id=config.dataset_id,
-            artifact_id=config.artifact_id,
-        ),
+        dataset_id=config.dataset_id,
+        dataset_name="test_dataset",
+    )
+    artifact = artifact_handle(
+        config.storage.root,
+        corpus=corpus,
+        artifact_id=config.artifact_id,
+    )
+    return evaluate_roots(
+        config.storage.root,
+        corpus=corpus,
+        artifact=artifact,
     )
 
 
 def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_delay: int = 36):
     calls: list[str] = []
     runtime_metadata = SimpleNamespace(compiler_runtime_metadata={"compiler": "payload"})
-    compiler_metadata = object()
     loaded_artifact = SimpleNamespace(
         manifest=SimpleNamespace(
             chain_name="ethereum",
@@ -55,7 +66,7 @@ def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_
             prediction=SimpleNamespace(id="icdcs_2026", family_id="fee_offset"),
         ),
         model=object(),
-        dataset_builder_contract=object(),
+        dataset_builder_contract=None,
         representation_contract=object(),
     )
     feature_contract = SimpleNamespace(
@@ -127,28 +138,32 @@ def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_
         lambda *_args, **_kwargs: calls.append("validate_coverage"),
     )
     monkeypatch.setattr(
-        "spice.modeling.artifact_inference.coerce_builder_runtime_metadata",
-        lambda _builder_id, metadata: calls.append("coerce_runtime") or metadata,
-    )
-    monkeypatch.setattr(
-        "spice.modeling.artifact_inference.compiler_runtime_metadata_from_builder_payload",
-        lambda metadata, **_kwargs: calls.append("decode_compiler") or compiler_metadata,
-    )
-    monkeypatch.setattr(
         "spice.modeling.artifact_inference.load_block_frame",
         lambda path: calls.append(f"load_blocks:{path.name}") or object(),
     )
+    monkeypatch.setattr(
+        "spice.modeling.scoring.build_evaluation_scoring_runtime_plan",
+        lambda **kwargs: calls.append(f"build_runtime:{kwargs['batch_size']}")
+        or EvaluationScoringRuntimePlan(
+            resolved_device=torch.device("cpu"),
+            precision="fp32",
+            representation_runtime_context=RepresentationRuntimeContext(
+                batch_size=kwargs["batch_size"],
+                available_host_memory_bytes=1024,
+            ),
+            deterministic=None,
+            seed=0,
+        ),
+    )
 
-    def fake_prepare_inference_dataset(*_args, **kwargs):
+    def fake_prepare_inference_dataset(*_args, spec):
         calls.append("prepare_inference")
-        assert kwargs["builder_runtime_metadata"] is runtime_metadata
-        assert kwargs["compiler_runtime_metadata"] is compiler_metadata
-        assert kwargs["max_candidate_slots"] == loaded_artifact.manifest.max_candidate_slots
+        assert spec.builder_runtime_metadata is runtime_metadata
+        assert spec.max_candidate_slots == loaded_artifact.manifest.max_candidate_slots
         return prepared
 
-    monkeypatch.setattr(
-        "spice.modeling.artifact_inference.prepare_inference_dataset",
-        fake_prepare_inference_dataset,
+    loaded_artifact.dataset_builder_contract = SimpleNamespace(
+        prepare_inference_dataset=fake_prepare_inference_dataset,
     )
     return calls, loaded_artifact, prepared, evaluator_contract, prediction_contract
 
@@ -160,49 +175,51 @@ def test_artifact_inference_context_prepares_scoring_inputs(
     model_workflow_override,
 ) -> None:
     config = _evaluate_config(load_workflow_config, tmp_path, model_workflow_override)
-    paths = _paths(config)
+    roots = _roots(config)
     calls, loaded_artifact, prepared, evaluator_contract, prediction_contract = (
         _install_artifact_context_fakes(monkeypatch, config)
     )
 
-    context = prepare_artifact_inference_context(config, paths=paths)
+    context = prepare_artifact_inference_context(
+        config,
+        corpus=roots.corpus,
+        artifact=roots.artifact,
+    )
 
     assert context.loaded_artifact is loaded_artifact
     assert context.prepared is prepared
     assert context.evaluator_contract is evaluator_contract
-    assert context.scoring_context.model is loaded_artifact.model
-    assert context.scoring_context.prediction_contract is prediction_contract
-    assert context.scoring_context.sample_indices.tolist() == [0, 1]
+    assert context.scoring_context.model_input.model is loaded_artifact.model
+    assert context.scoring_context.model_input.prediction_contract is prediction_contract
+    assert context.scoring_context.model_input.sample_indices.tolist() == [0, 1]
     assert calls == [
-        f"load_artifact:{paths.artifact_root.name}",
+        f"load_artifact:{roots.artifact.root_path.name}",
         "load_dataset_manifest",
         "compile_features",
         "compile_problem",
         "compile_prediction",
         "compile_evaluator",
         "validate_coverage",
-        "coerce_runtime",
-        "decode_compiler",
         "load_blocks:history",
         "load_blocks:evaluation",
         "prepare_inference",
+        f"build_runtime:{config.batch_size}",
     ]
 
 
-def test_artifact_inference_uses_exclusive_end_after_final_observed_timestamp(
+def test_artifact_inference_passes_inclusive_corpus_evaluation_window(
     tmp_path,
     monkeypatch,
     load_workflow_config,
     model_workflow_override,
 ) -> None:
     config = _evaluate_config(load_workflow_config, tmp_path, model_workflow_override)
-    paths = _paths(config)
+    roots = _roots(config)
     captured: dict[str, int] = {}
-    _install_artifact_context_fakes(monkeypatch, config)
 
-    def fake_prepare_inference_dataset(*_args, **kwargs):
-        captured["window_start_timestamp"] = kwargs["window_start_timestamp"]
-        captured["window_end_timestamp"] = kwargs["window_end_timestamp"]
+    def fake_prepare_inference_dataset(*_args, spec):
+        captured["evaluation_start_timestamp"] = spec.evaluation_start_timestamp
+        captured["evaluation_end_timestamp"] = spec.evaluation_end_timestamp
         return SimpleNamespace(
             n_history_rows=10,
             n_evaluation_rows=5,
@@ -212,16 +229,20 @@ def test_artifact_inference_uses_exclusive_end_after_final_observed_timestamp(
             sample_indices=np.array([0], dtype=np.int64),
         )
 
-    monkeypatch.setattr(
-        "spice.modeling.artifact_inference.prepare_inference_dataset",
-        fake_prepare_inference_dataset,
+    loaded_artifact = _install_artifact_context_fakes(monkeypatch, config)[1]
+    loaded_artifact.dataset_builder_contract = SimpleNamespace(
+        prepare_inference_dataset=fake_prepare_inference_dataset,
     )
 
-    prepare_artifact_inference_context(config, paths=paths)
+    prepare_artifact_inference_context(
+        config,
+        corpus=roots.corpus,
+        artifact=roots.artifact,
+    )
 
     assert captured == {
-        "window_start_timestamp": 1000,
-        "window_end_timestamp": 2001,
+        "evaluation_start_timestamp": 1000,
+        "evaluation_end_timestamp": 2000,
     }
 
 
@@ -232,13 +253,17 @@ def test_artifact_inference_context_rejects_artifact_semantic_mismatch(
     model_workflow_override,
 ) -> None:
     config = _evaluate_config(load_workflow_config, tmp_path, model_workflow_override)
-    paths = _paths(config)
+    roots = _roots(config)
     calls, loaded_artifact, *_ = _install_artifact_context_fakes(monkeypatch, config)
 
     loaded_artifact.manifest.feature_graph_fingerprint = "other"
 
     with pytest.raises(ConfigResolutionError, match="feature graph"):
-        prepare_artifact_inference_context(config, paths=paths)
+        prepare_artifact_inference_context(
+            config,
+            corpus=roots.corpus,
+            artifact=roots.artifact,
+        )
 
 
 def test_artifact_inference_context_rejects_delay_beyond_artifact_capability(
@@ -253,11 +278,15 @@ def test_artifact_inference_context_rejects_delay_beyond_artifact_capability(
         lambda: model_workflow_override(max_delay_seconds=36, delay_seconds=36),
     )
     config = config.model_copy(update={"delay_seconds": 36})
-    paths = _paths(config)
+    roots = _roots(config)
     _install_artifact_context_fakes(monkeypatch, config, max_delay=12)
 
     with pytest.raises(ConfigResolutionError, match="delay_seconds exceeds artifact capability"):
-        prepare_artifact_inference_context(config, paths=paths)
+        prepare_artifact_inference_context(
+            config,
+            corpus=roots.corpus,
+            artifact=roots.artifact,
+        )
 
 
 def test_artifact_inference_context_validates_coverage_before_inference_preparation(
@@ -267,7 +296,7 @@ def test_artifact_inference_context_validates_coverage_before_inference_preparat
     model_workflow_override,
 ) -> None:
     config = _evaluate_config(load_workflow_config, tmp_path, model_workflow_override)
-    paths = _paths(config)
+    roots = _roots(config)
     calls, *_ = _install_artifact_context_fakes(monkeypatch, config)
 
     def fail_coverage(*_args, **_kwargs):
@@ -280,6 +309,10 @@ def test_artifact_inference_context_validates_coverage_before_inference_preparat
     )
 
     with pytest.raises(ConfigResolutionError, match="coverage mismatch"):
-        prepare_artifact_inference_context(config, paths=paths)
+        prepare_artifact_inference_context(
+            config,
+            corpus=roots.corpus,
+            artifact=roots.artifact,
+        )
 
     assert "prepare_inference" not in calls

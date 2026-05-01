@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`modeling.dataset_builders` turns feature tables and temporal problem contracts into prepared datasets for training and inference. This is the tensorization seam.
+`modeling.dataset_builders` turns canonical block frames, feature contracts, temporal problem contracts, and artifact runtime state into prepared datasets for training and inference. This is the Temporal Dataset Preparation Interface.
 
 Tensorization matters because the same temporal problem can be represented as independent rows, fixed-sequence sequences, or another model input shape without changing feature semantics or evaluator behavior.
 
@@ -54,12 +54,16 @@ Runtime metadata exists because some builders learn non-model assumptions during
 training prepare
   -> builder runtime metadata
   -> artifact manifest
-  -> Artifact Inference Context
+  -> Artifact Inference Context validation
   -> evaluation prepare
   -> reconstruct same assumptions
 ```
 
-Artifact Inference Context decodes compiler runtime metadata before inference preparation. Fixed-context inference explicitly requires `FixedSequenceTemporalBuilderRuntimeMetadata`; that type check stays near the fixed-sequence use site because the requirement is builder-specific.
+Artifact Inference Context validates artifact and corpus compatibility, then passes trusted artifact facts into the dataset-builder contract. The contract coerces builder runtime metadata, decodes compiler runtime metadata, and normalizes evaluation-window timestamps before the concrete builder prepares inference data.
+
+## Preparation Types
+
+`preparation.py` contains the public prep specs and prepared dataset results. `base.py` contains registry/config dispatch and `CompiledDatasetBuilderContract`. Concrete builders depend on the preparation Interface instead of importing orchestration types from `pipeline.py`.
 
 ## Invariants
 
@@ -78,4 +82,4 @@ Sampling and split behavior are builder-owned invariants.
 
 ## Extension Points
 
-Add a builder when model input representation changes. Keep it behind `DatasetBuilderConfig`, `CompiledDatasetBuilderContract`, and a local spec entry. Avoid workflow branches on builder ids.
+Add a builder when model input representation changes. Keep it behind `DatasetBuilderConfig`, `CompiledDatasetBuilderContract`, preparation specs, and a local spec entry. Avoid workflow branches on builder ids.

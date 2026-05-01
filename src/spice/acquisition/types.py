@@ -54,7 +54,11 @@ class AcquisitionRuntimeSnapshot:
     concurrency_recoveries: int
 
 
-class BlockSource(Protocol):
+class BlockRowSource(Protocol):
+    async def get_block_rows(self, start: int, end: int) -> list[CanonicalBlockRow]: ...
+
+
+class BlockSource(BlockRowSource, Protocol):
     async def estimate_recent_block_interval(self, sample_size: int = 128) -> float: ...
 
     async def plan_window(self, window: TimestampRange) -> BlockPullPlan: ...
@@ -65,8 +69,6 @@ class BlockSource(Protocol):
         *,
         window: TimestampRange,
     ) -> BlockPullPlan: ...
-
-    async def get_block_rows(self, start: int, end: int) -> list[CanonicalBlockRow]: ...
 
     async def close(self) -> None: ...
 

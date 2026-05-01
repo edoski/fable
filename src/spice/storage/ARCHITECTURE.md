@@ -81,15 +81,21 @@ storage/
   study_models.py    study payload models/codecs
   study_optuna.py    Optuna storage integration
   artifact.py        artifact-root persistence
-  workflow_paths.py  workflow config to storage-path resolution
+  root_handles.py    workflow-facing root references
+  root_producer_handles.py produced-root identity and handles
+  root_consumer_handles.py catalog-first consumer root resolution
   lifecycle.py       staging, promotion, partial commit, delete cascade
   sync_cli.py        remote-side path/root-kind helper commands
   inspect*.py        read-only inspection views
-  catalog/           global searchable index and refresh service
+  catalog/           global searchable index, root-kind adapters, record codecs
 ```
 
 Storage owns persisted payload ABI. Modeling and evaluation own runtime result objects; storage codecs translate those objects at the SQLite table boundary.
 
+Producer identity and consumer selection stay separate. Producer helpers derive ids and root handles for roots that workflows are about to create. Consumer helpers resolve existing roots through the catalog before workflows read them. Root lifecycle remains lower-level path and root-kind infrastructure shared by both.
+
 ## Remote Transfer Boundary
 
-Remote SSH and rsync orchestration lives in `execution.transfer`. Storage only exposes local lifecycle/catalog operations and `storage.sync_cli`, the helper module executed on the remote machine for path and root-kind operations.
+Remote SSH and rsync orchestration lives in `execution.transfer`. Storage exposes local lifecycle/catalog operations and `storage.sync_cli`, the helper module executed on the remote machine for path and root-kind operations.
+
+Catalog kind `dataset` maps intentionally to storage `RootKind.CORPUS`: dataset is the operator/config identity, while corpus is the physical storage root kind. `storage.catalog.root_kind_specs` owns root-kind dispatch for canonical destination paths, record resolution, record construction, codec field shape, and catalog upsert. `storage.catalog.codecs` owns the strict remote JSON envelope used by transfer helpers.

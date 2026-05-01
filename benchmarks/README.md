@@ -1,7 +1,8 @@
 # Benchmark Results
 
-`results.csv` is the committed ledger for current benchmark results. One row is one
-completed artifact evaluation under one evaluator and delay.
+Benchmark run directories are the audit source of truth. `results.sqlite` is a
+rebuildable query index over completed run snapshots. `results.csv` is an explicit
+human-readable export from that index, not durable state.
 
 The ledger records modern evaluator results only. Current result rows may use
 `evaluation=poisson_replay_2h` or `evaluation=full_temporal_replay`; historical
@@ -44,22 +45,31 @@ result. They do not mean zero.
 ## Sweep And Collection Context
 
 `spice benchmark plan <name>` expands YAML benchmark specs from
-`src/spice/conf/benchmark/` into JSONL workflow steps.
+`src/spice/conf/benchmark/` into a durable run directory:
 
-`spice benchmark submit <name>` submits the plan to the default remote target and
-creates local run state under `outputs/benchmarks/runs/<name>/<timestamp>/`:
-
+- `metadata.json`: benchmark name, target, creation time.
 - `plan.jsonl`: resolved workflow snapshots.
 - `submission.jsonl`: Slurm job ids, `execution_ref`, remote git commit, and logs.
-- `collections/*.jsonl`: collection attempts and row status.
+- `collection.json`: complete collection snapshot, written only after every expected
+  evaluate result is found.
 
-`spice benchmark collect <name>` reads the latest run directory, pulls completed
-remote studies/artifacts through `execution.transfer`, and prints JSONL
-collection status. Re-run it safely while jobs are still finishing. With `--write`,
-collection appends only complete, non-duplicate rows to this ledger; missing expected
-evaluation rows abort the write.
+Operator flow:
+
+```bash
+spice benchmark plan lookback_window_sweep --target disi_l40
+spice benchmark submit outputs/benchmarks/runs/lookback_window_sweep/<timestamp>
+spice benchmark collect outputs/benchmarks/runs/lookback_window_sweep/<timestamp>
+spice benchmark index export --output benchmarks/results.csv
+spice benchmark index rebuild
+spice benchmark index list --benchmark lookback_window_sweep
+```
+
+Collection is all-or-nothing. If an expected evaluation summary is missing,
+ambiguous, or does not match the submitted `execution_ref`, collection raises and
+writes neither `collection.json` nor index rows.
 
 Raw HPO grids belong in `src/spice/conf/tuning_space/*.yaml`.
 
-This ledger does not define sweeps, add tuning fields, or store raw artifacts. Runtime
-artifact SQLite remains the detailed machine record.
+Benchmark result records store summary-level metrics and provenance only. Raw replay
+events, prediction tensors, decoded offsets, labels, and training epoch history stay in
+artifact state or remote logs.

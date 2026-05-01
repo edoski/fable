@@ -36,9 +36,11 @@ External uncertainty enters through acquisition: provider failures, missing bloc
 
 ## Corpus Assembly
 
-Corpus Assembly owns acquisition-to-corpus policy. It plans history and evaluation block windows, materializes reusable parquet splits, counts valid temporal capability samples, builds dataset provenance, and publishes the corpus root.
+Corpus Assembly owns acquisition-to-corpus orchestration. It builds a Corpus Capability Planning context, asks it for history/evaluation window and refill decisions, delegates staging/fulfillment/commit mechanics to Corpus Acquisition Stage, builds dataset provenance, and returns the committed corpus result.
 
-The acquire workflow supplies a Workflow Config, resolved paths, and a block source. It does not know split materialization, refill, staging, or publication ordering.
+Corpus Capability Planning owns feature/problem contract compilation for acquisition coverage, initial history sizing, valid temporal capability sample counting, and bounded refill policy. Corpus Acquisition Stage owns acquire staging paths, history refill fulfillment, evaluation fulfillment, state DB staging, partial commit wiring, successful cleanup, and preserve-on-failure behavior. Corpus Split Materialization owns reuse, extension, rebuild, completed-prefix validation, chunk writing, and validation of history/evaluation parquet datasets. Extension paths reuse whole clean parquet chunks and materialize only missing or edge block ranges.
+
+The acquire workflow supplies a Workflow Config, resolved paths, and a block source. It does not know capability planning, split materialization, refill, staging, or publication ordering.
 
 ## Coverage Checks
 
@@ -55,4 +57,4 @@ This prevents expensive training or evaluation from running on a corpus that can
 
 ## Boundaries
 
-Corpus code should not know about model families, evaluator engines, objectives, or artifact variants. Corpus Assembly may compile feature/problem contracts only to prove raw corpus coverage during acquisition.
+Corpus code should not know about model families, evaluator engines, objectives, or artifact variants. Corpus Capability Planning may compile feature/problem contracts only to prove raw corpus coverage during acquisition.

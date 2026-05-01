@@ -14,18 +14,18 @@ from ...temporal.problem_store import (
     chronological_split_indices,
 )
 from ...temporal.scaling import transform_feature_matrix
-from ..pipeline import (
-    InferencePreparationSpec,
-    PreparedInferenceDataset,
-    PreparedTrainingDataset,
-    TrainingSpec,
-)
 from .base import (
     CompiledDatasetBuilderContract,
     FixedSequenceTemporalBuilderRuntimeMetadata,
     FixedSequenceTemporalDatasetBuilderConfig,
     fixed_sequence_temporal_runtime_metadata,
     validate_feature_prerequisites,
+)
+from .preparation import (
+    CompiledInferenceDatasetPreparationSpec,
+    PreparedInferenceDataset,
+    PreparedTrainingDataset,
+    TrainingDatasetPreparationSpec,
 )
 
 
@@ -61,7 +61,7 @@ def _compute_seq_len(
 def _build_selected_store(
     blocks: pl.DataFrame,
     *,
-    spec: TrainingSpec,
+    spec: TrainingDatasetPreparationSpec,
 ) -> tuple[CompiledProblemStore, object]:
     feature_table = spec.feature_contract.build_table(_prepare_blocks(blocks))
     validate_feature_prerequisites(
@@ -86,7 +86,7 @@ def _training_calibration_timestamps(
 def _train_scaler(
     store: CompiledProblemStore,
     *,
-    spec: TrainingSpec,
+    spec: TrainingDatasetPreparationSpec,
     train_sample_indices: np.ndarray,
 ):
     return spec.input_normalization_contract.fit_scaler(
@@ -100,7 +100,7 @@ def _train_scaler(
 def _split_store_indices(
     selected_sample_indices: np.ndarray,
     *,
-    spec: TrainingSpec,
+    spec: TrainingDatasetPreparationSpec,
 ) -> DatasetSplitIndices:
     split_positions = chronological_split_indices(
         int(selected_sample_indices.shape[0]),
@@ -124,18 +124,21 @@ def _scale_store(
     )
 
 
-def prepare_training_dataset(blocks: pl.DataFrame, spec: TrainingSpec) -> PreparedTrainingDataset:
+def prepare_training_dataset(
+    blocks: pl.DataFrame,
+    spec: TrainingDatasetPreparationSpec,
+) -> PreparedTrainingDataset:
     if not isinstance(spec.dataset_builder, FixedSequenceTemporalDatasetBuilderConfig):
         raise TypeError("fixed-sequence builder requires FixedSequenceTemporalDatasetBuilderConfig")
     sorted_blocks = _prepare_blocks(blocks)
-    if sorted_blocks.height < spec.problem.sample_count:
+    if sorted_blocks.height < spec.sample_count:
         raise ValueError(
             "History dataset is too short for the requested sample count; "
-            f"need at least {spec.problem.sample_count} rows, got {sorted_blocks.height}"
+            f"need at least {spec.sample_count} rows, got {sorted_blocks.height}"
         )
     store_raw, compiler_runtime_metadata = _build_selected_store(sorted_blocks, spec=spec)
     raw_selected_sample_indices = store_raw.tail_sample_indices(
-        sample_count=spec.problem.sample_count,
+        sample_count=spec.sample_count,
     )
     raw_split_indices = _split_store_indices(
         raw_selected_sample_indices,
@@ -143,7 +146,7 @@ def prepare_training_dataset(blocks: pl.DataFrame, spec: TrainingSpec) -> Prepar
     )
     seq_len, median_dt_seconds = _compute_seq_len(
         _training_calibration_timestamps(store_raw, raw_split_indices.train),
-        lookback_seconds=spec.problem.lookback_seconds,
+        lookback_seconds=spec.lookback_seconds,
         min_sequence_length=spec.dataset_builder.min_sequence_length,
         max_sequence_length=spec.dataset_builder.max_sequence_length,
     )
@@ -155,7 +158,7 @@ def prepare_training_dataset(blocks: pl.DataFrame, spec: TrainingSpec) -> Prepar
         warmup_rows=warmup_rows,
     )
     selected_sample_indices = store.tail_sample_indices(
-        sample_count=spec.problem.sample_count,
+        sample_count=spec.sample_count,
     )
     split_indices = _split_store_indices(
         selected_sample_indices,
@@ -172,7 +175,6 @@ def prepare_training_dataset(blocks: pl.DataFrame, spec: TrainingSpec) -> Prepar
         n_rows_available=sorted_blocks.height,
         n_rows_used=used_end - used_start,
         sample_count=int(selected_sample_indices.shape[0]),
-        feature=spec.feature_contract.semantics,
         execution_policy=spec.problem_contract.execution_policy,
         store=scaled_store,
         split_indices=split_indices,
@@ -191,7 +193,7 @@ def prepare_training_dataset(blocks: pl.DataFrame, spec: TrainingSpec) -> Prepar
 def prepare_inference_dataset(
     history_blocks: pl.DataFrame,
     evaluation_blocks: pl.DataFrame,
-    spec: InferencePreparationSpec,
+    spec: CompiledInferenceDatasetPreparationSpec,
 ) -> PreparedInferenceDataset:
     combined_blocks = _prepare_blocks(pl.concat([history_blocks, evaluation_blocks]))
     if not isinstance(spec.builder_runtime_metadata, FixedSequenceTemporalBuilderRuntimeMetadata):
@@ -225,7 +227,6 @@ def prepare_inference_dataset(
         n_history_rows=history_blocks.height,
         n_evaluation_rows=evaluation_blocks.height,
         sample_count=int(sample_indices.shape[0]),
-        feature=spec.feature_contract.semantics,
         execution_policy=spec.problem_contract.execution_policy,
         store=scaled_store,
         sample_indices=sample_indices,

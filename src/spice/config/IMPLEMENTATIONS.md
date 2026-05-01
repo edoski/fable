@@ -49,7 +49,7 @@ overrides: model=lstm_icdcs_2026, delay_seconds=36
       workflow config model
 ```
 
-Overrides replace selected surface fields before final hydration. The result is a typed acquire, train, tune, or evaluate config.
+Overrides replace selected surface fields before final resolution. The result is a typed acquire, train, tune, or evaluate config.
 
 ## Workflow Hydration
 
@@ -101,7 +101,7 @@ Typical failures:
 The CLI command layer owns the default remote target:
 
 ```text
-spice train --submit
+spice train
   -> target defaults to disi_l40
   -> execution config resolves explicitly
   -> downstream submit receives target name
@@ -111,4 +111,4 @@ Execution and transfer code do not guess a remote target. That keeps command erg
 
 ## Extension Pattern
 
-To add a concrete config type, add the Pydantic model in the package that owns the implementation, register the spec id or engine, and make the compiler require that concrete model. The config package should resolve names and hydrate workflows; implementation packages should own implementation-specific fields.
+To add a concrete config type, add the Pydantic model in the package that owns the implementation, register the spec id or engine, and make the compiler require that concrete model. The config package should resolve names and load resolved workflow snapshots; implementation packages should own implementation-specific fields.

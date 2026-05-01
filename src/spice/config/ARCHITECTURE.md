@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`config` turns human-facing YAML and CLI selections into typed runtime configs. It is the edge where names become objects. Downstream code should receive explicit, hydrated config models instead of resolving strings again.
+`config` turns human-facing YAML and CLI selections into typed runtime configs. It is the edge where names become objects. Downstream code should receive explicit, resolved config models instead of resolving strings again.
 
 ## Mental Model
 
@@ -49,33 +49,33 @@ problem.compiler.id      -> problem compiler config type
 problem.execution_policy.id   -> execution-policy config type
 ```
 
-So config hydration calls owner coercers. This keeps all implementation-selection knowledge in the owning domain.
+So config resolution and snapshot loading call owner coercers. This keeps all implementation-selection knowledge in the owning domain.
 
-## Resolved Snapshot Hydration
+## Resolved Workflow Snapshot Codec
 
-Remote execution and tuned-parameter reapplication do not re-resolve surfaces. They rehydrate an already resolved config snapshot:
+Remote execution, benchmark run persistence, and tuned-parameter reapplication do not re-resolve surfaces. They serialize or load an already resolved config snapshot:
 
 ```text
 resolved Train/Tune/Evaluate config
         |
         v
-model_dump_json()
+workflow_config_snapshot_json()
         |
         v
-remote runner or tuned-param materialization
+remote runner, benchmark plan JSONL, or tuned-param materialization
         |
         v
-hydrate_resolved_workflow_config()
+hydrate_workflow_config_snapshot()
         |
         v
 owner coercers reconstruct concrete nested configs
 ```
 
-`hydrate_resolved_workflow_config()` is intentionally resolved-snapshot-only. It supports train, tune, and evaluate. Acquire has different acquisition/provider concerns and is resolved through normal workflow resolution.
+The snapshot codec is intentionally resolved-snapshot-only. It supports train, tune, and evaluate. Acquire has different acquisition/provider concerns and is resolved through normal workflow resolution.
 
 ## Public API Boundary
 
-`spice.config` exports resolved config types, workflow selection types, `resolve_workflow_config()`, and config-owned coercers such as `coerce_problem_spec()` and `coerce_features_config()`.
+`spice.config` exports resolved config types, workflow selection types, `resolve_workflow_config()`, workflow snapshot codecs, and config-owned coercers such as `coerce_problem_spec()` and `coerce_features_config()`.
 
 It does not re-export dataset-builder coercion. Dataset-builder config coercion belongs to `spice.modeling.dataset_builders`.
 

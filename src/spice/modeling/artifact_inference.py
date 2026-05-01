@@ -12,15 +12,15 @@ from ..evaluation import CompiledEvaluatorContract, compile_evaluator_contract
 from ..features import compile_feature_contract
 from ..prediction import compile_prediction_contract
 from ..storage.corpus import load_dataset_manifest
-from ..storage.workflow_paths import WorkflowPaths
+from ..storage.root_handles import ArtifactRootHandle, CorpusRootHandle
 from ..temporal.contracts import compile_problem_contract
 from .artifacts import LoadedTrainingArtifact, load_training_artifact
-from .dataset_builders import (
-    coerce_builder_runtime_metadata,
-    compiler_runtime_metadata_from_builder_payload,
+from .dataset_builders import ArtifactInferencePreparationSpec, PreparedInferenceDataset
+from .scoring import (
+    EvaluationScoringContext,
+    build_evaluation_scoring_context,
+    build_model_scoring_input,
 )
-from .pipeline import PreparedInferenceDataset, prepare_inference_dataset
-from .scoring import EvaluationScoringContext
 
 
 @dataclass(slots=True)
@@ -35,14 +35,12 @@ class ArtifactInferenceContext:
 def prepare_artifact_inference_context(
     config: EvaluateConfig,
     *,
-    paths: WorkflowPaths,
+    corpus: CorpusRootHandle,
+    artifact: ArtifactRootHandle,
 ) -> ArtifactInferenceContext:
-    if paths.artifact_root is None:
-        raise ConfigResolutionError("evaluation workflow requires artifact output paths")
-
-    loaded_artifact = load_training_artifact(paths.artifact_root)
+    loaded_artifact = load_training_artifact(artifact.root_path)
     manifest = loaded_artifact.manifest
-    corpus_manifest = load_dataset_manifest(paths.corpus_state_db)
+    corpus_manifest = load_dataset_manifest(corpus.state_db_path)
     if manifest.chain_name != corpus_manifest.chain.name:
         raise ConfigResolutionError(
             "evaluation corpus chain does not match artifact chain: "
@@ -83,38 +81,32 @@ def prepare_artifact_inference_context(
             delay_seconds=delay_seconds,
         ),
     )
-    builder_runtime_metadata = coerce_builder_runtime_metadata(
-        manifest.dataset_builder.id,
-        manifest.builder_runtime_metadata,
+    prepared = loaded_artifact.dataset_builder_contract.prepare_inference_dataset(
+        load_block_frame(corpus.history_dir),
+        load_block_frame(corpus.evaluation_dir),
+        spec=ArtifactInferencePreparationSpec(
+            feature_contract=feature_contract,
+            problem_contract=problem_contract,
+            delay_seconds=delay_seconds,
+            builder_runtime_metadata=manifest.builder_runtime_metadata,
+            scaler=manifest.scaler,
+            max_candidate_slots=manifest.max_candidate_slots,
+            evaluation_start_timestamp=corpus_manifest.coverage.evaluation.start_timestamp,
+            evaluation_end_timestamp=corpus_manifest.coverage.evaluation.end_timestamp,
+        ),
     )
-    compiler_runtime_metadata = compiler_runtime_metadata_from_builder_payload(
-        builder_runtime_metadata,
-        compiler_id=problem_contract.compiler_id,
-    )
-    prepared = prepare_inference_dataset(
-        load_block_frame(paths.history_dir),
-        load_block_frame(paths.evaluation_dir),
-        dataset_builder_contract=loaded_artifact.dataset_builder_contract,
-        feature_contract=feature_contract,
-        problem_contract=problem_contract,
-        delay_seconds=delay_seconds,
-        builder_runtime_metadata=builder_runtime_metadata,
-        compiler_runtime_metadata=compiler_runtime_metadata,
-        scaler=manifest.scaler,
-        max_candidate_slots=manifest.max_candidate_slots,
-        window_start_timestamp=corpus_manifest.coverage.evaluation.start_timestamp,
-        window_end_timestamp=corpus_manifest.coverage.evaluation.end_timestamp + 1,
-    )
-    scoring_context = EvaluationScoringContext(
-        model=loaded_artifact.model,
-        model_config=loaded_artifact.manifest.model,
-        prediction_contract=prediction_contract,
-        representation_contract=loaded_artifact.representation_contract,
+    scoring_context = build_evaluation_scoring_context(
+        model_input=build_model_scoring_input(
+            model=loaded_artifact.model,
+            model_config=loaded_artifact.manifest.model,
+            prediction_contract=prediction_contract,
+            representation_contract=loaded_artifact.representation_contract,
+            execution_policy=prepared.execution_policy,
+            store=prepared.store,
+            sample_indices=prepared.sample_indices,
+            batch_size=config.batch_size,
+        ),
         evaluator_contract=evaluator_contract,
-        execution_policy=prepared.execution_policy,
-        store=prepared.store,
-        sample_indices=prepared.sample_indices,
-        batch_size=config.batch_size,
     )
     return ArtifactInferenceContext(
         loaded_artifact=loaded_artifact,

@@ -1,9 +1,11 @@
-"""Resolved workflow snapshot hydration."""
+"""Resolved Workflow Snapshot codec."""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
-from typing import TypeAlias
+from pathlib import Path
+from typing import TypeAlias, cast
 
 from pydantic import ValidationError
 
@@ -33,14 +35,60 @@ from .models import (
 
 ResolvedWorkflowConfig: TypeAlias = TrainConfig | TuneConfig | EvaluateConfig
 
+_SNAPSHOT_WORKFLOWS = frozenset(
+    {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.EVALUATE}
+)
 
-def hydrate_resolved_workflow_config(
+
+def workflow_config_snapshot_payload(
+    config: ResolvedWorkflowConfig,
+    *,
+    storage_root_override: Path | None = None,
+) -> dict[str, object]:
+    snapshot_config = config
+    if storage_root_override is not None:
+        snapshot_config = config.model_copy(
+            update={"storage": StorageSpec(root=storage_root_override)}
+        )
+    return cast(
+        dict[str, object],
+        snapshot_config.model_dump(mode="json", exclude_none=True),
+    )
+
+
+def workflow_config_snapshot_json(
+    config: ResolvedWorkflowConfig,
+    *,
+    storage_root_override: Path | None = None,
+) -> str:
+    return json.dumps(
+        workflow_config_snapshot_payload(
+            config,
+            storage_root_override=storage_root_override,
+        ),
+        sort_keys=True,
+    )
+
+
+def hydrate_workflow_config_snapshot_json(
+    workflow: WorkflowTask,
+    payload: str,
+) -> ResolvedWorkflowConfig:
+    try:
+        raw_payload = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ConfigResolutionError(str(exc)) from exc
+    if not isinstance(raw_payload, Mapping):
+        raise ConfigResolutionError("resolved workflow snapshot must be a mapping")
+    return hydrate_workflow_config_snapshot(workflow, raw_payload)
+
+
+def hydrate_workflow_config_snapshot(
     workflow: WorkflowTask,
     payload: Mapping[str, object],
 ) -> ResolvedWorkflowConfig:
     try:
-        if workflow not in {WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.EVALUATE}:
-            raise ConfigResolutionError(f"Unsupported resolved workflow: {workflow.value}")
+        _validate_snapshot_workflow(workflow, payload)
         if workflow is WorkflowTask.EVALUATE:
             return EvaluateConfig.model_validate(_evaluate_workflow_payload(payload))
         resolved_payload = _model_workflow_payload(payload)
@@ -53,6 +101,28 @@ def hydrate_resolved_workflow_config(
     except (ValidationError, ValueError, TypeError) as exc:
         raise ConfigResolutionError(str(exc)) from exc
     raise ConfigResolutionError(f"Unsupported resolved workflow: {workflow.value}")
+
+
+def _validate_snapshot_workflow(
+    workflow: WorkflowTask,
+    payload: Mapping[str, object],
+) -> None:
+    if workflow not in _SNAPSHOT_WORKFLOWS:
+        raise ConfigResolutionError(f"Unsupported resolved workflow: {workflow.value}")
+    raw_workflow = payload.get("workflow")
+    if raw_workflow is None:
+        return
+    try:
+        snapshot_workflow = WorkflowTask(str(raw_workflow))
+    except ValueError as exc:
+        raise ConfigResolutionError(
+            f"resolved workflow snapshot has invalid workflow: {raw_workflow}"
+        ) from exc
+    if snapshot_workflow is not workflow:
+        raise ConfigResolutionError(
+            "resolved workflow snapshot workflow mismatch: "
+            f"expected {workflow.value}, got {snapshot_workflow.value}"
+        )
 
 
 def _evaluate_workflow_payload(payload: Mapping[str, object]) -> dict[str, object]:

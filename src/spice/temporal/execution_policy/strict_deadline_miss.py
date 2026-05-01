@@ -7,10 +7,12 @@ import numpy as np
 from ..problem_store import CompiledProblemStore
 from ..semantics import BaselineRowMode
 from .base import (
+    BoolMatrix,
     CompiledExecutionPolicyContract,
     DecodedOffsetBatch,
     ExecutionPolicyConfig,
     IntVector,
+    PreparedActionSpace,
     PreparedSupervisedExecutionTargets,
     RealizedSelectionBatch,
 )
@@ -18,6 +20,35 @@ from .base import (
 
 class StrictDeadlineMissConfig(ExecutionPolicyConfig):
     id: str = "strict_deadline_miss"
+
+
+def _action_mask(
+    store: CompiledProblemStore,
+    sample_indices: IntVector,
+) -> BoolMatrix:
+    resolved_sample_indices = sample_indices.astype(np.int64, copy=False)
+    return np.ones(
+        (resolved_sample_indices.shape[0], store.max_candidate_slots),
+        dtype=np.bool_,
+    )
+
+
+def _prepare_action_space(
+    store: CompiledProblemStore,
+    sample_indices: IntVector,
+) -> PreparedActionSpace:
+    return PreparedActionSpace(action_mask=_action_mask(store, sample_indices))
+
+
+def _reachable_optimum(
+    store: CompiledProblemStore,
+    *,
+    start_row: int,
+    reachable_end_row: int,
+) -> tuple[int, int, float]:
+    candidate_values = store.log_base_fees[start_row:reachable_end_row]
+    offset = int(np.argmin(candidate_values))
+    return int(start_row + offset), offset, float(candidate_values[offset])
 
 
 def _prepare_supervised_targets(
@@ -30,27 +61,31 @@ def _prepare_supervised_targets(
     window_summary = store.candidate_windows(resolved_indices)
     batch_size = int(resolved_indices.shape[0])
     max_candidate_slots = int(store.max_candidate_slots)
-    candidate_mask = np.zeros((batch_size, max_candidate_slots), dtype=np.bool_)
+    action_mask = np.zeros((batch_size, max_candidate_slots), dtype=np.bool_)
     candidate_log_fees = np.zeros((batch_size, max_candidate_slots), dtype=np.float32)
     optimum_offsets = np.empty(batch_size, dtype=np.int64)
     optimum_log_fees = np.empty(batch_size, dtype=np.float32)
     baseline_candidate_indices = np.zeros(batch_size, dtype=np.int64)
-    for row, (start_row, end_row, candidate_count) in enumerate(
+    for row, (start_row, end_row, candidate_count, reachable_end_row) in enumerate(
         zip(
             window_summary.baseline_rows,
             window_summary.candidate_end_rows,
             window_summary.candidate_counts,
+            window_summary.reachable_end_rows,
             strict=True,
         )
     ):
         candidate_values = store.log_base_fees[start_row:end_row]
-        candidate_mask[row, :] = True
+        action_mask[row, :] = True
         slot_count = min(int(candidate_count), max_candidate_slots)
         candidate_log_fees[row, :slot_count] = candidate_values[:slot_count]
-        reachable_values = candidate_values[:slot_count]
-        reachable_offset = int(np.argmin(reachable_values))
+        _, reachable_offset, reachable_log_fee = _reachable_optimum(
+            store,
+            start_row=int(start_row),
+            reachable_end_row=int(reachable_end_row),
+        )
         optimum_offsets[row] = reachable_offset
-        optimum_log_fees[row] = float(reachable_values[reachable_offset])
+        optimum_log_fees[row] = reachable_log_fee
         if int(candidate_count) < max_candidate_slots:
             if int(end_row) >= store.n_rows:
                 raise ValueError(
@@ -59,7 +94,7 @@ def _prepare_supervised_targets(
                 )
             candidate_log_fees[row, candidate_count:] = store.log_base_fees[int(end_row)]
     return PreparedSupervisedExecutionTargets(
-        candidate_mask=candidate_mask,
+        action_mask=action_mask,
         candidate_log_fees=candidate_log_fees,
         optimum_offsets=optimum_offsets,
         optimum_log_fees=optimum_log_fees,
@@ -98,10 +133,19 @@ def _realize_selections(
     if np.any(overflow_mask):
         resolved_offsets[overflow_mask] = window_summary.candidate_counts[overflow_mask]
         realized_rows[overflow_mask] = window_summary.candidate_end_rows[overflow_mask]
+    optimum_rows = np.empty(selected_sample_indices.shape[0], dtype=np.int64)
+    for row, (start_row, reachable_end_row) in enumerate(
+        zip(window_summary.baseline_rows, window_summary.reachable_end_rows, strict=True)
+    ):
+        optimum_rows[row], _, _ = _reachable_optimum(
+            store,
+            start_row=int(start_row),
+            reachable_end_row=int(reachable_end_row),
+        )
     return RealizedSelectionBatch(
         realized_rows=realized_rows,
         baseline_rows=window_summary.baseline_rows,
-        optimum_rows=window_summary.optimum_rows,
+        optimum_rows=optimum_rows,
         requested_offsets=requested_offsets,
         resolved_offsets=resolved_offsets,
         overflow_mask=overflow_mask,
@@ -116,7 +160,8 @@ def compile_execution_policy(
     return CompiledExecutionPolicyContract(
         execution_policy_id="strict_deadline_miss",
         baseline_row_mode=BaselineRowMode.FIRST_CANDIDATE,
-        requires_post_window_row=False,
+        requires_post_window_row=True,
+        prepare_action_space_fn=_prepare_action_space,
         prepare_supervised_targets_fn=_prepare_supervised_targets,
         realize_selections_fn=_realize_selections,
     )

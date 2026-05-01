@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..acquisition import BlockPullPlan
 from ..config.models import AcquireConfig
-from .assembly import CorpusSplitOutcome
+from .split_materialization import CorpusSplitOutcome
 
 
 def acquire_dry_run_fields(

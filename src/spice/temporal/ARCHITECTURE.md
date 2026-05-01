@@ -34,6 +34,7 @@ max_candidate_slots
 ```
 
 Prediction and evaluation consume this generic shape instead of compiler-specific details.
+Problem stores own row geometry, not action availability. Action validity belongs to the execution policy because overflow and deadline behavior are policy semantics.
 
 ## Compiler Flow
 
@@ -58,7 +59,11 @@ Compilers publish feature prerequisites and runtime metadata codecs. Dataset bui
 Prediction chooses an action. Execution policy defines what that action means in the problem:
 
 ```text
-decoded offsets + sample positions
+execution policy + problem store + sample positions
+        |
+        +--> action mask
+        |
+decoded offsets
         |
         v
 execute selected rows

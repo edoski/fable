@@ -2,11 +2,11 @@
 
 ## Purpose
 
-`temporal.execution_policy` defines how a selected candidate offset becomes a realized outcome.
+`temporal.execution_policy` defines which actions are available and how a selected candidate offset becomes a realized outcome.
 
 ## Theory
 
-Prediction chooses an action. Evaluation needs to know what that action would have cost under the problem definition. An execution policy is this bridge from action to outcome.
+Prediction chooses an action. Training and inference need to know which actions the policy can resolve, and evaluation needs to know what the selected action would have cost under the problem definition. An execution policy is this bridge from action space to outcome.
 
 ## Invariants
 
@@ -36,4 +36,4 @@ The model's output is not automatically an economic result. It is an action. The
 
 ## Contract Rule
 
-Evaluators receive an execution-policy contract, not a policy id string. That contract exposes behavior and semantics needed for scoring without requiring evaluator engines to know concrete policy classes.
+Model-input representation, prediction target construction, and evaluators receive an execution-policy contract, not a policy id string. That contract exposes action masks, target behavior, realization behavior, and semantics without requiring callers to know concrete policy classes.

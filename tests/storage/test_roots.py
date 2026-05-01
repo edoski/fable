@@ -34,7 +34,7 @@ def test_delete_artifact_rejects_invalid_catalog_roots(tmp_path, case: str) -> N
     if case == "outside":
         artifact_root = tmp_path / "outside-artifact"
         artifact_root.mkdir()
-        message = "outside storage artifacts root"
+        message = "outside the artifact storage subtree"
     else:
         artifact_root = storage_root / "artifacts" / "ethereum" / "art_1"
         if case == "kind_mismatch":

@@ -9,13 +9,12 @@ from ..prediction import (
     CompiledPredictionContract,
 )
 from ..prediction.decoding import DecodedPredictionResult, decode_context_from_batch
+from ..temporal.execution_policy import CompiledExecutionPolicyContract
 from ..temporal.problem_store import CompiledProblemStore, IntVector
 from ._runtime import (
-    build_cuda_modeling_runtime,
     configure_torch_backends,
 )
-from .families.base import ModelConfig
-from .families.registry import resolve_model_training_precision
+from .evaluation_runtime import EvaluationScoringRuntimePlan
 from .forward_runtime import run_planned_model_input_forward
 from .models import TemporalModel
 from .representations import CompiledRepresentationContract
@@ -24,22 +23,17 @@ from .representations import CompiledRepresentationContract
 def predict_with_model(
     model: TemporalModel,
     *,
-    model_config: ModelConfig,
     prediction_contract: CompiledPredictionContract,
     representation_contract: CompiledRepresentationContract,
+    execution_policy: CompiledExecutionPolicyContract,
     store: CompiledProblemStore,
     sample_indices: IntVector,
-    batch_size: int,
+    runtime_plan: EvaluationScoringRuntimePlan,
 ) -> DecodedPredictionResult:
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
 
-    runtime = build_cuda_modeling_runtime(batch_size=batch_size)
-    precision = resolve_model_training_precision(
-        device=runtime.resolved_device,
-        model_config=model_config,
-    )
-    model.to(runtime.resolved_device)
+    model.to(runtime_plan.resolved_device)
     predictions = prediction_contract.allocate_decoded_result(int(sample_indices.shape[0]))
 
     def _decode_batch(batch, outputs) -> None:
@@ -51,18 +45,19 @@ def predict_with_model(
         )
 
     with configure_torch_backends(
-        resolved_device=runtime.resolved_device,
-        deterministic=None,
+        resolved_device=runtime_plan.resolved_device,
+        deterministic=runtime_plan.deterministic,
     ):
         run_planned_model_input_forward(
             model,
             store=store,
             sample_indices=sample_indices,
             representation_contract=representation_contract,
-            base_runtime_context=runtime.representation_runtime_context,
-            resolved_device=runtime.resolved_device,
-            precision=precision,
-            seed=0,
+            execution_policy=execution_policy,
+            base_runtime_context=runtime_plan.representation_runtime_context,
+            resolved_device=runtime_plan.resolved_device,
+            precision=runtime_plan.precision,
+            seed=runtime_plan.seed,
             on_outputs=_decode_batch,
         )
     return predictions

@@ -22,7 +22,7 @@ ssh + sbatch remote command
 python -m spice.execution.remote_runner <task> <config_json>
     |
     v
-hydrate_resolved_workflow_config()
+hydrate_workflow_config_snapshot_json()
     |
     v
 train/tune/evaluate workflow
@@ -36,7 +36,7 @@ Execution sessions require an explicit target name. The CLI supplies `DEFAULT_RE
 
 ```text
 CLI default allowed here:
-  spice train --submit
+  spice train
 
 No hidden default here:
   session = open_execution_session(target_name)
@@ -54,8 +54,10 @@ tune
 evaluate
 ```
 
-Acquire is not routed through this resolved-snapshot hydration path. Acquisition has provider/RPC behavior and storage commit mechanics that are resolved through the normal acquire workflow path.
+Acquire is not routed through this resolved workflow snapshot path. Acquisition has provider/RPC behavior and storage commit mechanics that are resolved through the normal acquire workflow path.
 
 ## Transfer Boundary
 
-`execution.transfer` owns cluster push/pull orchestration. It receives an **Execution Session**, runs remote helper commands, invokes rsync, and delegates local path/root-kind operations to storage lifecycle and catalog services. The remote helper remains `spice.storage.sync_cli` because it performs local storage operations on the remote machine, not workflow execution.
+`execution.transfer` owns the **Storage Transfer Transaction**. It receives an **Execution Session**, resolves remote records through the **Remote Catalog Record Codec**, stages roots, invokes rsync, promotes with root-kind validation, and cleans failed stages without hiding the primary failure.
+
+The remote helper remains `spice.storage.sync_cli` because it performs local storage operations on the remote machine, not workflow execution. Its commands are machine-facing; public operators use `spice transfer push dataset` and `spice transfer pull artifact`.

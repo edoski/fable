@@ -38,11 +38,11 @@ Problem stores keep fees in log space. Evaluators exponentiate before economic r
 fee = exp(log_base_fee)
 ```
 
-Ratios are computed on real fee values, not log values. Temporal Accounting is shared by evaluator adapters after they select temporal decision events.
+Ratios are computed on real fee values, not log values. The Temporal Replay Runner validates decoded replay inputs and asks evaluator Adapters for selected events; Temporal Accounting is shared after that selection.
 
 ## Temporal Accounting
 
-Temporal Accounting receives selected sample positions and computes realized, baseline, and optimum fee outcomes.
+Temporal Accounting receives selected sample positions from the Temporal Replay Runner and computes realized, baseline, and optimum fee outcomes.
 
 ```text
 selected positions

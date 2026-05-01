@@ -5,6 +5,7 @@ from typing import cast
 import yaml
 
 from spice.config import (
+    AcquireConfig,
     AcquireWorkflowSelection,
     TrainConfig,
     TrainWorkflowSelection,
@@ -27,13 +28,13 @@ from spice.storage.identity import (
     study_definition_identity_from_manifest,
     study_definition_identity_from_tuned_config,
 )
-from spice.storage.root_consumer_paths import produced_artifact_id, produced_study_id
-from spice.storage.study_manifest import manifest_from_tune_config
-from spice.storage.workflow_paths import (
-    WorkflowIdentity,
-    build_workflow_paths,
-    resolve_workflow_paths,
+from spice.storage.root_producer_handles import (
+    produced_artifact_id,
+    produced_corpus_id,
+    produced_study_id,
 )
+from spice.storage.study_manifest import manifest_from_tune_config
+from tests.root_handle_helpers import corpus_handle, study_handle
 
 TEST_DATASET_ID = "cor_9a73b1e88edb488afb1e"
 
@@ -175,14 +176,22 @@ def test_tuned_definition_identity_matches_stored_study_manifest(
         surface="current_row_fee_dynamics",
         study_id=study_id,
     )
-    paths = build_workflow_paths(
-        output_root=tune_config.storage.root,
+    corpus = corpus_handle(
+        tune_config.storage.root,
         chain_name=tune_config.chain.name,
-        identity=WorkflowIdentity(corpus_id=TEST_DATASET_ID, study_id=study_id),
+        dataset_id=TEST_DATASET_ID,
+        dataset_name=tune_config.dataset.name,
+    )
+    study = study_handle(
+        tune_config.storage.root,
+        corpus=corpus,
+        study_id=study_id,
+        study_name=tune_config.study.name,
     )
     manifest = manifest_from_tune_config(
         tune_config,
-        paths=paths,
+        corpus=corpus,
+        study=study,
         corpus_manifest=_corpus_manifest(tune_config),
     )
 
@@ -199,14 +208,15 @@ def test_tuned_definition_identity_matches_stored_study_manifest(
 
 def test_corpus_id_uses_dataset_evaluation_date(tmp_path, isolate_conf_root) -> None:
     conf_root = isolate_conf_root()
-    base = resolve_workflow_paths(
+    base = cast(
+        AcquireConfig,
         resolve_workflow_config(
             WorkflowTask.ACQUIRE,
             AcquireWorkflowSelection(
                 surface="current_row_fee_dynamics",
                 storage_root=tmp_path / "outputs",
             ),
-        )
+        ),
     )
     changed_dataset = dict(load_named_group("icdcs_2026", "dataset"))
     changed_dataset["evaluation_date"] = "2025-11-10"
@@ -214,14 +224,15 @@ def test_corpus_id_uses_dataset_evaluation_date(tmp_path, isolate_conf_root) -> 
         yaml.safe_dump(changed_dataset, sort_keys=False),
         encoding="utf-8",
     )
-    changed = resolve_workflow_paths(
+    changed = cast(
+        AcquireConfig,
         resolve_workflow_config(
             WorkflowTask.ACQUIRE,
             AcquireWorkflowSelection(
                 surface="current_row_fee_dynamics",
                 storage_root=tmp_path / "outputs",
             ),
-        )
+        ),
     )
 
-    assert changed.corpus_id != base.corpus_id
+    assert produced_corpus_id(changed) != produced_corpus_id(base)

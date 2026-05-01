@@ -17,13 +17,18 @@ from ..config.models import (
     TrainingConfig,
 )
 from ..evaluation import EvaluationRun, EvaluationSummary
-from ..modeling.dataset_builders import BuilderRuntimeMetadata, DatasetBuilderConfig
+from ..modeling.dataset_builders import (
+    BuilderRuntimeMetadata,
+    DatasetBuilderConfig,
+    PreparedInferenceDataset,
+    PreparedTrainingDataset,
+)
 from ..modeling.families.base import ModelConfig
 from ..objectives import ObjectiveConfig
 from ..prediction import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..semantics import ArtifactSemantics
 from ..temporal.scaling import ScalerStats
-from .pipeline import PreparedInferenceDataset, PreparedTrainingDataset, TrainingRunResult
+from .training_run import TrainingRunResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +157,17 @@ class TrainingEpochRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationExecutionProvenance:
+    """Execution identity for an evaluation run when launched by the remote backend."""
+
+    execution_ref: str
+    job_id: str | None
+    log_path: str | None
+    workflow_task: str | None
+    target: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationRuntimeSummary:
     """Runtime-only evaluation outcomes stored separately from manifest provenance."""
 
@@ -166,6 +182,7 @@ class EvaluationRuntimeSummary:
     window_metrics: dict[str, WindowMetricSummary]
     total_events: int
     runs: list[EvaluationRun]
+    execution_provenance: EvaluationExecutionProvenance | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,11 +244,13 @@ def build_evaluation_runtime_summary(
     evaluation_id: str,
     evaluation_config: dict[str, object],
     metric_descriptors: tuple[MetricDescriptor, ...],
+    execution_provenance: EvaluationExecutionProvenance | None = None,
 ) -> EvaluationRuntimeSummary:
     return EvaluationRuntimeSummary(
         delay_seconds=delay_seconds,
         evaluation_id=evaluation_id,
         evaluation_config=dict(evaluation_config),
+        execution_provenance=execution_provenance,
         metric_descriptors=metric_descriptors,
         n_history_rows=prepared.n_history_rows,
         n_evaluation_rows=prepared.n_evaluation_rows,

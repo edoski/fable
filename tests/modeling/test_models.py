@@ -17,6 +17,10 @@ from spice.prediction.families.min_block_fee_multitask.outputs import (
     OFFSET_LOGITS_HEAD_ID,
     build_output_spec,
 )
+from spice.temporal import (
+    coerce_execution_policy_config,
+    compile_execution_policy_contract,
+)
 from spice.temporal.problem_store import CompiledProblemStore
 
 
@@ -47,6 +51,12 @@ def _test_store() -> CompiledProblemStore:
         candidate_start_rows=np.array([3, 5, 6, 8], dtype=np.int64),
         candidate_end_rows=np.array([5, 8, 7, 10], dtype=np.int64),
         max_candidate_slots=3,
+    )
+
+
+def _execution_policy():
+    return compile_execution_policy_contract(
+        coerce_execution_policy_config({"id": "strict_deadline_miss"})
     )
 
 
@@ -109,7 +119,13 @@ def _assert_model_ignores_padded_timesteps(model, inputs, input_mask, max_candid
 def test_sequence_models_emit_offset_logits_and_ignore_padding(model_type, config) -> None:
     torch.manual_seed(5)
     store = _test_store()
-    batch = build_sequence_input_batch(store, sample_indices=np.array([0, 1, 2, 3]))
+    sample_indices = np.array([0, 1, 2, 3], dtype=np.int64)
+    execution_policy = _execution_policy()
+    batch = build_sequence_input_batch(
+        store,
+        sample_indices=sample_indices,
+        action_mask=execution_policy.prepare_action_space(store, sample_indices).action_mask,
+    )
     model = model_type(
         n_features=batch.inputs.shape[-1],
         output_spec=build_output_spec(store.max_candidate_slots),

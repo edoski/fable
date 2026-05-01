@@ -13,6 +13,7 @@ from ..core.errors import MissingStateError, StateConflictError, StateLayoutErro
 from ..corpus.metadata import DatasetManifest
 from ..modeling.tuned_config import coerce_tuned_parameter_set
 from .engine import db_url
+from .root_handles import CorpusRootHandle, StudyRootHandle
 from .study_manifest import (
     diff_study_manifests,
     insert_study_manifest,
@@ -31,7 +32,6 @@ from .study_models import (
     build_trial_record,
     trial_params_payload,
 )
-from .workflow_paths import WorkflowPaths
 
 
 def study_storage(db_path: Path) -> RDBStorage:
@@ -42,17 +42,19 @@ def study_storage(db_path: Path) -> RDBStorage:
 
 
 def open_tuning_study(
-    db_path: Path,
+    study: StudyRootHandle,
     *,
     config: TuneConfig,
-    paths: WorkflowPaths,
+    corpus: CorpusRootHandle,
     corpus_manifest: DatasetManifest,
 ) -> OpenStudy:
     requested_manifest = manifest_from_tune_config(
         config,
-        paths=paths,
+        corpus=corpus,
+        study=study,
         corpus_manifest=corpus_manifest,
     )
+    db_path = study.state_db_path
     stored_manifest = try_load_study_manifest(db_path)
     if stored_manifest is None:
         insert_study_manifest(db_path, manifest=requested_manifest)
@@ -65,8 +67,8 @@ def open_tuning_study(
                 + ", ".join(mismatches)
             )
         manifest = stored_manifest
-    study = load_or_create_materialized_study(db_path, config=config)
-    existing_trial_count = len(study.trials)
+    materialized_study = load_or_create_materialized_study(db_path, config=config)
+    existing_trial_count = len(materialized_study.trials)
     target_trial_count = config.tuning.trial_count
     if target_trial_count < existing_trial_count:
         raise StateConflictError(
@@ -75,7 +77,7 @@ def open_tuning_study(
         )
     return OpenStudy(
         manifest=manifest,
-        study=study,
+        study=materialized_study,
         existing_trial_count=existing_trial_count,
         target_trial_count=target_trial_count,
         remaining_trial_count=target_trial_count - existing_trial_count,

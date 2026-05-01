@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import torch
 
@@ -9,6 +11,8 @@ from spice.modeling.families.lstm import LstmModelConfig
 from spice.modeling.representations import RepresentationRuntimeContext, sequence_input_contract
 from spice.prediction import compile_prediction_contract
 from spice.temporal import (
+    CompiledExecutionPolicyContract,
+    PreparedActionSpace,
     coerce_execution_policy_config,
     compile_execution_policy_contract,
 )
@@ -75,13 +79,34 @@ def _execution_policy():
     )
 
 
+def _masking_policy() -> CompiledExecutionPolicyContract:
+    def prepare_action_space(store, sample_indices):
+        mask = np.ones((sample_indices.shape[0], store.max_candidate_slots), dtype=np.bool_)
+        mask[:, -1] = False
+        return PreparedActionSpace(action_mask=mask)
+
+    return replace(_execution_policy(), prepare_action_space_fn=prepare_action_space)
+
+
+def _action_space(
+    policy: CompiledExecutionPolicyContract,
+    store: CompiledProblemStore,
+    sample_indices: np.ndarray,
+) -> PreparedActionSpace:
+    return policy.prepare_action_space(store, sample_indices)
+
+
 def test_sequence_input_storage_modes_yield_identical_batches() -> None:
     store = _test_store()
     sample_indices = np.array([3, 0, 2, 1], dtype=np.int64)
     contract = sequence_input_contract()
+    policy = _execution_policy()
+    action_space = _action_space(policy, store, sample_indices)
     streaming = contract.prepare(
         store,
         sample_indices,
+        execution_policy=policy,
+        action_space=action_space,
         runtime_context=RepresentationRuntimeContext(
             batch_size=2,
             available_host_memory_bytes=1,
@@ -90,6 +115,8 @@ def test_sequence_input_storage_modes_yield_identical_batches() -> None:
     materialized = contract.prepare(
         store,
         sample_indices,
+        execution_policy=policy,
+        action_space=action_space,
         runtime_context=RepresentationRuntimeContext(
             batch_size=2,
             available_host_memory_bytes=10**12,
@@ -132,8 +159,31 @@ def test_prediction_batch_source_binds_current_family_targets() -> None:
     assert first_batch.inputs.sample_positions.tolist() == [0, 1]
     assert tuple(first_batch.targets.min_block_offsets.shape) == (2,)
     assert tuple(first_batch.targets.min_block_log_fees.shape) == (2,)
-    assert tuple(first_batch.targets.candidate_mask.shape) == (2, 3)
-    assert first_batch.targets.candidate_mask.tolist() == [
+    assert tuple(first_batch.targets.action_mask.shape) == (2, 3)
+    assert first_batch.targets.action_mask.tolist() == [
         [True, True, True],
         [True, True, True],
+    ]
+
+
+def test_sequence_input_batches_use_execution_policy_action_mask() -> None:
+    store = _test_store()
+    sample_indices = np.array([0, 1], dtype=np.int64)
+    policy = _masking_policy()
+    prepared = sequence_input_contract().prepare(
+        store,
+        sample_indices,
+        execution_policy=policy,
+        action_space=_action_space(policy, store, sample_indices),
+        runtime_context=RepresentationRuntimeContext(
+            batch_size=2,
+            available_host_memory_bytes=10**12,
+        ),
+    )
+
+    batch = prepared.build_batch(torch.as_tensor([0, 1], dtype=torch.int64))
+
+    assert batch.action_mask.tolist() == [
+        [True, True, False],
+        [True, True, False],
     ]

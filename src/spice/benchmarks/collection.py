@@ -1,123 +1,105 @@
 # pyright: strict
 
-"""Benchmark collection from remote completed workflows."""
+"""All-or-nothing benchmark collection from remote completed workflows."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 from ..config.models import EvaluateConfig, WorkflowTask
 from ..core.errors import ConfigResolutionError, SelectorResolutionError, SpiceOperatorError
-from ..execution.session import open_execution_session
+from ..execution.session import ExecutionSession, open_execution_session
+from ..execution.transfer import PulledArtifactRoot, pull_artifact_from_cluster
 from .collection_resolver import resolve_benchmark_evaluation
-from .ledger import (
-    BENCHMARK_LEDGER_PATH,
-    append_ledger_rows,
-    benchmark_ledger_row,
-    ledger_key,
-    read_ledger_keys,
+from .result_index import upsert_benchmark_collection_snapshot
+from .result_records import (
+    BenchmarkCollectionSnapshot,
+    BenchmarkResultRecord,
+    build_benchmark_result_record,
 )
+from .result_store import BENCHMARK_RESULT_INDEX_PATH
 from .runs import (
-    BenchmarkCollectionRecord,
+    format_datetime,
     load_plan_jsonl,
+    load_run_metadata,
     load_submission_jsonl,
     utc_now,
-    write_collection_jsonl,
+    write_collection_snapshot,
 )
 
 
 def collect_benchmark_run(
-    *,
     run_dir: Path,
-    target_name: str,
-    ledger_path: Path = BENCHMARK_LEDGER_PATH,
-    write: bool = False,
-) -> list[BenchmarkCollectionRecord]:
+    *,
+    index_path: Path = BENCHMARK_RESULT_INDEX_PATH,
+) -> BenchmarkCollectionSnapshot:
+    metadata = load_run_metadata(run_dir)
     plan = load_plan_jsonl(run_dir)
     submissions = load_submission_jsonl(run_dir)
-    existing_keys = read_ledger_keys(ledger_path)
-    records: list[BenchmarkCollectionRecord] = []
+    evaluate_entries = [entry for entry in plan if entry.workflow is WorkflowTask.EVALUATE]
     collector_time = utc_now()
-    session = open_execution_session(target_name)
-    for entry in plan:
-        if entry.workflow is not WorkflowTask.EVALUATE:
-            continue
+    session = open_execution_session(metadata.target)
+    pulled_artifacts: dict[str, PulledArtifactRoot] = {}
+    records: list[BenchmarkResultRecord] = []
+    for entry in evaluate_entries:
         if not isinstance(entry.config, EvaluateConfig):
             raise ConfigResolutionError(f"benchmark run {entry.run_id} is not an evaluate config")
         submission = submissions.get(entry.run_id)
         if submission is None:
-            records.append(
-                BenchmarkCollectionRecord(
-                    run_id=entry.run_id,
-                    workflow=entry.workflow,
-                    status="missing",
-                    reason="missing submission record",
-                )
-            )
-            continue
+            raise SpiceOperatorError(f"Missing submission record for benchmark run {entry.run_id}")
         try:
             state = resolve_benchmark_evaluation(
                 entry.config,
-                session=session,
+                pulled=_cached_artifact_pull(
+                    entry.config,
+                    session=session,
+                    cache=pulled_artifacts,
+                ),
+                submission=submission,
             )
         except SelectorResolutionError as exc:
-            records.append(
-                BenchmarkCollectionRecord(
-                    run_id=entry.run_id,
-                    workflow=entry.workflow,
-                    status="missing",
-                    reason=str(exc),
-                )
-            )
-            continue
+            raise SpiceOperatorError(str(exc)) from exc
         if state is None:
-            records.append(
-                BenchmarkCollectionRecord(
-                    run_id=entry.run_id,
-                    workflow=entry.workflow,
-                    status="missing",
-                    reason="evaluation summary not found",
-                )
-            )
-            continue
-        row = benchmark_ledger_row(
-            entry=entry,
-            evaluation=state.evaluation,
-            training=state.training,
-            submission=submission,
-            collector_time=collector_time,
-        )
-        key = ledger_key(row)
-        if key in existing_keys:
-            records.append(
-                BenchmarkCollectionRecord(
-                    run_id=entry.run_id,
-                    workflow=entry.workflow,
-                    status="skipped",
-                    reason="ledger row already exists",
-                    row=row,
-                )
-            )
-            continue
-        existing_keys.add(key)
-        records.append(
-            BenchmarkCollectionRecord(
-                run_id=entry.run_id,
-                workflow=entry.workflow,
-                status="ready",
-                row=row,
-            )
-        )
-    write_collection_jsonl(run_dir, records)
-    if write:
-        missing = [record for record in records if record.status == "missing"]
-        if missing:
             raise SpiceOperatorError(
-                f"Refusing partial benchmark ledger write: {len(missing)} evaluation rows missing"
+                f"Evaluation summary not found for benchmark run {entry.run_id}"
             )
-        append_ledger_rows(
-            ledger_path,
-            [cast(dict[str, str], record.row) for record in records if record.status == "ready"],
+        records.append(
+            build_benchmark_result_record(
+                entry=entry,
+                submission=submission,
+                evaluation=state.evaluation,
+                training=state.training,
+                collector_time=collector_time,
+            )
         )
-    return records
+    snapshot = BenchmarkCollectionSnapshot(
+        benchmark=metadata.benchmark,
+        run_dir=str(run_dir),
+        target=metadata.target,
+        run_created_at_utc=metadata.created_at_utc,
+        collected_at_utc=format_datetime(collector_time),
+        expected_evaluate_count=len(evaluate_entries),
+        records=tuple(records),
+    )
+    write_collection_snapshot(run_dir, snapshot)
+    upsert_benchmark_collection_snapshot(snapshot, index_path=index_path)
+    return snapshot
+
+
+def _cached_artifact_pull(
+    config: EvaluateConfig,
+    *,
+    session: ExecutionSession,
+    cache: dict[str, PulledArtifactRoot],
+) -> PulledArtifactRoot:
+    pulled = cache.get(config.artifact_id)
+    if pulled is not None:
+        return pulled
+    pulled = pull_artifact_from_cluster(
+        storage_root=config.storage.root,
+        session=session,
+        artifact_id=config.artifact_id,
+        replace=True,
+    )
+    cache[config.artifact_id] = pulled
+    return pulled

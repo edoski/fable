@@ -101,12 +101,10 @@ Supported transfer directions:
 
 | Command | Direction |
 | --- | --- |
-| Push dataset | local corpus root to cluster. |
-| Push study | local study root to cluster. |
-| Pull study | cluster study root to local. |
-| Pull artifact | cluster artifact root to local. |
+| `transfer push dataset` | local corpus root to cluster. |
+| `transfer pull artifact` | cluster artifact root to local. |
 
-`execution.transfer` prepares a remote or local stage, uses `rsync`, validates root kind through lifecycle operations, finalizes the stage, and reindexes. `storage.sync_cli` is the remote-side helper for path and root-kind commands.
+`execution.transfer` prepares a remote or local stage, uses `rsync`, validates root kind through lifecycle operations, finalizes the stage, and reindexes. `storage.sync_cli` is the remote-side helper for path and root-kind commands. Dataset is the operator identity; corpus is the storage root kind.
 
 ## Invariants
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pydantic import SerializeAsAny, field_validator
@@ -226,6 +226,12 @@ class ObservedTimeWindowCompiledProblemContract(CompiledProblemContract):
     ) -> CompiledProblemStore:
         if not isinstance(compiler_runtime_metadata, ObservedTimeWindowRuntimeMetadata):
             raise TypeError("observed_time_window requires ObservedTimeWindowRuntimeMetadata")
+        if max_candidate_slots != compiler_runtime_metadata.capability_action_count:
+            raise ValueError(
+                "artifact action width does not match observed_time_window runtime metadata: "
+                f"{max_candidate_slots} != "
+                f"{compiler_runtime_metadata.capability_action_count}"
+            )
         if delay_seconds <= 0:
             raise ValueError("delay_seconds must be positive")
         if delay_seconds > self.max_delay_seconds:
@@ -269,7 +275,7 @@ def compile_problem(
         sample_count=problem.sample_count,
         max_delay_seconds=problem.max_delay_seconds,
         feature_prerequisites=feature_contract.feature_prerequisites,
-        execution_policy=replace(execution_policy, requires_post_window_row=True),
+        execution_policy=execution_policy,
         slot_spacing=compiler_config.slot_spacing,
         nominal_block_time_seconds=nominal_block_time_seconds,
     )

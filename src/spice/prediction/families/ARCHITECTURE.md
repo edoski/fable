@@ -10,7 +10,7 @@ Each family chooses a learning objective. For classification, the target may be 
 
 ## Invariants
 
-Families must validate candidate masks, keep target tensors aligned with sample indices, and return decoded results with declared ids. Evaluators should never read raw logits from a family.
+Families must validate action masks, keep target tensors aligned with sample indices, and return decoded results with declared ids. Evaluators should never read raw logits from a family.
 
 ## Extension Points
 
@@ -29,12 +29,12 @@ config model
   -> primary metric id
 ```
 
-## Candidate Masking
+## Action Masking
 
 Temporal stores may have variable candidate counts. Families that score candidates must mask invalid slots before softmax, argmax, or loss operations:
 
 ```text
-raw logits + valid-candidate mask -> masked logits -> probabilities/decision
+raw logits + action mask -> masked logits -> probabilities/decision
 ```
 
 The shared helper keeps the invalid-slot behavior consistent across families.

@@ -65,7 +65,7 @@ Evaluators never call models or prediction heads. The modeling scoring service p
 The evaluator accepts the generic `DecodedPredictionResult` from `prediction.decoding` at the evaluator entrypoint because that is the evaluator ABI. Replay then narrows to `DecodedOffsets` from `prediction.decoded_offsets` once:
 
 ```text
-run evaluator adapter
+Temporal Replay Runner
   generic decoded result -> require_decoded_offsets()
   DecodedOffsets -> temporal_accounting.summarize_selected_temporal_decisions()
 ```
@@ -74,7 +74,7 @@ run evaluator adapter
 
 ## Temporal Accounting
 
-Evaluator adapters choose event positions. Temporal Accounting computes realized, baseline, optimum, and event-mean economic metrics for those positions.
+Temporal replay evaluator Adapters choose event positions. The **Temporal Replay Runner** owns decoded-result validation and the accounting loop. Temporal Accounting computes realized, baseline, optimum, and event-mean economic metrics for those positions.
 
 ```text
 selected sample positions
@@ -103,6 +103,7 @@ evaluation/
   registry.py        public config coercion and contract compile helpers
   metrics.py         metric descriptor definitions
   sampling.py        Poisson arrival and chronological sample helpers
+  temporal_replay_runner.py shared decoded validation and replay accounting loop
   poisson_replay.py  Poisson replay evaluator adapter
   full_temporal_replay.py full supplied-sample evaluator adapter
   temporal_accounting.py shared temporal decision accounting

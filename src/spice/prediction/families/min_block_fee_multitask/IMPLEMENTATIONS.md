@@ -30,7 +30,7 @@ Targets include:
 
 | Field | Meaning |
 | --- | --- |
-| `candidate_mask` | Valid resolvable action slots. |
+| `action_mask` | Execution-policy action availability. |
 | `min_block_offsets` | Class label for optimum offset. |
 | `min_block_log_fees` | Regression target for minimum log fee. |
 

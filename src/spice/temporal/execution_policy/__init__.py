@@ -3,6 +3,7 @@
 from .base import (
     CompiledExecutionPolicyContract,
     ExecutionPolicyConfig,
+    PreparedActionSpace,
     PreparedSupervisedExecutionTargets,
     RealizedSelectionBatch,
     coerce_execution_policy_config,
@@ -11,6 +12,7 @@ from .base import (
 
 __all__ = [
     "CompiledExecutionPolicyContract",
+    "PreparedActionSpace",
     "PreparedSupervisedExecutionTargets",
     "ExecutionPolicyConfig",
     "RealizedSelectionBatch",

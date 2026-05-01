@@ -205,10 +205,15 @@ Priority-fee local-trends rationale:
 Benchmark sweep operator flow:
 
 - Before launching a full sweep, push validated ETH/AVAX/POL 1M corpora to remote and run one small current-config smoke train/evaluate to verify the remote checkout, storage, and evaluator path.
-- Preview the exact remote workflow DAG with `spice benchmark plan <name>`.
-- Submit with `spice benchmark submit <name>`. This uses the default remote target, records the remote git commit, writes `outputs/benchmarks/runs/<name>/<timestamp>/plan.jsonl`, and appends Slurm submission records to `submission.jsonl`.
-- Poll collection with `spice benchmark collect <name>`. This reads the latest run directory, pulls required remote studies/artifacts over SSH through `execution.transfer`, and prints JSONL status without changing `benchmarks/results.csv`.
-- Finalize with `spice benchmark collect <name> --write` only after all expected evaluation jobs are complete. Writes are all-or-nothing for missing expected evaluation rows and skip duplicate `(artifact_id, evaluation_storage_id)` ledger rows.
+- Create the exact remote workflow DAG with `spice benchmark plan <name> --target disi_l40`. This writes `outputs/benchmarks/runs/<name>/<timestamp>/metadata.json` and `plan.jsonl`.
+- Submit with `spice benchmark submit outputs/benchmarks/runs/<name>/<timestamp>`. This records the remote git commit and Slurm submission records in `submission.jsonl`.
+- Collect only after the sweep has finished: `spice benchmark collect outputs/benchmarks/runs/<name>/<timestamp>`. Collection is all-or-nothing and requires each persisted evaluation summary to match the submitted `execution_ref`.
+- Export human-readable results with `spice benchmark index export --output benchmarks/results.csv`. Rebuild/query thesis result state with `spice benchmark index rebuild` and `spice benchmark index list`.
+
+Deferred architecture roadmap after the current cleanup sweep:
+
+- Temporal Replay Runner generalization only when a second decoded-result Adapter exists.
+- Fine-grained post-window eligibility policy if we deliberately choose to change sample eligibility/performance.
 
 Configured sweep specs awaiting launch decisions:
 

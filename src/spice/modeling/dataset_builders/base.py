@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 import polars as pl
 from pydantic import Field, field_validator, model_validator
@@ -14,14 +14,13 @@ from ...core.specs import lookup_local_spec, require_mapping_id, require_spec_co
 from ...core.validation import validate_path_segment
 from ...modeling.families.base import ConfigModel
 from ...semantics import DatasetBuilderSemantics
-
-if TYPE_CHECKING:
-    from ..pipeline import (
-        InferencePreparationSpec,
-        PreparedInferenceDataset,
-        PreparedTrainingDataset,
-        TrainingSpec,
-    )
+from .preparation import (
+    ArtifactInferencePreparationSpec,
+    CompiledInferenceDatasetPreparationSpec,
+    PreparedInferenceDataset,
+    PreparedTrainingDataset,
+    TrainingDatasetPreparationSpec,
+)
 
 
 class DatasetBuilderConfig(ConfigModel):
@@ -63,10 +62,13 @@ class FixedSequenceTemporalBuilderRuntimeMetadata(BuilderRuntimeMetadata):
         return self
 
 
-PrepareTrainingFn = Callable[[pl.DataFrame, "TrainingSpec"], "PreparedTrainingDataset"]
+PrepareTrainingFn = Callable[
+    [pl.DataFrame, TrainingDatasetPreparationSpec],
+    PreparedTrainingDataset,
+]
 PrepareInferenceFn = Callable[
-    [pl.DataFrame, pl.DataFrame, "InferencePreparationSpec"],
-    "PreparedInferenceDataset",
+    [pl.DataFrame, pl.DataFrame, CompiledInferenceDatasetPreparationSpec],
+    PreparedInferenceDataset,
 ]
 
 
@@ -84,7 +86,7 @@ class CompiledDatasetBuilderContract:
         self,
         blocks: pl.DataFrame,
         *,
-        spec: TrainingSpec,
+        spec: TrainingDatasetPreparationSpec,
     ) -> PreparedTrainingDataset:
         return self.prepare_training_fn(blocks, spec)
 
@@ -93,9 +95,31 @@ class CompiledDatasetBuilderContract:
         history_blocks: pl.DataFrame,
         evaluation_blocks: pl.DataFrame,
         *,
-        spec: InferencePreparationSpec,
+        spec: ArtifactInferencePreparationSpec,
     ) -> PreparedInferenceDataset:
-        return self.prepare_inference_fn(history_blocks, evaluation_blocks, spec)
+        builder_runtime_metadata = coerce_builder_runtime_metadata(
+            self.dataset_builder_id,
+            spec.builder_runtime_metadata,
+        )
+        compiler_runtime_metadata = compiler_runtime_metadata_from_builder_payload(
+            builder_runtime_metadata,
+            compiler_id=spec.problem_contract.compiler_id,
+        )
+        return self.prepare_inference_fn(
+            history_blocks,
+            evaluation_blocks,
+            CompiledInferenceDatasetPreparationSpec(
+                feature_contract=spec.feature_contract,
+                problem_contract=spec.problem_contract,
+                delay_seconds=spec.delay_seconds,
+                builder_runtime_metadata=builder_runtime_metadata,
+                compiler_runtime_metadata=compiler_runtime_metadata,
+                scaler=spec.scaler,
+                max_candidate_slots=spec.max_candidate_slots,
+                window_start_timestamp=spec.evaluation_start_timestamp,
+                window_end_timestamp=spec.evaluation_end_timestamp + 1,
+            ),
+        )
 
 
 def _compile_fixed_sequence_temporal(

@@ -10,7 +10,7 @@ Training quality begins with data provenance. Raw acquisition must keep enough m
 
 ## Boundaries
 
-Acquisition does not define ML targets, train models, score predictions, or publish corpus roots. It gathers canonical data and reports runtime facts. Corpus Assembly decides how fetched rows become a corpus root.
+Acquisition does not define ML targets, train models, score predictions, write parquet datasets, or publish corpus roots. It schedules block-source pulls and emits ordered canonical rows to a caller-provided sink. Corpus Assembly decides how fetched rows become a corpus root.
 
 ## Invariants
 
@@ -47,4 +47,4 @@ The model eventually trains on examples, but examples are only as trustworthy as
 
 ## Separation From Workflows
 
-The acquisition package should answer "how do I fetch and canonicalize blocks?" Corpus Assembly answers "which windows do I fetch, how do I validate them, and how do I commit the result?" The acquire workflow stays a thin caller.
+The acquisition package should answer "how do I fetch, retry, order, and canonicalize blocks?" Corpus Split Materialization answers "how do I resume, write, and validate parquet chunks?" Corpus Assembly answers "which windows do I fetch, how do I validate capability, and how do I commit the result?" The acquire workflow stays a thin caller.

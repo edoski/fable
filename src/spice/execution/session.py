@@ -9,10 +9,12 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
-from ..config.models import StorageSpec, WorkflowTask
+from ..config.models import WorkflowTask
 from ..config.registry import load_named_group
 from ..config.resolution import WorkflowConfig
+from ..config.workflow_snapshots import ResolvedWorkflowConfig, workflow_config_snapshot_json
 from ..core.errors import SpiceOperatorError
 from .models import ExecutionSpec, ExecutionWorkflowSpec
 
@@ -294,10 +296,10 @@ def _render_sbatch_script(
     venv_activate_path = shlex.quote(str(target.spec.paths.venv_activate_path))
     storage_root = str(target.spec.paths.storage_root)
     python_path = str(target.spec.paths.python_path)
-    remote_config = config.model_copy(
-        update={"storage": StorageSpec(root=target.spec.paths.storage_root)}
+    config_json = workflow_config_snapshot_json(
+        cast(ResolvedWorkflowConfig, config),
+        storage_root_override=target.spec.paths.storage_root,
     )
-    config_json = remote_config.model_dump_json(exclude_none=True)
     remote_command = shlex.join(
         [
             python_path,
@@ -307,6 +309,7 @@ def _render_sbatch_script(
             config_json,
         ]
     )
+    log_path_expression = str(log_path_template).replace("%j", "${SLURM_JOB_ID:-unknown}")
     lines = [
         "#!/bin/bash",
         f"#SBATCH --job-name=spice-{task.value}",
@@ -324,6 +327,11 @@ def _render_sbatch_script(
         f"cd {repo_root}",
         f"source {venv_activate_path}",
         "export PYTHONUNBUFFERED=1",
+        f"export SPICE_EXECUTION_TARGET={shlex.quote(target.name)}",
+        f"export SPICE_WORKFLOW_TASK={shlex.quote(task.value)}",
+        'export SPICE_EXECUTION_JOB_ID="${SLURM_JOB_ID:-}"',
+        'export SPICE_EXECUTION_REF="slurm:${SLURM_JOB_ID:-}"',
+        f'export SPICE_EXECUTION_LOG_PATH="{log_path_expression}"',
         f"exec {remote_command}",
     ]
     return "\n".join(lines) + "\n"

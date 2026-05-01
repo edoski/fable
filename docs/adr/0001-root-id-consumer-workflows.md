@@ -29,3 +29,17 @@ Cross-corpus evaluation is allowed only within the same chain. Different-chain e
 Old surface-shaped evaluation and fuzzy destructive storage selectors are removed. Benchmarks must materialize artifact ids through `artifact_from` and use a tuned train step between tune and evaluate.
 
 Existing roots from older layouts can be regenerated instead of migrated.
+
+## Implementation Notes
+
+Existing-root workflow consumers resolve ids into typed root handles before orchestration:
+
+- `root_consumer_handles.py` applies exact catalog selectors for existing roots.
+- `root_producer_handles.py` derives produced-root ids and produced root handles.
+- `root_handles.py` carries workflow-facing root identity and operational paths for catalog-backed and produced roots.
+- `acquire` derives its produced corpus root directly from producer identity.
+- Baseline `train` resolves `dataset_id`, then derives the artifact root.
+- Tuned `train` resolves `study_id`, uses the study's dataset id to resolve the corpus, then derives the artifact root.
+- `evaluate` resolves `dataset_id` and `artifact_id` independently; artifact inference validates manifest compatibility.
+
+Benchmarks remain id-shaped at their public interface. Benchmark Plan Materialization derives `study_id`, `artifact_id`, and `dataset_id` before workflows run.

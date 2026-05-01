@@ -8,12 +8,12 @@ CLI commands are the user-facing edge. They resolve named configs, own command d
 terminal command
   -> Typer command parser
   -> config/surface resolution
-  -> local workflow or remote submission
+  -> local acquire or remote submission
 ```
 
 The CLI should be ergonomic. Lower layers should stay explicit and typed.
 
-Workflow commands keep explicit Typer signatures, then delegate CLI-value handling to the **CLI Selection Layer**. That layer builds typed **Workflow Selections**, validates local-vs-submitted rules, and returns resolved **Workflow Config** plans.
+Workflow commands keep explicit Typer signatures, build typed **Workflow Selections** from CLI values in-place, then call config resolution before local acquire or remote submission.
 
 ## Workflow Commands
 
@@ -22,11 +22,11 @@ Commands:
 | Command | Behavior |
 | --- | --- |
 | `acquire` | Run acquisition locally. |
-| `train` | Train locally or submit remotely. |
-| `tune` | Tune locally or submit remotely. |
-| `evaluate` | Evaluate locally or submit remotely. |
+| `train` | Submit training remotely. |
+| `tune` | Submit tuning remotely. |
+| `evaluate` | Submit evaluation remotely. |
 
-`train`, `tune`, and `evaluate` support `--submit`, `--dependency`, `--target`, and `--detach`. `--storage-root` is not accepted with `--submit`, because remote execution rewrites storage root from the selected target config.
+`train`, `tune`, and `evaluate` support `--dependency`, `--target`, and `--detach`. They do not expose `--submit` or `--storage-root`; remote execution rewrites storage root from the selected target config.
 
 Default remote target is `disi_l40` at the CLI layer.
 
@@ -65,12 +65,10 @@ Supported commands:
 
 | Command | Direction |
 | --- | --- |
-| `push dataset` | Local corpus to cluster. |
-| `push study` | Local study to cluster. |
-| `pull study` | Cluster study to local. |
-| `pull artifact` | Cluster artifact to local. |
+| `transfer push dataset` | Local acquired dataset/corpus root to cluster. |
+| `transfer pull artifact` | Cluster artifact root to local. |
 
-All transfer commands use selector filters and explicit target resolution. `--replace` controls destination replacement.
+Study transfer is not operator-facing because train and tune run remotely. `pull artifact` exists for inspection, archive, and benchmark collection. `--replace` controls destination replacement.
 
 ## Config And Benchmark Commands
 
@@ -80,19 +78,21 @@ Benchmark commands use the same config resolution stack:
 
 | Command | Behavior |
 | --- | --- |
-| `benchmark plan <name>` | Print resolved workflow-step JSONL for one checked-in benchmark spec. |
-| `benchmark submit <name>` | Submit the plan to the default remote target, write run state, and print submission JSONL. |
-| `benchmark collect <name>` | Pull remote studies/artifacts for a submitted run and print collection JSONL. |
+| `benchmark plan <name> --target <target>` | Create a durable run dir with metadata and resolved plan JSONL. |
+| `benchmark submit <run-dir>` | Submit exactly the persisted plan using the target in run metadata. |
+| `benchmark collect <run-dir>` | Pull every expected evaluate artifact, refuse partial collection, then replace `collection.json` and upsert `results.sqlite`. |
+| `benchmark index export --output <csv>` | Export CSV from the selected result index/query, overwriting the destination. |
+| `benchmark show <run-dir>` | Print read-only run state. |
+| `benchmark index rebuild/show/list` | Rebuild and inspect the SQLite benchmark result projection. |
 
-`benchmark collect --write` appends complete, non-duplicate evaluation rows to
-`benchmarks/results.csv`. Missing expected evaluation rows abort the write.
+Run dirs plus `collection.json` are source of truth. `benchmarks/results.sqlite` is rebuildable query state. `benchmarks/results.csv` is export-only.
 
 ## Invariants
 
 | Rule | Why |
 | --- | --- |
 | Remote target fallback lives only here. | Execution and transfer APIs stay explicit. |
-| Dependency and detach require submit. | They only make sense for scheduled jobs. |
+| Dependency and detach only exist on remote workflows. | They only make sense for scheduled jobs. |
 | Detail views require one match. | Avoids rendering mixed root state. |
 | Delete validates root kind. | Protects storage layout. |
 

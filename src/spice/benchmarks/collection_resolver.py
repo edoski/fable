@@ -6,16 +6,14 @@ from dataclasses import dataclass
 
 from ..config.models import EvaluateConfig
 from ..core.errors import SpiceOperatorError
-from ..execution.session import ExecutionSession
-from ..execution.transfer import pull_artifact_from_cluster
+from ..execution.transfer import PulledArtifactRoot
 from ..modeling.results import LoadedEvaluationSummary, LoadedTrainingSummary
 from ..storage.artifact import (
     list_evaluation_summaries,
     load_artifact_manifest,
     load_training_summary,
 )
-from ..storage.catalog.index import resolve_artifact_record
-from ..storage.selectors import ArtifactSelector
+from .runs import BenchmarkSubmissionRecord
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,17 +25,10 @@ class ResolvedBenchmarkEvaluation:
 def resolve_benchmark_evaluation(
     config: EvaluateConfig,
     *,
-    session: ExecutionSession,
+    pulled: PulledArtifactRoot,
+    submission: BenchmarkSubmissionRecord,
 ) -> ResolvedBenchmarkEvaluation | None:
-    _pull_artifact_once(
-        config,
-        session=session,
-        artifact_id=config.artifact_id,
-    )
-    record = resolve_artifact_record(
-        config.storage.root,
-        selector=ArtifactSelector(artifact_id=config.artifact_id),
-    )
+    record = pulled.local_record
     training_summary = load_training_summary(record.state_db_path)
     manifest = load_artifact_manifest(record.state_db_path)
     expected_delay = config.delay_seconds or manifest.max_delay_seconds
@@ -49,22 +40,23 @@ def resolve_benchmark_evaluation(
     ]
     if not summaries:
         return None
-    if len(summaries) > 1:
+    provenance_matches = [
+        summary
+        for summary in summaries
+        if summary.runtime.execution_provenance is not None
+        and summary.runtime.execution_provenance.execution_ref == submission.execution_ref
+    ]
+    if not provenance_matches:
         raise SpiceOperatorError(
-            f"Multiple evaluation summaries match artifact {config.artifact_id}"
+            "No evaluation summary matches submitted execution provenance for "
+            f"benchmark run {submission.run_id}: expected {submission.execution_ref}"
         )
-    return ResolvedBenchmarkEvaluation(evaluation=summaries[0], training=training_summary)
-
-
-def _pull_artifact_once(
-    config: EvaluateConfig,
-    *,
-    session: ExecutionSession,
-    artifact_id: str,
-) -> None:
-    pull_artifact_from_cluster(
-        storage_root=config.storage.root,
-        session=session,
-        artifact_id=artifact_id,
-        replace=True,
+    if len(provenance_matches) > 1:
+        raise SpiceOperatorError(
+            "Multiple evaluation summaries match submitted execution provenance for "
+            f"benchmark run {submission.run_id}"
+        )
+    return ResolvedBenchmarkEvaluation(
+        evaluation=provenance_matches[0],
+        training=training_summary,
     )

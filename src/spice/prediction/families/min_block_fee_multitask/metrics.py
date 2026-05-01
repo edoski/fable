@@ -124,7 +124,7 @@ def compute_batch_loss_and_state(
     )
     decoded_offsets = masked_offset_logits(
         offset_logits.detach(),
-        targets.candidate_mask,
+        targets.action_mask,
     ).argmax(dim=-1)
     resolved_state = training_state.resolve(
         device=fee_predictions.device,
@@ -139,7 +139,7 @@ def compute_batch_loss_and_state(
     offset_counts = offset_classification_counts(
         decoded_offsets,
         targets.min_block_offsets,
-        n_classes=int(targets.candidate_mask.shape[1]),
+        n_classes=int(targets.action_mask.shape[1]),
     )
     return total_loss, MinBlockFeeBatchState(
         count=count,

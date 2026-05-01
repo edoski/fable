@@ -14,11 +14,12 @@ from ..semantics import ArtifactSemantics
 from ..storage.artifact import load_artifact_manifest, write_artifact_manifest
 from .dataset_builders import (
     CompiledDatasetBuilderContract,
+    PreparedTrainingDataset,
     compile_dataset_builder_contract,
 )
 from .families.registry import build_model
 from .models import TemporalModel
-from .pipeline import PreparedTrainingDataset, TrainingSpec
+from .pipeline import TrainingSpec
 from .representations import (
     CompiledRepresentationContract,
     sequence_input_contract,
@@ -61,7 +62,7 @@ def build_training_artifact_manifest(
         semantics=ArtifactSemantics(
             problem=spec.problem_contract.semantics,
             execution_policy=spec.problem_contract.execution_policy.semantics,
-            objective=spec.objective_contract.semantics,
+            objective=spec.objective_runtime.contract.semantics,
             feature=spec.feature_contract.semantics,
             prediction=spec.prediction_contract.semantics,
             input_normalization=spec.input_normalization_contract.semantics,

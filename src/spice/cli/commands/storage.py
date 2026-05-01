@@ -237,8 +237,6 @@ def show_dataset_command(
     detail: DatasetDetailOption = None,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    if detail is not None and dataset_id is None:
-        raise SpiceOperatorError("--detail requires --dataset-id")
     selector = _dataset_selector(dataset_id=dataset_id, chain=chain, dataset=dataset)
     records = list_dataset_records(
         root,
@@ -275,8 +273,6 @@ def show_study_command(
     detail: StudyDetailOption = None,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    if detail is not None and study_id is None:
-        raise SpiceOperatorError("--detail requires --study-id")
     selector = StudySelector(
         study_id=study_id,
         chain_name=chain,
@@ -334,8 +330,6 @@ def show_artifact_command(
     detail: ArtifactDetailOption = None,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    if detail is not None and artifact_id is None:
-        raise SpiceOperatorError("--detail requires --artifact-id")
     selector = ArtifactSelector(
         artifact_id=artifact_id,
         dataset_id=dataset_id,
@@ -357,7 +351,7 @@ def show_artifact_command(
         kind="artifact",
         records=records,
         has_filters=any(
-                value is not None
+            value is not None
             for value in (
                 artifact_id,
                 dataset_id,

@@ -19,7 +19,6 @@ from ..config.models import (
     coerce_problem_spec,
 )
 from ..core.errors import (
-    ConfigResolutionError,
     MissingStateError,
     StateConflictError,
     StateLayoutError,
@@ -41,10 +40,10 @@ from .identity import (
     study_manifest_identity,
 )
 from .payloads import PayloadCodec, SingletonPayloadStore, mapping_payload
+from .root_handles import CorpusRootHandle, StudyRootHandle
 from .schema import STUDY_TABLES, study_manifest
 from .semantics_codecs import study_semantics_from_payload, study_semantics_payload
 from .study_models import StudyManifest
-from .workflow_paths import WorkflowPaths
 
 STUDY_SAMPLER_NAME = "TPESampler"
 
@@ -61,25 +60,24 @@ _STUDY_MANIFEST_STORE = SingletonPayloadStore(
 def manifest_from_tune_config(
     config: TuneConfig,
     *,
-    paths: WorkflowPaths,
+    corpus: CorpusRootHandle,
+    study: StudyRootHandle,
     corpus_manifest: DatasetManifest,
 ) -> StudyManifest:
     """Build the canonical study manifest from one validated tuning definition."""
 
-    if paths.study_id is None:
-        raise ConfigResolutionError("study_id is required for study manifests")
     context = compile_training_context(
         config,
         chain_runtime=corpus_manifest.chain.runtime,
     )
     return StudyManifest(
-        study_id=paths.study_id,
+        study_id=study.study_id,
         dataset_builder=config.dataset_builder,
         prediction=config.prediction,
         objective=config.objective,
-        study_name=config.study.name,
+        study_name=study.study_name,
         chain_name=corpus_manifest.chain.name,
-        dataset_id=paths.corpus_id,
+        dataset_id=corpus.dataset_id,
         dataset_name=corpus_manifest.dataset.name,
         problem=config.problem,
         features=config.features,
@@ -95,7 +93,7 @@ def manifest_from_tune_config(
         semantics=StudySemantics(
             problem=context.problem_contract.semantics,
             execution_policy=context.problem_contract.execution_policy.semantics,
-            objective=context.objective_contract.semantics,
+            objective=context.objective_runtime.contract.semantics,
             feature=context.feature_contract.semantics,
             prediction=context.prediction_contract.semantics,
             input_normalization=context.input_normalization_contract.semantics,

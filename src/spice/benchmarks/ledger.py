@@ -1,16 +1,13 @@
 # pyright: strict
 
-"""Benchmark result ledger projection."""
+"""CSV export adapter for benchmark results."""
 
 from __future__ import annotations
 
 import csv
-from datetime import UTC, datetime
 from pathlib import Path
 
-from ..core.errors import SpiceOperatorError
-from ..modeling.results import LoadedEvaluationSummary, LoadedTrainingSummary
-from .runs import BenchmarkSubmissionRecord, LoadedBenchmarkPlanEntry, format_datetime
+from .result_store import BENCHMARK_RESULT_INDEX_PATH, IndexedBenchmarkResult, list_indexed_results
 
 BENCHMARK_LEDGER_PATH = Path("benchmarks") / "results.csv"
 
@@ -49,90 +46,66 @@ LEDGER_COLUMNS = (
 )
 
 
-def benchmark_ledger_row(
+def export_results_csv(
     *,
-    entry: LoadedBenchmarkPlanEntry,
-    evaluation: LoadedEvaluationSummary,
-    training: LoadedTrainingSummary | None,
-    submission: BenchmarkSubmissionRecord,
-    collector_time: datetime,
-) -> dict[str, str]:
-    summary = evaluation
-    manifest = summary.manifest
-    runtime = summary.runtime
-    metrics: dict[str, float] = (
-        {} if training is None else dict(training.runtime.test_metrics.values)
-    )
-    metrics.update(runtime.metrics.values)
-    recorded_at = (
-        format_datetime(datetime.fromtimestamp(summary.recorded_at, UTC))
-        if summary.recorded_at > 0
-        else format_datetime(collector_time)
-    )
+    output_path: Path = BENCHMARK_LEDGER_PATH,
+    index_path: Path = BENCHMARK_RESULT_INDEX_PATH,
+    benchmark: str | None = None,
+    chain: str | None = None,
+    model: str | None = None,
+    evaluation: str | None = None,
+) -> list[dict[str, str]]:
+    rows = [
+        result_record_csv_row(row)
+        for row in list_indexed_results(
+            index_path,
+            benchmark=benchmark,
+            chain=chain,
+            model=model,
+            evaluation=evaluation,
+        )
+    ]
+    write_results_csv(output_path, rows)
+    return rows
+
+
+def write_results_csv(path: Path, rows: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(LEDGER_COLUMNS), lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({column: row[column] for column in LEDGER_COLUMNS})
+
+
+def result_record_csv_row(record: IndexedBenchmarkResult) -> dict[str, str]:
     row = {
-        "recorded_at_utc": recorded_at,
-        "git_commit": submission.git_commit,
-        "execution_ref": submission.execution_ref,
-        "artifact_id": manifest.artifact_id,
-        "evaluation_storage_id": summary.evaluation_id,
-        "chain": manifest.chain_name,
-        "dataset": manifest.dataset_name,
-        "surface": str(entry.selection.get("surface", "")),
-        "features": manifest.features_id,
-        "model": manifest.model.id,
-        "problem": manifest.problem_id,
-        "prediction": manifest.prediction_id,
-        "objective": str(entry.selection.get("objective", manifest.objective.id)),
-        "evaluation": runtime.evaluation_id,
-        "delay_seconds": str(runtime.delay_seconds),
-        "variant": manifest.variant.value,
-        "study": "" if manifest.study is None else manifest.study.name,
-        "sample_count": str(runtime.sample_count),
-        "total_events": str(runtime.total_events),
+        "recorded_at_utc": record.recorded_at_utc,
+        "git_commit": record.git_commit,
+        "execution_ref": record.execution_ref,
+        "artifact_id": record.artifact_id,
+        "evaluation_storage_id": record.evaluation_storage_id,
+        "chain": record.chain_name,
+        "dataset": record.dataset_name,
+        "surface": record.surface,
+        "features": record.features_id,
+        "model": record.model_id,
+        "problem": record.problem_id,
+        "prediction": record.prediction_id,
+        "objective": record.objective_id,
+        "evaluation": record.evaluation_id,
+        "delay_seconds": str(record.delay_seconds),
+        "variant": record.variant,
+        "study": record.study_name or "",
+        "sample_count": str(record.sample_count),
+        "total_events": str(record.total_events),
         "notes": "",
     }
     for column in LEDGER_COLUMNS:
         if column in row:
             continue
-        row[column] = _metric_cell(metrics.get(column))
+        row[column] = _metric_cell(record.metrics.get(column))
     return {column: row[column] for column in LEDGER_COLUMNS}
-
-
-def append_ledger_rows(ledger_path: Path, rows: list[dict[str, str]]) -> None:
-    if not rows:
-        return
-    ensure_ledger_header(ledger_path)
-    with ledger_path.open("a", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(LEDGER_COLUMNS), lineterminator="\n")
-        for row in rows:
-            writer.writerow({column: row[column] for column in LEDGER_COLUMNS})
-
-
-def read_ledger_keys(ledger_path: Path) -> set[tuple[str, str]]:
-    if not ledger_path.exists():
-        return set()
-    ensure_ledger_header(ledger_path)
-    with ledger_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        return {ledger_key(row) for row in reader}
-
-
-def ensure_ledger_header(ledger_path: Path) -> None:
-    if not ledger_path.exists():
-        ledger_path.parent.mkdir(parents=True, exist_ok=True)
-        with ledger_path.open("w", encoding="utf-8", newline="") as handle:
-            writer = csv.writer(handle, lineterminator="\n")
-            writer.writerow(LEDGER_COLUMNS)
-        return
-    with ledger_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.reader(handle)
-        header = next(reader, None)
-    if tuple(header or ()) != LEDGER_COLUMNS:
-        raise SpiceOperatorError(f"Benchmark ledger header mismatch: {ledger_path}")
-
-
-def ledger_key(row: dict[str, str]) -> tuple[str, str]:
-    return row["artifact_id"], row["evaluation_storage_id"]
 
 
 def _metric_cell(value: object) -> str:

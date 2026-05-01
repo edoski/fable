@@ -8,6 +8,7 @@ from spice.modeling._runtime import (
     compute_device_resident_budget,
     default_device_resident_safety_margin,
     ensure_cuda_runtime_ready,
+    resolve_available_device_memory_budget,
 )
 from spice.modeling.families.lstm import LstmModelConfig
 from spice.modeling.families.registry import (
@@ -42,6 +43,37 @@ def test_ensure_cuda_runtime_ready_rejects_rocm(monkeypatch) -> None:
 
     with pytest.raises(SpiceOperatorError, match="ROCm/HIP is unsupported"):
         ensure_cuda_runtime_ready(torch.device("cuda"))
+
+
+def test_available_device_memory_budget_returns_none_for_cpu() -> None:
+    assert resolve_available_device_memory_budget(torch.device("cpu")) is None
+
+
+def test_available_device_memory_budget_uses_current_cuda_device(monkeypatch) -> None:
+    seen_devices: list[int] = []
+    monkeypatch.setattr(torch.cuda, "current_device", lambda: 2)
+
+    def fake_mem_get_info(device):
+        seen_devices.append(device)
+        return 1_000, 2_000
+
+    monkeypatch.setattr(torch.cuda, "mem_get_info", fake_mem_get_info)
+
+    assert resolve_available_device_memory_budget(torch.device("cuda")) == 500
+    assert seen_devices == [2]
+
+
+def test_available_device_memory_budget_uses_explicit_cuda_device(monkeypatch) -> None:
+    seen_devices: list[int] = []
+
+    def fake_mem_get_info(device):
+        seen_devices.append(device)
+        return 2_000, 4_000
+
+    monkeypatch.setattr(torch.cuda, "mem_get_info", fake_mem_get_info)
+
+    assert resolve_available_device_memory_budget(torch.device("cuda:3")) == 1_000
+    assert seen_devices == [3]
 
 
 def test_transformer_disables_auto_compile_on_cuda() -> None:

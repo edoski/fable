@@ -19,6 +19,7 @@ from spice.modeling.families.transformer import (
 )
 from spice.modeling.tuned_config import coerce_tuning_space_config, sample_tuned_parameters
 from spice.modeling.tuning import apply_study_best_params, apply_tuned_parameters
+from tests.root_handle_helpers import corpus_handle, study_handle
 
 
 def _transformer_model() -> TransformerModelConfig:
@@ -162,11 +163,23 @@ def test_apply_study_best_params_uses_manifest_study_name(tmp_path, monkeypatch)
 
     monkeypatch.setattr("spice.modeling.tuning.load_best_params", fake_load_best_params)
 
+    corpus = corpus_handle(
+        tmp_path / "outputs",
+        chain_name=config.chain.name,
+        dataset_id="cor_9a73b1e88edb488afb1e",
+        dataset_name=config.dataset.name,
+    )
+    study = study_handle(
+        tmp_path / "outputs",
+        corpus=corpus,
+        study_id="std_manifest",
+        study_name=config.study.name,
+    )
+
     applied = apply_study_best_params(
         config,
-        study_state_db=tmp_path / "study.sqlite",
-        study_id="std_manifest",
-        dataset_id="cor_9a73b1e88edb488afb1e",
+        study=study,
+        corpus=corpus,
     )
 
     assert captured == {

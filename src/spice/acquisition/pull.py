@@ -6,16 +6,12 @@ import asyncio
 from collections import deque
 from dataclasses import dataclass, field
 from heapq import heappop, heappush
-from pathlib import Path
-
-import polars as pl
+from typing import Protocol
 
 from ..config.models import AcquisitionConfig
-from ..corpus.contract import CanonicalBlockRow, canonicalize_block_frame
-from ..corpus.io import load_block_frame, write_block_file
-from ..corpus.validation import validate_contiguous_block_frame
+from ..corpus.contract import CanonicalBlockRow
 from .errors import OversizedAcquisitionRequestError, TransientAcquisitionError
-from .types import AcquisitionRuntimeSnapshot, BlockPullPlan, BlockSource
+from .types import AcquisitionRuntimeSnapshot, BlockPullPlan, BlockRowSource
 
 MAX_ACQUISITION_ATTEMPTS_PER_RANGE = 8
 TRANSIENT_FAILURE_WINDOW = 32
@@ -164,27 +160,27 @@ class _CompletedBatch:
     rows: list[CanonicalBlockRow]
 
 
+class BlockPullSink(Protocol):
+    def completed_prefix_end(self, plan: BlockPullPlan) -> int: ...
+
+    def write_rows(self, rows: list[CanonicalBlockRow]) -> None: ...
+
+    def finish(self) -> None: ...
+
+
 async def pull_block_range(
-    block_source: BlockSource,
-    output_dir: Path,
+    block_source: BlockRowSource,
     *,
     plan: BlockPullPlan,
-    chunk_size: int,
     controller: AcquisitionPullController,
-    chain_name: str,
-    expected_chain_id: int,
+    sink: BlockPullSink,
 ) -> BlockPullPlan:
     if plan.expected_rows == 0:
         raise ValueError(f"No blocks found inside requested block range: {plan.block_range}")
-    pending_rows: list[CanonicalBlockRow] = []
     pending_requests: list[_BatchRequest] = []
     in_flight: dict[asyncio.Task[list[CanonicalBlockRow]], _BatchRequest] = {}
     completed_results: dict[int, _CompletedBatch] = {}
-    resumed_until = _completed_prefix_end(
-        output_dir,
-        plan=plan,
-        expected_chain_id=expected_chain_id,
-    )
+    resumed_until = sink.completed_prefix_end(plan)
     next_request_start = resumed_until
     next_write_start = resumed_until
 
@@ -239,13 +235,8 @@ async def pull_block_range(
 
                     raise
 
+                _validate_pulled_rows(request, rows)
                 controller.record_success()
-
-                if len(rows) != request.size:
-                    raise RuntimeError(
-                        f"Expected {request.size} rows for {request.start}..{request.end}, "
-                        f"got {len(rows)}"
-                    )
 
                 completed_results[request.start] = _CompletedBatch(
                     start=request.start,
@@ -254,17 +245,9 @@ async def pull_block_range(
                 )
                 while next_write_start in completed_results:
                     finished_batch = completed_results.pop(next_write_start)
-                    pending_rows.extend(finished_batch.rows)
+                    sink.write_rows(finished_batch.rows)
                     next_write_start = finished_batch.end
-                    while len(pending_rows) >= chunk_size:
-                        _write_chunk(
-                            output_dir,
-                            chain_name=chain_name,
-                            rows=pending_rows[:chunk_size],
-                        )
-                        pending_rows = pending_rows[chunk_size:]
-        if pending_rows:
-            _write_chunk(output_dir, chain_name=chain_name, rows=pending_rows)
+        sink.finish()
 
         return plan
     finally:
@@ -292,6 +275,23 @@ def _next_request(
     )
 
 
+def _validate_pulled_rows(
+    request: _BatchRequest,
+    rows: list[CanonicalBlockRow],
+) -> None:
+    if len(rows) != request.size:
+        raise RuntimeError(
+            f"Expected {request.size} rows for {request.start}..{request.end}, got {len(rows)}"
+        )
+    block_numbers = [int(row["block_number"]) for row in rows]
+    expected = list(range(request.start, request.end))
+    if block_numbers != expected:
+        raise RuntimeError(
+            "Pulled block rows do not match requested range "
+            f"{request.start}..{request.end}: got {block_numbers}"
+        )
+
+
 def _split_request(
     request: _BatchRequest,
     *,
@@ -307,54 +307,5 @@ def _split_request(
     ]
 
 
-def _completed_prefix_end(
-    output_dir: Path,
-    *,
-    plan: BlockPullPlan,
-    expected_chain_id: int,
-) -> int:
-    if not output_dir.exists():
-        return plan.block_range.start
-    try:
-        frame = load_block_frame(output_dir)
-    except ValueError as exc:
-        if "No parquet block files found" in str(exc):
-            return plan.block_range.start
-        raise RuntimeError(
-            f"Cannot resume from invalid partial block dataset: {output_dir}"
-        ) from exc
-    except Exception as exc:
-        raise RuntimeError(
-            f"Cannot resume from invalid partial block dataset: {output_dir}"
-        ) from exc
-
-    validation = validate_contiguous_block_frame(
-        frame,
-        dataset_path=output_dir,
-        expected_chain_id=expected_chain_id,
-    )
-    if validation.status != "clean":
-        raise RuntimeError(f"Cannot resume from invalid partial block dataset: {validation}")
-    if validation.first_block_number != plan.block_range.start:
-        raise RuntimeError(
-            "Cannot resume partial block dataset with a different start block: "
-            f"expected {plan.block_range.start}, got {validation.first_block_number}"
-        )
-    if validation.last_block_number is None:
-        return plan.block_range.start
-    if validation.last_block_number >= plan.block_range.end:
-        return plan.block_range.end
-    return validation.last_block_number + 1
-
-
 def _is_transient_error(exc: BaseException) -> bool:
     return isinstance(exc, (TransientAcquisitionError, asyncio.TimeoutError, TimeoutError, OSError))
-
-
-def _write_chunk(output_dir: Path, *, chain_name: str, rows: list[CanonicalBlockRow]) -> Path:
-    frame = canonicalize_block_frame(pl.DataFrame(rows))
-    start_block = int(frame["block_number"][0])
-    end_block = int(frame["block_number"][-1])
-    destination = output_dir / f"{chain_name}__blocks__{start_block}_to_{end_block}.parquet"
-    write_block_file(destination, frame)
-    return destination

@@ -39,7 +39,7 @@ scan corpora/studies/artifacts
 
 ## Single-Root Reindex
 
-After a workflow promotes a root, `reindex_root()` updates the catalog entry for that root. This avoids full scans after every successful workflow.
+After a workflow promotes a root, `reindex_catalog_root()` updates the catalog entry for that root and returns the reindexed catalog record. This avoids full scans after every successful workflow.
 
 ## Selectors
 
@@ -70,4 +70,3 @@ Delete validates that the selected path stays under the expected storage subtree
 ## Extension Pattern
 
 Add catalog fields only when they help selectors or list views. Root manifests remain the complete provenance record.
-

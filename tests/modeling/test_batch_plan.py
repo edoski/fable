@@ -11,6 +11,23 @@ from spice.modeling.batch_plan import (
     build_prediction_batch_plan,
 )
 from spice.modeling.representations import RepresentationRuntimeContext
+from spice.temporal import PreparedActionSpace
+
+
+@dataclass(frozen=True, slots=True)
+class _Store:
+    max_candidate_slots: int = 3
+
+
+class _ExecutionPolicy:
+    def prepare_action_space(
+        self, store: _Store, sample_indices: np.ndarray
+    ) -> PreparedActionSpace:
+        return PreparedActionSpace(
+            action_mask=np.ones(
+                (sample_indices.shape[0], store.max_candidate_slots), dtype=np.bool_
+            )
+        )
 
 
 @dataclass(slots=True)
@@ -34,11 +51,13 @@ class _Prepared:
 
     def __init__(self, *, fail_device_storage: bool = False) -> None:
         self.fail_device_storage = fail_device_storage
+        self.device_storage_calls = 0
 
     def build_batch(self, sample_positions: torch.Tensor) -> _InputBatch:
         return _InputBatch(sample_positions=sample_positions)
 
     def to_device_storage(self, device: torch.device):
+        self.device_storage_calls += 1
         if self.fail_device_storage:
             raise torch.cuda.OutOfMemoryError("oom")
         return self
@@ -47,8 +66,10 @@ class _Prepared:
 class _RepresentationContract:
     def __init__(self, prepared: _Prepared) -> None:
         self.prepared = prepared
+        self.action_space: PreparedActionSpace | None = None
 
     def prepare(self, *_args, **_kwargs) -> _Prepared:
+        self.action_space = _kwargs["action_space"]
         return self.prepared
 
 
@@ -69,8 +90,10 @@ class _Targets:
 class _PredictionContract:
     def __init__(self, targets: _Targets) -> None:
         self.targets = targets
+        self.action_space: PreparedActionSpace | None = None
 
     def prepare_targets(self, *_args, **_kwargs) -> _Targets:
+        self.action_space = _kwargs["action_space"]
         return self.targets
 
 
@@ -87,9 +110,10 @@ def test_host_loader_worker_override_rejects_invalid_values(monkeypatch) -> None
 
     with pytest.raises(ValueError, match="must be non-negative"):
         build_model_input_batch_plan(
-            object(),
+            _Store(),
             np.arange(4, dtype=np.int64),
             representation_contract=_RepresentationContract(_Prepared()),
+            execution_policy=_ExecutionPolicy(),
             runtime_context=_runtime_context(),
             resolved_device=torch.device("cpu"),
             seed=2026,
@@ -98,9 +122,10 @@ def test_host_loader_worker_override_rejects_invalid_values(monkeypatch) -> None
 
 def test_batch_plan_orders_samples_deterministically_by_signature() -> None:
     plan = build_model_input_batch_plan(
-        object(),
+        _Store(),
         np.arange(4, dtype=np.int64),
         representation_contract=_RepresentationContract(_Prepared()),
+        execution_policy=_ExecutionPolicy(),
         runtime_context=_runtime_context(),
         resolved_device=torch.device("cpu"),
         seed=2026,
@@ -116,11 +141,11 @@ def test_batch_plan_orders_samples_deterministically_by_signature() -> None:
 def test_shuffled_batch_plan_changes_by_epoch_but_keeps_batch_shape() -> None:
     targets = _Targets()
     plan = build_prediction_batch_plan(
-        object(),
+        _Store(),
         np.arange(4, dtype=np.int64),
         representation_contract=_RepresentationContract(_Prepared()),
         prediction_contract=_PredictionContract(targets),
-        execution_policy=object(),
+        execution_policy=_ExecutionPolicy(),
         runtime_context=_runtime_context(),
         resolved_device=torch.device("cpu"),
         seed=2026,
@@ -139,12 +164,14 @@ def test_shuffled_batch_plan_changes_by_epoch_but_keeps_batch_shape() -> None:
 
 def test_prediction_batch_plan_binds_targets_to_input_sample_positions() -> None:
     targets = _Targets()
+    representation_contract = _RepresentationContract(_Prepared())
+    prediction_contract = _PredictionContract(targets)
     plan = build_prediction_batch_plan(
-        object(),
+        _Store(),
         np.arange(4, dtype=np.int64),
-        representation_contract=_RepresentationContract(_Prepared()),
-        prediction_contract=_PredictionContract(targets),
-        execution_policy=object(),
+        representation_contract=representation_contract,
+        prediction_contract=prediction_contract,
+        execution_policy=_ExecutionPolicy(),
         runtime_context=_runtime_context(),
         resolved_device=torch.device("cpu"),
         seed=2026,
@@ -155,14 +182,16 @@ def test_prediction_batch_plan_binds_targets_to_input_sample_positions() -> None
     assert first_batch.inputs.sample_positions.tolist() == [1, 3]
     assert first_batch.targets.tolist() == [11, 13]
     assert targets.positions == [[1, 3]]
+    assert representation_contract.action_space is prediction_contract.action_space
     assert plan.estimated_storage_bytes == 1280
 
 
 def test_device_resident_plan_exposes_storage_mode() -> None:
     plan = build_model_input_batch_plan(
-        object(),
+        _Store(),
         np.arange(4, dtype=np.int64),
         representation_contract=_RepresentationContract(_Prepared()),
+        execution_policy=_ExecutionPolicy(),
         runtime_context=_runtime_context(device_budget=2048),
         resolved_device=torch.device("cuda"),
         seed=2026,
@@ -172,14 +201,33 @@ def test_device_resident_plan_exposes_storage_mode() -> None:
     assert next(iter(plan.source)).sample_positions.tolist() == [1, 3]
 
 
+def test_zero_device_budget_uses_host_loader_without_device_materialization() -> None:
+    prepared = _Prepared()
+
+    plan = build_model_input_batch_plan(
+        _Store(),
+        np.arange(4, dtype=np.int64),
+        representation_contract=_RepresentationContract(prepared),
+        execution_policy=_ExecutionPolicy(),
+        runtime_context=_runtime_context(device_budget=0),
+        resolved_device=torch.device("cuda"),
+        seed=2026,
+    )
+
+    assert plan.storage_mode == "host_materialized"
+    assert prepared.device_storage_calls == 0
+    assert next(iter(plan.source)).sample_positions.tolist() == [1, 3]
+
+
 def test_device_resident_oom_falls_back_to_host_loader(monkeypatch) -> None:
     empty_cache_calls: list[bool] = []
     monkeypatch.setattr(torch.cuda, "empty_cache", lambda: empty_cache_calls.append(True))
 
     plan = build_model_input_batch_plan(
-        object(),
+        _Store(),
         np.arange(4, dtype=np.int64),
         representation_contract=_RepresentationContract(_Prepared(fail_device_storage=True)),
+        execution_policy=_ExecutionPolicy(),
         runtime_context=_runtime_context(device_budget=2048),
         resolved_device=torch.device("cuda"),
         seed=2026,

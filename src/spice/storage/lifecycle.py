@@ -17,10 +17,11 @@ from ..core.files import (
 )
 from .catalog import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
 from .catalog.index import (
+    ReindexedCatalogRoot,
     list_artifacts_for_dataset,
     list_artifacts_for_study,
     list_studies_for_dataset,
-    reindex_root,
+    reindex_catalog_root,
     resolve_artifact_record,
     resolve_dataset_record,
     resolve_study_record,
@@ -48,8 +49,8 @@ class RootStage:
     replace: bool
     _promoted: bool = False
 
-    def promote(self) -> RootKind:
-        root_kind = promote_root_stage(
+    def promote(self) -> ReindexedCatalogRoot:
+        reindexed = promote_root_stage(
             storage_root=self.storage_root,
             destination_root=self.destination_root,
             staged_root=self.staged_root,
@@ -57,7 +58,7 @@ class RootStage:
             replace=self.replace,
         )
         self._promoted = True
-        return root_kind
+        return reindexed
 
 
 @dataclass(slots=True)
@@ -70,10 +71,10 @@ class PartialRootCommit:
         if source is not None:
             self.promotions.append((target, source))
 
-    def commit(self) -> RootKind:
+    def commit(self) -> ReindexedCatalogRoot:
         if self.promotions:
             replace_paths_atomic(self.promotions, replace=True)
-        return reindex_root(self.storage_root, root_path=self.root_path)
+        return reindex_catalog_root(self.storage_root, root_path=self.root_path)
 
 
 def staged_root_path(destination_root: Path, *, purpose: str = "staging") -> Path:
@@ -108,10 +109,48 @@ def promote_root_stage(
     staged_root: Path,
     expected_root_kind: RootKind,
     replace: bool,
-) -> RootKind:
+) -> ReindexedCatalogRoot:
+    validate_root_destination_path(
+        storage_root,
+        destination_root=destination_root,
+        expected_root_kind=expected_root_kind,
+    )
     require_root_kind(state_db_path(staged_root), expected_root_kind)
     replace_path_atomic(destination_root, staged_root, replace=replace)
-    return reindex_root(storage_root, root_path=destination_root)
+    return reindex_catalog_root(storage_root, root_path=destination_root)
+
+
+def validate_root_destination_path(
+    storage_root: Path,
+    *,
+    destination_root: Path,
+    expected_root_kind: RootKind,
+) -> Path:
+    expected_parent = (storage_root / _root_kind_parent_name(expected_root_kind)).resolve()
+    resolved_destination = destination_root.resolve()
+    try:
+        relative = resolved_destination.relative_to(expected_parent)
+    except ValueError as exc:
+        raise StateLayoutError(
+            f"Root destination is outside the {expected_root_kind.value} storage subtree: "
+            f"{destination_root}"
+        ) from exc
+    if len(relative.parts) != 2:
+        raise StateLayoutError(
+            f"Root destination must use canonical <chain>/<root-id> layout under "
+            f"{expected_parent}: {destination_root}"
+        )
+    return resolved_destination
+
+
+def _root_kind_parent_name(root_kind: RootKind) -> str:
+    if root_kind is RootKind.CORPUS:
+        return CORPORA_ROOT_NAME
+    if root_kind is RootKind.STUDY:
+        return STUDIES_ROOT_NAME
+    if root_kind is RootKind.ARTIFACT:
+        return ARTIFACTS_ROOT_NAME
+    raise ValueError(f"Unsupported root kind: {root_kind}")
 
 
 @contextmanager
@@ -241,18 +280,13 @@ def validated_catalog_root_path(
     storage_root: Path,
     *,
     root_path: Path,
-    stop_dir_name: str,
     expected_root_kind: RootKind,
 ) -> Path:
-    storage_root = storage_root.resolve()
-    expected_parent = (storage_root / stop_dir_name).resolve()
-    resolved_root = root_path.resolve()
-    try:
-        resolved_root.relative_to(expected_parent)
-    except ValueError as exc:
-        raise StateLayoutError(
-            f"Catalog root path is outside storage {stop_dir_name} root: {root_path}"
-        ) from exc
+    resolved_root = validate_root_destination_path(
+        storage_root,
+        destination_root=root_path,
+        expected_root_kind=expected_root_kind,
+    )
 
     db_path = state_db_path(resolved_root)
     if not db_path.is_file():
@@ -277,7 +311,6 @@ def _delete_catalog_root_record(
     root_path = validated_catalog_root_path(
         storage_root,
         root_path=root_path,
-        stop_dir_name=stop_dir_name,
         expected_root_kind=expected_root_kind,
     )
     remove_path(root_path)

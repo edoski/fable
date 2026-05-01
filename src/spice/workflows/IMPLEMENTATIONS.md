@@ -11,7 +11,7 @@ tune     -> study root
 evaluate -> artifact evaluation state
 ```
 
-Acquire runs locally. Train, tune, and evaluate can run locally or through remote execution.
+Acquire runs locally. Train, tune, and evaluate are remote CLI workflows; their Python runners remain direct entrypoints for the remote runner and tests.
 
 ## Acquire
 
@@ -19,17 +19,14 @@ Acquire downloads block data and writes a corpus root.
 
 ```text
 resolve config
-  -> compile feature/problem contracts
-  -> estimate needed history
-  -> download history
-  -> count valid temporal samples
-  -> optional one refill
-  -> download evaluation day
-  -> write dataset state
-  -> partial commit corpus paths
+  -> resolve produced corpus roots
+  -> report plan
+  -> create block source
+  -> delegate to Corpus Assembly
+  -> close block source
 ```
 
-The workflow adds a 10% cushion to initial history sizing. If compiled valid sample count is still short, it estimates observed seconds per block and refills once.
+Corpus Assembly performs capability planning, materializes history/evaluation splits, runs bounded refill attempts when compiled valid sample count is short, writes corpus state, and commits the root.
 
 Dry run reports the plan without materializing data.
 
@@ -74,13 +71,12 @@ Evaluate runs diagnostic scoring for an existing artifact.
 
 ```text
 resolve artifact
-  -> apply best study params if tuned
   -> load artifact manifest/model
   -> validate config semantics
   -> validate delay capability and corpus coverage
   -> prepare inference dataset
   -> score evaluator
-  -> upsert evaluation state
+  -> upsert evaluation state with execution provenance when remote
 ```
 
 Evaluate writes into the existing artifact state DB. It does not stage or replace the artifact root.

@@ -13,12 +13,20 @@ Unresolved workflow intent made of a surface plus optional overrides.
 _Avoid_: request
 
 **Root Consumer Selection**:
-Explicit root-id intent for a workflow or action that reads an existing corpus, study, or artifact.
+Explicit existing-root id intent for a workflow or action that reads an existing corpus, study, or artifact.
 _Avoid_: config echo, fuzzy selector
+
+**Producer Root Identity**:
+Deterministic id for a corpus, study, or artifact a workflow will produce from semantic provenance.
+_Avoid_: output path, generated selector
 
 **Workflow Config**:
 Executable typed configuration produced by resolving a workflow selection.
 _Avoid_: resolved request
+
+**Resolved Workflow Snapshot**:
+Durable JSON payload for a resolved train, tune, or evaluate Workflow Config, loaded through owner coercers without re-resolving surfaces.
+_Avoid_: config dump, hydrated request
 
 **Config Group**:
 A named collection of YAML specs for one kind of selectable configuration.
@@ -44,25 +52,85 @@ _Avoid_: task
 One expanded workflow selection plus benchmark metadata such as run id and dependencies.
 _Avoid_: benchmark row
 
+**Benchmark Plan Materialization**:
+Benchmark module that turns expanded Benchmark Workflow Selections into executable plan entries by deriving dependency-produced root ids and resolving Workflow Config snapshots.
+_Avoid_: benchmark compilation helper, id patching
+
 **Benchmark Run**:
-One submitted benchmark plan with local run-state files for plan, submission, collection, and ledger projection.
+One durable benchmark plan with local run-state files for metadata, plan, submission, and collection snapshot.
 _Avoid_: ad hoc benchmark output folder
+
+**Benchmark Plan Execution**:
+Two-step benchmark operation where `plan` creates durable run state without remote access and `submit` executes exactly that persisted plan remotely.
+_Avoid_: hidden replanning, submit-by-name
+
+**Benchmark Collection Snapshot**:
+Complete all-or-nothing `collection.json` for one Benchmark Run. Contains only successful expected evaluate results and is replaced only after every expected result resolves.
+_Avoid_: partial ledger, skipped rows
+
+**Evaluation Execution Provenance**:
+Persisted remote evaluate-job identity attached to artifact evaluation state, including execution ref, job id, log path, workflow task, and target when available.
+_Avoid_: latest artifact state, evaluator-only match
+
+**Benchmark Result Record**:
+One summary-level benchmark observation from a collected evaluate result, including benchmark coordinates, submission facts, artifact/evaluation identity, and aggregate metrics.
+_Avoid_: raw replay dump, CSV row
+
+**Benchmark Result Index**:
+Rebuildable SQLite projection over Benchmark Collection Snapshots used for query and export. Run dirs remain source of truth.
+_Avoid_: canonical results database
+
+**Benchmark Result Query**:
+Read-only filter interface over the Benchmark Result Index for small operator queries.
+_Avoid_: CLI SQL
 
 **Storage Selector**:
 A typed query for one existing catalog record, preferably by exact root id: dataset, study, or artifact.
 _Avoid_: workflow selector
 
+**Root Handle**:
+Resolved runtime reference to a storage root after catalog lookup or deterministic producer identity. Carries root id/name, chain, root path, state database path, and root-specific identity needed by workflows.
+_Avoid_: path bag, catalog record
+
+**Produced Root Handle**:
+Root Handle for a not-yet-existing or staged workflow output, derived from Producer Root Identity and canonical layout.
+_Avoid_: workflow paths
+
 **Root Lifecycle**:
 Validation, staging, promotion, partial commit, reindex, and delete behavior for storage roots.
 _Avoid_: storage sync
+
+**Storage Transfer Transaction**:
+Execution-owned push/pull transaction that resolves a catalog root, stages it, rsyncs it, promotes it with root-kind validation, and cleans up failed stages without hiding the primary failure.
+_Avoid_: sync helper, rsync wrapper
+
+**Remote Catalog Record Codec**:
+Strict JSON envelope for catalog records crossing an SSH boundary. It carries the storage root kind plus one dataset, study, or artifact catalog record.
+_Avoid_: record dict, sync payload
 
 **Corpus Assembly**:
 Acquisition-to-corpus policy that plans block windows, materializes history/evaluation splits, writes corpus provenance, and publishes a corpus root.
 _Avoid_: corpus builders
 
+**Corpus Capability Planning**:
+Corpus policy that compiles feature/problem capability requirements, plans acquisition windows, counts valid temporal capability samples, and decides bounded history refills.
+_Avoid_: history helper, acquisition scheduler
+
+**Corpus Split Materialization**:
+Corpus module that reuses, extends, rebuilds, and validates canonical history/evaluation block datasets for a planned corpus split. Extension reuses whole clean parquet chunks and rewrites only missing or edge ranges.
+_Avoid_: parquet helper, acquisition pull
+
 **Artifact Inference Context**:
 Trusted inference inputs reconstructed from a trained artifact manifest, selected corpus manifest, and eval-only controls.
 _Avoid_: evaluation setup, scoring setup
+
+**Temporal Dataset Preparation Interface**:
+Modeling seam that turns canonical block frames, temporal contracts, builder runtime metadata, scaler state, and split/window policy into prepared training or inference datasets.
+_Avoid_: dataset plumbing, feature loading
+
+**Action Space**:
+Set of decoded actions that an execution policy can resolve for a temporal sample. Prepared once for selected samples and shared by representation inputs, prediction targets, and decode context.
+_Avoid_: candidate rows, logits width
 
 **Batch Plan**:
 Executable model-batch iteration plan with sample ordering, target binding, and host/device storage-mode choice.
@@ -80,6 +148,10 @@ _Avoid_: ad hoc inference probe
 Modeling module that owns the destructive gradient-bearing training probe, restores model state, and returns the reusable prediction training state plus planned runtime context.
 _Avoid_: warmup side effect
 
+**Evaluation Scoring Runtime Plan**:
+Modeling plan for model-bound evaluator scoring. It carries resolved device, precision, representation runtime context, backend determinism, and seed into inference scoring.
+_Avoid_: scoring batch size, inference setup
+
 **Training Fit Policy**:
 Training Runner internal policy for finite metrics, history append order, objective improvement, best-state tracking, progress payloads, and early-stop decisions.
 _Avoid_: callback logic
@@ -88,20 +160,24 @@ _Avoid_: callback logic
 Typed prediction output contract consumed by evaluators after model inference.
 _Avoid_: logits, prediction tensor
 
-**Objective Metric Source**:
-Modeling-owned module that produces the metric set used by a policy-only objective during training.
+**Objective Runtime**:
+Modeling-owned module that pairs a policy-only objective contract with the metric production used by the Training Runner.
 _Avoid_: objective evaluator, objective callback
+
+**Temporal Replay Runner**:
+Evaluation-owned module that validates decoded replay inputs, asks a replay Adapter for selected temporal decision events, and delegates fee outcomes to Temporal Accounting.
+_Avoid_: replay helper, evaluator base class
 
 **Temporal Accounting**:
 Evaluation-owned module that computes realized, baseline, optimum, and economic metrics for selected temporal fee decisions.
 _Avoid_: fee accounting, replay accounting
 
-**CLI Selection Layer**:
-Operator-edge module that turns explicit CLI values into workflow selections and local-or-submitted workflow command plans.
+**Workflow Command Selection**:
+Operator-edge construction of typed workflow selections from explicit CLI values before config resolution.
 _Avoid_: CLI request builder
 
 **Benchmark Collection Resolver**:
-Benchmark module that makes one submitted evaluate result local and selects its matching evaluation summary.
+Benchmark module that consumes a pulled artifact root plus the submitted evaluate record and selects the matching evaluation summary.
 _Avoid_: benchmark artifact loader
 
 **Execution Session**:
@@ -112,28 +188,43 @@ _Avoid_: execution backend
 
 - A **Workflow Selection** references exactly one **Surface** when it produces a new root.
 - A **Root Consumer Selection** references existing roots by exact id and does not reproduce their original config identity.
+- A **Producer Root Identity** names a produced root before the root is committed.
 - A **Surface** references one or more **Config Groups**.
 - A **Workflow Selection** may override values from its **Surface**.
 - A **Workflow Config** is produced from exactly one **Workflow Selection**.
+- A **Resolved Workflow Snapshot** persists a resolved train, tune, or evaluate **Workflow Config** for remote execution or later benchmark collection.
 - A **Problem Spec** can be selected by name or supplied inline by benchmark problem grids.
 - A **Benchmark** contains one or more **Benchmark Cases**.
 - A **Benchmark Case** contains one or more **Benchmark Steps**.
 - A **Benchmark Step** expands into one or more **Benchmark Workflow Selections**.
-- A **Benchmark Run** records submitted **Benchmark Workflow Selections** and collection results.
+- **Benchmark Plan Materialization** resolves **Benchmark Workflow Selections** into plan entries with materialized root ids and **Resolved Workflow Snapshots**.
+- **Benchmark Plan Execution** creates a **Benchmark Run** first, then submits the exact persisted plan.
+- A **Benchmark Run** records **Benchmark Workflow Selections**, submissions, and one **Benchmark Collection Snapshot**.
+- A **Benchmark Collection Snapshot** contains **Benchmark Result Records** for all expected collected evaluate steps after **Evaluation Execution Provenance** matches the submitted execution ref.
+- The **Benchmark Result Index** projects **Benchmark Result Records** for query and CSV export.
+- **Benchmark Result Query** reads the **Benchmark Result Index** without owning SQL in the CLI.
 - A **Storage Selector** resolves existing persisted roots through the catalog before consumers build paths.
+- A **Root Handle** is the workflow-facing result of resolving a **Storage Selector** or produced-root identity.
+- A **Produced Root Handle** is derived from **Producer Root Identity** and canonical storage layout.
 - **Root Lifecycle** changes storage roots and keeps the catalog index current.
 - **Corpus Assembly** consumes a block source and produces a dry-run plan or committed corpus root.
+- **Corpus Assembly** uses **Corpus Capability Planning** for acquisition-window and refill policy.
+- **Corpus Assembly** uses **Corpus Acquisition Stage** for staging, fulfillment, commit wiring, and cleanup.
+- **Corpus Assembly** uses **Corpus Split Materialization** for reusable history/evaluation block datasets.
 - An **Artifact Inference Context** trusts artifact manifest semantics, validates selected corpus compatibility, and prepares model scoring inputs.
+- A **Temporal Dataset Preparation Interface** owns temporal sample selection, split assignment, scaler use, builder runtime metadata, and prepared dataset assembly.
+- An **Action Space** is derived by an execution policy from a problem store and selected temporal samples.
 - A **Training Runner** consumes prepared training data and produces fitted model state plus runtime training metrics.
-- A **Batch Plan** is built by the **Training Runner** and inference paths after runtime memory budget is known.
+- A **Batch Plan** is built by the **Training Runner** and inference paths after runtime memory budget is known, carrying the prepared **Action Space** into inputs, targets, and decode.
 - A **Forward Runtime Plan** builds the warmup and final **Batch Plans** for inference and split-metric forward passes.
-- A **Training Runtime Plan** gives the **Training Runner** a measured training runtime budget and one reusable prediction training state.
+- A **Training Runtime Plan** gives the **Training Runner** final train/validation **Batch Plans**, a measured runtime context, one reusable prediction training state, and an **Evaluation Scoring Runtime Plan** for objective evaluator scoring.
 - A **Training Fit Policy** is internal to the **Training Runner** and does not change model math or callback ownership.
 - A **Decoded Result ABI** is produced by a prediction contract and accepted by evaluator contracts by decoded-result id.
-- An **Objective Metric Source** turns validation metrics or model-bound evaluator scoring into objective metrics for the **Training Runner**.
-- **Temporal Accounting** is shared by evaluator adapters after they select temporal decision events.
-- The **CLI Selection Layer** builds **Workflow Selections** from operator options and resolves local-or-submitted command plans.
-- A **Benchmark Collection Resolver** consumes exact artifact/evaluation ids and an **Execution Session** to produce a collected benchmark evaluation.
+- An **Objective Runtime** turns validation metrics or model-bound evaluator scoring into objective metrics for the **Training Runner**.
+- A **Temporal Replay Runner** is shared by replay evaluator Adapters after prediction decoding and before **Temporal Accounting**.
+- **Temporal Accounting** is shared by evaluator Adapters after they select temporal decision events.
+- **Workflow Command Selection** builds typed **Workflow Selections** from operator options before config resolution.
+- A **Benchmark Collection Resolver** consumes exact artifact/evaluation ids, the pulled artifact root, and the submitted execution record to produce a collected benchmark evaluation.
 - An **Execution Session** is opened for one explicit execution target and used by submission, following, remote transfer, and benchmark collection.
 
 ## Example Dialogue

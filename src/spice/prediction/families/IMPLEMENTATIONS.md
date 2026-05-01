@@ -8,7 +8,7 @@ The model produces tensors. The prediction family gives those tensors meaning.
 
 ```text
 problem store + execution policy
-  -> target batch
+  -> prepared Action Space + target batch
 
 model outputs + target batch
   -> loss and metrics
@@ -33,7 +33,7 @@ buffer[5]=0, buffer[9]=3, buffer[12]=1
 
 Prediction code uses masking helpers before softmax or argmax. The helpers validate shape and require at least one valid action per row.
 
-Current problem stores build all-true action masks. Short candidate windows still expose overflow slots, and `strict_deadline_miss` resolves those offsets to the post-window row.
+Execution policies own action availability. `strict_deadline_miss` currently prepares a full action mask for every compiled candidate slot; short candidate windows still expose overflow slots, and the policy resolves those offsets to the post-window row.
 
 ## Family Comparison
 

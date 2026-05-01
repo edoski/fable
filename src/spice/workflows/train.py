@@ -5,32 +5,35 @@ from __future__ import annotations
 from typing import cast
 
 from ..config.models import ArtifactVariant, TrainConfig
-from ..core.errors import ConfigResolutionError
 from ..core.rendering import metric_string
 from ..core.reporting import Reporter
 from ..corpus.coverage import training_coverage_requirement, validate_corpus_coverage
 from ..modeling.persisted_training import run_persisted_training
-from ..modeling.pipeline import build_training_spec
+from ..modeling.pipeline import build_artifact_training_spec
 from ..modeling.summary import training_result_fields
 from ..modeling.training_runner import TrainingEpochProgress
 from ..modeling.tuning import apply_study_best_params
 from ..storage.corpus import load_dataset_manifest
 from ..storage.engine import ARTIFACT_ROOT_KIND
 from ..storage.lifecycle import staged_root
-from ..storage.root_consumer_paths import resolve_train_consumer_paths
+from ..storage.root_consumer_handles import resolve_train_consumer_roots
+from ..storage.root_handles import TrainWorkflowRoots, TunedTrainWorkflowRoots
 
 
-def _workflow_facts(config: TrainConfig) -> list[tuple[str, str]]:
+def _workflow_facts(config: TrainConfig, roots: TrainWorkflowRoots) -> list[tuple[str, str]]:
     facts = [
-        ("dataset", config.dataset.name),
-        ("chain", config.chain.name),
+        ("dataset", roots.corpus.dataset_name),
+        ("dataset_id", roots.corpus.dataset_id),
+        ("chain", roots.corpus.chain_name),
         ("problem", config.problem.id),
         ("prediction", config.prediction.id),
         ("model", config.model.id),
         ("variant", config.artifact.variant.value),
+        ("artifact_id", roots.artifact.artifact_id),
     ]
-    if config.artifact.variant is ArtifactVariant.TUNED:
-        facts.append(("study", config.study.name))
+    if isinstance(roots, TunedTrainWorkflowRoots):
+        facts.append(("study", roots.study.study_name))
+        facts.append(("study_id", roots.study.study_id))
     return facts
 
 
@@ -60,22 +63,21 @@ def _fit_epoch_message(
 def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
     active_reporter = reporter or Reporter()
     active_config: TrainConfig = config
-    paths = resolve_train_consumer_paths(config)
+    roots = resolve_train_consumer_roots(config)
     if config.artifact.variant is ArtifactVariant.TUNED:
-        if paths.study_state_db is None or paths.study_id is None:
-            raise ConfigResolutionError("tuned training requires a resolved study root")
+        assert isinstance(roots, TunedTrainWorkflowRoots)
         applied = apply_study_best_params(
             config,
-            study_state_db=paths.study_state_db,
-            study_id=paths.study_id,
-            dataset_id=paths.corpus_id,
+            study=roots.study,
+            corpus=roots.corpus,
         )
         active_config = cast(TrainConfig, applied.config)
-    corpus_manifest = load_dataset_manifest(paths.corpus_state_db)
-    active_reporter.header("train", _workflow_facts(active_config))
-    spec = build_training_spec(
+    corpus_manifest = load_dataset_manifest(roots.corpus.state_db_path)
+    active_reporter.header("train", _workflow_facts(active_config, roots))
+    spec = build_artifact_training_spec(
         active_config,
-        paths=paths,
+        corpus=roots.corpus,
+        artifact=roots.artifact,
         corpus_manifest=corpus_manifest,
     )
     validate_corpus_coverage(
@@ -84,12 +86,10 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
         feature_contract=spec.feature_contract,
         requirement=training_coverage_requirement(spec.problem_contract),
     )
-    artifact_dir = paths.artifact_root
-    history_block_path = paths.history_dir
-    if artifact_dir is None:
-        raise ConfigResolutionError("training workflow requires artifact output paths")
+    artifact_dir = roots.artifact.root_path
+    history_block_path = roots.corpus.history_dir
     with staged_root(
-        storage_root=paths.output_root,
+        storage_root=roots.storage.root_path,
         destination_root=artifact_dir,
         expected_root_kind=ARTIFACT_ROOT_KIND,
         purpose="staging",

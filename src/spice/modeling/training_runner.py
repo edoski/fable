@@ -11,7 +11,6 @@ import torch
 from numpy.typing import NDArray
 
 from ..config.models import TrainingConfig
-from ..objectives import CompiledObjectiveContract
 from ..prediction import CompiledPredictionContract, MetricSet
 from ..prediction.contracts import PredictionBatch
 from ..temporal.execution_policy import CompiledExecutionPolicyContract
@@ -23,7 +22,6 @@ from ._runtime import (
     configure_torch_backends,
     set_global_seed,
 )
-from .batch_plan import build_prediction_batch_plan
 from .families.base import ModelConfig
 from .families.registry import (
     resolve_model_compile_enabled,
@@ -31,11 +29,9 @@ from .families.registry import (
 )
 from .forward_runtime import run_planned_prediction_forward
 from .models import TemporalModel
-from .objective_metrics import (
-    CompiledObjectiveMetricSource,
-    ObjectiveMetricEvaluationContext,
-)
+from .objective_runtime import CompiledObjectiveRuntime
 from .representations import CompiledRepresentationContract
+from .scoring import ModelScoringInput
 from .training_runtime import plan_training_runtime
 
 IntVector = NDArray[np.int64]
@@ -67,8 +63,7 @@ class TrainingFitSpec:
     model: TemporalModel
     model_config: ModelConfig
     prediction_contract: CompiledPredictionContract
-    objective_contract: CompiledObjectiveContract
-    objective_metric_source: CompiledObjectiveMetricSource
+    objective_runtime: CompiledObjectiveRuntime
     execution_policy: CompiledExecutionPolicyContract
     representation_contract: CompiledRepresentationContract
     store: CompiledProblemStore
@@ -113,7 +108,7 @@ def run_training_fit(
     fit_model = cast(TemporalModel, torch.compile(spec.model) if compile_enabled else spec.model)
 
     policy = TrainingFitPolicy.create(
-        objective_contract=spec.objective_contract,
+        objective_contract=spec.objective_runtime.contract,
         max_epochs=spec.training_config.max_epochs,
         patience=spec.training_config.early_stopping.patience,
         min_delta=spec.training_config.early_stopping.min_delta,
@@ -130,35 +125,13 @@ def run_training_fit(
             representation_contract=spec.representation_contract,
             store=spec.store,
             train_sample_indices=spec.train_sample_indices,
+            validation_sample_indices=spec.validation_sample_indices,
             base_runtime_context=runtime.representation_runtime_context,
             resolved_device=runtime.resolved_device,
             training_config=spec.training_config,
             precision=precision,
         )
-        planned_runtime_context = training_runtime_plan.runtime_context
         prediction_training_state = training_runtime_plan.prediction_training_state
-        train_batch_plan = build_prediction_batch_plan(
-            spec.store,
-            spec.train_sample_indices,
-            representation_contract=spec.representation_contract,
-            prediction_contract=spec.prediction_contract,
-            execution_policy=spec.execution_policy,
-            runtime_context=planned_runtime_context,
-            resolved_device=runtime.resolved_device,
-            seed=spec.training_config.seed,
-            shuffle=True,
-        )
-        validation_batch_plan = build_prediction_batch_plan(
-            spec.store,
-            spec.validation_sample_indices,
-            representation_contract=spec.representation_contract,
-            prediction_contract=spec.prediction_contract,
-            execution_policy=spec.execution_policy,
-            runtime_context=planned_runtime_context,
-            resolved_device=runtime.resolved_device,
-            seed=spec.training_config.seed,
-            shuffle=False,
-        )
         optimizer = torch.optim.AdamW(
             fit_model.parameters(),
             lr=spec.training_config.learning_rate,
@@ -167,7 +140,7 @@ def run_training_fit(
         for epoch in range(1, spec.training_config.max_epochs + 1):
             train_metrics = run_epoch(
                 fit_model,
-                loader=train_batch_plan.source,
+                loader=training_runtime_plan.train_batch_plan.source,
                 resolved_device=runtime.resolved_device,
                 precision=precision,
                 prediction_contract=spec.prediction_contract,
@@ -190,7 +163,7 @@ def run_training_fit(
                 break
             validation_metrics = run_epoch(
                 fit_model,
-                loader=validation_batch_plan.source,
+                loader=training_runtime_plan.validation_batch_plan.source,
                 resolved_device=runtime.resolved_device,
                 precision=precision,
                 prediction_contract=spec.prediction_contract,
@@ -211,9 +184,9 @@ def run_training_fit(
                 ):
                     active_callbacks.on_early_stop(*validation_decision.early_stop)
                 break
-            objective_metrics = spec.objective_metric_source.evaluate_metrics(
+            objective_metrics = spec.objective_runtime.evaluate_metrics(
                 validation_metrics,
-                context=ObjectiveMetricEvaluationContext(
+                context=ModelScoringInput(
                     model=fit_model,
                     model_config=spec.model_config,
                     prediction_contract=spec.prediction_contract,
@@ -221,7 +194,7 @@ def run_training_fit(
                     execution_policy=spec.execution_policy,
                     store=spec.store,
                     sample_indices=spec.validation_sample_indices,
-                    batch_size=spec.training_config.batch_size,
+                    runtime_plan=training_runtime_plan.evaluation_scoring_runtime_plan,
                 ),
             )
             objective_decision = policy.handle_nonfinite_metrics(
@@ -261,7 +234,7 @@ def run_training_fit(
 
     return TrainingResult(
         best_epoch=best_epoch,
-        objective_metric_id=spec.objective_contract.metric_id,
+        objective_metric_id=spec.objective_runtime.contract.metric_id,
         best_objective_value=best_value,
         train_history=policy.train_history,
         validation_history=policy.validation_history,

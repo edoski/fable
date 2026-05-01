@@ -1,17 +1,14 @@
-"""CLI transport wrapper for remote storage sync operations."""
+"""Machine-facing helper for remote storage transfer operations."""
 
 from __future__ import annotations
 
 import argparse
-import json
-from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, cast
 
-from .catalog.index import resolve_artifact_record, resolve_study_record
+from .catalog.codecs import encode_remote_catalog_record
+from .catalog.root_kind_specs import spec_for_root_kind
 from .engine import RootKind
 from .lifecycle import cleanup_root_stage, prepare_root_stage, promote_root_stage
-from .selectors import ArtifactSelector, StudySelector
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -28,7 +25,7 @@ def main(argv: list[str] | None = None) -> None:
     finalize.add_argument("--storage-root", required=True)
     finalize.add_argument("--destination-root", required=True)
     finalize.add_argument("--staged-root", required=True)
-    finalize.add_argument("--expected-root-kind", required=True)
+    finalize.add_argument("--root-kind", required=True)
     finalize.add_argument("--replace", action="store_true")
     finalize.set_defaults(func=_finalize_stage_command)
 
@@ -36,15 +33,11 @@ def main(argv: list[str] | None = None) -> None:
     cleanup.add_argument("--staged-root", required=True)
     cleanup.set_defaults(func=_cleanup_stage_command)
 
-    resolve_study = subparsers.add_parser("resolve-study-record")
-    resolve_study.add_argument("--storage-root", required=True)
-    resolve_study.add_argument("--study-id", required=True)
-    resolve_study.set_defaults(func=_resolve_study_record_command)
-
-    resolve_artifact = subparsers.add_parser("resolve-artifact-record")
-    resolve_artifact.add_argument("--storage-root", required=True)
-    resolve_artifact.add_argument("--artifact-id", required=True)
-    resolve_artifact.set_defaults(func=_resolve_artifact_record_command)
+    resolve = subparsers.add_parser("resolve-record")
+    resolve.add_argument("--storage-root", required=True)
+    resolve.add_argument("--root-kind", required=True)
+    resolve.add_argument("--root-id", required=True)
+    resolve.set_defaults(func=_resolve_record_command)
 
     namespace = parser.parse_args(argv)
     namespace.func(namespace)
@@ -66,7 +59,7 @@ def _finalize_stage_command(args: argparse.Namespace) -> None:
         storage_root=storage_root,
         destination_root=destination_root,
         staged_root=staged_root,
-        expected_root_kind=RootKind(args.expected_root_kind),
+        expected_root_kind=RootKind(args.root_kind),
         replace=args.replace,
     )
 
@@ -75,34 +68,11 @@ def _cleanup_stage_command(args: argparse.Namespace) -> None:
     cleanup_root_stage(Path(args.staged_root))
 
 
-def _resolve_study_record_command(args: argparse.Namespace) -> None:
-    record = resolve_study_record(
-        Path(args.storage_root),
-        selector=StudySelector(study_id=args.study_id),
-    )
-    _emit_record_json(record)
-
-
-def _resolve_artifact_record_command(args: argparse.Namespace) -> None:
-    record = resolve_artifact_record(
-        Path(args.storage_root),
-        selector=ArtifactSelector(artifact_id=args.artifact_id),
-    )
-    _emit_record_json(record)
-
-
-def _emit_record_json(record: object) -> None:
-    if not is_dataclass(record) or isinstance(record, type):
-        raise TypeError("record must be a dataclass instance")
-    payload = asdict(cast(Any, record))
-    print(
-        json.dumps(
-            {
-                key: (str(value) if isinstance(value, Path) else value)
-                for key, value in payload.items()
-            }
-        )
-    )
+def _resolve_record_command(args: argparse.Namespace) -> None:
+    root_kind = RootKind(args.root_kind)
+    spec = spec_for_root_kind(root_kind)
+    record = spec.resolve_record(Path(args.storage_root), args.root_id)
+    print(encode_remote_catalog_record(record))
 
 
 if __name__ == "__main__":

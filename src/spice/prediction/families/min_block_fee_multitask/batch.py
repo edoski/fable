@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
-from ....temporal.execution_policy import CompiledExecutionPolicyContract
+from ....temporal.execution_policy import CompiledExecutionPolicyContract, PreparedActionSpace
 from ....temporal.problem_store import CompiledProblemStore
 
 
@@ -15,13 +15,19 @@ def materialize_min_block_fee_targets(
     store: CompiledProblemStore,
     sample_indices: np.ndarray,
     execution_policy: CompiledExecutionPolicyContract,
+    action_space: PreparedActionSpace,
 ) -> PreparedMinBlockFeeTargets:
     supervised = execution_policy.prepare_supervised_targets(
         store,
         sample_indices.astype(np.int64, copy=False),
     )
+    if supervised.action_mask.shape != action_space.action_mask.shape or not np.array_equal(
+        supervised.action_mask,
+        action_space.action_mask,
+    ):
+        raise ValueError("supervised target action_mask does not match prepared Action Space")
     return PreparedMinBlockFeeTargets(
-        candidate_mask=torch.from_numpy(supervised.candidate_mask),
+        action_mask=torch.from_numpy(action_space.action_mask),
         min_block_offsets=torch.from_numpy(supervised.optimum_offsets),
         min_block_log_fees=torch.from_numpy(supervised.optimum_log_fees),
     )
@@ -29,29 +35,29 @@ def materialize_min_block_fee_targets(
 
 @dataclass(slots=True)
 class MinBlockFeeTargetBatch:
-    candidate_mask: torch.Tensor
+    action_mask: torch.Tensor
     min_block_offsets: torch.Tensor
     min_block_log_fees: torch.Tensor
 
     def to_device(self, device: torch.device) -> MinBlockFeeTargetBatch:
         if (
-            self.candidate_mask.device == device
+            self.action_mask.device == device
             and self.min_block_offsets.device == device
             and self.min_block_log_fees.device == device
         ):
             return self
         non_blocking = device.type == "cuda"
         return MinBlockFeeTargetBatch(
-            candidate_mask=self.candidate_mask.to(device, non_blocking=non_blocking),
+            action_mask=self.action_mask.to(device, non_blocking=non_blocking),
             min_block_offsets=self.min_block_offsets.to(device, non_blocking=non_blocking),
             min_block_log_fees=self.min_block_log_fees.to(device, non_blocking=non_blocking),
         )
 
     def pin_memory(self) -> MinBlockFeeTargetBatch:
-        if self.candidate_mask.device.type != "cpu":
+        if self.action_mask.device.type != "cpu":
             return self
         return MinBlockFeeTargetBatch(
-            candidate_mask=self.candidate_mask.pin_memory(),
+            action_mask=self.action_mask.pin_memory(),
             min_block_offsets=self.min_block_offsets.pin_memory(),
             min_block_log_fees=self.min_block_log_fees.pin_memory(),
         )
@@ -59,23 +65,23 @@ class MinBlockFeeTargetBatch:
 
 @dataclass(frozen=True, slots=True)
 class PreparedMinBlockFeeTargets:
-    candidate_mask: torch.Tensor
+    action_mask: torch.Tensor
     min_block_offsets: torch.Tensor
     min_block_log_fees: torch.Tensor
 
     @property
     def estimated_storage_bytes(self) -> int:
         return (
-            self.candidate_mask.element_size() * self.candidate_mask.numel()
+            self.action_mask.element_size() * self.action_mask.numel()
             + self.min_block_offsets.element_size() * self.min_block_offsets.numel()
             + self.min_block_log_fees.element_size() * self.min_block_log_fees.numel()
         )
 
     def build_batch(self, sample_positions: torch.Tensor) -> MinBlockFeeTargetBatch:
         positions = sample_positions.detach().cpu().to(dtype=torch.int64, copy=False)
-        index = positions.to(device=self.candidate_mask.device)
+        index = positions.to(device=self.action_mask.device)
         return MinBlockFeeTargetBatch(
-            candidate_mask=self.candidate_mask.index_select(0, index),
+            action_mask=self.action_mask.index_select(0, index),
             min_block_offsets=self.min_block_offsets.index_select(0, index),
             min_block_log_fees=self.min_block_log_fees.index_select(0, index),
         )
@@ -85,14 +91,14 @@ class PreparedMinBlockFeeTargets:
         device: torch.device,
     ) -> PreparedMinBlockFeeTargets:
         if (
-            self.candidate_mask.device == device
+            self.action_mask.device == device
             and self.min_block_offsets.device == device
             and self.min_block_log_fees.device == device
         ):
             return self
         non_blocking = device.type == "cuda"
         return PreparedMinBlockFeeTargets(
-            candidate_mask=self.candidate_mask.to(device, non_blocking=non_blocking),
+            action_mask=self.action_mask.to(device, non_blocking=non_blocking),
             min_block_offsets=self.min_block_offsets.to(device, non_blocking=non_blocking),
             min_block_log_fees=self.min_block_log_fees.to(
                 device,

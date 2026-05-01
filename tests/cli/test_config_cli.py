@@ -3,7 +3,7 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -12,7 +12,6 @@ from typer.testing import CliRunner
 from spice.cli import app
 from spice.config import AcquireConfig, EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from spice.execution.session import ExecutionJobSubmission
-from spice.storage.workflow_paths import resolve_workflow_paths
 
 runner = CliRunner()
 
@@ -41,18 +40,16 @@ def test_acquire_cli_resolves_selection_surface(tmp_path, monkeypatch) -> None:
 
     assert result.exit_code == 0, result.stdout
     config = cast(AcquireConfig, captured["config"])
-    paths = resolve_workflow_paths(config)
     assert config.chain.name == "avalanche"
     assert config.acquisition.dry_run is True
-    assert paths.output_root == tmp_path / "outputs"
+    assert config.storage.root == tmp_path / "outputs"
 
 
 @pytest.mark.parametrize(
-    ("command", "runner_path", "args"),
+    ("command", "args"),
     [
         (
             "train",
-            "spice.workflows.train.run",
             [
                 "--surface",
                 "current_row_fee_dynamics",
@@ -66,7 +63,6 @@ def test_acquire_cli_resolves_selection_surface(tmp_path, monkeypatch) -> None:
         ),
         (
             "tune",
-            "spice.workflows.tune.run",
             [
                 "--surface",
                 "current_row_fee_dynamics",
@@ -78,7 +74,6 @@ def test_acquire_cli_resolves_selection_surface(tmp_path, monkeypatch) -> None:
         ),
         (
             "evaluate",
-            "spice.workflows.evaluate.run",
             [
                 "--artifact-id",
                 "art_test",
@@ -92,33 +87,42 @@ def test_acquire_cli_resolves_selection_surface(tmp_path, monkeypatch) -> None:
         ),
     ],
 )
-def test_model_workflow_cli_resolves_local_selection_surface(
-    tmp_path: Path,
+def test_model_workflow_cli_resolves_and_submits_selection_surface(
     monkeypatch,
     command: str,
-    runner_path: str,
     args: list[str],
 ) -> None:
     captured: dict[str, object] = {}
 
-    def _capture(config) -> None:
-        captured["config"] = config
+    class FakeSession:
+        target = SimpleNamespace(spec=SimpleNamespace(follow_by_default=False))
 
-    monkeypatch.setattr(runner_path, _capture)
+        def submit_workflow(self, task, *, config, dependency):
+            del dependency
+            captured["task"] = task
+            captured["config"] = config
+            return ExecutionJobSubmission(
+                task=task,
+                target=cast(Any, self.target),
+                job_id="12345",
+                log_path=Path("/tmp/spice-job.out"),
+            )
+
+    monkeypatch.setattr(
+        "spice.cli.commands.workflows.open_execution_session",
+        lambda _target: FakeSession(),
+    )
 
     result = runner.invoke(
         app,
         [
             command,
             *args,
-            "--storage-root",
-            str(tmp_path / "outputs"),
         ],
     )
 
     assert result.exit_code == 0, result.stdout
     config = cast(TrainConfig | TuneConfig | EvaluateConfig, captured["config"])
-    assert config.storage.root == tmp_path / "outputs"
     if isinstance(config, TuneConfig):
         assert config.tuning.trial_count == 2
         return
@@ -196,11 +200,14 @@ def test_config_edit_seeds_missing_file_and_uses_editor(
     assert yaml.safe_load(created_path.read_text(encoding="utf-8"))["id"] == "phase2_problem"
 
 
-def test_train_submit_rejects_local_storage_override(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["train", "--submit", "--storage-root", str(tmp_path)])
+def test_train_rejects_removed_local_submission_options(tmp_path: Path) -> None:
+    submit_result = runner.invoke(app, ["train", "--submit"])
+    storage_result = runner.invoke(app, ["train", "--storage-root", str(tmp_path)])
 
-    assert result.exit_code != 0
-    assert "--storage-root cannot be combined with --submit" in result.output
+    assert submit_result.exit_code != 0
+    assert "--submit" in submit_result.output
+    assert storage_result.exit_code != 0
+    assert "--storage-root" in storage_result.output
 
 
 def test_train_submit_uses_cli_default_remote_target(monkeypatch) -> None:
@@ -214,7 +221,7 @@ def test_train_submit_uses_cli_default_remote_target(monkeypatch) -> None:
             captured["task"] = task
             return ExecutionJobSubmission(
                 task=task,
-                target=self.target,
+                target=cast(Any, self.target),
                 job_id="12345",
                 log_path=Path("/tmp/spice-train-12345.out"),
             )
@@ -233,7 +240,6 @@ def test_train_submit_uses_cli_default_remote_target(monkeypatch) -> None:
             "current_row_fee_dynamics",
             "--dataset-id",
             "cor_9a73b1e88edb488afb1e",
-            "--submit",
         ],
     )
 
@@ -260,7 +266,6 @@ def test_acquire_rejects_objective_option() -> None:
 def test_train_submit_cli_preflights_and_routes_to_execution_backend(
     monkeypatch,
 ) -> None:
-    from spice.cli import selection as cli_selection
     from spice.cli.commands import workflows as workflow_commands
 
     events: list[tuple[str, object]] = []
@@ -285,13 +290,17 @@ def test_train_submit_cli_preflights_and_routes_to_execution_backend(
             events.append(("submit", (task, config, "disi_l40", dependency)))
             return ExecutionJobSubmission(
                 task=task,
-                target=self.target,
+                target=cast(Any, self.target),
                 job_id="12345",
                 log_path=Path("/remote/logs/spice-train-12345.out"),
             )
 
-    monkeypatch.setattr(cli_selection, "resolve_workflow_config", _fake_resolve)
-    monkeypatch.setattr(workflow_commands, "open_execution_session", lambda _target: FakeSession())
+    monkeypatch.setattr(workflow_commands, "resolve_workflow_config", _fake_resolve)
+    monkeypatch.setattr(
+        workflow_commands,
+        "open_execution_session",
+        lambda _target: FakeSession(),
+    )
 
     result = runner.invoke(
         app,
@@ -299,7 +308,6 @@ def test_train_submit_cli_preflights_and_routes_to_execution_backend(
             "train",
             "--surface",
             "current_row_fee_dynamics",
-            "--submit",
             "--study",
             "default",
             "--variant",
@@ -309,7 +317,7 @@ def test_train_submit_cli_preflights_and_routes_to_execution_backend(
 
     assert result.exit_code == 0, result.stdout
     assert [event[0] for event in events] == ["resolve", "submit"]
-    resolved_task, selection = cast(tuple[WorkflowTask, object], events[0][1])
+    resolved_task, selection = cast(tuple[WorkflowTask, Any], events[0][1])
     assert resolved_task is WorkflowTask.TRAIN
     assert selection.study == "default"
     assert selection.variant == "baseline"

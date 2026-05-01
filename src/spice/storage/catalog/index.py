@@ -10,8 +10,6 @@ from typing import TypeVar
 from uuid import uuid4
 
 from ...core.errors import SelectorResolutionError
-from ..artifact import load_artifact_manifest
-from ..corpus import load_dataset_manifest
 from ..engine import RootKind, detect_root_kind, state_db_path
 from ..layout import (
     ARTIFACTS_ROOT_NAME,
@@ -20,13 +18,10 @@ from ..layout import (
     catalog_db_path,
 )
 from ..selectors import ArtifactSelector, DatasetSelector, StudySelector
-from ..study_manifest import load_study_manifest
-from .records import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
+from .records import CatalogArtifactRecord, CatalogDatasetRecord, CatalogRecord, CatalogStudyRecord
+from .root_kind_specs import spec_for_root_kind
 from .store import (
     ensure_catalog_db,
-    upsert_artifact_record,
-    upsert_dataset_record,
-    upsert_study_record,
 )
 from .store import (
     list_artifact_records as _list_artifact_catalog_records,
@@ -56,6 +51,12 @@ class CatalogRefreshSummary:
     dataset_roots: int = 0
     study_roots: int = 0
     artifact_roots: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ReindexedCatalogRoot:
+    root_kind: RootKind
+    record: CatalogRecord
 
 
 def list_dataset_records(
@@ -166,7 +167,7 @@ def resolve_artifact_record(
     )
 
 
-def reindex_root(storage_root: Path, *, root_path: Path) -> RootKind:
+def reindex_catalog_root(storage_root: Path, *, root_path: Path) -> ReindexedCatalogRoot:
     return _reindex_catalog_root(catalog_db_path(storage_root), root_path=root_path)
 
 
@@ -194,11 +195,13 @@ def refresh_catalog(storage_root: Path) -> CatalogRefreshSummary:
         raise
 
 
-def _reindex_catalog_root(catalog_path: Path, *, root_path: Path) -> RootKind:
+def _reindex_catalog_root(catalog_path: Path, *, root_path: Path) -> ReindexedCatalogRoot:
     db_path = state_db_path(root_path)
     root_kind = detect_root_kind(db_path)
-    _ROOT_UPSERT_HANDLERS[root_kind](catalog_path, root_path=root_path, db_path=db_path)
-    return root_kind
+    spec = spec_for_root_kind(root_kind)
+    record = spec.build_record(root_path, db_path)
+    spec.upsert_record(catalog_path, record)
+    return ReindexedCatalogRoot(root_kind=root_kind, record=record)
 
 
 def _roots_under(parent: Path) -> list[Path]:
@@ -251,60 +254,3 @@ def _resolve_catalog_record(
         label,
         _list_catalog_records(storage_root, selector=selector, list_records=list_records),
     )
-
-
-def _upsert_corpus_root(catalog_path: Path, *, root_path: Path, db_path: Path) -> None:
-    manifest = load_dataset_manifest(db_path)
-    upsert_dataset_record(
-        catalog_path,
-        dataset_id=manifest.dataset.id,
-        dataset_name=manifest.dataset.name,
-        chain_name=manifest.chain.name,
-        root_path=root_path,
-        state_db_path=db_path,
-    )
-
-
-def _upsert_study_root(catalog_path: Path, *, root_path: Path, db_path: Path) -> None:
-    manifest = load_study_manifest(db_path)
-    upsert_study_record(
-        catalog_path,
-        study_id=manifest.study_id,
-        study_name=manifest.study_name,
-        dataset_id=manifest.dataset_id,
-        dataset_name=manifest.dataset_name,
-        chain_name=manifest.chain_name,
-        features_id=manifest.features.id,
-        prediction_id=manifest.prediction.id,
-        model_id=manifest.model.id,
-        problem_id=manifest.problem.id,
-        root_path=root_path,
-        state_db_path=db_path,
-    )
-
-
-def _upsert_artifact_root(catalog_path: Path, *, root_path: Path, db_path: Path) -> None:
-    manifest = load_artifact_manifest(db_path)
-    upsert_artifact_record(
-        catalog_path,
-        artifact_id=manifest.artifact_id,
-        dataset_id=manifest.dataset_id,
-        dataset_name=manifest.dataset_name,
-        chain_name=manifest.chain_name,
-        features_id=manifest.features_id,
-        prediction_id=manifest.prediction_id,
-        model_id=manifest.model.id,
-        problem_id=manifest.problem_id,
-        variant=manifest.variant.value,
-        study_id=manifest.study_id,
-        study_name=None if manifest.study is None else manifest.study.name,
-        root_path=root_path,
-        state_db_path=db_path,
-    )
-
-
-_ROOT_UPSERT_HANDLERS: dict[RootKind, Callable[..., None]] = {
-    RootKind.CORPUS: _upsert_corpus_root,
-    RootKind.STUDY: _upsert_study_root,
-    RootKind.ARTIFACT: _upsert_artifact_root,
-}

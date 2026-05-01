@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeAlias
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,3 +46,6 @@ class CatalogArtifactRecord:
     study_name: str | None
     root_path: Path
     state_db_path: Path
+
+
+CatalogRecord: TypeAlias = CatalogDatasetRecord | CatalogStudyRecord | CatalogArtifactRecord

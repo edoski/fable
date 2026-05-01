@@ -35,8 +35,13 @@ class ExecutionPolicyConfig(ConfigModel):
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedActionSpace:
+    action_mask: BoolMatrix
+
+
+@dataclass(frozen=True, slots=True)
 class PreparedSupervisedExecutionTargets:
-    candidate_mask: BoolMatrix
+    action_mask: BoolMatrix
     candidate_log_fees: FloatMatrix
     optimum_offsets: IntVector
     optimum_log_fees: FloatVector
@@ -63,6 +68,10 @@ PrepareSupervisedTargetsFn = Callable[
     [CompiledProblemStore, IntVector],
     PreparedSupervisedExecutionTargets,
 ]
+PrepareActionSpaceFn = Callable[
+    [CompiledProblemStore, IntVector],
+    PreparedActionSpace,
+]
 RealizeSelectionsFn = Callable[
     [CompiledProblemStore, DecodedOffsetBatch, IntVector, IntVector],
     RealizedSelectionBatch,
@@ -74,6 +83,7 @@ class CompiledExecutionPolicyContract:
     execution_policy_id: str
     baseline_row_mode: BaselineRowMode
     requires_post_window_row: bool
+    prepare_action_space_fn: PrepareActionSpaceFn
     prepare_supervised_targets_fn: PrepareSupervisedTargetsFn
     realize_selections_fn: RealizeSelectionsFn
 
@@ -90,6 +100,13 @@ class CompiledExecutionPolicyContract:
         sample_indices: IntVector,
     ) -> PreparedSupervisedExecutionTargets:
         return self.prepare_supervised_targets_fn(store, sample_indices)
+
+    def prepare_action_space(
+        self,
+        store: CompiledProblemStore,
+        sample_indices: IntVector,
+    ) -> PreparedActionSpace:
+        return self.prepare_action_space_fn(store, sample_indices)
 
     def realize_selections(
         self,

@@ -14,12 +14,14 @@ from .artifacts import (
     load_training_artifact,
     persist_training_artifact,
 )
-from .pipeline import PreparedTrainingDataset, TrainingRunResult, TrainingSpec, run_training
+from .dataset_builders import PreparedTrainingDataset
+from .pipeline import TrainingSpec, run_training
 from .results import (
     LoadedTrainingSummary,
     build_training_runtime_summary,
     iter_epoch_records,
 )
+from .training_run import TrainingRunResult
 from .training_runner import (
     EarlyStopCallback,
     EpochEndCallback,

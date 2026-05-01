@@ -35,7 +35,7 @@ This keeps validation at the config boundary and keeps compile dispatch simple. 
 ## Error Vocabulary
 
 ```text
-ConfigResolutionError  user/config selection or YAML hydration problem
+ConfigResolutionError  user/config selection or YAML or snapshot resolution problem
 StateLayoutError       malformed persisted state or root-kind mismatch
 MissingStateError      expected persisted state is absent
 SpiceOperatorError     operational failure reported to the CLI/user

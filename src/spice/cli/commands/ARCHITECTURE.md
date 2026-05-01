@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`cli.commands` contains command modules grouped by operator intent: workflow execution, config inspection, benchmark expansion, storage inspection, and transfer.
+`cli.commands` contains command modules grouped by operator intent: workflow execution, config inspection, Benchmark Run operations, storage inspection, and transfer.
 
 ## Theory
 
@@ -12,7 +12,7 @@ Command modules should translate user language into typed workflow selections. T
 
 Workflow commands construct workflow selection models and call config resolution once. Transfer commands use storage selectors over existing catalog records. Config commands use registry APIs. Command modules may format output, but persistence and ML behavior remain elsewhere.
 
-Workflow submit commands and transfer commands share the same remote-target option. The default target is provided by the CLI layer, then passed downstream explicitly.
+Remote workflow commands and transfer commands share the same remote-target option. The default target is provided by the CLI layer, then passed downstream explicitly.
 
 ## Extension Points
 
@@ -22,9 +22,9 @@ Create a new command module when the user intent is distinct. Prefer small comma
 
 ```text
 commands/
-  workflows.py  acquire/train/tune/evaluate and submit flags
+  workflows.py  local acquire and remote train/tune/evaluate
   config.py     config list/show/edit commands
-  benchmark.py  benchmark expansion/rendering
+  benchmark.py  Benchmark Run planning/submission/collection/indexing
   storage.py    show/delete/refresh storage commands
   transfer.py   push/pull storage roots
 ```

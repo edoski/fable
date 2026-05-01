@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 
 from spice.modeling.forward_runtime import (
@@ -20,15 +21,22 @@ def test_planned_model_input_forward_uses_host_warmup_then_measured_budget(
         available_host_memory_bytes=1024,
         available_device_memory_bytes=999,
     )
-    sources = [object(), object()]
+    sources = [[SimpleNamespace(name="warmup")], [SimpleNamespace(name="final")]]
     budgets: list[int | None] = []
+    execution_policy = SimpleNamespace(name="policy")
+    policies = []
 
-    def fake_build_model_input_batch_plan(*_args, runtime_context, **_kwargs):
+    def fake_build_model_input_batch_plan(*_args, runtime_context, execution_policy, **_kwargs):
         budgets.append(runtime_context.available_device_memory_bytes)
+        policies.append(execution_policy)
         return SimpleNamespace(source=sources[len(budgets) - 1])
 
     measured_sources = []
-    forward_sources = []
+    seen_batches = []
+
+    def fake_forward(_model, *, loader, on_outputs, **_kwargs):
+        for batch in loader:
+            on_outputs(batch, SimpleNamespace())
 
     monkeypatch.setattr(
         "spice.modeling.forward_runtime.build_model_input_batch_plan",
@@ -40,7 +48,7 @@ def test_planned_model_input_forward_uses_host_warmup_then_measured_budget(
     )
     monkeypatch.setattr(
         "spice.modeling.forward_runtime.run_model_forward_pass",
-        lambda _model, *, loader, **_kwargs: forward_sources.append(loader),
+        fake_forward,
     )
 
     run_planned_model_input_forward(
@@ -48,16 +56,18 @@ def test_planned_model_input_forward_uses_host_warmup_then_measured_budget(
         store=SimpleNamespace(),
         sample_indices=np.array([0], dtype=np.int64),
         representation_contract=SimpleNamespace(),
+        execution_policy=execution_policy,
         base_runtime_context=runtime_context,
         resolved_device=torch.device("cpu"),
         precision="32-true",
         seed=3,
-        on_outputs=lambda _batch, _outputs: None,
+        on_outputs=lambda batch, _outputs: seen_batches.append(batch),
     )
 
     assert budgets == [0, 77]
+    assert policies == [execution_policy, execution_policy]
     assert measured_sources == [sources[0]]
-    assert forward_sources == [sources[1]]
+    assert seen_batches == sources[1]
 
 
 def test_planned_prediction_forward_preserves_callback_and_final_source(
@@ -70,9 +80,11 @@ def test_planned_prediction_forward_preserves_callback_and_final_source(
     )
     sources = [[SimpleNamespace(name="warmup")], [SimpleNamespace(name="final")]]
     budgets: list[int | None] = []
+    shuffles: list[bool | None] = []
 
-    def fake_build_prediction_batch_plan(*_args, runtime_context, **_kwargs):
+    def fake_build_prediction_batch_plan(*_args, runtime_context, shuffle=None, **_kwargs):
         budgets.append(runtime_context.available_device_memory_bytes)
+        shuffles.append(shuffle)
         return SimpleNamespace(source=sources[len(budgets) - 1])
 
     seen_batches = []
@@ -109,4 +121,41 @@ def test_planned_prediction_forward_preserves_callback_and_final_source(
     )
 
     assert budgets == [0, 55]
+    assert shuffles == [False, False]
     assert seen_batches == sources[1]
+
+
+def test_planned_forward_rejects_empty_sample_indices() -> None:
+    runtime_context = RepresentationRuntimeContext(
+        batch_size=2,
+        available_host_memory_bytes=1024,
+    )
+
+    with pytest.raises(ValueError, match="sample_indices must be non-empty"):
+        run_planned_model_input_forward(
+            SimpleNamespace(),
+            store=SimpleNamespace(),
+            sample_indices=np.array([], dtype=np.int64),
+            representation_contract=SimpleNamespace(),
+            execution_policy=SimpleNamespace(),
+            base_runtime_context=runtime_context,
+            resolved_device=torch.device("cpu"),
+            precision="32-true",
+            seed=3,
+            on_outputs=lambda _batch, _outputs: None,
+        )
+
+    with pytest.raises(ValueError, match="sample_indices must be non-empty"):
+        run_planned_prediction_forward(
+            SimpleNamespace(),
+            store=SimpleNamespace(),
+            sample_indices=np.array([], dtype=np.int64),
+            representation_contract=SimpleNamespace(),
+            prediction_contract=SimpleNamespace(),
+            execution_policy=SimpleNamespace(),
+            base_runtime_context=runtime_context,
+            resolved_device=torch.device("cpu"),
+            precision="32-true",
+            seed=3,
+            on_outputs=lambda _batch, _outputs: None,
+        )

@@ -10,7 +10,7 @@ An objective can be a validation metric from the training loop or a benchmark me
 
 ## Invariants
 
-Validation objectives read validation metrics directly. Evaluation objectives declare the benchmark metric to optimize. Objective configs must match the selected evaluation when they benchmark an evaluator. Model-bound metric production belongs to `modeling.objective_metrics`.
+Validation objectives read validation metrics directly. Evaluation objectives declare the benchmark metric to optimize. Objective configs must match the selected evaluation when they benchmark an evaluator. Model-bound metric production belongs to the **Objective Runtime** in `modeling.objective_runtime`.
 
 ## Extension Points
 
@@ -23,7 +23,7 @@ training epoch
     |
     +--> validation metrics --------+
     |                               |
-    +--> optional Objective Metric Source +
+    +--> Objective Runtime ----------+
                                     |
                                     v
                               objective metric
@@ -38,7 +38,7 @@ The objective is the scalar value used to compare model states or tuning trials.
 
 ## Evaluation Objective Boundary
 
-Objectives are policy-only: metric id, direction, benchmark binding, and semantics. Evaluation-backed objective metrics use `modeling.objective_metrics`, which calls `modeling.scoring` for the generic sequence:
+Objectives are policy-only: metric id, direction, benchmark binding, and semantics. Evaluation-backed objective metrics use `modeling.objective_runtime`, which calls `modeling.scoring` for the generic sequence:
 
 ```text
 check decoded-result id -> predict -> evaluate -> return metrics

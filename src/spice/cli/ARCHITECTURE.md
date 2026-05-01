@@ -2,9 +2,9 @@
 
 ## Purpose
 
-`cli` is the operator edge. It translates command-line options into workflow selections, config-inspection actions, storage inspection/deletion, benchmark expansion, and remote transfer operations.
+`cli` is the operator edge. It translates command-line options into workflow selections, config-inspection actions, storage inspection/deletion, Benchmark Run operations, and remote transfer operations.
 
-The CLI may provide user conveniences. It should not own model training, evaluator logic, storage layout internals, or YAML hydration rules.
+The CLI may provide user conveniences. It should not own model training, evaluator logic, storage layout internals, or resolved workflow snapshot rules.
 
 ## Command Flow
 
@@ -24,9 +24,9 @@ config resolution or storage service
 workflow/service result rendered to stdout
 ```
 
-Workflow commands either run locally or submit a resolved config snapshot to remote execution. Transfer commands call execution transfer services. Config commands call config registry APIs.
+Workflow commands run acquisition locally and submit CUDA workflows to remote execution. Transfer commands call execution transfer services. Config commands call config registry APIs.
 
-`cli.selection` is the **CLI Selection Layer**. It turns explicit operator values into typed **Workflow Selections**, validates local-vs-submitted command rules, and resolves the **Workflow Config** handed to workflow execution or an **Execution Session**.
+Workflow command modules instantiate typed **Workflow Selections** directly from operator options, then call config resolution before running local acquire or handing a resolved workflow snapshot to an **Execution Session**.
 
 ## Remote Target Boundary
 
@@ -47,17 +47,17 @@ The default exists once, at the CLI edge. This lets the common cluster stay conv
 
 Within workflow commands, generic execution-panel options share one helper. Selection options, output options, and execution options are distinct because they represent different operator decisions.
 
-## Local Versus Submitted Runs
+## Local Versus Remote Runs
 
 ```text
-local run:
+local acquire:
   may use --storage-root
-  resolves config and runs workflow in current process
+  resolves config and runs acquisition in current process
 
-submitted run:
+remote train/tune/evaluate:
   may use --target, --dependency, --detach
-  may not use --storage-root
+  do not expose --submit or --storage-root
   remote storage comes from the execution target spec
 ```
 
-This prevents a local filesystem override from accidentally leaking into a remote job.
+This matches the CUDA operating model: corpora are acquired locally and pushed, while train, tune, and evaluate execute on the cluster.

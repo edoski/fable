@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
+import pytest
 
 from spice.config import coerce_features_config, coerce_problem_spec
 from spice.config.models import ChainRuntimeSpec
@@ -83,6 +84,7 @@ def test_observed_time_window_builds_timestamp_bounded_windows() -> None:
         chain_runtime=_chain(),
     )
 
+    assert contract.execution_policy.requires_post_window_row is True
     store, runtime_metadata = contract.build_capability_store(feature_table)
 
     assert runtime_metadata.slot_spacing_id == "nominal"
@@ -109,6 +111,25 @@ def test_observed_time_window_runtime_metadata_round_trips() -> None:
         "observed_time_window",
         payload,
     ) == runtime_metadata
+
+
+def test_observed_time_window_delay_store_rejects_artifact_action_width_mismatch() -> None:
+    feature_contract = _feature_contract()
+    feature_table = feature_contract.build_table(_blocks())
+    contract = compile_problem_contract(
+        problem=_problem("nominal"),
+        feature_contract=feature_contract,
+        chain_runtime=_chain(),
+    )
+    _, runtime_metadata = contract.build_capability_store(feature_table)
+
+    with pytest.raises(ValueError, match="artifact action width"):
+        contract.build_delay_store(
+            feature_table,
+            delay_seconds=12,
+            compiler_runtime_metadata=runtime_metadata,
+            max_candidate_slots=runtime_metadata.capability_action_count + 1,
+        )
 
 
 def test_recent_median_slot_spacing_is_scoped_to_slot_spacing() -> None:

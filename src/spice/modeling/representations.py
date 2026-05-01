@@ -12,6 +12,7 @@ from numpy.typing import NDArray
 
 from ..prediction import ModelInputBatch
 from ..semantics import RepresentationSemantics
+from ..temporal.execution_policy import CompiledExecutionPolicyContract, PreparedActionSpace
 from ..temporal.problem_store import CompiledProblemStore
 
 IntVector = NDArray[np.int64]
@@ -115,11 +116,15 @@ class CompiledRepresentationContract:
         store: CompiledProblemStore,
         sample_indices: IntVector,
         *,
+        execution_policy: CompiledExecutionPolicyContract,
+        action_space: PreparedActionSpace,
         runtime_context: RepresentationRuntimeContext,
     ) -> PreparedRepresentation[ModelInputBatch]:
         return self.prepare_impl(
             store,
             sample_indices,
+            execution_policy=execution_policy,
+            action_space=action_space,
             runtime_context=runtime_context,
         )
 
@@ -137,6 +142,7 @@ def build_sequence_input_batch(
     store: CompiledProblemStore,
     sample_indices: IntVector,
     *,
+    action_mask: NDArray[np.bool_],
     sample_positions: IntVector | torch.Tensor | None = None,
     max_context_length: int | None = None,
 ) -> SequenceInputBatch:
@@ -162,7 +168,9 @@ def build_sequence_input_batch(
 
     inputs = np.zeros((batch_size, resolved_max_context, store.n_features), dtype=np.float32)
     input_mask = np.zeros((batch_size, resolved_max_context), dtype=np.bool_)
-    action_mask = store.action_mask(sample_indices)
+    resolved_action_mask = action_mask.astype(np.bool_, copy=False)
+    if resolved_action_mask.shape != (batch_size, store.max_candidate_slots):
+        raise ValueError("action_mask must match sample count and action width")
     for row, (anchor_row, context_start) in enumerate(
         zip(context.anchor_rows, context.context_start_rows, strict=True)
     ):
@@ -176,7 +184,7 @@ def build_sequence_input_batch(
         sample_positions=torch.from_numpy(np.ascontiguousarray(resolved_positions)),
         inputs=torch.from_numpy(inputs),
         input_mask=torch.from_numpy(input_mask),
-        action_mask=torch.from_numpy(action_mask),
+        action_mask=torch.from_numpy(np.ascontiguousarray(resolved_action_mask)),
     )
 
 
@@ -190,6 +198,7 @@ class _SequenceInputLayout:
 @dataclass(slots=True)
 class _StreamingSequenceInputRepresentation:
     store: CompiledProblemStore
+    action_space: PreparedActionSpace
     layout: _SequenceInputLayout
     batch_size: int
 
@@ -219,6 +228,7 @@ class _StreamingSequenceInputRepresentation:
         return build_sequence_input_batch(
             self.store,
             batch_sample_indices,
+            action_mask=self.action_space.action_mask[positions],
             sample_positions=sample_positions,
             max_context_length=self.layout.max_context_length,
         )
@@ -230,6 +240,7 @@ class _StreamingSequenceInputRepresentation:
         _require_cuda_storage_device(device)
         return _materialize_sequence_input_to_device(
             self.store,
+            self.action_space,
             self.layout,
             batch_size=self.batch_size,
             device=device,
@@ -298,8 +309,11 @@ def _prepare_sequence_input(
     store: CompiledProblemStore,
     sample_indices: IntVector,
     *,
+    execution_policy: CompiledExecutionPolicyContract,
+    action_space: PreparedActionSpace,
     runtime_context: RepresentationRuntimeContext,
 ) -> PreparedRepresentation[ModelInputBatch]:
+    del execution_policy
     if runtime_context.batch_size <= 0:
         raise ValueError("runtime_context.batch_size must be positive")
     layout = _sequence_input_layout(store, sample_indices)
@@ -313,9 +327,15 @@ def _prepare_sequence_input(
         max(0, runtime_context.available_host_memory_bytes // 5),
     )
     if dense_storage_bytes <= materialization_budget:
-        return _materialize_sequence_input(store, layout, batch_size=runtime_context.batch_size)
+        return _materialize_sequence_input(
+            store,
+            action_space,
+            layout,
+            batch_size=runtime_context.batch_size,
+        )
     return _StreamingSequenceInputRepresentation(
         store=store,
+        action_space=action_space,
         layout=layout,
         batch_size=runtime_context.batch_size,
     )
@@ -358,6 +378,7 @@ def _dense_sequence_input_storage_bytes(
 
 def _materialize_sequence_input(
     store: CompiledProblemStore,
+    action_space: PreparedActionSpace,
     layout: _SequenceInputLayout,
     *,
     batch_size: int,
@@ -371,6 +392,7 @@ def _materialize_sequence_input(
     action_mask = np.zeros((sample_count, store.max_candidate_slots), dtype=np.bool_)
     _fill_dense_sequence_input_rows(
         store,
+        action_space,
         layout,
         row_start=0,
         row_stop=sample_count,
@@ -390,6 +412,7 @@ def _materialize_sequence_input(
 
 def _materialize_sequence_input_to_device(
     store: CompiledProblemStore,
+    action_space: PreparedActionSpace,
     layout: _SequenceInputLayout,
     *,
     batch_size: int,
@@ -440,6 +463,7 @@ def _materialize_sequence_input_to_device(
         )
         _fill_dense_sequence_input_rows(
             store,
+            action_space,
             layout,
             row_start=row_start,
             row_stop=row_stop,
@@ -469,6 +493,7 @@ def _require_cuda_storage_device(device: torch.device) -> None:
 
 def _fill_dense_sequence_input_rows(
     store: CompiledProblemStore,
+    action_space: PreparedActionSpace,
     layout: _SequenceInputLayout,
     *,
     row_start: int,
@@ -479,7 +504,7 @@ def _fill_dense_sequence_input_rows(
 ) -> None:
     sample_indices = layout.sample_indices[row_start:row_stop]
     context = store.context_windows(sample_indices)
-    action_mask[:, :] = store.action_mask(sample_indices)
+    action_mask[:, :] = action_space.action_mask[row_start:row_stop]
     for output_row, (anchor_row, context_start) in enumerate(
         zip(context.anchor_rows, context.context_start_rows, strict=True)
     ):

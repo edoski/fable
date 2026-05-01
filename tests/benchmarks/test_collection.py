@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-import csv
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from spice.benchmarks import (
-    BenchmarkPlanEntry,
+from spice.benchmarks.collection import collect_benchmark_run
+from spice.benchmarks.models import BenchmarkPlanEntry
+from spice.benchmarks.result_store import index_counts
+from spice.benchmarks.runs import (
     BenchmarkSubmissionRecord,
     append_submission_jsonl,
-    collect_benchmark_run,
+    collection_snapshot_path,
     create_benchmark_run_dir,
+    load_collection_snapshot,
+    load_plan_jsonl,
     write_plan_jsonl,
 )
 from spice.config import EvaluateConfig, StorageSpec, WorkflowTask
@@ -19,6 +23,8 @@ from spice.config.models import ArtifactVariant
 from spice.config.registry import load_named_group
 from spice.core.errors import SelectorResolutionError, SpiceOperatorError
 from spice.evaluation.registry import coerce_evaluator_config
+from spice.execution.transfer import PulledArtifactRoot
+from spice.storage.catalog import CatalogArtifactRecord
 
 
 def _evaluate_config(tmp_path: Path) -> EvaluateConfig:
@@ -39,6 +45,7 @@ def _write_evaluate_run(run_dir: Path, config) -> None:
         workflow=WorkflowTask.EVALUATE,
         depends_on=(),
         external_dependencies=(),
+        dimension_labels={"models": "lstm"},
         artifact_from=None,
         selection={
             "artifact_id": config.artifact_id,
@@ -63,12 +70,31 @@ def _write_evaluate_run(run_dir: Path, config) -> None:
     )
 
 
+def _artifact_record(root_path: Path, artifact_id: str = "artifact-1") -> CatalogArtifactRecord:
+    return CatalogArtifactRecord(
+        artifact_id=artifact_id,
+        dataset_id="dataset-1",
+        dataset_name="dataset",
+        chain_name="ethereum",
+        features_id="features",
+        prediction_id="prediction",
+        model_id="model",
+        problem_id="problem",
+        variant="baseline",
+        study_id=None,
+        study_name=None,
+        root_path=root_path,
+        state_db_path=root_path / ".spice" / "state.sqlite",
+    )
+
+
 def _loaded_summary(config):
     return SimpleNamespace(
         evaluation_id="poisson_replay_2h-36s-storage",
         recorded_at=1_700_000_000,
         manifest=SimpleNamespace(
             artifact_id="artifact-1",
+            dataset_id="dataset-1",
             chain_name="ethereum",
             dataset_name="icdcs_2026",
             features_id="core_fee_dynamics",
@@ -77,13 +103,23 @@ def _loaded_summary(config):
             prediction_id="icdcs_2026",
             objective=SimpleNamespace(id="profit_poisson_replay_2h"),
             variant=ArtifactVariant.BASELINE,
+            study_id=None,
             study=None,
         ),
         runtime=SimpleNamespace(
             delay_seconds=config.delay_seconds,
             evaluation_id=config.evaluation.id,
+            execution_provenance=SimpleNamespace(
+                execution_ref="slurm:57549",
+                job_id="57549",
+                log_path="/tmp/spice-evaluate-57549.out",
+                workflow_task="evaluate",
+                target="disi_l40",
+            ),
             sample_count=123,
             total_events=7,
+            n_history_rows=200,
+            n_evaluation_rows=100,
             metrics=SimpleNamespace(
                 values={
                     "profit_over_baseline": 0.12,
@@ -91,11 +127,52 @@ def _loaded_summary(config):
                     "baseline_cost_over_optimum": 1.7,
                 }
             ),
+            window_metrics={},
+            runs=(),
         ),
     )
 
 
-def test_benchmark_collect_writes_and_skips_duplicate_rows(
+def test_benchmark_plan_jsonl_round_trips_plan_entry(tmp_path: Path) -> None:
+    config = _evaluate_config(tmp_path)
+    run_dir = create_benchmark_run_dir(
+        "round_trip",
+        target="disi_l40",
+        runs_root=tmp_path / "outputs" / "benchmarks" / "runs",
+    )
+    entry = BenchmarkPlanEntry(
+        run_id="case.evaluate",
+        case_id="case",
+        step_id="evaluate",
+        workflow=WorkflowTask.EVALUATE,
+        depends_on=("case.train",),
+        external_dependencies=("afterok:42",),
+        dimension_labels={"features": "core"},
+        artifact_from="case.train",
+        selection={
+            "surface": "current_row_fee_dynamics",
+            "artifact_id": config.artifact_id,
+            "dataset_id": config.dataset_id,
+            "evaluation": config.evaluation.id,
+        },
+        config=config,
+    )
+
+    write_plan_jsonl(run_dir, [entry])
+    loaded = load_plan_jsonl(run_dir)
+
+    assert len(loaded) == 1
+    restored = loaded[0]
+    assert restored.run_id == entry.run_id
+    assert restored.depends_on == ("case.train",)
+    assert restored.external_dependencies == ("afterok:42",)
+    assert restored.dimension_labels == {"features": "core"}
+    assert restored.artifact_from == "case.train"
+    assert restored.selection == entry.selection
+    assert restored.config.model_dump(mode="json") == config.model_dump(mode="json")
+
+
+def test_benchmark_collect_writes_snapshot_and_replaces_index_rows(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -103,14 +180,15 @@ def test_benchmark_collect_writes_and_skips_duplicate_rows(
     run_dir = create_benchmark_run_dir(
         "collect_case",
         target="disi_l40",
-        git_commit="abc123",
         runs_root=tmp_path / "outputs" / "benchmarks" / "runs",
     )
     _write_evaluate_run(run_dir, config)
     resolve_calls: list[object] = []
+    pull_calls: list[object] = []
 
-    def fake_resolve(config, *, session):
-        resolve_calls.append(session)
+    def fake_resolve(config, *, pulled, submission):
+        assert submission.execution_ref == "slurm:57549"
+        resolve_calls.append(pulled)
         return SimpleNamespace(
             evaluation=_loaded_summary(config),
             training=SimpleNamespace(
@@ -127,39 +205,33 @@ def test_benchmark_collect_writes_and_skips_duplicate_rows(
         )
 
     monkeypatch.setattr("spice.benchmarks.collection.open_execution_session", lambda _target: "s")
+    monkeypatch.setattr(
+        "spice.benchmarks.collection.pull_artifact_from_cluster",
+        lambda **kwargs: (
+            pull_calls.append(kwargs)
+            or PulledArtifactRoot(
+                source_record=_artifact_record(tmp_path / "remote" / "artifact-1"),
+                local_record=_artifact_record(tmp_path / "local" / "artifact-1"),
+                destination_root=tmp_path / "local" / "artifact-1",
+                dataset_present=True,
+            )
+        ),
+    )
     monkeypatch.setattr("spice.benchmarks.collection.resolve_benchmark_evaluation", fake_resolve)
-    ledger_path = tmp_path / "benchmarks" / "results.csv"
+    index_path = tmp_path / "benchmarks" / "results.sqlite"
 
-    records = collect_benchmark_run(
-        run_dir=run_dir,
-        target_name="disi_l40",
-        ledger_path=ledger_path,
-        write=True,
-    )
-    duplicate_records = collect_benchmark_run(
-        run_dir=run_dir,
-        target_name="disi_l40",
-        ledger_path=ledger_path,
-        write=True,
-    )
+    snapshot = collect_benchmark_run(run_dir=run_dir, index_path=index_path)
+    duplicate_snapshot = collect_benchmark_run(run_dir=run_dir, index_path=index_path)
 
-    assert records[0].status == "ready"
-    assert duplicate_records[0].status == "skipped"
-    rows = list(csv.DictReader(ledger_path.open("r", encoding="utf-8", newline="")))
-    assert len(rows) == 1
-    assert rows[0]["git_commit"] == "abc123"
-    assert rows[0]["execution_ref"] == "slurm:57549"
-    assert rows[0]["surface"] == ""
-    assert rows[0]["objective"] == "profit_poisson_replay_2h"
-    assert rows[0]["profit_over_baseline"] == "0.12"
-    assert rows[0]["total_loss"] == "0.3"
-    assert rows[0]["offset_accuracy"] == "0.8"
-    assert rows[0]["macro_f1"] == "0.7"
-    assert rows[0]["log_fee_mae"] == ""
-    assert resolve_calls == ["s", "s"]
+    assert snapshot.records[0].git_commit == "abc123"
+    assert duplicate_snapshot.records[0].execution_ref == "slurm:57549"
+    assert load_collection_snapshot(run_dir).records[0].artifact_id == "artifact-1"
+    assert index_counts(index_path) == {"runs": 1, "observations": 1, "metrics": 6}
+    assert len(resolve_calls) == 2
+    assert len(pull_calls) == 2
 
 
-def test_benchmark_collect_refuses_partial_ledger_write(
+def test_benchmark_collect_refuses_partial_snapshot_and_index_write(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -167,28 +239,89 @@ def test_benchmark_collect_refuses_partial_ledger_write(
     run_dir = create_benchmark_run_dir(
         "missing_case",
         target="disi_l40",
-        git_commit="abc123",
         runs_root=tmp_path / "outputs" / "benchmarks" / "runs",
     )
     _write_evaluate_run(run_dir, config)
 
-    def missing_remote_artifact(_config, *, session):
-        del session
+    def missing_remote_artifact(**_kwargs):
         raise SelectorResolutionError(kind="artifact", records=[])
 
     monkeypatch.setattr("spice.benchmarks.collection.open_execution_session", lambda _target: "s")
     monkeypatch.setattr(
-        "spice.benchmarks.collection.resolve_benchmark_evaluation",
+        "spice.benchmarks.collection.pull_artifact_from_cluster",
         missing_remote_artifact,
     )
-    ledger_path = tmp_path / "benchmarks" / "results.csv"
+    index_path = tmp_path / "benchmarks" / "results.sqlite"
 
-    with pytest.raises(SpiceOperatorError, match="Refusing partial"):
-        collect_benchmark_run(
-            run_dir=run_dir,
-            target_name="disi_l40",
-            ledger_path=ledger_path,
-            write=True,
+    with pytest.raises(SpiceOperatorError, match="No artifact matches found"):
+        collect_benchmark_run(run_dir=run_dir, index_path=index_path)
+
+    assert not collection_snapshot_path(run_dir).exists()
+    assert not index_path.exists()
+
+
+def test_benchmark_collect_pulls_same_artifact_once_for_multiple_evaluations(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = _evaluate_config(tmp_path)
+    run_dir = create_benchmark_run_dir(
+        "cached_pull_case",
+        target="disi_l40",
+        runs_root=tmp_path / "outputs" / "benchmarks" / "runs",
+    )
+    first = BenchmarkPlanEntry(
+        run_id="case.evaluate_a",
+        case_id="case",
+        step_id="evaluate_a",
+        workflow=WorkflowTask.EVALUATE,
+        depends_on=(),
+        external_dependencies=(),
+        dimension_labels={},
+        artifact_from=None,
+        selection={"artifact_id": config.artifact_id},
+        config=config,
+    )
+    second = replace(first, run_id="case.evaluate_b", step_id="evaluate_b")
+    write_plan_jsonl(run_dir, [first, second])
+    for entry in (first, second):
+        append_submission_jsonl(
+            run_dir,
+            BenchmarkSubmissionRecord(
+                run_id=entry.run_id,
+                workflow=entry.workflow,
+                job_id=entry.run_id,
+                execution_ref=f"slurm:{entry.run_id}",
+                git_commit="abc123",
+                dependency=None,
+                log_path="/tmp/spice-evaluate.out",
+            ),
+        )
+    pulled = PulledArtifactRoot(
+        source_record=_artifact_record(tmp_path / "remote" / "artifact-1"),
+        local_record=_artifact_record(tmp_path / "local" / "artifact-1"),
+        destination_root=tmp_path / "local" / "artifact-1",
+        dataset_present=True,
+    )
+    pull_calls: list[dict[str, object]] = []
+    submissions: list[str] = []
+
+    def fake_resolve(config, *, pulled: PulledArtifactRoot, submission):
+        assert pulled is not None
+        submissions.append(submission.execution_ref)
+        return SimpleNamespace(
+            evaluation=_loaded_summary(config),
+            training=None,
         )
 
-    assert not ledger_path.exists()
+    monkeypatch.setattr("spice.benchmarks.collection.open_execution_session", lambda _target: "s")
+    monkeypatch.setattr(
+        "spice.benchmarks.collection.pull_artifact_from_cluster",
+        lambda **kwargs: pull_calls.append(kwargs) or pulled,
+    )
+    monkeypatch.setattr("spice.benchmarks.collection.resolve_benchmark_evaluation", fake_resolve)
+
+    collect_benchmark_run(run_dir=run_dir, index_path=tmp_path / "results.sqlite")
+
+    assert len(pull_calls) == 1
+    assert submissions == ["slurm:case.evaluate_a", "slurm:case.evaluate_b"]

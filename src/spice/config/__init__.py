@@ -1,7 +1,6 @@
 """Public configuration API."""
 
 from ..objectives import ObjectiveConfig
-from .hydration import hydrate_resolved_workflow_config
 from .models import (
     AcquireConfig,
     AcquisitionConfig,
@@ -44,6 +43,13 @@ from .selections import (
     workflow_selection_payload,
     workflow_selection_type,
 )
+from .workflow_snapshots import (
+    ResolvedWorkflowConfig,
+    hydrate_workflow_config_snapshot,
+    hydrate_workflow_config_snapshot_json,
+    workflow_config_snapshot_json,
+    workflow_config_snapshot_payload,
+)
 
 __all__ = [
     "AcquireConfig",
@@ -65,6 +71,7 @@ __all__ = [
     "StorageSpec",
     "StudyConfig",
     "ProblemSpec",
+    "ResolvedWorkflowConfig",
     "TrainConfig",
     "TrainingConfig",
     "TuneConfig",
@@ -79,8 +86,11 @@ __all__ = [
     "WorkflowTask",
     "coerce_features_config",
     "coerce_problem_spec",
-    "hydrate_resolved_workflow_config",
+    "hydrate_workflow_config_snapshot",
+    "hydrate_workflow_config_snapshot_json",
     "resolve_workflow_config",
+    "workflow_config_snapshot_json",
+    "workflow_config_snapshot_payload",
     "workflow_selection_fields",
     "workflow_selection_payload",
     "workflow_selection_type",

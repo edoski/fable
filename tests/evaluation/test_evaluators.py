@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from spice.core.errors import ConfigResolutionError
+from spice.core.errors import ConfigResolutionError, SpiceOperatorError
 from spice.evaluation import (
     CompiledEvaluatorContract,
     EvaluationRun,
@@ -19,7 +19,7 @@ from spice.evaluation.sampling import (
     select_sample_positions_for_arrivals,
 )
 from spice.prediction import MetricDescriptor, MetricSet
-from spice.prediction.decoded_offsets import DecodedOffsets
+from spice.prediction.decoded_offsets import OFFSET_DECODED_RESULT_ID, DecodedOffsets
 from spice.temporal import (
     CompiledExecutionPolicyContract,
     coerce_execution_policy_config,
@@ -68,7 +68,7 @@ def _overflow_store() -> CompiledProblemStore:
     )
 
 
-def _poisson_config() -> dict[str, object]:
+def _poisson_config() -> dict[str, str | int | float]:
     return {
         "id": "poisson_replay_2h",
         "window_seconds": 7200,
@@ -78,7 +78,7 @@ def _poisson_config() -> dict[str, object]:
     }
 
 
-def _full_config() -> dict[str, object]:
+def _full_config() -> dict[str, str]:
     return {"id": "full_temporal_replay"}
 
 
@@ -95,6 +95,9 @@ def test_evaluator_config_supports_explicit_temporal_replay_specs() -> None:
     assert config.id == "poisson_replay_2h"
     assert contract.evaluation_id == "poisson_replay_2h"
     assert contract.config_payload == _poisson_config()
+    assert contract.accepted_decoded_result_id == OFFSET_DECODED_RESULT_ID
+    assert contract.primary_metric_id == "profit_over_baseline"
+    assert contract.direction == "maximize"
 
     full_config = coerce_evaluator_config(_full_config())
     full_contract = compile_evaluator_contract(full_config)
@@ -102,6 +105,8 @@ def test_evaluator_config_supports_explicit_temporal_replay_specs() -> None:
     assert full_config.id == "full_temporal_replay"
     assert full_contract.evaluation_id == "full_temporal_replay"
     assert full_contract.config_payload == _full_config()
+    assert full_contract.accepted_decoded_result_id == OFFSET_DECODED_RESULT_ID
+    assert full_contract.metric_descriptors == contract.metric_descriptors
 
     with pytest.raises(ConfigResolutionError, match="Extra inputs"):
         coerce_evaluator_config({**_poisson_config(), "engine": "replay"})
@@ -260,6 +265,44 @@ def test_poisson_replay_handles_non_chronological_sample_indices() -> None:
     assert [run.n_events for run in reversed_summary.runs] == [
         run.n_events for run in summary.runs
     ]
+
+
+def test_poisson_replay_rejects_window_larger_than_sample_coverage() -> None:
+    store = _store()
+    sample_indices = np.arange(store.n_samples, dtype=np.int64)
+    config = coerce_evaluator_config(
+        {
+            **_poisson_config(),
+            "window_seconds": int(store.timestamps[-1] - store.timestamps[0] + 1),
+        }
+    )
+    evaluator = compile_evaluator_contract(config)
+
+    with pytest.raises(ValueError, match="requested replay window"):
+        evaluator.run(
+            store,
+            _execution_policy(),
+            DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64)),
+            sample_indices,
+        )
+
+
+def test_poisson_replay_rejects_all_empty_arrival_repetitions(monkeypatch) -> None:
+    store = _store()
+    sample_indices = np.arange(store.n_samples, dtype=np.int64)
+    evaluator = compile_evaluator_contract(coerce_evaluator_config(_poisson_config()))
+    monkeypatch.setattr(
+        "spice.evaluation.poisson_replay.sample_poisson_arrivals",
+        lambda *_args, **_kwargs: np.empty(0, dtype=np.float64),
+    )
+
+    with pytest.raises(SpiceOperatorError, match="no valid arrivals"):
+        evaluator.run(
+            store,
+            _execution_policy(),
+            DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64)),
+            sample_indices,
+        )
 
 
 def _expected_poisson_metrics(

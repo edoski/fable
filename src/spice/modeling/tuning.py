@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from pathlib import Path
 from typing import cast, overload
 
-from ..config.hydration import hydrate_resolved_workflow_config
 from ..config.models import StudyConfig, TrainConfig, TuneConfig, TunedParameterSet, WorkflowTask
+from ..config.workflow_snapshots import hydrate_workflow_config_snapshot
 from ..core.errors import ConfigResolutionError, MissingStateError
+from ..storage.root_handles import CorpusRootHandle, StudyRootHandle
 from ..storage.study_manifest import load_study_manifest, validate_tuned_artifact_definition
 from ..storage.study_optuna import load_best_params
 from .families.registry import (
@@ -55,20 +55,18 @@ def apply_tuned_parameters(
         tuned_config.model = apply_model_tuned_parameters(tuned_config.model, params.model)
     payload = tuned_config.model_dump(mode="json")
     if isinstance(config, TuneConfig):
-        return cast(TuneConfig, hydrate_resolved_workflow_config(WorkflowTask.TUNE, payload))
-    return cast(TrainConfig, hydrate_resolved_workflow_config(WorkflowTask.TRAIN, payload))
+        return cast(TuneConfig, hydrate_workflow_config_snapshot(WorkflowTask.TUNE, payload))
+    return cast(TrainConfig, hydrate_workflow_config_snapshot(WorkflowTask.TRAIN, payload))
 
 
 def apply_study_best_params(
     config: TrainConfig,
     *,
-    study_state_db: Path,
-    study_id: str,
-    dataset_id: str,
+    study: StudyRootHandle,
+    corpus: CorpusRootHandle,
 ) -> AppliedStudyBestParams:
-    path = study_state_db
     try:
-        manifest = load_study_manifest(path)
+        manifest = load_study_manifest(study.state_db_path)
     except MissingStateError as exc:
         raise ConfigResolutionError(
             "Configured tuned study does not match the current problem, features, "
@@ -78,12 +76,12 @@ def apply_study_best_params(
     validate_tuned_artifact_definition(
         study_config,
         manifest=manifest,
-        study_id=study_id,
-        dataset_id=dataset_id,
+        study_id=study.study_id,
+        dataset_id=corpus.dataset_id,
     )
-    params = load_best_params(path, study_name=manifest.study_name)
+    params = load_best_params(study.state_db_path, study_name=manifest.study_name)
     tuned_config = apply_tuned_parameters(study_config, params)
-    return AppliedStudyBestParams(config=tuned_config, study_id=study_id)
+    return AppliedStudyBestParams(config=tuned_config, study_id=study.study_id)
 
 
 def _with_manifest_study_name(config: TrainConfig, *, study_name: str) -> TrainConfig:

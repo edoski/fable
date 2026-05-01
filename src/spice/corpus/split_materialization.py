@@ -1,4 +1,4 @@
-"""Internal split materialization helpers for corpus assembly."""
+"""Corpus split materialization helpers."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from shutil import copy2
 
 import polars as pl
 
@@ -17,8 +18,8 @@ from ..acquisition import (
     TimestampRange,
     pull_block_range,
 )
-from ..config.models import AcquireConfig
 from ..core.files import remove_path
+from .contract import CanonicalBlockRow, canonicalize_block_frame
 from .io import iter_block_files, load_block_frame, write_block_file
 from .metadata import has_block_files
 from .validation import (
@@ -26,6 +27,13 @@ from .validation import (
     validate_contiguous_block_frame,
     validate_exact_window_frame,
 )
+
+
+@dataclass(slots=True)
+class CorpusSplitMaterializationSpec:
+    chain_name: str
+    expected_chain_id: int
+    chunk_size: int
 
 
 @dataclass(slots=True)
@@ -54,6 +62,48 @@ class DatasetBuildResult:
 
 StatusCallback = Callable[[str], None]
 ValidationCallback = Callable[[BlockDatasetValidationReport, Path], None]
+
+
+@dataclass(slots=True)
+class _ParquetBlockPullSink:
+    output_dir: Path
+    materialization: CorpusSplitMaterializationSpec
+    pending_rows: list[CanonicalBlockRow]
+
+    @classmethod
+    def create(
+        cls,
+        output_dir: Path,
+        *,
+        materialization: CorpusSplitMaterializationSpec,
+    ) -> _ParquetBlockPullSink:
+        return cls(output_dir=output_dir, materialization=materialization, pending_rows=[])
+
+    def completed_prefix_end(self, plan: BlockPullPlan) -> int:
+        return completed_prefix_end(
+            self.output_dir,
+            plan=plan,
+            expected_chain_id=self.materialization.expected_chain_id,
+        )
+
+    def write_rows(self, rows: list[CanonicalBlockRow]) -> None:
+        self.pending_rows.extend(rows)
+        while len(self.pending_rows) >= self.materialization.chunk_size:
+            write_block_rows_chunk(
+                self.output_dir,
+                chain_name=self.materialization.chain_name,
+                rows=self.pending_rows[: self.materialization.chunk_size],
+            )
+            self.pending_rows = self.pending_rows[self.materialization.chunk_size :]
+
+    def finish(self) -> None:
+        if self.pending_rows:
+            write_block_rows_chunk(
+                self.output_dir,
+                chain_name=self.materialization.chain_name,
+                rows=self.pending_rows,
+            )
+            self.pending_rows = []
 
 
 def noop_status(message: str) -> None:
@@ -152,9 +202,8 @@ def staged_result(
 def materialize_dataset(
     *,
     mode: str,
-    config: AcquireConfig,
+    materialization: CorpusSplitMaterializationSpec,
     working_dir: Path,
-    expected_chain_id: int,
     validate_result: ValidationCallback,
     frames: Sequence[pl.DataFrame] | None = None,
     outcome: CorpusSplitOutcome,
@@ -165,12 +214,15 @@ def materialize_dataset(
         file_count = write_block_dataset_dir(
             dataset_dir,
             frame=combined_frame(*frames),
-            chunk_size=config.acquisition.chunk_size,
-            chain_name=config.chain.name,
+            chunk_size=materialization.chunk_size,
+            chain_name=materialization.chain_name,
         )
     else:
         file_count = len(iter_block_files(dataset_dir))
-    validation = validate_block_dataset(dataset_dir, expected_chain_id=expected_chain_id)
+    validation = validate_block_dataset(
+        dataset_dir,
+        expected_chain_id=materialization.expected_chain_id,
+    )
     validate_result(validation, dataset_dir)
     return DatasetBuildResult(
         path=dataset_dir,
@@ -181,26 +233,79 @@ def materialize_dataset(
     )
 
 
+def materialize_dataset_from_sources(
+    *,
+    mode: str,
+    materialization: CorpusSplitMaterializationSpec,
+    working_dir: Path,
+    validate_result: ValidationCallback,
+    source_dirs: Sequence[Path] = (),
+    source_files: Sequence[Path] = (),
+    frames: Sequence[pl.DataFrame] = (),
+    outcome: CorpusSplitOutcome,
+) -> DatasetBuildResult:
+    dataset_dir = working_dir / mode
+    remove_path(dataset_dir)
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    for source_dir in source_dirs:
+        for source_file in iter_block_files(source_dir):
+            copy2(source_file, dataset_dir / source_file.name)
+    for source_file in source_files:
+        copy2(source_file, dataset_dir / source_file.name)
+    for frame in frames:
+        if frame.height > 0:
+            write_block_dataset_dir(
+                dataset_dir,
+                frame=frame,
+                chunk_size=materialization.chunk_size,
+                chain_name=materialization.chain_name,
+            )
+    validation = validate_block_dataset(
+        dataset_dir,
+        expected_chain_id=materialization.expected_chain_id,
+    )
+    validate_result(validation, dataset_dir)
+    return DatasetBuildResult(
+        path=dataset_dir,
+        validation=validation,
+        file_count=len(iter_block_files(dataset_dir)),
+        promote_dir=dataset_dir,
+        outcome=outcome,
+    )
+
+
 async def pull_plan_to_frame(
     *,
     block_source: BlockSource,
     plan: BlockPullPlan,
     output_dir: Path,
-    chunk_size: int,
+    materialization: CorpusSplitMaterializationSpec,
     controller: AcquisitionPullController,
-    chain_name: str,
-    expected_chain_id: int,
 ) -> pl.DataFrame:
     await pull_block_range(
         block_source,
-        output_dir,
         plan=plan,
-        chunk_size=chunk_size,
         controller=controller,
-        chain_name=chain_name,
-        expected_chain_id=expected_chain_id,
+        sink=_ParquetBlockPullSink.create(output_dir, materialization=materialization),
     )
     return load_block_frame(output_dir)
+
+
+async def pull_plan_to_dir(
+    *,
+    block_source: BlockSource,
+    plan: BlockPullPlan,
+    output_dir: Path,
+    materialization: CorpusSplitMaterializationSpec,
+    controller: AcquisitionPullController,
+) -> Path:
+    await pull_block_range(
+        block_source,
+        plan=plan,
+        controller=controller,
+        sink=_ParquetBlockPullSink.create(output_dir, materialization=materialization),
+    )
+    return output_dir
 
 
 def plan_pull_dir(working_dir: Path, *, label: str, plan: BlockPullPlan) -> Path:
@@ -216,6 +321,28 @@ def filter_block_range(frame: pl.DataFrame, block_range: BlockRange) -> pl.DataF
         (pl.col("block_number") >= block_range.start)
         & (pl.col("block_number") < block_range.end)
     ).sort("block_number")
+
+
+def reusable_block_files_and_edges(
+    dataset_dir: Path,
+    *,
+    block_range: BlockRange,
+) -> tuple[list[Path], list[pl.DataFrame]]:
+    reusable_files: list[Path] = []
+    edge_frames: list[pl.DataFrame] = []
+    for block_file in iter_block_files(dataset_dir):
+        frame = load_block_frame(block_file)
+        start_block = int(frame["block_number"][0])
+        end_block = int(frame["block_number"][-1]) + 1
+        if end_block <= block_range.start or start_block >= block_range.end:
+            continue
+        if start_block >= block_range.start and end_block <= block_range.end:
+            reusable_files.append(block_file)
+            continue
+        edge = filter_block_range(frame, block_range)
+        if edge.height > 0:
+            edge_frames.append(edge)
+    return reusable_files, edge_frames
 
 
 def write_block_dataset_dir(
@@ -238,6 +365,60 @@ def write_block_dataset_dir(
         )
         file_count += 1
     return file_count
+
+
+def completed_prefix_end(
+    output_dir: Path,
+    *,
+    plan: BlockPullPlan,
+    expected_chain_id: int,
+) -> int:
+    if not output_dir.exists():
+        return plan.block_range.start
+    try:
+        frame = load_block_frame(output_dir)
+    except ValueError as exc:
+        if "No parquet block files found" in str(exc):
+            return plan.block_range.start
+        raise RuntimeError(
+            f"Cannot resume from invalid partial block dataset: {output_dir}"
+        ) from exc
+    except Exception as exc:
+        raise RuntimeError(
+            f"Cannot resume from invalid partial block dataset: {output_dir}"
+        ) from exc
+
+    validation = validate_contiguous_block_frame(
+        frame,
+        dataset_path=output_dir,
+        expected_chain_id=expected_chain_id,
+    )
+    if validation.status != "clean":
+        raise RuntimeError(f"Cannot resume from invalid partial block dataset: {validation}")
+    if validation.first_block_number != plan.block_range.start:
+        raise RuntimeError(
+            "Cannot resume partial block dataset with a different start block: "
+            f"expected {plan.block_range.start}, got {validation.first_block_number}"
+        )
+    if validation.last_block_number is None:
+        return plan.block_range.start
+    if validation.last_block_number >= plan.block_range.end:
+        return plan.block_range.end
+    return validation.last_block_number + 1
+
+
+def write_block_rows_chunk(
+    output_dir: Path,
+    *,
+    chain_name: str,
+    rows: Sequence[CanonicalBlockRow],
+) -> Path:
+    frame = canonicalize_block_frame(pl.DataFrame(rows))
+    start_block = int(frame["block_number"][0])
+    end_block = int(frame["block_number"][-1])
+    destination = output_dir / f"{chain_name}__blocks__{start_block}_to_{end_block}.parquet"
+    write_block_file(destination, frame)
+    return destination
 
 
 def validate_history_result(
@@ -279,6 +460,18 @@ def validate_evaluation_result(
     )
     if exact_validation.status != "clean":
         raise ValueError(f"Canonical evaluation dataset validation failed: {exact_validation}")
+    if exact_validation.first_block_number != evaluation_plan.block_range.start:
+        raise ValueError(
+            "Evaluation dataset does not start at the requested block boundary: "
+            f"expected first block {evaluation_plan.block_range.start}, "
+            f"got {exact_validation.first_block_number}"
+        )
+    if exact_validation.last_block_number != evaluation_plan.block_range.end - 1:
+        raise ValueError(
+            "Evaluation dataset does not end at the requested block boundary: "
+            f"expected last block {evaluation_plan.block_range.end - 1}, "
+            f"got {exact_validation.last_block_number}"
+        )
     validation.status = exact_validation.status
     validation.below_start_count = exact_validation.below_start_count
     validation.above_end_count = exact_validation.above_end_count
@@ -310,7 +503,7 @@ def partial_plan(
 
 async def ensure_history_split(
     *,
-    config: AcquireConfig,
+    materialization: CorpusSplitMaterializationSpec,
     block_source: BlockSource,
     output_dir: Path,
     working_dir: Path,
@@ -319,11 +512,13 @@ async def ensure_history_split(
     status: StatusCallback | None = None,
 ) -> DatasetBuildResult:
     emit = status or noop_status
-    expected_chain_id = config.chain.runtime.chain_id
-    existing = load_existing_dataset(output_dir, expected_chain_id=expected_chain_id)
+    existing = load_existing_dataset(
+        output_dir,
+        expected_chain_id=materialization.expected_chain_id,
+    )
     staged = load_existing_dataset(
         working_dir / "history",
-        expected_chain_id=expected_chain_id,
+        expected_chain_id=materialization.expected_chain_id,
     )
 
     def validate_result(validation: BlockDatasetValidationReport, _: Path) -> None:
@@ -369,7 +564,7 @@ async def ensure_history_split(
             if prefix_plan is None:
                 raise RuntimeError("history prefix plan unexpectedly resolved to empty")
             emit("history extending cached dataset")
-            prefix_frame = await pull_plan_to_frame(
+            prefix_dir = await pull_plan_to_dir(
                 block_source=block_source,
                 plan=prefix_plan,
                 output_dir=plan_pull_dir(
@@ -377,18 +572,15 @@ async def ensure_history_split(
                     label="history-prefix",
                     plan=prefix_plan,
                 ),
-                chunk_size=config.acquisition.chunk_size,
+                materialization=materialization,
                 controller=controller,
-                chain_name=config.chain.name,
-                expected_chain_id=expected_chain_id,
             )
-            return materialize_dataset(
+            return materialize_dataset_from_sources(
                 mode="history",
-                config=config,
+                materialization=materialization,
                 working_dir=working_dir,
-                expected_chain_id=expected_chain_id,
                 validate_result=validate_result,
-                frames=(prefix_frame, existing.frame),
+                source_dirs=(prefix_dir, existing.path),
                 outcome=CorpusSplitOutcome.EXTENDED,
             )
 
@@ -397,16 +589,13 @@ async def ensure_history_split(
         block_source=block_source,
         plan=history_plan,
         output_dir=plan_pull_dir(working_dir, label="history", plan=history_plan),
-        chunk_size=config.acquisition.chunk_size,
+        materialization=materialization,
         controller=controller,
-        chain_name=config.chain.name,
-        expected_chain_id=expected_chain_id,
     )
     return materialize_dataset(
         mode="history",
-        config=config,
+        materialization=materialization,
         working_dir=working_dir,
-        expected_chain_id=expected_chain_id,
         validate_result=validate_result,
         frames=(frame,),
         outcome=(
@@ -419,7 +608,7 @@ async def ensure_history_split(
 
 async def ensure_evaluation_split(
     *,
-    config: AcquireConfig,
+    materialization: CorpusSplitMaterializationSpec,
     block_source: BlockSource,
     output_dir: Path,
     working_dir: Path,
@@ -428,11 +617,13 @@ async def ensure_evaluation_split(
     status: StatusCallback | None = None,
 ) -> DatasetBuildResult:
     emit = status or noop_status
-    expected_chain_id = config.chain.runtime.chain_id
-    existing = load_existing_dataset(output_dir, expected_chain_id=expected_chain_id)
+    existing = load_existing_dataset(
+        output_dir,
+        expected_chain_id=materialization.expected_chain_id,
+    )
     staged = load_existing_dataset(
         working_dir / "evaluation",
-        expected_chain_id=expected_chain_id,
+        expected_chain_id=materialization.expected_chain_id,
     )
 
     def validate_result(validation: BlockDatasetValidationReport, dataset_dir: Path) -> None:
@@ -440,7 +631,7 @@ async def ensure_evaluation_split(
             validation,
             evaluation_dir=dataset_dir,
             evaluation_plan=evaluation_plan,
-            expected_chain_id=expected_chain_id,
+            expected_chain_id=materialization.expected_chain_id,
         )
 
     if staged is not None:
@@ -482,9 +673,11 @@ async def ensure_evaluation_split(
         overlap_start = max(existing_start, target_start)
         overlap_end = min(existing_end, target_end)
         if overlap_end > overlap_start:
-            frames = [
-                filter_block_range(existing.frame, BlockRange(start=overlap_start, end=overlap_end))
-            ]
+            source_dirs: list[Path] = []
+            source_files, frames = reusable_block_files_and_edges(
+                existing.path,
+                block_range=BlockRange(start=overlap_start, end=overlap_end),
+            )
 
             prefix_plan = partial_plan(
                 block_source,
@@ -493,9 +686,8 @@ async def ensure_evaluation_split(
                 window=evaluation_plan.window,
             )
             if prefix_plan is not None:
-                frames.insert(
-                    0,
-                    await pull_plan_to_frame(
+                source_dirs.append(
+                    await pull_plan_to_dir(
                         block_source=block_source,
                         plan=prefix_plan,
                         output_dir=plan_pull_dir(
@@ -503,11 +695,9 @@ async def ensure_evaluation_split(
                             label="evaluation-prefix",
                             plan=prefix_plan,
                         ),
-                        chunk_size=config.acquisition.chunk_size,
+                        materialization=materialization,
                         controller=controller,
-                        chain_name=config.chain.name,
-                        expected_chain_id=expected_chain_id,
-                    ),
+                    )
                 )
 
             suffix_plan = partial_plan(
@@ -517,8 +707,8 @@ async def ensure_evaluation_split(
                 window=evaluation_plan.window,
             )
             if suffix_plan is not None:
-                frames.append(
-                    await pull_plan_to_frame(
+                source_dirs.append(
+                    await pull_plan_to_dir(
                         block_source=block_source,
                         plan=suffix_plan,
                         output_dir=plan_pull_dir(
@@ -526,20 +716,19 @@ async def ensure_evaluation_split(
                             label="evaluation-suffix",
                             plan=suffix_plan,
                         ),
-                        chunk_size=config.acquisition.chunk_size,
+                        materialization=materialization,
                         controller=controller,
-                        chain_name=config.chain.name,
-                        expected_chain_id=expected_chain_id,
                     )
                 )
 
             emit("evaluation extending cached dataset")
-            return materialize_dataset(
+            return materialize_dataset_from_sources(
                 mode="evaluation",
-                config=config,
+                materialization=materialization,
                 working_dir=working_dir,
-                expected_chain_id=expected_chain_id,
                 validate_result=validate_result,
+                source_dirs=source_dirs,
+                source_files=source_files,
                 frames=frames,
                 outcome=CorpusSplitOutcome.EXTENDED,
             )
@@ -549,16 +738,13 @@ async def ensure_evaluation_split(
         block_source=block_source,
         plan=evaluation_plan,
         output_dir=plan_pull_dir(working_dir, label="evaluation", plan=evaluation_plan),
-        chunk_size=config.acquisition.chunk_size,
+        materialization=materialization,
         controller=controller,
-        chain_name=config.chain.name,
-        expected_chain_id=expected_chain_id,
     )
     return materialize_dataset(
         mode="evaluation",
-        config=config,
+        materialization=materialization,
         working_dir=working_dir,
-        expected_chain_id=expected_chain_id,
         validate_result=validate_result,
         frames=(frame,),
         outcome=(

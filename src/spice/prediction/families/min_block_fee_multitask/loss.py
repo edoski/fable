@@ -16,7 +16,7 @@ def compute_multitask_loss(
     *,
     training_state: MinBlockFeeTrainingState,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    masked_logits = masked_offset_logits(offset_logits, targets.candidate_mask)
+    masked_logits = masked_offset_logits(offset_logits, targets.action_mask)
     resolved_state = training_state.resolve(
         device=masked_logits.device,
         dtype=masked_logits.dtype,

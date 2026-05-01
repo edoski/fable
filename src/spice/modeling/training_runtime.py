@@ -9,6 +9,7 @@ import torch
 
 from ..config.models import TrainingConfig
 from ..prediction import CompiledPredictionContract
+from ..prediction.contracts import PredictionBatch
 from ..temporal.execution_policy import CompiledExecutionPolicyContract
 from ..temporal.problem_store import CompiledProblemStore, IntVector
 from ._epoch_execution import execute_training_batch
@@ -18,7 +19,8 @@ from ._runtime import (
     reset_cuda_peak_memory,
     snapshot_cuda_memory,
 )
-from .batch_plan import build_prediction_batch_plan
+from .batch_plan import BatchPlan, build_prediction_batch_plan
+from .evaluation_runtime import EvaluationScoringRuntimePlan
 from .models import TemporalModel
 from .representations import CompiledRepresentationContract, RepresentationRuntimeContext
 
@@ -26,6 +28,9 @@ from .representations import CompiledRepresentationContract, RepresentationRunti
 @dataclass(frozen=True, slots=True)
 class TrainingRuntimePlan:
     runtime_context: RepresentationRuntimeContext
+    train_batch_plan: BatchPlan[PredictionBatch]
+    validation_batch_plan: BatchPlan[PredictionBatch]
+    evaluation_scoring_runtime_plan: EvaluationScoringRuntimePlan
     prediction_training_state: object | None
 
 
@@ -54,6 +59,7 @@ def plan_training_runtime(
     representation_contract: CompiledRepresentationContract,
     store: CompiledProblemStore,
     train_sample_indices: IntVector,
+    validation_sample_indices: IntVector,
     base_runtime_context: RepresentationRuntimeContext,
     resolved_device: torch.device,
     training_config: TrainingConfig,
@@ -81,32 +87,67 @@ def plan_training_runtime(
         train_sample_indices,
         execution_policy=execution_policy,
     )
-    baseline_memory = snapshot_cuda_memory(resolved_device)
-    reset_cuda_peak_memory(resolved_device)
-    batch = next(iter(warmup_plan.source))
-    execute_training_batch(
-        model,
-        batch,
-        resolved_device=resolved_device,
-        precision=precision,
+    budget = 0
+    try:
+        baseline_memory = snapshot_cuda_memory(resolved_device)
+        reset_cuda_peak_memory(resolved_device)
+        batch = next(iter(warmup_plan.source))
+        execute_training_batch(
+            model,
+            batch,
+            resolved_device=resolved_device,
+            precision=precision,
+            prediction_contract=prediction_contract,
+            prediction_training_state=prediction_training_state,
+            optimizer=warmup_optimizer,
+            gradient_clip_norm=training_config.gradient_clip_norm,
+            zero_after_step=True,
+        )
+        if resolved_device.type == "cuda":
+            torch.cuda.synchronize(resolved_device)
+        budget = compute_device_resident_budget(
+            free_bytes=baseline_memory.free_bytes,
+            baseline_reserved_bytes=baseline_memory.reserved_bytes,
+            peak_reserved_bytes=peak_cuda_reserved_bytes(resolved_device),
+            total_bytes=baseline_memory.total_bytes,
+        )
+    finally:
+        _unwrap_compiled_model(model).load_state_dict(warmup_state)
+        del warmup_plan, warmup_optimizer
+        torch.cuda.empty_cache()
+    planned_runtime_context = base_runtime_context.with_device_memory_budget(budget)
+    train_batch_plan = build_prediction_batch_plan(
+        store,
+        train_sample_indices,
+        representation_contract=representation_contract,
         prediction_contract=prediction_contract,
-        prediction_training_state=prediction_training_state,
-        optimizer=warmup_optimizer,
-        gradient_clip_norm=training_config.gradient_clip_norm,
-        zero_after_step=True,
+        execution_policy=execution_policy,
+        runtime_context=planned_runtime_context,
+        resolved_device=resolved_device,
+        seed=training_config.seed,
+        shuffle=True,
     )
-    if resolved_device.type == "cuda":
-        torch.cuda.synchronize(resolved_device)
-    budget = compute_device_resident_budget(
-        free_bytes=baseline_memory.free_bytes,
-        baseline_reserved_bytes=baseline_memory.reserved_bytes,
-        peak_reserved_bytes=peak_cuda_reserved_bytes(resolved_device),
-        total_bytes=baseline_memory.total_bytes,
+    validation_batch_plan = build_prediction_batch_plan(
+        store,
+        validation_sample_indices,
+        representation_contract=representation_contract,
+        prediction_contract=prediction_contract,
+        execution_policy=execution_policy,
+        runtime_context=planned_runtime_context,
+        resolved_device=resolved_device,
+        seed=training_config.seed,
+        shuffle=False,
     )
-    _unwrap_compiled_model(model).load_state_dict(warmup_state)
-    del warmup_plan, warmup_optimizer
-    torch.cuda.empty_cache()
     return TrainingRuntimePlan(
-        runtime_context=base_runtime_context.with_device_memory_budget(budget),
+        runtime_context=planned_runtime_context,
+        train_batch_plan=train_batch_plan,
+        validation_batch_plan=validation_batch_plan,
+        evaluation_scoring_runtime_plan=EvaluationScoringRuntimePlan(
+            resolved_device=resolved_device,
+            precision=precision,
+            representation_runtime_context=planned_runtime_context,
+            deterministic=None,
+            seed=0,
+        ),
         prediction_training_state=prediction_training_state,
     )

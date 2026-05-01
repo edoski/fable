@@ -15,7 +15,7 @@ import torch
 from numpy.typing import NDArray
 
 from ..core.errors import SpiceOperatorError
-from .batch_plan import BatchSource, resolve_available_device_memory_budget
+from .batch_plan import BatchSource
 from .models import ModelOutputs, TemporalModel
 from .representations import RepresentationRuntimeContext
 
@@ -25,6 +25,7 @@ except ImportError:  # pragma: no cover - fallback path is covered below
     psutil = None
 
 IntVector = NDArray[np.int64]
+_CUDA_DEVICE_RESIDENT_BUDGET_FRACTION = 0.5
 _TORCHINDUCTOR_MIN_CUDA_SMS_FOR_AUTO_COMPILE = 68
 ForwardBatchT = TypeVar("ForwardBatchT", bound="ForwardBatch")
 
@@ -154,6 +155,14 @@ def build_representation_runtime_context(
         available_host_memory_bytes=_available_system_memory_bytes(),
         available_device_memory_bytes=resolve_available_device_memory_budget(device),
     )
+
+
+def resolve_available_device_memory_budget(resolved_device: torch.device) -> int | None:
+    if resolved_device.type != "cuda":
+        return None
+    device_index = _cuda_device_index(resolved_device)
+    free_bytes, _ = torch.cuda.mem_get_info(device_index)
+    return int(free_bytes * _CUDA_DEVICE_RESIDENT_BUDGET_FRACTION)
 
 
 def snapshot_cuda_memory(device: torch.device) -> CudaMemorySnapshot:

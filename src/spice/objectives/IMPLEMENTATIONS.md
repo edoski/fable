@@ -9,7 +9,7 @@ Training always computes prediction metrics. An objective decides which metric c
 ```text
 validation batches
   -> prediction metrics
-  -> optional Objective Metric Source
+  -> Objective Runtime
   -> objective metric
   -> best-state decision
 ```
@@ -22,7 +22,7 @@ This is the simplest objective: it optimizes the same metric produced by the pre
 
 ## Evaluation Objective
 
-`id: evaluation` selects an evaluator metric from validation-sample scoring. `modeling.objective_metrics` runs the model-bound scoring path. Current checked-in specs maximize `profit_over_baseline` under Poisson replay or full temporal replay benchmarks.
+`id: evaluation` selects an evaluator metric from validation-sample scoring. `modeling.objective_runtime` runs the model-bound scoring path. Current checked-in specs maximize `profit_over_baseline` under Poisson replay or full temporal replay benchmarks.
 
 ```text
 validation samples

@@ -8,6 +8,7 @@ from spice.config import (
     TuneConfig,
     WorkflowTask,
     resolve_workflow_config,
+    workflow_config_snapshot_json,
 )
 from spice.config.selections import workflow_selection_type
 from spice.execution.remote_runner import workflow_config_from_json
@@ -49,7 +50,7 @@ def test_remote_runner_rehydrates_resolved_workflow_snapshots(
 
     restored = workflow_config_from_json(
         task,
-        config.model_dump_json(exclude_none=True),
+        workflow_config_snapshot_json(config),
     )
 
     assert isinstance(restored, expected_type)

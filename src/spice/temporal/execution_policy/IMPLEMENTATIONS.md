@@ -13,7 +13,7 @@ decoded offset
   -> realized fee
 ```
 
-The policy also provides baseline and optimum rows used by training targets and evaluation metrics.
+The policy also provides action masks plus baseline and optimum rows used by training targets and evaluation metrics.
 
 ## `strict_deadline_miss`
 
@@ -45,7 +45,7 @@ Baseline is the no-wait comparison. Optimum is the best possible in-window choic
 
 ## Overflow Slots
 
-The compiled action mask currently marks all `max_candidate_slots` as selectable. When a sample has fewer real candidate rows than the maximum, the remaining offsets are overflow actions. Under this policy, those offsets realize to the post-window row.
+The action mask marks all `max_candidate_slots` as selectable. When a sample has fewer real candidate rows than the maximum, the remaining offsets are overflow actions. Under this policy, those offsets realize to the post-window row.
 
 ```text
 sample A candidates: 0 1 2 3
@@ -74,4 +74,3 @@ Prediction target batches include candidate fees, baseline index, optimum offset
 ## Extension Pattern
 
 A new execution policy should define baseline, optimum, overflow behavior, and target construction together. Prediction families and evaluators should consume the policy through the shared execution interface.
-

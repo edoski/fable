@@ -11,17 +11,17 @@ import optuna
 from optuna.trial import FrozenTrial, TrialState
 
 from ..config.models import TuneConfig, TunedParameterSet, TunedProblemParams
-from ..core.errors import ConfigResolutionError
 from ..core.rendering import metric_string
 from ..core.reporting import Reporter
 from ..corpus.coverage import training_coverage_requirement, validate_corpus_coverage
 from ..modeling.persisted_training import run_persisted_training
-from ..modeling.pipeline import build_training_spec
+from ..modeling.pipeline import build_trial_training_spec
 from ..modeling.tuned_config import sample_tuned_parameters
 from ..modeling.tuning import apply_tuned_parameters
-from ..storage.catalog.index import reindex_root
+from ..storage.catalog.index import reindex_catalog_root
 from ..storage.corpus import load_dataset_manifest
-from ..storage.root_consumer_paths import resolve_tune_consumer_paths
+from ..storage.root_consumer_handles import resolve_tune_consumer_roots
+from ..storage.root_handles import TuneWorkflowRoots
 from ..storage.study_models import best_epoch_from_trial, build_study_summary
 from ..storage.study_optuna import (
     open_tuning_study,
@@ -31,15 +31,17 @@ from ..storage.study_optuna import (
 from ..storage.study_render import study_result_fields
 
 
-def _workflow_facts(config: TuneConfig) -> list[tuple[str, str]]:
+def _workflow_facts(config: TuneConfig, roots: TuneWorkflowRoots) -> list[tuple[str, str]]:
     return [
-        ("dataset", config.dataset.name),
-        ("chain", config.chain.name),
+        ("dataset", roots.corpus.dataset_name),
+        ("dataset_id", roots.corpus.dataset_id),
+        ("chain", roots.corpus.chain_name),
         ("problem", config.problem.id),
         ("features", config.features.id),
         ("prediction", config.prediction.id),
         ("model", config.model.id),
-        ("study", config.study.name),
+        ("study", roots.study.study_name),
+        ("study_id", roots.study.study_id),
         ("trials", str(config.tuning.trial_count)),
     ]
 
@@ -86,18 +88,22 @@ def _objective(
     base_config: TuneConfig,
     trial: optuna.Trial,
     *,
-    paths,
+    roots: TuneWorkflowRoots,
     corpus_manifest,
-    study_root: Path,
 ) -> float:
     assert base_config.tuning_space is not None
     params = sample_tuned_parameters(trial, tuning_space=base_config.tuning_space)
     record_trial_params(trial, params)
     config = apply_tuned_parameters(base_config, params)
 
-    spec = build_training_spec(config, paths=paths, corpus_manifest=corpus_manifest)
-    history_block_path = paths.history_dir
-    with _trial_work_dir(study_root, trial.number) as temp_dir_name:
+    spec = build_trial_training_spec(
+        config,
+        corpus=roots.corpus,
+        study=roots.study,
+        corpus_manifest=corpus_manifest,
+    )
+    history_block_path = roots.corpus.history_dir
+    with _trial_work_dir(roots.study.root_path, trial.number) as temp_dir_name:
         artifact_dir = Path(temp_dir_name)
         persisted = run_persisted_training(
             history_block_path,
@@ -114,13 +120,18 @@ def _objective(
     return metric_value
 
 
-def _coverage_spec(config: TuneConfig, *, paths, corpus_manifest):
+def _coverage_spec(config: TuneConfig, *, roots: TuneWorkflowRoots, corpus_manifest):
     if (
         config.tuning_space.problem is None
         or config.tuning_space.problem.lookback_seconds is None
     ):
-        return build_training_spec(config, paths=paths, corpus_manifest=corpus_manifest)
-    return build_training_spec(
+        return build_trial_training_spec(
+            config,
+            corpus=roots.corpus,
+            study=roots.study,
+            corpus_manifest=corpus_manifest,
+        )
+    return build_trial_training_spec(
         apply_tuned_parameters(
             config,
             TunedParameterSet(
@@ -129,22 +140,18 @@ def _coverage_spec(config: TuneConfig, *, paths, corpus_manifest):
                 )
             ),
         ),
-        paths=paths,
+        corpus=roots.corpus,
+        study=roots.study,
         corpus_manifest=corpus_manifest,
     )
 
 
 def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
     active_reporter = reporter or Reporter()
-    active_reporter.header("tune", _workflow_facts(config))
-    paths = resolve_tune_consumer_paths(config)
-    study_root = paths.study_root
-    study_state_db = paths.study_state_db
-    study_id = paths.study_id
-    if study_root is None or study_state_db is None or study_id is None:
-        raise ConfigResolutionError("tuning workflow requires study output paths")
-    corpus_manifest = load_dataset_manifest(paths.corpus_state_db)
-    spec = _coverage_spec(config, paths=paths, corpus_manifest=corpus_manifest)
+    roots = resolve_tune_consumer_roots(config)
+    corpus_manifest = load_dataset_manifest(roots.corpus.state_db_path)
+    active_reporter.header("tune", _workflow_facts(config, roots))
+    spec = _coverage_spec(config, roots=roots, corpus_manifest=corpus_manifest)
     validate_corpus_coverage(
         corpus_manifest,
         contract=spec.problem_contract,
@@ -154,12 +161,12 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
 
     with _optuna_warning_verbosity():
         study_access = open_tuning_study(
-            study_state_db,
+            roots.study,
             config=config,
-            paths=paths,
+            corpus=roots.corpus,
             corpus_manifest=corpus_manifest,
         )
-        reindex_root(paths.output_root, root_path=study_root)
+        reindex_catalog_root(roots.storage.root_path, root_path=roots.study.root_path)
         study = study_access.study
         if study_access.existing_trial_count:
             active_reporter.milestone(
@@ -204,14 +211,13 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
                 lambda trial: _objective(
                     config,
                     trial,
-                    paths=paths,
+                    roots=roots,
                     corpus_manifest=corpus_manifest,
-                    study_root=study_root,
                 ),
                 n_trials=study_access.remaining_trial_count,
                 timeout=config.tuning.timeout_seconds,
                 callbacks=[on_trial_complete],
             )
         summary = build_study_summary(study_access.manifest, study)
-    reindex_root(paths.output_root, root_path=study_root)
+    reindex_catalog_root(roots.storage.root_path, root_path=roots.study.root_path)
     active_reporter.result("tune", study_result_fields(summary))

@@ -49,7 +49,7 @@ Add a new named ref only when behavior differs. Small run variation should norma
 
 Workflow commands use `--surface`. `--preset` is intentionally unsupported.
 
-Shared model-workflow selection options include `--chain`, `--problem`, `--features`, `--objective`, `--evaluation`, `--model`, `--tuning-space`, `--training`, `--split`, `--tuning`, and `--study`. `train` and `evaluate` accept `--variant`; `evaluate` accepts `--delay-seconds`; `tune` accepts `--trial-count`. `acquire` accepts `--chain`, `--problem`, `--features`, `--provider`, `--dry-run`, and `--storage-root`.
+Shared train/tune selection options include `--chain`, `--problem`, `--features`, `--objective`, `--evaluation`, `--model`, `--tuning-space`, `--training`, `--split`, `--tuning`, and `--study`. `train` accepts `--variant`; `evaluate` accepts `--artifact-id`, `--dataset-id`, `--evaluation`, `--delay-seconds`, and `--batch-size`. `tune` accepts `--trial-count`. `acquire` accepts `--chain`, `--problem`, `--features`, `--provider`, `--dry-run`, and `--storage-root`.
 
 Resolution order:
 
@@ -106,30 +106,30 @@ cases:
       - id: evaluate_baseline
         workflow: evaluate
         after: [train_baseline]
+        artifact_from: train_baseline
         set:
-          objective: profit_poisson_replay_2h
           evaluation: poisson_replay_2h
-          variant: baseline
 ```
 
 Planning validates every row before printing anything:
 
 ```bash
-spice benchmark plan lookback_window_sweep
+spice benchmark plan lookback_window_sweep --target disi_l40
 ```
 
-Remote submission writes local run state under `outputs/benchmarks/runs/<name>/<timestamp>/`
-and uses the configured remote target:
+Remote submission reads the persisted run directory and submits exactly that plan:
 
 ```bash
-spice benchmark submit lookback_window_sweep
+spice benchmark submit outputs/benchmarks/runs/lookback_window_sweep/<timestamp>
 ```
 
-Collection pulls remote studies/artifacts through `execution.transfer` and prints JSONL status.
-Use `--write` only when all expected evaluation rows are complete; missing rows abort the
-ledger write.
+Collection pulls required remote artifacts, requires every expected evaluate result to
+match its submitted execution provenance, then writes `collection.json` and upserts
+`results.sqlite` only after full success:
 
 ```bash
-spice benchmark collect lookback_window_sweep
-spice benchmark collect lookback_window_sweep --write
+spice benchmark collect outputs/benchmarks/runs/lookback_window_sweep/<timestamp>
+spice benchmark index export --output benchmarks/results.csv
+spice benchmark index rebuild
+spice benchmark index list --benchmark lookback_window_sweep
 ```

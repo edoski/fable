@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import json
-from collections.abc import Mapping
 
-from ..config.hydration import hydrate_resolved_workflow_config
 from ..config.models import (
     EvaluateConfig,
     TrainConfig,
@@ -14,7 +11,7 @@ from ..config.models import (
     WorkflowTask,
 )
 from ..config.resolution import WorkflowConfig
-from ..core.errors import ConfigResolutionError
+from ..config.workflow_snapshots import hydrate_workflow_config_snapshot_json
 
 
 def run_remote_workflow(task: WorkflowTask, config: WorkflowConfig) -> None:
@@ -43,10 +40,7 @@ def run_remote_workflow(task: WorkflowTask, config: WorkflowConfig) -> None:
 
 
 def workflow_config_from_json(task: WorkflowTask, payload: str) -> WorkflowConfig:
-    raw_payload = json.loads(payload)
-    if not isinstance(raw_payload, Mapping):
-        raise ConfigResolutionError("resolved workflow snapshot must be a mapping")
-    return hydrate_resolved_workflow_config(task, raw_payload)
+    return hydrate_workflow_config_snapshot_json(task, payload)
 
 
 def main() -> None:

@@ -1,20 +1,31 @@
 # pyright: strict
 
-"""Benchmark remote submission orchestration."""
+"""Durable benchmark plan creation and remote submission."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..core.errors import SpiceOperatorError
 from ..execution.session import ExecutionSession, open_execution_session
-from .compilation import BenchmarkPlanEntry, plan_benchmark
+from .compilation import plan_benchmark
+from .models import LoadedBenchmarkPlanEntry
 from .runs import (
     BenchmarkSubmissionRecord,
     append_submission_jsonl,
     create_benchmark_run_dir,
+    load_plan_jsonl,
+    load_run_metadata,
+    load_submission_jsonl,
     write_plan_jsonl,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedBenchmarkRun:
+    run_dir: Path
+    entry_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,21 +34,26 @@ class SubmittedBenchmarkWorkflow:
     run_dir: Path
 
 
-def submit_benchmark_run(
+def plan_benchmark_run(
     name: str,
     *,
     target: str,
-) -> list[SubmittedBenchmarkWorkflow]:
+    runs_root: Path,
+) -> PlannedBenchmarkRun:
     entries = plan_benchmark(name)
-    session = open_execution_session(target)
-    git_commit = session.remote_git_commit()
-    run_dir = create_benchmark_run_dir(
-        name,
-        target=target,
-        git_commit=git_commit,
-    )
+    run_dir = create_benchmark_run_dir(name, target=target, runs_root=runs_root)
     write_plan_jsonl(run_dir, entries)
-    return submit_benchmark_plan(
+    return PlannedBenchmarkRun(run_dir=run_dir, entry_count=len(entries))
+
+
+def submit_benchmark_run(run_dir: Path) -> list[SubmittedBenchmarkWorkflow]:
+    metadata = load_run_metadata(run_dir)
+    entries = load_plan_jsonl(run_dir)
+    if load_submission_jsonl(run_dir):
+        raise SpiceOperatorError(f"Benchmark run already has submissions: {run_dir}")
+    session = open_execution_session(metadata.target)
+    git_commit = session.remote_git_commit()
+    return _submit_benchmark_entries(
         entries,
         run_dir=run_dir,
         session=session,
@@ -45,8 +61,8 @@ def submit_benchmark_run(
     )
 
 
-def submit_benchmark_plan(
-    entries: list[BenchmarkPlanEntry],
+def _submit_benchmark_entries(
+    entries: list[LoadedBenchmarkPlanEntry],
     *,
     run_dir: Path,
     session: ExecutionSession,

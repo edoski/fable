@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-import polars as pl
 import pytest
 
 from spice.acquisition.errors import (
@@ -11,8 +10,6 @@ from spice.acquisition.errors import (
 )
 from spice.acquisition.pull import AcquisitionPullController, pull_block_range
 from spice.acquisition.types import BlockPullPlan, BlockRange, TimestampRange
-from spice.corpus.contract import canonicalize_block_frame
-from spice.corpus.io import load_block_frame, write_block_file
 from tests.dataset_helpers import make_block_rows
 
 
@@ -39,74 +36,110 @@ class _FakeBlockSource:
         )
 
 
+class _FakeSink:
+    def __init__(self, *, completed_until: int | None = None) -> None:
+        self.completed_until = completed_until
+        self.rows: list[dict[str, object]] = []
+        self.finished = False
+
+    def completed_prefix_end(self, plan: BlockPullPlan) -> int:
+        return plan.block_range.start if self.completed_until is None else self.completed_until
+
+    def write_rows(self, rows) -> None:
+        self.rows.extend(rows)
+
+    def finish(self) -> None:
+        self.finished = True
+
+
 def test_pull_writes_ordered_chunks_with_out_of_order_completion(tmp_path) -> None:
+    del tmp_path
+
     class DelayedSource(_FakeBlockSource):
         async def get_block_rows(self, start: int, end: int):
             await asyncio.sleep(0.02 if start == 100 else 0)
             return await super().get_block_rows(start, end)
 
     source = DelayedSource()
+    sink = _FakeSink()
     asyncio.run(
         pull_block_range(
             source,
-            tmp_path,
             plan=_plan(100, 104),
-            chunk_size=2,
             controller=AcquisitionPullController(
                 configured_batch_size=2,
                 min_batch_size=1,
                 concurrency_rungs=(1, 2),
                 configured_concurrency=2,
             ),
-            chain_name="ethereum",
-            expected_chain_id=1,
+            sink=sink,
         )
     )
 
-    frame = load_block_frame(tmp_path)
-    assert frame["block_number"].to_list() == [100, 101, 102, 103]
-    assert [path.name for path in sorted(tmp_path.glob("*.parquet"))] == [
-        "ethereum__blocks__100_to_101.parquet",
-        "ethereum__blocks__102_to_103.parquet",
-    ]
+    assert [int(row["block_number"]) for row in sink.rows] == [100, 101, 102, 103]
+    assert sink.finished is True
 
 
 def test_pull_resumes_completed_prefix(tmp_path) -> None:
-    frame = canonicalize_block_frame(
-        pl.DataFrame(
-            make_block_rows(
-                2,
-                start_block=100,
-                start_timestamp=1_000,
-                chain_id=1,
-            )
-        )
-    )
-    write_block_file(tmp_path / "ethereum__blocks__100_to_101.parquet", frame)
+    del tmp_path
+
     source = _FakeBlockSource()
+    sink = _FakeSink(completed_until=102)
 
     asyncio.run(
         pull_block_range(
             source,
-            tmp_path,
             plan=_plan(100, 104),
-            chunk_size=2,
             controller=AcquisitionPullController(
                 configured_batch_size=2,
                 min_batch_size=1,
                 concurrency_rungs=(1,),
                 configured_concurrency=1,
             ),
-            chain_name="ethereum",
-            expected_chain_id=1,
+            sink=sink,
         )
     )
 
     assert source.requests == [(102, 104)]
-    assert load_block_frame(tmp_path)["block_number"].to_list() == [100, 101, 102, 103]
+    assert [int(row["block_number"]) for row in sink.rows] == [102, 103]
+
+
+def test_pull_rejects_rows_that_do_not_match_requested_block_range(tmp_path) -> None:
+    del tmp_path
+
+    class ShiftedSource(_FakeBlockSource):
+        async def get_block_rows(self, start: int, end: int):
+            self.requests.append((start, end))
+            return make_block_rows(
+                end - start,
+                start_block=start + 1,
+                start_timestamp=1_000 + (start - 100) * 12,
+                chain_id=self.chain_id,
+            )
+
+    sink = _FakeSink()
+    with pytest.raises(RuntimeError, match="do not match requested range"):
+        asyncio.run(
+            pull_block_range(
+                ShiftedSource(),
+                plan=_plan(100, 102),
+                controller=AcquisitionPullController(
+                    configured_batch_size=2,
+                    min_batch_size=1,
+                    concurrency_rungs=(1,),
+                    configured_concurrency=1,
+                ),
+                sink=sink,
+            )
+        )
+
+    assert sink.rows == []
+    assert sink.finished is False
 
 
 def test_pull_splits_oversized_requests_and_backs_off(tmp_path) -> None:
+    del tmp_path
+
     class OversizeOnceSource(_FakeBlockSource):
         async def get_block_rows(self, start: int, end: int):
             self.requests.append((start, end))
@@ -120,6 +153,7 @@ def test_pull_splits_oversized_requests_and_backs_off(tmp_path) -> None:
             )
 
     source = OversizeOnceSource()
+    sink = _FakeSink()
     controller = AcquisitionPullController(
         configured_batch_size=4,
         min_batch_size=2,
@@ -130,12 +164,9 @@ def test_pull_splits_oversized_requests_and_backs_off(tmp_path) -> None:
     asyncio.run(
         pull_block_range(
             source,
-            tmp_path,
             plan=_plan(100, 104),
-            chunk_size=2,
             controller=controller,
-            chain_name="ethereum",
-            expected_chain_id=1,
+            sink=sink,
         )
     )
 
@@ -145,6 +176,8 @@ def test_pull_splits_oversized_requests_and_backs_off(tmp_path) -> None:
 
 
 def test_pull_fails_after_transient_retry_limit(tmp_path) -> None:
+    del tmp_path
+
     class AlwaysTransientSource(_FakeBlockSource):
         async def get_block_rows(self, start: int, end: int):
             self.requests.append((start, end))
@@ -155,23 +188,22 @@ def test_pull_fails_after_transient_retry_limit(tmp_path) -> None:
         asyncio.run(
             pull_block_range(
                 source,
-                tmp_path,
                 plan=_plan(100, 101),
-                chunk_size=1,
                 controller=AcquisitionPullController(
                     configured_batch_size=1,
                     min_batch_size=1,
                     concurrency_rungs=(1,),
                     configured_concurrency=1,
                 ),
-                chain_name="ethereum",
-                expected_chain_id=1,
+                sink=_FakeSink(),
             )
         )
     assert len(source.requests) == 8
 
 
 def test_pull_cancellation_cancels_in_flight_tasks(tmp_path) -> None:
+    del tmp_path
+
     started = asyncio.Event()
     cancelled = asyncio.Event()
 
@@ -190,17 +222,14 @@ def test_pull_cancellation_cancels_in_flight_tasks(tmp_path) -> None:
         task = asyncio.create_task(
             pull_block_range(
                 source,
-                tmp_path,
                 plan=_plan(100, 101),
-                chunk_size=1,
                 controller=AcquisitionPullController(
                     configured_batch_size=1,
                     min_batch_size=1,
                     concurrency_rungs=(1,),
                     configured_concurrency=1,
                 ),
-                chain_name="ethereum",
-                expected_chain_id=1,
+                sink=_FakeSink(),
             )
         )
         await started.wait()

@@ -31,6 +31,10 @@ def _store() -> CompiledProblemStore:
     )
 
 
+def test_strict_deadline_miss_owns_post_window_requirement() -> None:
+    assert _execution_policy().requires_post_window_row is True
+
+
 def test_strict_deadline_miss_rejects_negative_decoded_offsets() -> None:
     store = _store()
 
@@ -70,6 +74,19 @@ def test_fixed_ex_ante_overflow_realizes_first_post_window_row() -> None:
     np.testing.assert_array_equal(realized.overflow_mask, np.array([True, True]))
 
 
+def test_strict_deadline_miss_action_mask_preserves_full_overflow_semantics() -> None:
+    store = _store()
+
+    mask = _execution_policy().prepare_action_space(
+        store,
+        np.arange(store.n_samples, dtype=np.int64),
+    ).action_mask
+
+    assert mask.shape == (2, 3)
+    assert mask.dtype == np.bool_
+    assert mask.all()
+
+
 def test_supervised_targets_use_best_reachable_fixed_slot() -> None:
     store = CompiledProblemStore(
         feature_matrix=np.zeros((6, 1), dtype=np.float32),
@@ -87,6 +104,13 @@ def test_supervised_targets_use_best_reachable_fixed_slot() -> None:
         np.array([0], dtype=np.int64),
     )
 
+    np.testing.assert_array_equal(
+        targets.action_mask,
+        _execution_policy().prepare_action_space(
+            store,
+            np.array([0], dtype=np.int64),
+        ).action_mask,
+    )
     np.testing.assert_array_equal(targets.optimum_offsets, np.array([1], dtype=np.int64))
     np.testing.assert_allclose(targets.optimum_log_fees, np.log(np.array([50], dtype=np.float32)))
 

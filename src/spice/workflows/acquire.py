@@ -10,7 +10,7 @@ from ..core.async_runtime import run_interruptibly
 from ..core.reporting import Reporter
 from ..corpus.assembly import CorpusAssemblyRequest, assemble_corpus
 from ..corpus.summary import acquire_dry_run_fields, acquisition_result_fields
-from ..storage.workflow_paths import resolve_workflow_paths
+from ..storage.root_producer_handles import resolve_acquire_producer_roots
 
 
 def _workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:
@@ -30,13 +30,13 @@ def run(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
 
 
 async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
-    paths = resolve_workflow_paths(config)
+    roots = resolve_acquire_producer_roots(config)
     active_reporter = reporter or Reporter()
     active_reporter.header("acquire", _workflow_facts(config))
     block_client = BlockRpcClient(config.rpc_endpoint, config.chain)
     try:
         result = await assemble_corpus(
-            CorpusAssemblyRequest(config=config, paths=paths),
+            CorpusAssemblyRequest(config=config, roots=roots),
             block_client,
             status=active_reporter.milestone,
         )

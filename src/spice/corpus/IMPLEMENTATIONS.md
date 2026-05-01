@@ -47,9 +47,9 @@ Loads scan recursively, skip hidden paths, combine chunks, and sort by `block_nu
 
 ## Corpus Assembly
 
-Corpus Assembly has one public Interface: `assemble_corpus()`. It returns a dry-run plan or a committed corpus result. Split materialization helpers are private implementation details.
+Corpus Assembly has one public Interface: `assemble_corpus()`. It returns a dry-run plan or a committed corpus result. Corpus Capability Planning owns history sizing and refill decisions. Corpus Split Materialization owns history/evaluation dataset reuse, extension, rebuild, and validation. When extending a split, it copies whole reusable parquet chunks and rewrites only edge or newly pulled ranges.
 
-History refill is bounded. Assembly first requests an estimated history window, counts valid capability samples, and expands the window up to a small internal cap if observed block cadence under-requested usable rows.
+History refill is bounded. Assembly first requests an estimated history window from planning, asks planning to count valid capability samples, and expands the window up to a small internal cap if observed block cadence under-requested usable rows.
 
 ## Validation
 

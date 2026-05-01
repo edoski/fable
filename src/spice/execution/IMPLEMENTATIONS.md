@@ -50,7 +50,7 @@ python -m spice.execution.remote_runner {task} {config_json}
 
 ## Remote Runner
 
-The remote runner is the cluster-side entrypoint. It receives the task name and serialized config JSON, rehydrates the typed workflow config, and calls the workflow function.
+The remote runner is the cluster-side entrypoint. It receives the task name and serialized config JSON, loads the resolved workflow snapshot, and calls the workflow function.
 
 ```text
 remote_runner train  '{...json...}'
@@ -68,7 +68,7 @@ Before submission, the workflow config storage root is rewritten to the target's
 
 ## Transfer
 
-Transfer services push local dataset/study roots to a target and pull remote study/artifact roots back locally through an **Execution Session**. They resolve catalog records through storage selectors, prepare a hidden staging root, run rsync, then finalize through storage lifecycle validation and catalog reindexing.
+Transfer services push local dataset roots to a target and pull remote artifact roots back locally through an **Execution Session**. They resolve catalog records through the remote catalog codec, prepare a hidden staging root, run rsync, then finalize through storage lifecycle validation and catalog reindexing.
 
 ## Failure Modes
 

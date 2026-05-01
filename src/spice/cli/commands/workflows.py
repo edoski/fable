@@ -4,23 +4,27 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated
 
 import typer
 
-from ...config.models import WorkflowTask
-from ...config.resolution import WorkflowConfig
-from ...config.selections import TrainWorkflowSelection, TuneWorkflowSelection
+from ...config.models import AcquireConfig, WorkflowTask
+from ...config.resolution import WorkflowConfig, resolve_workflow_config
+from ...config.selections import (
+    AcquireWorkflowSelection,
+    EvaluateWorkflowSelection,
+    TrainWorkflowSelection,
+    TuneWorkflowSelection,
+    WorkflowSelection,
+    workflow_selection_payload,
+)
 from ...core.errors import SpiceOperatorError
 from ...execution.session import ExecutionSession, open_execution_session
 from ..options import DEFAULT_REMOTE_TARGET, RemoteTargetOption
-from ..selection import (
-    build_acquire_workflow_config,
-    build_evaluate_workflow_command_plan,
-    build_model_workflow_command_plan,
-)
+
+ModelWorkflowSelectionType = type[TrainWorkflowSelection] | type[TuneWorkflowSelection]
+ModelWorkflowSelection = TrainWorkflowSelection | TuneWorkflowSelection
 
 
 def _selection_option(*param_decls: str, metavar: str, help: str) -> object:
@@ -72,16 +76,161 @@ def _submit_selected_workflow(
         raise SpiceOperatorError(f"Job {submission.job_id} ended with state {state}")
 
 
-def _run_or_submit_model_workflow(
+def _resolve_selection_for_task(
+    task: WorkflowTask,
+    selection: WorkflowSelection,
+) -> WorkflowConfig:
+    return resolve_workflow_config(task, selection)
+
+
+def _build_acquire_workflow_config(
+    *,
+    surface: str | None,
+    chain: str | None,
+    problem: str | None,
+    features: str | None,
+    provider: str | None,
+    storage_root: Path | None,
+    dry_run: bool | None,
+) -> AcquireConfig:
+    config = _resolve_selection_for_task(
+        WorkflowTask.ACQUIRE,
+        AcquireWorkflowSelection(
+            surface=surface,
+            chain=chain,
+            problem=problem,
+            features=features,
+            provider=provider,
+            storage_root=storage_root,
+            dry_run=dry_run,
+        ),
+    )
+    if not isinstance(config, AcquireConfig):
+        raise TypeError("acquire selection resolved to non-acquire config")
+    return config
+
+
+def _build_model_workflow_selection(
+    workflow: WorkflowTask,
+    *,
+    selection_type: ModelWorkflowSelectionType,
+    surface: str | None,
+    chain: str | None,
+    problem: str | None,
+    features: str | None,
+    objective: str | None,
+    evaluation: str | None,
+    model: str | None,
+    tuning_space: str | None,
+    training: str | None,
+    split: str | None,
+    tuning: str | None,
+    study: str | None,
+    dataset_id: str | None = None,
+    study_id: str | None = None,
+    variant: str | None = None,
+    trial_count: int | None = None,
+) -> ModelWorkflowSelection:
+    return selection_type.model_validate(
+        workflow_selection_payload(
+            workflow,
+            {
+                "surface": surface,
+                "chain": chain,
+                "problem": problem,
+                "features": features,
+                "objective": objective,
+                "evaluation": evaluation,
+                "model": model,
+                "tuning_space": tuning_space,
+                "training": training,
+                "split": split,
+                "tuning": tuning,
+                "study": study,
+                "dataset_id": dataset_id,
+                "study_id": study_id,
+                "variant": variant,
+                "trial_count": trial_count,
+                "storage_root": None,
+            },
+        )
+    )
+
+
+def _build_model_workflow_config(
+    *,
+    task: WorkflowTask,
+    selection_type: ModelWorkflowSelectionType,
+    surface: str | None,
+    chain: str | None,
+    problem: str | None,
+    features: str | None,
+    objective: str | None,
+    evaluation: str | None,
+    model: str | None,
+    tuning_space: str | None,
+    training: str | None,
+    split: str | None,
+    tuning: str | None,
+    study: str | None,
+    dataset_id: str | None = None,
+    study_id: str | None = None,
+    variant: str | None = None,
+    trial_count: int | None = None,
+) -> WorkflowConfig:
+    return _resolve_selection_for_task(
+        task,
+        _build_model_workflow_selection(
+            task,
+            selection_type=selection_type,
+            surface=surface,
+            chain=chain,
+            problem=problem,
+            features=features,
+            objective=objective,
+            evaluation=evaluation,
+            model=model,
+            tuning_space=tuning_space,
+            training=training,
+            split=split,
+            tuning=tuning,
+            study=study,
+            dataset_id=dataset_id,
+            study_id=study_id,
+            variant=variant,
+            trial_count=trial_count,
+        ),
+    )
+
+
+def _build_evaluate_workflow_config(
+    *,
+    artifact_id: str | None,
+    dataset_id: str | None,
+    evaluation: str | None,
+    delay_seconds: int | None,
+    batch_size: int | None,
+) -> WorkflowConfig:
+    return _resolve_selection_for_task(
+        WorkflowTask.EVALUATE,
+        EvaluateWorkflowSelection(
+            storage_root=None,
+            artifact_id=artifact_id,
+            dataset_id=dataset_id,
+            evaluation=evaluation,
+            delay_seconds=delay_seconds,
+            batch_size=batch_size,
+        ),
+    )
+
+
+def _submit_model_workflow(
     *,
     task: WorkflowTask,
     selection_type: type[TrainWorkflowSelection] | type[TuneWorkflowSelection],
-    runner: Callable[[Any], None],
-    submit: bool,
     target: str,
     dependency: str | None,
     detach: bool,
-    storage_root: Path | None,
     surface: str | None,
     chain: str | None,
     problem: str | None,
@@ -99,13 +248,9 @@ def _run_or_submit_model_workflow(
     variant: str | None = None,
     trial_count: int | None = None,
 ) -> None:
-    plan = build_model_workflow_command_plan(
+    config = _build_model_workflow_config(
         task=task,
         selection_type=selection_type,
-        submit=submit,
-        dependency=dependency,
-        detach=detach,
-        storage_root=storage_root,
         surface=surface,
         chain=chain,
         problem=problem,
@@ -123,17 +268,14 @@ def _run_or_submit_model_workflow(
         variant=variant,
         trial_count=trial_count,
     )
-    if submit:
-        session = open_execution_session(target)
-        _submit_selected_workflow(
-            task=task,
-            config=plan.config,
-            session=session,
-            dependency=dependency,
-            detach=detach,
-        )
-        return
-    runner(plan.config)
+    session = open_execution_session(target)
+    _submit_selected_workflow(
+        task=task,
+        config=config,
+        session=session,
+        dependency=dependency,
+        detach=detach,
+    )
 
 
 def acquire_command(
@@ -189,7 +331,7 @@ def acquire_command(
     from ...workflows import acquire
 
     acquire.run(
-        build_acquire_workflow_config(
+        _build_acquire_workflow_config(
             surface=surface,
             chain=chain,
             problem=problem,
@@ -286,22 +428,6 @@ def train_command(
         str | None,
         _selection_option("--study-id", metavar="STUDY_ID", help="Consume this study root."),
     ] = None,
-    storage_root: Annotated[
-        Path | None,
-        _output_option(
-            "--storage-root",
-            metavar="PATH",
-            help="Store outputs under a non-default root.",
-        ),
-    ] = None,
-    submit: Annotated[
-        bool,
-        typer.Option(
-            "--submit",
-            help="Submit the workflow to the checked-in execution target.",
-            rich_help_panel="Execution",
-        ),
-    ] = False,
     dependency: Annotated[
         str | None,
         _execution_option(
@@ -320,17 +446,12 @@ def train_command(
         ),
     ] = False,
 ) -> None:
-    from ...workflows import train
-
-    _run_or_submit_model_workflow(
+    _submit_model_workflow(
         task=WorkflowTask.TRAIN,
         selection_type=TrainWorkflowSelection,
-        runner=train.run,
-        submit=submit,
         target=target,
         dependency=dependency,
         detach=detach,
-        storage_root=storage_root,
         surface=surface,
         chain=chain,
         problem=problem,
@@ -434,22 +555,6 @@ def tune_command(
             help="Override the requested trial count.",
         ),
     ] = None,
-    storage_root: Annotated[
-        Path | None,
-        _output_option(
-            "--storage-root",
-            metavar="PATH",
-            help="Store outputs under a non-default root.",
-        ),
-    ] = None,
-    submit: Annotated[
-        bool,
-        typer.Option(
-            "--submit",
-            help="Submit the workflow to the checked-in execution target.",
-            rich_help_panel="Execution",
-        ),
-    ] = False,
     dependency: Annotated[
         str | None,
         _execution_option(
@@ -468,17 +573,12 @@ def tune_command(
         ),
     ] = False,
 ) -> None:
-    from ...workflows import tune
-
-    _run_or_submit_model_workflow(
+    _submit_model_workflow(
         task=WorkflowTask.TUNE,
         selection_type=TuneWorkflowSelection,
-        runner=tune.run,
-        submit=submit,
         target=target,
         dependency=dependency,
         detach=detach,
-        storage_root=storage_root,
         surface=surface,
         chain=chain,
         problem=problem,
@@ -533,22 +633,6 @@ def evaluate_command(
             help="Override the evaluation batch size.",
         ),
     ] = None,
-    storage_root: Annotated[
-        Path | None,
-        _output_option(
-            "--storage-root",
-            metavar="PATH",
-            help="Store outputs under a non-default root.",
-        ),
-    ] = None,
-    submit: Annotated[
-        bool,
-        typer.Option(
-            "--submit",
-            help="Submit the workflow to the checked-in execution target.",
-            rich_help_panel="Execution",
-        ),
-    ] = False,
     dependency: Annotated[
         str | None,
         _execution_option(
@@ -567,27 +651,18 @@ def evaluate_command(
         ),
     ] = False,
 ) -> None:
-    from ...workflows import evaluate
-
-    plan = build_evaluate_workflow_command_plan(
-        submit=submit,
-        dependency=dependency,
-        detach=detach,
-        storage_root=storage_root,
+    config = _build_evaluate_workflow_config(
         artifact_id=artifact_id,
         dataset_id=dataset_id,
         evaluation=evaluation,
         delay_seconds=delay_seconds,
         batch_size=batch_size,
     )
-    if submit:
-        session = open_execution_session(target)
-        _submit_selected_workflow(
-            task=WorkflowTask.EVALUATE,
-            config=plan.config,
-            session=session,
-            dependency=dependency,
-            detach=detach,
-        )
-        return
-    evaluate.run(cast(Any, plan.config))
+    session = open_execution_session(target)
+    _submit_selected_workflow(
+        task=WorkflowTask.EVALUATE,
+        config=config,
+        session=session,
+        dependency=dependency,
+        detach=detach,
+    )

@@ -11,7 +11,7 @@ import torch
 from numpy.typing import NDArray
 
 from ..semantics import PredictionSemantics
-from ..temporal.execution_policy import CompiledExecutionPolicyContract
+from ..temporal.execution_policy import CompiledExecutionPolicyContract, PreparedActionSpace
 from ..temporal.problem_store import CompiledProblemStore
 from .base import (
     MetricDescriptor,
@@ -75,7 +75,7 @@ FitTrainingStateFn = Callable[
 # device/dtype views during loss computation, but semantic values must not
 # mutate or depend on batch call order.
 PrepareTargetsFn = Callable[
-    [CompiledProblemStore, IntVector, CompiledExecutionPolicyContract],
+    [CompiledProblemStore, IntVector, CompiledExecutionPolicyContract, PreparedActionSpace],
     PreparedPredictionTargets,
 ]
 ComputeBatchLossAndStateFn = Callable[
@@ -162,8 +162,9 @@ class CompiledPredictionContract:
         sample_indices: IntVector,
         *,
         execution_policy: CompiledExecutionPolicyContract,
+        action_space: PreparedActionSpace,
     ) -> PreparedPredictionTargets:
-        return self.prepare_targets_fn(store, sample_indices, execution_policy)
+        return self.prepare_targets_fn(store, sample_indices, execution_policy, action_space)
 
     def compute_batch_loss_and_state(
         self,

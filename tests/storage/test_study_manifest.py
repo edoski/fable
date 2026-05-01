@@ -12,13 +12,13 @@ from spice.corpus.metadata import (
     DatasetValidationMetadata,
     DatasetWindowMetadata,
 )
-from spice.storage.root_consumer_paths import produced_study_id
+from spice.storage.root_producer_handles import produced_study_id
 from spice.storage.study_manifest import (
     manifest_from_payload,
     manifest_from_tune_config,
     manifest_payload,
 )
-from spice.storage.workflow_paths import WorkflowIdentity, build_workflow_paths
+from tests.root_handle_helpers import corpus_handle, study_handle
 
 TEST_DATASET_ID = "cor_9a73b1e88edb488afb1e"
 
@@ -48,16 +48,22 @@ def test_study_manifest_round_trips_through_canonical_definition_payload(
         ),
     )
 
+    corpus = corpus_handle(
+        config.storage.root,
+        chain_name=config.chain.name,
+        dataset_id=TEST_DATASET_ID,
+        dataset_name=config.dataset.name,
+    )
+    study = study_handle(
+        config.storage.root,
+        corpus=corpus,
+        study_id=produced_study_id(config),
+        study_name=config.study.name,
+    )
     manifest = manifest_from_tune_config(
         config,
-        paths=build_workflow_paths(
-            output_root=config.storage.root,
-            chain_name=config.chain.name,
-            identity=WorkflowIdentity(
-                corpus_id=TEST_DATASET_ID,
-                study_id=produced_study_id(config),
-            ),
-        ),
+        corpus=corpus,
+        study=study,
         corpus_manifest=_corpus_manifest(config),
     )
     restored = manifest_from_payload(manifest_payload(manifest))

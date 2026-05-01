@@ -317,12 +317,21 @@ def list_evaluation_runs(
 
 
 def _evaluation_storage_id(summary: EvaluationRuntimeSummary) -> str:
+    identity_payload: dict[str, object] = {
+        "delay_seconds": summary.delay_seconds,
+        "evaluation_id": summary.evaluation_id,
+        "evaluation_config": summary.evaluation_config,
+    }
+    if summary.execution_provenance is not None:
+        identity_payload["execution_provenance"] = {
+            "execution_ref": summary.execution_provenance.execution_ref,
+            "job_id": summary.execution_provenance.job_id,
+            "log_path": summary.execution_provenance.log_path,
+            "workflow_task": summary.execution_provenance.workflow_task,
+            "target": summary.execution_provenance.target,
+        }
     canonical_payload = json.dumps(
-        {
-            "delay_seconds": summary.delay_seconds,
-            "evaluation_id": summary.evaluation_id,
-            "evaluation_config": summary.evaluation_config,
-        },
+        identity_payload,
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")

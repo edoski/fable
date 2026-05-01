@@ -221,10 +221,19 @@ class TrainingEpochPayload(CodecPayloadModel):
         )
 
 
+class EvaluationExecutionProvenancePayload(CodecPayloadModel):
+    execution_ref: str
+    job_id: str | None = None
+    log_path: str | None = None
+    workflow_task: str | None = None
+    target: str | None = None
+
+
 class EvaluationSummaryPayload(CodecPayloadModel):
     delay_seconds: int
     evaluation_id: str
     evaluation_config: dict[str, object]
+    execution_provenance: EvaluationExecutionProvenancePayload | None = None
     metric_descriptors: tuple[dict[str, str], ...]
     n_history_rows: int
     n_evaluation_rows: int
@@ -239,6 +248,9 @@ class EvaluationSummaryPayload(CodecPayloadModel):
             delay_seconds=summary.delay_seconds,
             evaluation_id=summary.evaluation_id,
             evaluation_config=dict(summary.evaluation_config),
+            execution_provenance=_execution_provenance_payload(
+                summary.execution_provenance
+            ),
             metric_descriptors=tuple(
                 _metric_descriptor_payload(descriptor)
                 for descriptor in summary.metric_descriptors
@@ -258,6 +270,9 @@ class EvaluationSummaryPayload(CodecPayloadModel):
             delay_seconds=self.delay_seconds,
             evaluation_id=self.evaluation_id,
             evaluation_config=dict(self.evaluation_config),
+            execution_provenance=_execution_provenance_from_payload(
+                self.execution_provenance
+            ),
             metric_descriptors=tuple(
                 _metric_descriptor_from_payload(payload)
                 for payload in self.metric_descriptors
@@ -331,6 +346,40 @@ def evaluation_run_payload(run: EvaluationRun) -> dict[str, object]:
 
 def evaluation_run_from_payload(payload: dict[str, object]):
     return cast(EvaluationRun, _EVALUATION_RUN_ADAPTER.validate_python(payload))
+
+
+def _execution_provenance_payload(
+    provenance: object,
+) -> EvaluationExecutionProvenancePayload | None:
+    if provenance is None:
+        return None
+    from ..modeling.results import EvaluationExecutionProvenance
+
+    if not isinstance(provenance, EvaluationExecutionProvenance):
+        raise TypeError("evaluation execution provenance has the wrong type")
+    return EvaluationExecutionProvenancePayload(
+        execution_ref=provenance.execution_ref,
+        job_id=provenance.job_id,
+        log_path=provenance.log_path,
+        workflow_task=provenance.workflow_task,
+        target=provenance.target,
+    )
+
+
+def _execution_provenance_from_payload(
+    payload: EvaluationExecutionProvenancePayload | None,
+):
+    if payload is None:
+        return None
+    from ..modeling.results import EvaluationExecutionProvenance
+
+    return EvaluationExecutionProvenance(
+        execution_ref=payload.execution_ref,
+        job_id=payload.job_id,
+        log_path=payload.log_path,
+        workflow_task=payload.workflow_task,
+        target=payload.target,
+    )
 
 
 def _metadata_value(value: object) -> str | int | float:

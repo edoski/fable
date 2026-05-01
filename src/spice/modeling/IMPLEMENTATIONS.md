@@ -28,13 +28,13 @@ features config         -> feature contract
 problem spec            -> temporal problem contract
 prediction config       -> prediction contract
 objective config        -> objective contract
-objective + evaluation  -> objective metric source
+objective + evaluation  -> objective runtime
 dataset_builder config  -> dataset builder contract
 input_normalization     -> scaler policy
 model config            -> model family
 ```
 
-The compiled context is the source of truth for model input width, prediction output heads, action-space size, target batches, objective metric direction, and objective metric production.
+The compiled context is the source of truth for model input width, prediction output heads, action-space size, target batches, objective metric direction, and Objective Runtime metric production.
 
 ## Batch Plan
 
@@ -44,18 +44,18 @@ The sequence representation builds tensors:
 | --- | --- | --- |
 | `inputs` | `[batch, max_context, features]` | Padded feature windows. |
 | `input_mask` | `[batch, max_context]` | True where a row is real input. |
-| `action_mask` | `[batch, max_candidate_slots]` | True where the action can be resolved. |
+| `action_mask` | `[batch, max_candidate_slots]` | Execution-policy action availability. |
 | `sample_positions` | `[batch]` | Positions into the selected sample array. |
 
 Windows are front-packed. Models use `take_last_valid` to read the final real context position.
 
-Batch Plan binds representation batches with prediction targets, orders samples by batch signature, and chooses host or device-resident storage after runtime memory budget is known.
+Batch Plan binds representation batches with prediction targets, orders samples by batch signature, and chooses host or device-resident storage after runtime memory budget is known. CUDA budget discovery belongs to runtime; Batch Plan only consumes the supplied representation runtime context and handles device-materialization OOM fallback.
 
 ## Training Loop
 
-Training is CUDA-only. It sets seeds, configures deterministic behavior when requested, plans runtime memory, and chooses device-resident batch storage when possible.
+Training is CUDA-only. It sets seeds, configures deterministic behavior when requested, plans runtime memory, and chooses device-resident batch storage when possible. `_runtime.py` owns coarse CUDA budget discovery and shared budget arithmetic.
 
-`training_runtime.plan_training_runtime()` performs the gradient-bearing warmup: unshuffled host Batch Plan, temporary AdamW, one probe step, CUDA budget calculation, model-state restore, and cache cleanup. The returned prediction training state is semantic-immutable and reused for train, validation, returned training results, and split metrics.
+`training_runtime.plan_training_runtime()` performs the gradient-bearing warmup: unshuffled host Batch Plan, temporary AdamW, one probe step, CUDA budget calculation, model-state restore, and cache cleanup. Restore and cleanup run even if the probe fails. The returned prediction training state is semantic-immutable and reused for train, validation, returned training results, and split metrics. The plan also carries the model-bound evaluation scoring runtime used by evaluation objectives.
 
 `_epoch_execution` owns the mechanics inside a train or validation epoch. `_fit_policy` owns finite-metric behavior, objective history, strict `min_delta`, best-state tracking, progress payloads, and patience stopping. `training_runner.run_training_fit()` calls callbacks, keeps the best state in memory, restores it before returning, and assembles the public result.
 
@@ -114,11 +114,11 @@ Forward-only inference and split-metric passes use `forward_runtime`: host warmu
 
 ```text
 validate evaluator accepts prediction contract
-  -> predict_with_model
+  -> predict_with_model(runtime plan)
   -> evaluator.run(store, execution_policy, decoded_offsets)
 ```
 
-This keeps evaluation scoring independent from training-loop details.
+This keeps evaluation scoring independent from training-loop details while making device, precision, runtime context, determinism, and seed explicit.
 
 ## Artifact Persistence
 
@@ -133,7 +133,7 @@ A trained artifact contains:
 | Training summary/epochs | Runtime training metrics. |
 | Evaluation summaries | Stored diagnostic evaluation runs. |
 
-Evaluate workflow validates that the requested config matches artifact semantics before running inference.
+Evaluate workflow reconstructs trained semantics from the artifact manifest, validates selected corpus compatibility, and applies the active evaluate config's evaluator, delay, batch, and root-id controls before running inference.
 
 ## Tuning
 
@@ -149,7 +149,7 @@ Study state stores the study manifest and Optuna tables. Trial user attributes r
 | Model/prediction shape mismatch | Output heads do not match prediction contract. |
 | Empty split | Dataset builder produced no samples for a split. |
 | Objective metric missing | Prediction/evaluator metrics do not expose configured metric. |
-| Artifact semantic mismatch | Evaluation config does not match trained artifact. |
+| Artifact/corpus semantic mismatch | Selected artifact or corpus state is incompatible with manifest-first evaluation constraints. |
 | Tuning identity mismatch | Existing study state belongs to a different study definition. |
 
 ## Extension Pattern

@@ -22,7 +22,7 @@ Use this rule:
 | File | Purpose |
 | --- | --- |
 | `ARCHITECTURE.md` | Generic structure, boundaries, data flow, dependency direction. |
-| `IMPLEMENTATIONS.md` | Current concrete engines, families, algorithms, YAML presets, math, and failure modes. |
+| `IMPLEMENTATIONS.md` | Current concrete engines, families, algorithms, YAML Surfaces/Config Groups, math, and failure modes. |
 
 Architecture docs explain the shape of the system. Implementation docs explain what the current code actually runs.
 
@@ -102,7 +102,7 @@ timestamp window
 This path explains how users run work:
 
 ```text
-YAML presets
+YAML Surfaces and Config Groups
   -> config resolution
   -> CLI command
   -> local workflow or remote submit
@@ -111,7 +111,7 @@ YAML presets
 
 Read:
 
-1. [Config preset implementations](src/spice/conf/IMPLEMENTATIONS.md)
+1. [Config implementations](src/spice/conf/IMPLEMENTATIONS.md)
 2. [Config resolution implementations](src/spice/config/IMPLEMENTATIONS.md)
 3. [Workflow implementations](src/spice/workflows/IMPLEMENTATIONS.md)
 4. [Execution implementations](src/spice/execution/IMPLEMENTATIONS.md)
@@ -179,24 +179,21 @@ This pushes the branch to both `origin` and `giano-sync`.
 
 ## CLI Quickstart
 
-Local workflows:
+Local acquisition:
 
 ```bash
 spice acquire --surface current_row_fee_dynamics
-spice train --surface current_row_fee_dynamics --dataset-id cor_9a73b1e88edb488afb1e
-spice tune --surface current_row_fee_dynamics --dataset-id cor_9a73b1e88edb488afb1e --trial-count 20
-spice evaluate --artifact-id art_... --dataset-id cor_9a73b1e88edb488afb1e --evaluation poisson_replay_2h
 ```
 
 Remote train/tune/evaluate submission:
 
 ```bash
-spice train --surface current_row_fee_dynamics --dataset-id cor_9a73b1e88edb488afb1e --submit
-spice tune --surface current_row_fee_dynamics --dataset-id cor_9a73b1e88edb488afb1e --trial-count 20 --submit
-spice evaluate --artifact-id art_... --dataset-id cor_9a73b1e88edb488afb1e --evaluation poisson_replay_2h --submit
+spice train --surface current_row_fee_dynamics --dataset-id cor_9a73b1e88edb488afb1e
+spice tune --surface current_row_fee_dynamics --dataset-id cor_9a73b1e88edb488afb1e --trial-count 20
+spice evaluate --artifact-id art_... --dataset-id cor_9a73b1e88edb488afb1e --evaluation poisson_replay_2h
 ```
 
-The CLI owns the default remote target, `disi_l40`. Execution and sync APIs receive explicit targets below the CLI layer.
+The CLI owns the default remote target, `disi_l40`. Train, tune, and evaluate submit remotely by default; Python workflow runners remain available for the remote runner and tests.
 
 Config and storage inspection:
 
@@ -214,10 +211,8 @@ spice refresh catalog
 Transfer:
 
 ```bash
-spice push dataset --dataset-id cor_9a73b1e88edb488afb1e
-spice push study --study-id std_...
-spice pull study --study-id std_...
-spice pull artifact --artifact-id art_...
+spice transfer push dataset --dataset-id cor_9a73b1e88edb488afb1e
+spice transfer pull artifact --artifact-id art_...
 ```
 
 ## Current Concrete IDs

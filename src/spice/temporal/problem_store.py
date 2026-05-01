@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 FloatMatrix = NDArray[np.float32]
 FloatVector = NDArray[np.float32]
 IntVector = NDArray[np.int64]
-BoolMatrix = NDArray[np.bool_]
 
 
 @dataclass(slots=True)
@@ -41,9 +40,6 @@ class CandidateWindowSummary:
     candidate_counts: IntVector
     reachable_end_rows: IntVector
     last_candidate_rows: IntVector
-    optimum_rows: IntVector
-    optimum_offsets: IntVector
-    optimum_log_fees: FloatVector
 
 
 @dataclass(slots=True)
@@ -173,17 +169,6 @@ class CompiledProblemStore:
             baseline_rows + int(self.max_candidate_slots),
         ).astype(np.int64, copy=False)
         last_candidate_rows = (reachable_end_rows - 1).astype(np.int64, copy=False)
-        optimum_offsets = np.empty(resolved_indices.shape[0], dtype=np.int64)
-        optimum_log_fees = np.empty(resolved_indices.shape[0], dtype=np.float32)
-        optimum_rows = np.empty(resolved_indices.shape[0], dtype=np.int64)
-        for row, (start_row, end_row) in enumerate(
-            zip(baseline_rows, reachable_end_rows, strict=True)
-        ):
-            candidate_values = self.log_base_fees[start_row:end_row]
-            min_offset = int(np.argmin(candidate_values))
-            optimum_offsets[row] = min_offset
-            optimum_log_fees[row] = float(candidate_values[min_offset])
-            optimum_rows[row] = int(start_row + min_offset)
         return CandidateWindowSummary(
             sample_indices=resolved_indices,
             anchor_rows=anchor_rows,
@@ -192,16 +177,6 @@ class CompiledProblemStore:
             candidate_counts=candidate_counts,
             reachable_end_rows=reachable_end_rows,
             last_candidate_rows=last_candidate_rows,
-            optimum_rows=optimum_rows,
-            optimum_offsets=optimum_offsets,
-            optimum_log_fees=optimum_log_fees,
-        )
-
-    def action_mask(self, sample_indices: IntVector) -> BoolMatrix:
-        resolved_sample_indices = sample_indices.astype(np.int64, copy=False)
-        return np.ones(
-            (resolved_sample_indices.shape[0], self.max_candidate_slots),
-            dtype=np.bool_,
         )
 
     def selected_row_span(self, sample_indices: IntVector) -> tuple[int, int]:
