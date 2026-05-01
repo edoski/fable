@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import optuna
 from optuna.storages import RDBStorage
@@ -13,7 +14,6 @@ from ..core.errors import MissingStateError, StateConflictError, StateLayoutErro
 from ..corpus.metadata import DatasetManifest
 from ..modeling.tuned_config import coerce_tuned_parameter_set
 from .engine import db_url
-from .root_handles import CorpusRootHandle, StudyRootHandle
 from .study_manifest import (
     diff_study_manifests,
     insert_study_manifest,
@@ -32,6 +32,9 @@ from .study_models import (
     build_trial_record,
     trial_params_payload,
 )
+
+if TYPE_CHECKING:
+    from .workflow_roots import CorpusRootHandle, StudyRootHandle
 
 
 def study_storage(db_path: Path) -> RDBStorage:

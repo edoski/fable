@@ -10,7 +10,7 @@ from ..core.async_runtime import run_interruptibly
 from ..core.reporting import Reporter
 from ..corpus.assembly import CorpusAssemblyRequest, assemble_corpus
 from ..corpus.summary import acquire_dry_run_fields, acquisition_result_fields
-from ..storage.root_producer_handles import resolve_acquire_producer_roots
+from ..storage.workflow_roots import resolve_acquire_producer_roots
 
 
 def _workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:

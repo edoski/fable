@@ -33,7 +33,7 @@ collect all expected evaluate results -> collection.json
 results.sqlite projection -> CSV export/query
 ```
 
-Planning builds typed workflow selections. **Benchmark Plan Materialization** asks storage-owned Dependency Root Materialization for dependency-produced root ids, calls normal workflow resolution, and produces plan entries with resolved workflow snapshots. Inline problem grids produce inline `ProblemSpec` values during planning; plan JSON stores the selected problem id, while the resolved workflow config stores the full executable problem.
+Planning builds typed workflow selections. **Benchmark Plan Materialization** derives dependency-produced root ids, calls normal workflow resolution, and produces plan entries with resolved workflow snapshots. Inline problem grids produce inline `ProblemSpec` values during planning; plan JSON stores the selected problem id, while the resolved workflow config stores the full executable problem.
 
 ## Module Map
 
@@ -41,7 +41,7 @@ Planning builds typed workflow selections. **Benchmark Plan Materialization** as
 benchmarks/
   schema.py      benchmark YAML schema
   planning.py    dimension expansion and workflow-selection rows
-  materialization.py  dependency-aware config resolution and plan entry assembly
+  materialization.py  dependency root-id materialization and config resolution
   models.py      benchmark plan data models
   result_records.py  collection snapshot and result records
   result_store.py    low-level SQLite result projection

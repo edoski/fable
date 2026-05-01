@@ -12,16 +12,15 @@ from ..config.models import AcquireConfig
 from ..core.files import remove_path
 from ..storage.corpus import write_dataset_state
 from ..storage.engine import RootKind
-from ..storage.lifecycle import PartialRootCommit
-from ..storage.root_handles import AcquireWorkflowRoots
+from ..storage.workflow_roots import AcquireWorkflowRoots
 from .metadata import AcquireRunRecord, DatasetManifest
 from .planning import HISTORY_REFILL_ATTEMPT_LIMIT, CorpusCapabilityPlanningContext
 from .split_materialization import (
+    CorpusSplitIntent,
+    CorpusSplitKind,
+    CorpusSplitMaterializationSession,
     CorpusSplitMaterializationSpec,
     DatasetBuildResult,
-    ensure_corpus_split,
-    evaluation_split_intent,
-    history_split_intent,
 )
 
 ACQUIRE_STAGE_DIR_NAME = ".acquire-staging"
@@ -84,24 +83,28 @@ class CorpusAcquisitionStage:
         requested_history_window_seconds: int,
         status: StatusCallback,
     ) -> CorpusAcquisitionStageFulfillment:
+        split_session = CorpusSplitMaterializationSession(
+            materialization=self.materialization,
+            block_source=block_source,
+            controller=self.controller,
+            status=status,
+        )
         history_result, resolved_capability_samples, history_plan, resolved_history_seconds = (
             await self._ensure_sufficient_history(
                 block_source=block_source,
                 initial_history_plan=initial_history_plan,
                 requested_history_window_seconds=requested_history_window_seconds,
+                split_session=split_session,
                 status=status,
             )
         )
-        evaluation_result = await ensure_corpus_split(
-            evaluation_split_intent(
+        evaluation_result = await split_session.fulfill(
+            CorpusSplitIntent(
+                kind=CorpusSplitKind.EVALUATION,
                 output_dir=self.roots.corpus.evaluation_dir,
                 working_dir=self.temp_root,
-                evaluation_plan=evaluation_plan,
-            ),
-            materialization=self.materialization,
-            block_source=block_source,
-            controller=self.controller,
-            status=status,
+                plan=evaluation_plan,
+            )
         )
         return CorpusAcquisitionStageFulfillment(
             history_result=history_result,
@@ -125,14 +128,11 @@ class CorpusAcquisitionStage:
             manifest=manifest,
             acquire_run=acquire_run,
         )
-        commit = PartialRootCommit(
-            storage_root=self.roots.storage.root_path,
-            root_path=self.roots.corpus.root_path,
-        )
-        commit.add(self.roots.corpus.history_dir, fulfillment.history_result.promote_dir)
-        commit.add(self.roots.corpus.evaluation_dir, fulfillment.evaluation_result.promote_dir)
-        commit.add(self.roots.corpus.state_db_path, temp_state_db)
-        committed_root_kind = commit.commit().root_kind
+        committed_root_kind = self.roots.corpus.commit_splits(
+            history_source=fulfillment.history_result.promote_dir,
+            evaluation_source=fulfillment.evaluation_result.promote_dir,
+            state_db_source=temp_state_db,
+        ).root_kind
         remove_path(self.temp_root)
         return committed_root_kind
 
@@ -142,19 +142,17 @@ class CorpusAcquisitionStage:
         block_source: BlockSource,
         initial_history_plan: BlockPullPlan,
         requested_history_window_seconds: int,
+        split_session: CorpusSplitMaterializationSession,
         status: StatusCallback,
     ) -> tuple[DatasetBuildResult, int, BlockPullPlan, int]:
         history_plan = initial_history_plan
-        history_result = await ensure_corpus_split(
-            history_split_intent(
+        history_result = await split_session.fulfill(
+            CorpusSplitIntent(
+                kind=CorpusSplitKind.HISTORY,
                 output_dir=self.roots.corpus.history_dir,
                 working_dir=self.temp_root / "history-initial",
-                history_plan=history_plan,
-            ),
-            materialization=self.materialization,
-            block_source=block_source,
-            controller=self.controller,
-            status=status,
+                plan=history_plan,
+            )
         )
         resolved_capability_samples = self.planning_context.count_valid_history_samples(
             history_result.path,
@@ -172,16 +170,13 @@ class CorpusAcquisitionStage:
             requested_history_window_seconds = refill_plan.requested_history_window_seconds
             history_plan = refill_plan.history_plan
             status(refill_plan.status_message)
-            history_result = await ensure_corpus_split(
-                history_split_intent(
+            history_result = await split_session.fulfill(
+                CorpusSplitIntent(
+                    kind=CorpusSplitKind.HISTORY,
                     output_dir=history_result.path,
                     working_dir=self.temp_root / f"history-refill-{refill_attempt}",
-                    history_plan=history_plan,
-                ),
-                materialization=self.materialization,
-                block_source=block_source,
-                controller=self.controller,
-                status=status,
+                    plan=history_plan,
+                )
             )
             resolved_capability_samples = self.planning_context.count_valid_history_samples(
                 history_result.path,

@@ -9,9 +9,9 @@ from typing import cast, overload
 from ..config.models import StudyConfig, TrainConfig, TuneConfig, TunedParameterSet, WorkflowTask
 from ..config.workflow_snapshots import hydrate_workflow_config_snapshot
 from ..core.errors import ConfigResolutionError, MissingStateError
-from ..storage.root_handles import CorpusRootHandle, StudyRootHandle
 from ..storage.study_manifest import load_study_manifest, validate_tuned_artifact_definition
 from ..storage.study_optuna import load_best_params
+from ..storage.workflow_roots import CorpusRootHandle, StudyRootHandle
 from .families.registry import (
     apply_model_tuned_parameters,
 )

@@ -11,6 +11,7 @@ from spice.core.reporting import Reporter
 from spice.evaluation import EvaluationSummary
 from spice.modeling.training_runner import TrainingEpochProgress
 from spice.prediction import MetricDescriptor, MetricSet
+from spice.storage.workflow_roots import ArtifactRootHandle, CorpusRootHandle, StudyRootHandle
 from spice.workflows import evaluate as evaluate_workflow
 from spice.workflows import train as train_workflow
 from spice.workflows import tune as tune_workflow
@@ -148,9 +149,9 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
     )
     monkeypatch.setattr(evaluate_workflow, "score_evaluation", fake_score)
     monkeypatch.setattr(
-        evaluate_workflow,
+        ArtifactRootHandle,
         "upsert_evaluation_state",
-        lambda _path, **_kwargs: ("poisson_replay_2h-36s-test", 123),
+        lambda _self, _summary: ("poisson_replay_2h-36s-test", 123),
     )
     monkeypatch.setattr(
         evaluate_workflow,
@@ -159,7 +160,7 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
     )
     monkeypatch.setattr(
         evaluate_workflow,
-        "resolve_evaluate_consumer_roots",
+        "resolve_evaluate_roots",
         lambda _config: roots,
     )
 
@@ -220,7 +221,7 @@ def test_train_workflow_emits_compact_epoch_output(
     monkeypatch.setattr(train_workflow, "run_persisted_training", fake_run_persisted_training)
     monkeypatch.setattr(
         train_workflow,
-        "resolve_train_consumer_roots",
+        "resolve_train_roots",
         lambda _config: baseline_train_roots(
             tmp_path / "outputs",
             corpus=corpus_handle(
@@ -232,9 +233,9 @@ def test_train_workflow_emits_compact_epoch_output(
         ),
     )
     monkeypatch.setattr(
-        train_workflow,
-        "load_dataset_manifest",
-        lambda *_args: SimpleNamespace(chain=SimpleNamespace(name=config.chain.name)),
+        CorpusRootHandle,
+        "load_manifest",
+        lambda _self: SimpleNamespace(chain=SimpleNamespace(name=config.chain.name)),
     )
     monkeypatch.setattr(train_workflow, "training_coverage_requirement", lambda *_args: object())
     monkeypatch.setattr(train_workflow, "validate_corpus_coverage", lambda *_args, **_kwargs: None)
@@ -252,7 +253,7 @@ def test_train_workflow_emits_compact_epoch_output(
         def promote(self) -> None:
             return None
 
-    monkeypatch.setattr(train_workflow, "staged_root", lambda **_kwargs: FakeStage())
+    monkeypatch.setattr(ArtifactRootHandle, "stage", lambda _self, **_kwargs: FakeStage())
     monkeypatch.setattr(
         train_workflow,
         "training_result_fields",
@@ -284,7 +285,7 @@ def test_train_workflow_accepts_id_resolved_corpus_chain(
 
     monkeypatch.setattr(
         train_workflow,
-        "resolve_train_consumer_roots",
+        "resolve_train_roots",
         lambda _config: baseline_train_roots(
             tmp_path / "outputs",
             corpus=corpus_handle(
@@ -302,7 +303,7 @@ def test_train_workflow_accepts_id_resolved_corpus_chain(
         ),
         dataset=SimpleNamespace(name="polygon_dataset"),
     )
-    monkeypatch.setattr(train_workflow, "load_dataset_manifest", lambda *_args: corpus_manifest)
+    monkeypatch.setattr(CorpusRootHandle, "load_manifest", lambda _self: corpus_manifest)
 
     def fake_build_training_spec(active_config, *, corpus_manifest, **_kwargs):
         assert active_config.chain.name == "ethereum"
@@ -335,7 +336,7 @@ def test_train_workflow_accepts_id_resolved_corpus_chain(
         def promote(self) -> None:
             return None
 
-    monkeypatch.setattr(train_workflow, "staged_root", lambda **_kwargs: FakeStage())
+    monkeypatch.setattr(ArtifactRootHandle, "stage", lambda _self, **_kwargs: FakeStage())
     monkeypatch.setattr(
         train_workflow,
         "run_persisted_training",
@@ -397,16 +398,16 @@ def test_tuned_train_keeps_artifact_path_stable_after_best_params(
         update={"batch_size": config.training.batch_size + 7}
     )
     tuned_config = config.model_copy(update={"training": tuned_training})
-    monkeypatch.setattr(train_workflow, "resolve_train_consumer_roots", fake_resolve)
+    monkeypatch.setattr(train_workflow, "resolve_train_roots", fake_resolve)
     monkeypatch.setattr(
         train_workflow,
         "apply_study_best_params",
         lambda *_args, **_kwargs: SimpleNamespace(config=tuned_config),
     )
     monkeypatch.setattr(
-        train_workflow,
-        "load_dataset_manifest",
-        lambda *_args: SimpleNamespace(
+        CorpusRootHandle,
+        "load_manifest",
+        lambda _self: SimpleNamespace(
             chain=SimpleNamespace(name=config.chain.name, runtime=SimpleNamespace()),
             dataset=SimpleNamespace(name=config.dataset.name),
         ),
@@ -443,7 +444,7 @@ def test_tuned_train_keeps_artifact_path_stable_after_best_params(
         def promote(self) -> None:
             return None
 
-    monkeypatch.setattr(train_workflow, "staged_root", lambda **_kwargs: FakeStage())
+    monkeypatch.setattr(ArtifactRootHandle, "stage", lambda _self, **_kwargs: FakeStage())
     monkeypatch.setattr(
         train_workflow,
         "run_persisted_training",
@@ -520,13 +521,13 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
     roots = tune_roots(tmp_path / "outputs", corpus=corpus, study=study)
     monkeypatch.setattr(
         tune_workflow,
-        "resolve_tune_consumer_roots",
+        "resolve_tune_roots",
         lambda _config: roots,
     )
     monkeypatch.setattr(
-        tune_workflow,
-        "load_dataset_manifest",
-        lambda *_args: SimpleNamespace(
+        CorpusRootHandle,
+        "load_manifest",
+        lambda _self: SimpleNamespace(
             chain=SimpleNamespace(name=config.chain.name),
             dataset=SimpleNamespace(name=config.dataset.name),
         ),
@@ -553,7 +554,7 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
         ),
     )
     monkeypatch.setattr(tune_workflow, "build_study_summary", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr(tune_workflow, "reindex_catalog_root", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(StudyRootHandle, "reindex", lambda _self: None)
     monkeypatch.setattr(
         tune_workflow,
         "study_result_fields",
@@ -590,7 +591,7 @@ def test_tune_workflow_accepts_id_resolved_corpus_chain(
 
     monkeypatch.setattr(
         tune_workflow,
-        "resolve_tune_consumer_roots",
+        "resolve_tune_roots",
         lambda _config: tune_roots(
             tmp_path / "outputs",
             corpus=corpus_handle(
@@ -619,7 +620,7 @@ def test_tune_workflow_accepts_id_resolved_corpus_chain(
         ),
         dataset=SimpleNamespace(name="polygon_dataset"),
     )
-    monkeypatch.setattr(tune_workflow, "load_dataset_manifest", lambda *_args: corpus_manifest)
+    monkeypatch.setattr(CorpusRootHandle, "load_manifest", lambda _self: corpus_manifest)
 
     def fake_coverage_spec(active_config, *, corpus_manifest, **_kwargs):
         assert active_config.chain.name == "ethereum"
@@ -629,7 +630,7 @@ def test_tune_workflow_accepts_id_resolved_corpus_chain(
     monkeypatch.setattr(tune_workflow, "_coverage_spec", fake_coverage_spec)
     monkeypatch.setattr(tune_workflow, "training_coverage_requirement", lambda *_args: object())
     monkeypatch.setattr(tune_workflow, "validate_corpus_coverage", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(tune_workflow, "reindex_catalog_root", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(StudyRootHandle, "reindex", lambda _self: None)
     monkeypatch.setattr(
         tune_workflow,
         "open_tuning_study",

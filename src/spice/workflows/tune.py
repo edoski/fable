@@ -18,10 +18,6 @@ from ..modeling.persisted_training import run_persisted_training
 from ..modeling.pipeline import build_trial_training_spec
 from ..modeling.tuned_config import sample_tuned_parameters
 from ..modeling.tuning import apply_tuned_parameters
-from ..storage.catalog.index import reindex_catalog_root
-from ..storage.corpus import load_dataset_manifest
-from ..storage.root_consumer_handles import resolve_tune_consumer_roots
-from ..storage.root_handles import TuneWorkflowRoots
 from ..storage.study_models import best_epoch_from_trial, build_study_summary
 from ..storage.study_optuna import (
     open_tuning_study,
@@ -29,6 +25,7 @@ from ..storage.study_optuna import (
     record_trial_params,
 )
 from ..storage.study_render import study_result_fields
+from ..storage.workflow_roots import TuneWorkflowRoots, resolve_tune_roots
 
 
 def _workflow_facts(config: TuneConfig, roots: TuneWorkflowRoots) -> list[tuple[str, str]]:
@@ -148,8 +145,8 @@ def _coverage_spec(config: TuneConfig, *, roots: TuneWorkflowRoots, corpus_manif
 
 def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
     active_reporter = reporter or Reporter()
-    roots = resolve_tune_consumer_roots(config)
-    corpus_manifest = load_dataset_manifest(roots.corpus.state_db_path)
+    roots = resolve_tune_roots(config)
+    corpus_manifest = roots.corpus.load_manifest()
     active_reporter.header("tune", _workflow_facts(config, roots))
     spec = _coverage_spec(config, roots=roots, corpus_manifest=corpus_manifest)
     validate_corpus_coverage(
@@ -166,7 +163,7 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
             corpus=roots.corpus,
             corpus_manifest=corpus_manifest,
         )
-        reindex_catalog_root(roots.storage.root_path, root_path=roots.study.root_path)
+        roots.study.reindex()
         study = study_access.study
         if study_access.existing_trial_count:
             active_reporter.milestone(
@@ -219,5 +216,5 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
                 callbacks=[on_trial_complete],
             )
         summary = build_study_summary(study_access.manifest, study)
-    reindex_catalog_root(roots.storage.root_path, root_path=roots.study.root_path)
+    roots.study.reindex()
     active_reporter.result("tune", study_result_fields(summary))

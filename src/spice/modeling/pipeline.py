@@ -23,7 +23,7 @@ from ..corpus.metadata import DatasetManifest
 from ..features import CompiledFeatureContract
 from ..objectives import ObjectiveConfig
 from ..prediction import CompiledPredictionContract
-from ..storage.root_handles import ArtifactRootHandle, CorpusRootHandle, StudyRootHandle
+from ..storage.workflow_roots import ArtifactRootHandle, CorpusRootHandle, StudyRootHandle
 from ..temporal.contracts import CompiledProblemContract
 from ..temporal.input_normalization import CompiledInputNormalizationContract
 from ._training_context import compile_training_context

@@ -9,7 +9,7 @@ from spice.config import EvaluateConfig, TrainConfig, WorkflowTask
 from spice.storage.catalog.store import upsert_study_record
 from spice.storage.engine import state_db_path
 from spice.storage.layout import catalog_db_path
-from spice.storage.root_producer_handles import produced_artifact_id, produced_study_id
+from spice.storage.workflow_roots import produced_artifact_id, produced_study_id
 
 ETH_DATASET_ID = "cor_9a73b1e88edb488afb1e"
 
@@ -101,6 +101,56 @@ def test_materialization_injects_artifact_and_dataset_for_artifact_from(
         dataset_id=ETH_DATASET_ID,
     )
     assert evaluate.selection["dataset_id"] == ETH_DATASET_ID
+    assert evaluate.selection["artifact_id"] == evaluate.config.artifact_id
+
+
+def test_materialization_preserves_explicit_evaluate_dataset_id_with_artifact_from(
+    isolate_conf_root,
+) -> None:
+    isolate_conf_root()
+    evaluate_dataset_id = "cor_cross_corpus_same_chain"
+
+    entries = _materialize(
+        {
+            "cases": [
+                {
+                    "id": "case",
+                    "base": {
+                        "surface": "current_row_fee_dynamics",
+                        "dataset_id": ETH_DATASET_ID,
+                    },
+                    "steps": [
+                        {
+                            "id": "train",
+                            "workflow": "train",
+                            "set": {"variant": "baseline"},
+                        },
+                        {
+                            "id": "evaluate",
+                            "workflow": "evaluate",
+                            "artifact_from": "train",
+                            "set": {
+                                "dataset_id": evaluate_dataset_id,
+                                "evaluation": "poisson_replay_2h",
+                            },
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+
+    train = next(entry for entry in entries if entry.workflow is WorkflowTask.TRAIN)
+    evaluate = next(entry for entry in entries if entry.workflow is WorkflowTask.EVALUATE)
+
+    assert isinstance(train.config, TrainConfig)
+    assert isinstance(evaluate.config, EvaluateConfig)
+    assert evaluate.config.dataset_id == evaluate_dataset_id
+    assert evaluate.config.artifact_id == produced_artifact_id(
+        train.config,
+        dataset_id=ETH_DATASET_ID,
+    )
+    assert evaluate.selection["dataset_id"] == evaluate_dataset_id
     assert evaluate.selection["artifact_id"] == evaluate.config.artifact_id
 
 

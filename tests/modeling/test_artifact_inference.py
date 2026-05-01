@@ -13,7 +13,7 @@ from spice.core.errors import ConfigResolutionError
 from spice.modeling.artifact_inference import prepare_artifact_inference_context
 from spice.modeling.evaluation_runtime import EvaluationScoringRuntimePlan
 from spice.modeling.representations import RepresentationRuntimeContext
-from spice.storage.root_handles import EvaluateWorkflowRoots
+from spice.storage.workflow_roots import CorpusRootHandle, EvaluateWorkflowRoots
 from tests.root_handle_helpers import artifact_handle, corpus_handle, evaluate_roots
 
 
@@ -130,8 +130,9 @@ def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_
         lambda _config: calls.append("compile_evaluator") or evaluator_contract,
     )
     monkeypatch.setattr(
-        "spice.modeling.artifact_inference.load_dataset_manifest",
-        lambda _path: calls.append("load_dataset_manifest") or corpus_manifest,
+        CorpusRootHandle,
+        "load_manifest",
+        lambda _self: calls.append("load_dataset_manifest") or corpus_manifest,
     )
     monkeypatch.setattr(
         "spice.modeling.artifact_inference.validate_corpus_coverage",

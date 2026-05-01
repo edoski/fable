@@ -14,9 +14,7 @@ from ..modeling.results import (
 )
 from ..modeling.scoring import score_evaluation
 from ..modeling.summary import evaluation_result_fields
-from ..storage.artifact import upsert_evaluation_state
-from ..storage.root_consumer_handles import resolve_evaluate_consumer_roots
-from ..storage.root_handles import EvaluateWorkflowRoots
+from ..storage.workflow_roots import EvaluateWorkflowRoots, resolve_evaluate_roots
 
 
 def _workflow_facts(
@@ -35,7 +33,7 @@ def _workflow_facts(
 
 
 def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
-    roots = resolve_evaluate_consumer_roots(config)
+    roots = resolve_evaluate_roots(config)
     active_reporter = reporter or Reporter()
     active_reporter.header("evaluate", _workflow_facts(config, roots))
     inference_context = prepare_artifact_inference_context(
@@ -63,10 +61,7 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
         metric_descriptors=inference_context.evaluator_contract.metric_descriptors,
         execution_provenance=_current_execution_provenance(),
     )
-    evaluation_id, recorded_at = upsert_evaluation_state(
-        roots.artifact.state_db_path,
-        summary=runtime_summary,
-    )
+    evaluation_id, recorded_at = roots.artifact.upsert_evaluation_state(runtime_summary)
     summary = LoadedEvaluationSummary(
         evaluation_id=evaluation_id,
         recorded_at=recorded_at,

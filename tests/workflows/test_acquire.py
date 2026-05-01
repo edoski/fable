@@ -17,8 +17,8 @@ from spice.config import AcquireConfig, WorkflowTask
 from spice.core.reporting import Reporter
 from spice.storage.catalog.index import list_dataset_records
 from spice.storage.corpus import list_acquire_runs, load_dataset_manifest
-from spice.storage.root_producer_handles import resolve_acquire_producer_roots
 from spice.storage.selectors import DatasetSelector
+from spice.storage.workflow_roots import resolve_acquire_producer_roots
 from spice.workflows.acquire import run as run_acquire
 from tests.dataset_helpers import make_block_rows
 
@@ -156,7 +156,7 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
     assert roots.corpus.history_dir.is_dir()
     assert roots.corpus.evaluation_dir.is_dir()
     datasets = list_dataset_records(
-        roots.storage.root_path,
+        roots.corpus.storage_root,
         selector=DatasetSelector(
             chain_name=config.chain.name,
             dataset_name=config.dataset.name,

@@ -12,12 +12,12 @@ from spice.corpus.metadata import (
     DatasetValidationMetadata,
     DatasetWindowMetadata,
 )
-from spice.storage.root_producer_handles import produced_study_id
 from spice.storage.study_manifest import (
     manifest_from_payload,
     manifest_from_tune_config,
     manifest_payload,
 )
+from spice.storage.workflow_roots import produced_study_id
 from tests.root_handle_helpers import corpus_handle, study_handle
 
 TEST_DATASET_ID = "cor_9a73b1e88edb488afb1e"

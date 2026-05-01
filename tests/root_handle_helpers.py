@@ -5,23 +5,15 @@ from pathlib import Path
 from spice.config.models import ArtifactVariant
 from spice.storage.engine import state_db_path
 from spice.storage.layout import artifact_root_path, corpus_root_path, study_root_path
-from spice.storage.root_handles import (
+from spice.storage.workflow_roots import (
     ArtifactRootHandle,
     BaselineTrainWorkflowRoots,
     CorpusRootHandle,
     EvaluateWorkflowRoots,
-    StorageRootHandle,
     StudyRootHandle,
     TunedTrainWorkflowRoots,
     TuneWorkflowRoots,
 )
-
-
-def storage_handle(storage_root: Path) -> StorageRootHandle:
-    return StorageRootHandle(
-        root_path=storage_root,
-        catalog_db_path=storage_root / ".spice" / "catalog.sqlite",
-    )
 
 
 def corpus_handle(
@@ -33,6 +25,7 @@ def corpus_handle(
 ) -> CorpusRootHandle:
     root_path = corpus_root_path(storage_root, chain_name=chain_name, corpus_id=dataset_id)
     return CorpusRootHandle(
+        storage_root=storage_root,
         dataset_id=dataset_id,
         dataset_name=dataset_name,
         chain_name=chain_name,
@@ -52,6 +45,7 @@ def study_handle(
 ) -> StudyRootHandle:
     root_path = study_root_path(storage_root, chain_name=corpus.chain_name, study_id=study_id)
     return StudyRootHandle(
+        storage_root=storage_root,
         study_id=study_id,
         study_name=study_name,
         dataset_id=corpus.dataset_id,
@@ -76,6 +70,7 @@ def artifact_handle(
         artifact_id=artifact_id,
     )
     return ArtifactRootHandle(
+        storage_root=storage_root,
         artifact_id=artifact_id,
         dataset_id=corpus.dataset_id,
         dataset_name=corpus.dataset_name,
@@ -95,7 +90,6 @@ def baseline_train_roots(
     artifact_id: str = "art_test",
 ) -> BaselineTrainWorkflowRoots:
     return BaselineTrainWorkflowRoots(
-        storage=storage_handle(storage_root),
         corpus=corpus,
         artifact=artifact_handle(storage_root, corpus=corpus, artifact_id=artifact_id),
     )
@@ -109,7 +103,6 @@ def tuned_train_roots(
     artifact_id: str = "art_test",
 ) -> TunedTrainWorkflowRoots:
     return TunedTrainWorkflowRoots(
-        storage=storage_handle(storage_root),
         corpus=corpus,
         study=study,
         artifact=artifact_handle(
@@ -129,7 +122,6 @@ def tune_roots(
     study: StudyRootHandle,
 ) -> TuneWorkflowRoots:
     return TuneWorkflowRoots(
-        storage=storage_handle(storage_root),
         corpus=corpus,
         study=study,
     )
@@ -142,7 +134,6 @@ def evaluate_roots(
     artifact: ArtifactRootHandle,
 ) -> EvaluateWorkflowRoots:
     return EvaluateWorkflowRoots(
-        storage=storage_handle(storage_root),
         corpus=corpus,
         artifact=artifact,
     )

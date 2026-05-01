@@ -13,15 +13,15 @@ from spice.corpus.assembly import CorpusAssemblyRequest, assemble_corpus
 from spice.corpus.contract import canonicalize_block_frame
 from spice.corpus.io import load_block_frame
 from spice.corpus.split_materialization import (
+    CorpusSplitIntent,
+    CorpusSplitKind,
+    CorpusSplitMaterializationSession,
     CorpusSplitMaterializationSpec,
     CorpusSplitOutcome,
-    ensure_corpus_split,
-    evaluation_split_intent,
-    history_split_intent,
     pull_plan_to_frame,
     write_block_dataset_dir,
 )
-from spice.storage.root_producer_handles import resolve_acquire_producer_roots
+from spice.storage.workflow_roots import resolve_acquire_producer_roots
 from tests.dataset_helpers import make_block_rows
 
 
@@ -216,12 +216,7 @@ async def _exercise_history_split_materialization(
                 block_interval_seconds=12,
             )
 
-    result = await ensure_corpus_split(
-        history_split_intent(
-            output_dir=tmp_path / "history",
-            working_dir=tmp_path / "work",
-            history_plan=plan,
-        ),
+    session = CorpusSplitMaterializationSession(
         materialization=CorpusSplitMaterializationSpec(
             chain_name=config.chain.name,
             expected_chain_id=config.chain.runtime.chain_id,
@@ -229,6 +224,14 @@ async def _exercise_history_split_materialization(
         ),
         block_source=Source(),
         controller=AcquisitionPullController.from_config(config.acquisition),
+    )
+    result = await session.fulfill(
+        CorpusSplitIntent(
+            kind=CorpusSplitKind.HISTORY,
+            output_dir=tmp_path / "history",
+            working_dir=tmp_path / "work",
+            plan=plan,
+        )
     )
     return result.outcome, sorted(path.name for path in result.path.glob("*.parquet"))
 
@@ -353,20 +356,23 @@ def test_evaluation_split_extension_reuses_whole_existing_chunks(tmp_path) -> No
                 expected_rows=block_range.count,
             )
 
+    session = CorpusSplitMaterializationSession(
+        materialization=materialization,
+        block_source=Source(),
+        controller=AcquisitionPullController(
+            configured_batch_size=2,
+            min_batch_size=1,
+            concurrency_rungs=(1,),
+            configured_concurrency=1,
+        ),
+    )
     result = asyncio.run(
-        ensure_corpus_split(
-            evaluation_split_intent(
+        session.fulfill(
+            CorpusSplitIntent(
+                kind=CorpusSplitKind.EVALUATION,
                 output_dir=output_dir,
                 working_dir=working_dir,
-                evaluation_plan=plan,
-            ),
-            materialization=materialization,
-            block_source=Source(),
-            controller=AcquisitionPullController(
-                configured_batch_size=2,
-                min_batch_size=1,
-                concurrency_rungs=(1,),
-                configured_concurrency=1,
+                plan=plan,
             ),
         )
     )

@@ -11,8 +11,7 @@ from ..corpus.io import load_block_frame
 from ..evaluation import CompiledEvaluatorContract, compile_evaluator_contract
 from ..features import compile_feature_contract
 from ..prediction import compile_prediction_contract
-from ..storage.corpus import load_dataset_manifest
-from ..storage.root_handles import ArtifactRootHandle, CorpusRootHandle
+from ..storage.workflow_roots import ArtifactRootHandle, CorpusRootHandle
 from ..temporal.contracts import compile_problem_contract
 from .artifacts import LoadedTrainingArtifact, load_training_artifact
 from .dataset_builders import ArtifactInferencePreparationSpec, PreparedInferenceDataset
@@ -36,7 +35,7 @@ def prepare_artifact_inference_context(
 ) -> ArtifactInferenceContext:
     loaded_artifact = load_training_artifact(artifact.root_path)
     manifest = loaded_artifact.manifest
-    corpus_manifest = load_dataset_manifest(corpus.state_db_path)
+    corpus_manifest = corpus.load_manifest()
     if manifest.chain_name != corpus_manifest.chain.name:
         raise ConfigResolutionError(
             "evaluation corpus chain does not match artifact chain: "

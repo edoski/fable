@@ -13,7 +13,7 @@ from ..acquisition import (
 )
 from ..config.models import AcquireConfig
 from ..storage.engine import RootKind
-from ..storage.root_handles import AcquireWorkflowRoots
+from ..storage.workflow_roots import AcquireWorkflowRoots
 from .acquisition_stage import CorpusAcquisitionStage
 from .metadata import (
     AcquireRunRecord,

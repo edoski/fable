@@ -81,10 +81,7 @@ storage/
   study_models.py    study payload models/codecs
   study_optuna.py    Optuna storage integration
   artifact.py        artifact-root persistence
-  root_handles.py    workflow-facing root references
-  root_producer_handles.py produced-root identity and handles
-  root_consumer_handles.py catalog-first consumer root resolution
-  dependency_root_materialization.py benchmark dependency-produced root ids
+  workflow_roots.py  workflow-facing roots, producer identity, and root operations
   lifecycle.py       staging, promotion, partial commit, delete cascade
   sync_cli.py        remote-side path/root-kind helper commands
   inspect*.py        read-only inspection views
@@ -93,7 +90,7 @@ storage/
 
 Storage owns persisted payload ABI. Modeling and evaluation own runtime result objects; storage codecs translate those objects at the SQLite table boundary.
 
-Producer identity and consumer selection stay separate. Producer helpers derive ids and root handles for roots that workflows are about to create. Consumer helpers resolve existing roots through the catalog before workflows read them. Root lifecycle remains lower-level path and root-kind infrastructure shared by both.
+Producer identity and consumer selection stay separate inside `workflow_roots.py`. Producer helpers derive ids and root handles for roots that workflows are about to create. Consumer helpers resolve existing roots through the catalog before workflows read them. Workflow roots expose storage-owned operations for manifest loading, staging, promotion, reindexing, and evaluation-state upsert; lower-level lifecycle remains path and root-kind infrastructure.
 
 ## Remote Transfer Boundary
 

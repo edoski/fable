@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
@@ -40,10 +41,12 @@ from .identity import (
     study_manifest_identity,
 )
 from .payloads import PayloadCodec, SingletonPayloadStore, mapping_payload
-from .root_handles import CorpusRootHandle, StudyRootHandle
 from .schema import STUDY_TABLES, study_manifest
 from .semantics_codecs import study_semantics_from_payload, study_semantics_payload
 from .study_models import StudyManifest
+
+if TYPE_CHECKING:
+    from .workflow_roots import CorpusRootHandle, StudyRootHandle
 
 STUDY_SAMPLER_NAME = "TPESampler"
 

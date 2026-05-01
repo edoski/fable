@@ -13,11 +13,11 @@ from ..modeling.pipeline import build_artifact_training_spec
 from ..modeling.summary import training_result_fields
 from ..modeling.training_runner import TrainingEpochProgress
 from ..modeling.tuning import apply_study_best_params
-from ..storage.corpus import load_dataset_manifest
-from ..storage.engine import ARTIFACT_ROOT_KIND
-from ..storage.lifecycle import staged_root
-from ..storage.root_consumer_handles import resolve_train_consumer_roots
-from ..storage.root_handles import TrainWorkflowRoots, TunedTrainWorkflowRoots
+from ..storage.workflow_roots import (
+    TrainWorkflowRoots,
+    TunedTrainWorkflowRoots,
+    resolve_train_roots,
+)
 
 
 def _workflow_facts(config: TrainConfig, roots: TrainWorkflowRoots) -> list[tuple[str, str]]:
@@ -63,7 +63,7 @@ def _fit_epoch_message(
 def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
     active_reporter = reporter or Reporter()
     active_config: TrainConfig = config
-    roots = resolve_train_consumer_roots(config)
+    roots = resolve_train_roots(config)
     if config.artifact.variant is ArtifactVariant.TUNED:
         assert isinstance(roots, TunedTrainWorkflowRoots)
         applied = apply_study_best_params(
@@ -72,7 +72,7 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
             corpus=roots.corpus,
         )
         active_config = cast(TrainConfig, applied.config)
-    corpus_manifest = load_dataset_manifest(roots.corpus.state_db_path)
+    corpus_manifest = roots.corpus.load_manifest()
     active_reporter.header("train", _workflow_facts(active_config, roots))
     spec = build_artifact_training_spec(
         active_config,
@@ -88,13 +88,7 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
     )
     artifact_dir = roots.artifact.root_path
     history_block_path = roots.corpus.history_dir
-    with staged_root(
-        storage_root=roots.storage.root_path,
-        destination_root=artifact_dir,
-        expected_root_kind=ARTIFACT_ROOT_KIND,
-        purpose="staging",
-        prune_stop_at=artifact_dir.parent.parent,
-    ) as artifact_stage:
+    with roots.artifact.stage(purpose="staging") as artifact_stage:
         persisted = run_persisted_training(
             history_block_path,
             spec=spec,
