@@ -36,12 +36,29 @@ class ExecutionPolicyConfig(ConfigModel):
 
 @dataclass(frozen=True, slots=True)
 class PreparedActionSpace:
+    sample_indices: IntVector
+    max_candidate_slots: int
     action_mask: BoolMatrix
+
+    def __post_init__(self) -> None:
+        sample_indices = self.sample_indices.astype(np.int64, copy=False)
+        action_mask = self.action_mask.astype(np.bool_, copy=False)
+        max_candidate_slots = int(self.max_candidate_slots)
+        if sample_indices.ndim != 1:
+            raise ValueError("Action Space sample_indices must be a one-dimensional array")
+        if max_candidate_slots <= 0:
+            raise ValueError("Action Space max_candidate_slots must be positive")
+        if action_mask.shape != (int(sample_indices.shape[0]), max_candidate_slots):
+            raise ValueError(
+                "Action Space action_mask must match sample count and action width"
+            )
+        object.__setattr__(self, "sample_indices", sample_indices)
+        object.__setattr__(self, "max_candidate_slots", max_candidate_slots)
+        object.__setattr__(self, "action_mask", action_mask)
 
 
 @dataclass(frozen=True, slots=True)
 class PreparedSupervisedExecutionTargets:
-    action_mask: BoolMatrix
     candidate_log_fees: FloatMatrix
     optimum_offsets: IntVector
     optimum_log_fees: FloatVector
@@ -65,7 +82,7 @@ class DecodedOffsetBatch(Protocol):
 
 
 PrepareSupervisedTargetsFn = Callable[
-    [CompiledProblemStore, IntVector],
+    [CompiledProblemStore, PreparedActionSpace],
     PreparedSupervisedExecutionTargets,
 ]
 PrepareActionSpaceFn = Callable[
@@ -97,9 +114,9 @@ class CompiledExecutionPolicyContract:
     def prepare_supervised_targets(
         self,
         store: CompiledProblemStore,
-        sample_indices: IntVector,
+        action_space: PreparedActionSpace,
     ) -> PreparedSupervisedExecutionTargets:
-        return self.prepare_supervised_targets_fn(store, sample_indices)
+        return self.prepare_supervised_targets_fn(store, action_space)
 
     def prepare_action_space(
         self,

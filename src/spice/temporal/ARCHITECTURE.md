@@ -59,9 +59,12 @@ Compilers publish feature prerequisites and runtime metadata codecs. Dataset bui
 Prediction chooses an action. Execution policy defines what that action means in the problem:
 
 ```text
-execution policy + problem store + sample positions
+execution policy + problem store + sample indices
         |
-        +--> action mask
+        +--> prepared Action Space
+             +--> sample indices
+             +--> action width
+             +--> action mask
         |
 decoded offsets
         |
@@ -74,7 +77,7 @@ execute selected rows
         +--> overflow mask
 ```
 
-Evaluators receive an execution-policy contract, not a policy id string.
+Model-input representation and prediction target construction consume the same prepared Action Space. Evaluators receive an execution-policy contract, not a policy id string.
 
 ## Extension Points
 

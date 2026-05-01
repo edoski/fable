@@ -16,11 +16,7 @@ from ..storage.root_handles import ArtifactRootHandle, CorpusRootHandle
 from ..temporal.contracts import compile_problem_contract
 from .artifacts import LoadedTrainingArtifact, load_training_artifact
 from .dataset_builders import ArtifactInferencePreparationSpec, PreparedInferenceDataset
-from .scoring import (
-    EvaluationScoringContext,
-    build_evaluation_scoring_context,
-    build_model_scoring_input,
-)
+from .scoring import ModelScoringInput, build_model_scoring_input
 
 
 @dataclass(slots=True)
@@ -29,7 +25,7 @@ class ArtifactInferenceContext:
     prepared: PreparedInferenceDataset
     delay_seconds: int
     evaluator_contract: CompiledEvaluatorContract
-    scoring_context: EvaluationScoringContext
+    scoring_input: ModelScoringInput
 
 
 def prepare_artifact_inference_context(
@@ -95,23 +91,20 @@ def prepare_artifact_inference_context(
             evaluation_end_timestamp=corpus_manifest.coverage.evaluation.end_timestamp,
         ),
     )
-    scoring_context = build_evaluation_scoring_context(
-        model_input=build_model_scoring_input(
-            model=loaded_artifact.model,
-            model_config=loaded_artifact.manifest.model,
-            prediction_contract=prediction_contract,
-            representation_contract=loaded_artifact.representation_contract,
-            execution_policy=prepared.execution_policy,
-            store=prepared.store,
-            sample_indices=prepared.sample_indices,
-            batch_size=config.batch_size,
-        ),
-        evaluator_contract=evaluator_contract,
+    scoring_input = build_model_scoring_input(
+        model=loaded_artifact.model,
+        model_config=loaded_artifact.manifest.model,
+        prediction_contract=prediction_contract,
+        representation_contract=loaded_artifact.representation_contract,
+        execution_policy=prepared.execution_policy,
+        store=prepared.store,
+        sample_indices=prepared.sample_indices,
+        batch_size=config.batch_size,
     )
     return ArtifactInferenceContext(
         loaded_artifact=loaded_artifact,
         prepared=prepared,
         delay_seconds=delay_seconds,
         evaluator_contract=evaluator_contract,
-        scoring_context=scoring_context,
+        scoring_input=scoring_input,
     )

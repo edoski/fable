@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from dataclasses import replace
 from typing import cast
 
 import numpy as np
@@ -25,7 +24,6 @@ from spice.prediction.families.min_block_fee_multitask.outputs import (
     OFFSET_LOGITS_HEAD_ID,
 )
 from spice.temporal import (
-    PreparedSupervisedExecutionTargets,
     coerce_execution_policy_config,
     compile_execution_policy_contract,
 )
@@ -95,7 +93,6 @@ def test_min_block_fee_multitask_targets_weights_loss_and_decode() -> None:
 
     prepared_targets = contract.prepare_targets(
         store,
-        sample_indices,
         execution_policy=_execution_policy(),
         action_space=_prepare_action_space(store, sample_indices),
     )
@@ -190,7 +187,6 @@ def test_min_block_fee_multitask_uses_execution_policy_targets() -> None:
 
     prepared_targets = contract.prepare_targets(
         store,
-        sample_indices,
         execution_policy=_execution_policy(),
         action_space=_prepare_action_space(store, sample_indices),
     )
@@ -235,7 +231,6 @@ def test_min_block_fee_multitask_uses_full_action_mask_for_fixed_ex_ante_windows
 
     prepared_targets = contract.prepare_targets(
         store,
-        sample_indices,
         execution_policy=_execution_policy(),
         action_space=_prepare_action_space(store, sample_indices),
     )
@@ -247,37 +242,27 @@ def test_min_block_fee_multitask_uses_full_action_mask_for_fixed_ex_ante_windows
     assert batch.action_mask.cpu().numpy().all()
 
 
-def test_min_block_fee_multitask_rejects_divergent_prepared_action_space() -> None:
+def test_min_block_fee_multitask_targets_follow_action_space_sample_indices() -> None:
     store = _build_store()
     contract = _contract()
-    sample_indices = np.arange(store.n_samples, dtype=np.int64)
     execution_policy = _execution_policy()
+    sample_indices = np.array([2, 0], dtype=np.int64)
     action_space = execution_policy.prepare_action_space(store, sample_indices)
 
-    def divergent_targets(store, sample_indices) -> PreparedSupervisedExecutionTargets:
-        targets = execution_policy.prepare_supervised_targets(store, sample_indices)
-        mask = targets.action_mask.copy()
-        mask[0, 0] = False
-        return PreparedSupervisedExecutionTargets(
-            action_mask=mask,
-            candidate_log_fees=targets.candidate_log_fees,
-            optimum_offsets=targets.optimum_offsets,
-            optimum_log_fees=targets.optimum_log_fees,
-            baseline_candidate_indices=targets.baseline_candidate_indices,
-        )
-
-    divergent_policy = replace(
-        execution_policy,
-        prepare_supervised_targets_fn=divergent_targets,
+    prepared_targets = contract.prepare_targets(
+        store,
+        execution_policy=execution_policy,
+        action_space=action_space,
+    )
+    batch = cast(
+        MinBlockFeeTargetBatch,
+        prepared_targets.build_batch(torch.arange(sample_indices.shape[0], dtype=torch.int64)),
     )
 
-    with pytest.raises(ValueError, match="does not match prepared Action Space"):
-        contract.prepare_targets(
-            store,
-            sample_indices,
-            execution_policy=divergent_policy,
-            action_space=action_space,
-        )
+    np.testing.assert_array_equal(
+        batch.min_block_offsets.cpu().numpy(),
+        np.array([2, 0], dtype=np.int64),
+    )
 
 
 def test_min_block_fee_multitask_macro_f1_and_log_fee_errors() -> None:
@@ -348,7 +333,6 @@ def test_reused_training_state_matches_independently_refit_state_loss_and_metric
     sample_indices = np.arange(store.n_samples, dtype=np.int64)
     prepared_targets = contract.prepare_targets(
         store,
-        sample_indices,
         execution_policy=execution_policy,
         action_space=execution_policy.prepare_action_space(store, sample_indices),
     )

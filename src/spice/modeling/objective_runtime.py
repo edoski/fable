@@ -11,11 +11,7 @@ from ..core.errors import ConfigResolutionError
 from ..evaluation import EvaluatorConfig, compile_evaluator_contract
 from ..objectives import CompiledObjectiveContract, ObjectiveConfig, compile_objective_contract
 from ..prediction import MetricDescriptor, MetricSet
-from .scoring import (
-    ModelScoringInput,
-    build_evaluation_scoring_context,
-    score_evaluation,
-)
+from .scoring import ModelScoringInput, score_evaluation
 
 EvaluateObjectiveMetricsFn = Callable[
     [MetricSet, ModelScoringInput],
@@ -67,10 +63,8 @@ def compile_objective_runtime(
     ) -> MetricSet:
         del validation_metrics
         return score_evaluation(
-            build_evaluation_scoring_context(
-                model_input=context,
-                evaluator_contract=evaluator_contract,
-            )
+            model_input=context,
+            evaluator_contract=evaluator_contract,
         ).metrics
 
     return CompiledObjectiveRuntime(contract=contract, evaluate_metrics_fn=_evaluate)

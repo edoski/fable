@@ -49,6 +49,7 @@ from .selections import (
     workflow_selection_type,
 )
 from .surfaces import SurfaceFrame, apply_selection_overrides, load_surface_frame
+from .workflow_configs import coerce_resolved_workflow_config
 
 _MODEL_GROUP = "model"
 _TUNING_SPACE_GROUP = "tuning_space"
@@ -377,15 +378,20 @@ def _resolve_acquire_config(frame: SurfaceFrame, *, dry_run: bool | None) -> Acq
         acquisition = AcquisitionConfig.model_validate(
             {**acquisition.model_dump(mode="json"), "dry_run": dry_run}
         )
-    return AcquireConfig(
-        chain=chain,
-        dataset=dataset,
-        storage=storage,
-        problem=problem,
-        features=features,
-        rpc_endpoint=rpc_endpoint,
-        acquisition=acquisition,
+    config = coerce_resolved_workflow_config(
+        WorkflowTask.ACQUIRE,
+        {
+            "chain": chain,
+            "dataset": dataset,
+            "storage": storage,
+            "problem": problem,
+            "features": features,
+            "rpc_endpoint": rpc_endpoint,
+            "acquisition": acquisition,
+        },
     )
+    assert isinstance(config, AcquireConfig)
+    return config
 
 
 def _resolve_train_config(
@@ -401,26 +407,31 @@ def _resolve_train_config(
         require_tuning=False,
         allow_tuned_variant=True,
     )
-    return TrainConfig(
-        chain=base.chain,
-        dataset=base.dataset,
-        storage=base.storage,
-        dataset_id=selection.dataset_id,
-        study_id=selection.study_id,
-        problem=base.problem,
-        model=base.model,
-        dataset_builder=base.dataset_builder,
-        features=base.features,
-        prediction=base.prediction,
-        objective=base.objective,
-        evaluation=base.evaluation,
-        study=base.study,
-        artifact=base.artifact,
-        training=spine.training,
-        split=spine.split,
-        tuning=spine.tuning,
-        tuning_space=spine.tuning_space,
+    config = coerce_resolved_workflow_config(
+        WorkflowTask.TRAIN,
+        {
+            "chain": base.chain,
+            "dataset": base.dataset,
+            "storage": base.storage,
+            "dataset_id": selection.dataset_id,
+            "study_id": selection.study_id,
+            "problem": base.problem,
+            "model": base.model,
+            "dataset_builder": base.dataset_builder,
+            "features": base.features,
+            "prediction": base.prediction,
+            "objective": base.objective,
+            "evaluation": base.evaluation,
+            "study": base.study,
+            "artifact": base.artifact,
+            "training": spine.training,
+            "split": spine.split,
+            "tuning": spine.tuning,
+            "tuning_space": spine.tuning_space,
+        },
     )
+    assert isinstance(config, TrainConfig)
+    return config
 
 
 def _resolve_tune_config(
@@ -444,41 +455,51 @@ def _resolve_tune_config(
         tuning = TuningConfig.model_validate(
             {**tuning.model_dump(mode="json"), "trial_count": trial_count}
         )
-    return TuneConfig(
-        chain=base.chain,
-        dataset=base.dataset,
-        storage=base.storage,
-        dataset_id=_required(selection.dataset_id, "dataset_id"),
-        problem=base.problem,
-        model=base.model,
-        dataset_builder=base.dataset_builder,
-        features=base.features,
-        prediction=base.prediction,
-        objective=base.objective,
-        evaluation=base.evaluation,
-        study=base.study,
-        artifact=base.artifact,
-        training=spine.training,
-        split=spine.split,
-        tuning=tuning,
-        tuning_space=spine.tuning_space,
+    config = coerce_resolved_workflow_config(
+        WorkflowTask.TUNE,
+        {
+            "chain": base.chain,
+            "dataset": base.dataset,
+            "storage": base.storage,
+            "dataset_id": _required(selection.dataset_id, "dataset_id"),
+            "problem": base.problem,
+            "model": base.model,
+            "dataset_builder": base.dataset_builder,
+            "features": base.features,
+            "prediction": base.prediction,
+            "objective": base.objective,
+            "evaluation": base.evaluation,
+            "study": base.study,
+            "artifact": base.artifact,
+            "training": spine.training,
+            "split": spine.split,
+            "tuning": tuning,
+            "tuning_space": spine.tuning_space,
+        },
     )
+    assert isinstance(config, TuneConfig)
+    return config
 
 
 def _resolve_evaluate_config(selection: EvaluateWorkflowSelection) -> EvaluateConfig:
     evaluation = _resolve_evaluation(_required(selection.evaluation, "evaluation"))
     if evaluation is None:
         raise ConfigResolutionError("evaluation is required")
-    return EvaluateConfig(
-        storage=_resolve_storage(
-            None if selection.storage_root is None else StorageSpec(root=selection.storage_root)
-        ),
-        artifact_id=_required(selection.artifact_id, "artifact_id"),
-        dataset_id=_required(selection.dataset_id, "dataset_id"),
-        evaluation=evaluation,
-        delay_seconds=selection.delay_seconds,
-        batch_size=selection.batch_size or 256,
+    config = coerce_resolved_workflow_config(
+        WorkflowTask.EVALUATE,
+        {
+            "storage": _resolve_storage(
+                None if selection.storage_root is None else StorageSpec(root=selection.storage_root)
+            ),
+            "artifact_id": _required(selection.artifact_id, "artifact_id"),
+            "dataset_id": _required(selection.dataset_id, "dataset_id"),
+            "evaluation": evaluation,
+            "delay_seconds": selection.delay_seconds,
+            "batch_size": selection.batch_size or 256,
+        },
     )
+    assert isinstance(config, EvaluateConfig)
+    return config
 
 
 def _required(value: str | None, label: str) -> str:

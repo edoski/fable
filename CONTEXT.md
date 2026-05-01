@@ -56,6 +56,10 @@ _Avoid_: benchmark row
 Benchmark module that turns expanded Benchmark Workflow Selections into executable plan entries by deriving dependency-produced root ids and resolving Workflow Config snapshots.
 _Avoid_: benchmark compilation helper, id patching
 
+**Dependency Root Materialization**:
+Storage-owned derivation of benchmark dependency-produced study, artifact, and dataset ids before resolving executable plan entries.
+_Avoid_: benchmark id patching, dependency config copying
+
 **Benchmark Run**:
 One durable benchmark plan with local run-state files for metadata, plan, submission, and collection snapshot.
 _Avoid_: ad hoc benchmark output folder
@@ -119,6 +123,10 @@ _Avoid_: history helper, acquisition scheduler
 **Corpus Split Materialization**:
 Corpus module that reuses, extends, rebuilds, and validates canonical history/evaluation block datasets for a planned corpus split. Extension reuses whole clean parquet chunks and rewrites only missing or edge ranges.
 _Avoid_: parquet helper, acquisition pull
+
+**Split Intent**:
+One requested history or evaluation corpus split fulfillment, including target split kind, block plan, output path, and staging path.
+_Avoid_: split mode flags, parquet request
 
 **Artifact Inference Context**:
 Trusted inference inputs reconstructed from a trained artifact manifest, selected corpus manifest, and eval-only controls.
@@ -197,7 +205,7 @@ _Avoid_: execution backend
 - A **Benchmark** contains one or more **Benchmark Cases**.
 - A **Benchmark Case** contains one or more **Benchmark Steps**.
 - A **Benchmark Step** expands into one or more **Benchmark Workflow Selections**.
-- **Benchmark Plan Materialization** resolves **Benchmark Workflow Selections** into plan entries with materialized root ids and **Resolved Workflow Snapshots**.
+- **Benchmark Plan Materialization** uses **Dependency Root Materialization** to resolve dependency-produced root ids before producing plan entries with **Resolved Workflow Snapshots**.
 - **Benchmark Plan Execution** creates a **Benchmark Run** first, then submits the exact persisted plan.
 - A **Benchmark Run** records **Benchmark Workflow Selections**, submissions, and one **Benchmark Collection Snapshot**.
 - A **Benchmark Collection Snapshot** contains **Benchmark Result Records** for all expected collected evaluate steps after **Evaluation Execution Provenance** matches the submitted execution ref.
@@ -210,7 +218,7 @@ _Avoid_: execution backend
 - **Corpus Assembly** consumes a block source and produces a dry-run plan or committed corpus root.
 - **Corpus Assembly** uses **Corpus Capability Planning** for acquisition-window and refill policy.
 - **Corpus Assembly** uses **Corpus Acquisition Stage** for staging, fulfillment, commit wiring, and cleanup.
-- **Corpus Assembly** uses **Corpus Split Materialization** for reusable history/evaluation block datasets.
+- **Corpus Assembly** uses **Corpus Split Materialization** to fulfill **Split Intents** for reusable history/evaluation block datasets.
 - An **Artifact Inference Context** trusts artifact manifest semantics, validates selected corpus compatibility, and prepares model scoring inputs.
 - A **Temporal Dataset Preparation Interface** owns temporal sample selection, split assignment, scaler use, builder runtime metadata, and prepared dataset assembly.
 - An **Action Space** is derived by an execution policy from a problem store and selected temporal samples.

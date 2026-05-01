@@ -75,7 +75,7 @@ FitTrainingStateFn = Callable[
 # device/dtype views during loss computation, but semantic values must not
 # mutate or depend on batch call order.
 PrepareTargetsFn = Callable[
-    [CompiledProblemStore, IntVector, CompiledExecutionPolicyContract, PreparedActionSpace],
+    [CompiledProblemStore, CompiledExecutionPolicyContract, PreparedActionSpace],
     PreparedPredictionTargets,
 ]
 ComputeBatchLossAndStateFn = Callable[
@@ -159,12 +159,11 @@ class CompiledPredictionContract:
     def prepare_targets(
         self,
         store: CompiledProblemStore,
-        sample_indices: IntVector,
         *,
         execution_policy: CompiledExecutionPolicyContract,
         action_space: PreparedActionSpace,
     ) -> PreparedPredictionTargets:
-        return self.prepare_targets_fn(store, sample_indices, execution_policy, action_space)
+        return self.prepare_targets_fn(store, execution_policy, action_space)
 
     def compute_batch_loss_and_state(
         self,

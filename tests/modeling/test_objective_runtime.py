@@ -70,8 +70,8 @@ def test_evaluation_objective_runtime_scores_with_same_runtime_facts(
         lambda config: evaluator_contract,
     )
 
-    def fake_score_evaluation(context):
-        seen_contexts.append(context)
+    def fake_score_evaluation(*, model_input, evaluator_contract):
+        seen_contexts.append((model_input, evaluator_contract))
         return summary
 
     monkeypatch.setattr(
@@ -117,9 +117,9 @@ def test_evaluation_objective_runtime_scores_with_same_runtime_facts(
     assert runtime.contract.benchmark_id == "poisson_replay_2h"
     assert result == summary.metrics
     assert len(seen_contexts) == 1
-    scoring_context = seen_contexts[0]
-    assert scoring_context.model_input is runtime_context
-    assert scoring_context.evaluator_contract is evaluator_contract
+    model_input, seen_evaluator_contract = seen_contexts[0]
+    assert model_input is runtime_context
+    assert seen_evaluator_contract is evaluator_contract
 
 
 def test_validation_objective_runtime_rejects_unknown_prediction_metric() -> None:

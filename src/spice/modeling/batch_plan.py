@@ -237,7 +237,6 @@ def _build_plan(
 
 def _prepare_model_representation(
     store: CompiledProblemStore,
-    sample_indices: IntVector,
     *,
     representation_contract: CompiledRepresentationContract,
     execution_policy: CompiledExecutionPolicyContract,
@@ -246,7 +245,6 @@ def _prepare_model_representation(
 ) -> PreparedRepresentation:
     return representation_contract.prepare(
         store,
-        sample_indices,
         execution_policy=execution_policy,
         action_space=action_space,
         runtime_context=runtime_context,
@@ -260,7 +258,12 @@ def _prepare_action_space(
     execution_policy: CompiledExecutionPolicyContract,
 ) -> PreparedActionSpace:
     action_space = execution_policy.prepare_action_space(store, sample_indices)
-    expected_shape = (int(sample_indices.shape[0]), store.max_candidate_slots)
+    resolved_sample_indices = sample_indices.astype(np.int64, copy=False)
+    if not np.array_equal(action_space.sample_indices, resolved_sample_indices):
+        raise ValueError("prepared Action Space sample_indices do not match request")
+    if action_space.max_candidate_slots != int(store.max_candidate_slots):
+        raise ValueError("prepared Action Space action width does not match store")
+    expected_shape = (int(resolved_sample_indices.shape[0]), store.max_candidate_slots)
     if action_space.action_mask.shape != expected_shape:
         raise ValueError(
             "prepared Action Space action_mask shape does not match sample count "
@@ -288,7 +291,6 @@ def build_prediction_batch_plan(
     )
     prepared = _prepare_model_representation(
         store,
-        sample_indices,
         representation_contract=representation_contract,
         execution_policy=execution_policy,
         action_space=action_space,
@@ -296,7 +298,6 @@ def build_prediction_batch_plan(
     )
     targets = prediction_contract.prepare_targets(
         store,
-        sample_indices,
         execution_policy=execution_policy,
         action_space=action_space,
     )
@@ -326,7 +327,6 @@ def build_model_input_batch_plan(
     )
     prepared = _prepare_model_representation(
         store,
-        sample_indices,
         representation_contract=representation_contract,
         execution_policy=execution_policy,
         action_space=action_space,

@@ -189,9 +189,9 @@ def test_artifact_inference_context_prepares_scoring_inputs(
     assert context.loaded_artifact is loaded_artifact
     assert context.prepared is prepared
     assert context.evaluator_contract is evaluator_contract
-    assert context.scoring_context.model_input.model is loaded_artifact.model
-    assert context.scoring_context.model_input.prediction_contract is prediction_contract
-    assert context.scoring_context.model_input.sample_indices.tolist() == [0, 1]
+    assert context.scoring_input.model is loaded_artifact.model
+    assert context.scoring_input.prediction_contract is prediction_contract
+    assert context.scoring_input.sample_indices.tolist() == [0, 1]
     assert calls == [
         f"load_artifact:{roots.artifact.root_path.name}",
         "load_dataset_manifest",

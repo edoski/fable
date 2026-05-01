@@ -51,6 +51,11 @@ class CorpusSplitOutcome(StrEnum):
     REBUILT = "rebuilt"
 
 
+class CorpusSplitKind(StrEnum):
+    HISTORY = "history"
+    EVALUATION = "evaluation"
+
+
 @dataclass(slots=True)
 class DatasetBuildResult:
     path: Path
@@ -58,6 +63,14 @@ class DatasetBuildResult:
     file_count: int
     promote_dir: Path | None
     outcome: CorpusSplitOutcome
+
+
+@dataclass(frozen=True, slots=True)
+class CorpusSplitIntent:
+    kind: CorpusSplitKind
+    output_dir: Path
+    working_dir: Path
+    plan: BlockPullPlan
 
 
 StatusCallback = Callable[[str], None]
@@ -501,16 +514,72 @@ def partial_plan(
     )
 
 
-async def ensure_history_split(
+def history_split_intent(
     *,
-    materialization: CorpusSplitMaterializationSpec,
-    block_source: BlockSource,
     output_dir: Path,
     working_dir: Path,
     history_plan: BlockPullPlan,
+) -> CorpusSplitIntent:
+    return CorpusSplitIntent(
+        kind=CorpusSplitKind.HISTORY,
+        output_dir=output_dir,
+        working_dir=working_dir,
+        plan=history_plan,
+    )
+
+
+def evaluation_split_intent(
+    *,
+    output_dir: Path,
+    working_dir: Path,
+    evaluation_plan: BlockPullPlan,
+) -> CorpusSplitIntent:
+    return CorpusSplitIntent(
+        kind=CorpusSplitKind.EVALUATION,
+        output_dir=output_dir,
+        working_dir=working_dir,
+        plan=evaluation_plan,
+    )
+
+
+async def ensure_corpus_split(
+    intent: CorpusSplitIntent,
+    *,
+    materialization: CorpusSplitMaterializationSpec,
+    block_source: BlockSource,
     controller: AcquisitionPullController,
     status: StatusCallback | None = None,
 ) -> DatasetBuildResult:
+    if intent.kind is CorpusSplitKind.HISTORY:
+        return await _ensure_history_split(
+            intent,
+            materialization=materialization,
+            block_source=block_source,
+            controller=controller,
+            status=status,
+        )
+    if intent.kind is CorpusSplitKind.EVALUATION:
+        return await _ensure_evaluation_split(
+            intent,
+            materialization=materialization,
+            block_source=block_source,
+            controller=controller,
+            status=status,
+        )
+    raise ValueError(f"Unsupported corpus split kind: {intent.kind}")
+
+
+async def _ensure_history_split(
+    intent: CorpusSplitIntent,
+    *,
+    materialization: CorpusSplitMaterializationSpec,
+    block_source: BlockSource,
+    controller: AcquisitionPullController,
+    status: StatusCallback | None,
+) -> DatasetBuildResult:
+    history_plan = intent.plan
+    output_dir = intent.output_dir
+    working_dir = intent.working_dir
     emit = status or noop_status
     existing = load_existing_dataset(
         output_dir,
@@ -606,16 +675,17 @@ async def ensure_history_split(
     )
 
 
-async def ensure_evaluation_split(
+async def _ensure_evaluation_split(
+    intent: CorpusSplitIntent,
     *,
     materialization: CorpusSplitMaterializationSpec,
     block_source: BlockSource,
-    output_dir: Path,
-    working_dir: Path,
-    evaluation_plan: BlockPullPlan,
     controller: AcquisitionPullController,
-    status: StatusCallback | None = None,
+    status: StatusCallback | None,
 ) -> DatasetBuildResult:
+    evaluation_plan = intent.plan
+    output_dir = intent.output_dir
+    working_dir = intent.working_dir
     emit = status or noop_status
     existing = load_existing_dataset(
         output_dir,

@@ -114,7 +114,6 @@ class CompiledRepresentationContract:
     def prepare(
         self,
         store: CompiledProblemStore,
-        sample_indices: IntVector,
         *,
         execution_policy: CompiledExecutionPolicyContract,
         action_space: PreparedActionSpace,
@@ -122,7 +121,6 @@ class CompiledRepresentationContract:
     ) -> PreparedRepresentation[ModelInputBatch]:
         return self.prepare_impl(
             store,
-            sample_indices,
             execution_policy=execution_policy,
             action_space=action_space,
             runtime_context=runtime_context,
@@ -307,7 +305,6 @@ class _MaterializedSequenceInputRepresentation:
 
 def _prepare_sequence_input(
     store: CompiledProblemStore,
-    sample_indices: IntVector,
     *,
     execution_policy: CompiledExecutionPolicyContract,
     action_space: PreparedActionSpace,
@@ -316,7 +313,7 @@ def _prepare_sequence_input(
     del execution_policy
     if runtime_context.batch_size <= 0:
         raise ValueError("runtime_context.batch_size must be positive")
-    layout = _sequence_input_layout(store, sample_indices)
+    layout = _sequence_input_layout(store, action_space)
     dense_storage_bytes = _dense_sequence_input_storage_bytes(
         layout,
         n_features=store.n_features,
@@ -348,8 +345,9 @@ _SEQUENCE_INPUT_CONTRACT = CompiledRepresentationContract(
 
 def _sequence_input_layout(
     store: CompiledProblemStore,
-    sample_indices: IntVector,
+    action_space: PreparedActionSpace,
 ) -> _SequenceInputLayout:
+    sample_indices = action_space.sample_indices
     if sample_indices.size == 0:
         raise ValueError("Prepared representations require at least one sample")
     resolved_sample_indices = sample_indices.astype(np.int64, copy=False)

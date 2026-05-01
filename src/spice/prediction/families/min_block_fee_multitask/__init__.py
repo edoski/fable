@@ -40,7 +40,6 @@ def _fit_training_state(
 ) -> MinBlockFeeTrainingState:
     targets = materialize_min_block_fee_targets(
         store,
-        train_sample_indices,
         execution_policy=execution_policy,
         action_space=execution_policy.prepare_action_space(store, train_sample_indices),
     )
@@ -60,13 +59,11 @@ def _fit_training_state(
 
 def _prepare_targets(
     store: CompiledProblemStore,
-    sample_indices: IntVector,
     execution_policy: CompiledExecutionPolicyContract,
     action_space: PreparedActionSpace,
 ) -> PreparedPredictionTargets:
     return materialize_min_block_fee_targets(
         store,
-        sample_indices,
         execution_policy=execution_policy,
         action_space=action_space,
     )

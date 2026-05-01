@@ -50,7 +50,10 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
         f"evaluation_rows={prepared.n_evaluation_rows} "
         f"samples={prepared.sample_count}"
     )
-    evaluation = score_evaluation(inference_context.scoring_context)
+    evaluation = score_evaluation(
+        model_input=inference_context.scoring_input,
+        evaluator_contract=inference_context.evaluator_contract,
+    )
     runtime_summary = build_evaluation_runtime_summary(
         prepared=prepared,
         evaluation=evaluation,

@@ -24,6 +24,8 @@ class _ExecutionPolicy:
         self, store: _Store, sample_indices: np.ndarray
     ) -> PreparedActionSpace:
         return PreparedActionSpace(
+            sample_indices=sample_indices,
+            max_candidate_slots=store.max_candidate_slots,
             action_mask=np.ones(
                 (sample_indices.shape[0], store.max_candidate_slots), dtype=np.bool_
             )

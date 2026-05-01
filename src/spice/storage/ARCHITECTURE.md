@@ -84,6 +84,7 @@ storage/
   root_handles.py    workflow-facing root references
   root_producer_handles.py produced-root identity and handles
   root_consumer_handles.py catalog-first consumer root resolution
+  dependency_root_materialization.py benchmark dependency-produced root ids
   lifecycle.py       staging, promotion, partial commit, delete cascade
   sync_cli.py        remote-side path/root-kind helper commands
   inspect*.py        read-only inspection views

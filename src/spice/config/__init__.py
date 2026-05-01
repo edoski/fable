@@ -1,6 +1,12 @@
 """Public configuration API."""
 
 from ..objectives import ObjectiveConfig
+from .command_selection import (
+    build_acquire_command_selection,
+    build_evaluate_command_selection,
+    build_train_command_selection,
+    build_tune_command_selection,
+)
 from .models import (
     AcquireConfig,
     AcquisitionConfig,
@@ -84,6 +90,10 @@ __all__ = [
     "TuneWorkflowSelection",
     "WorkflowSelection",
     "WorkflowTask",
+    "build_acquire_command_selection",
+    "build_evaluate_command_selection",
+    "build_train_command_selection",
+    "build_tune_command_selection",
     "coerce_features_config",
     "coerce_problem_spec",
     "hydrate_workflow_config_snapshot",

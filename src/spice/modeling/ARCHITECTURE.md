@@ -49,12 +49,13 @@ Artifact Inference Context
   +--> call Temporal Dataset Preparation Interface
   |
   v
-EvaluationScoringContext
-  +--> ModelScoringInput
-  +--> EvaluationScoringRuntimePlan
+ModelScoringInput
+  +--> prepared store
+  +--> representation/prediction/execution/evaluation contracts
+  +--> scoring runtime plan
   |
   v
-score_evaluation()
+score_evaluation(model_input, evaluator_contract)
   |
   +--> evaluator checks accepted decoded-result id
   +--> predict_with_model()

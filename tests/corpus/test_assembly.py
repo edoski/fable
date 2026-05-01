@@ -15,8 +15,9 @@ from spice.corpus.io import load_block_frame
 from spice.corpus.split_materialization import (
     CorpusSplitMaterializationSpec,
     CorpusSplitOutcome,
-    ensure_evaluation_split,
-    ensure_history_split,
+    ensure_corpus_split,
+    evaluation_split_intent,
+    history_split_intent,
     pull_plan_to_frame,
     write_block_dataset_dir,
 )
@@ -215,16 +216,18 @@ async def _exercise_history_split_materialization(
                 block_interval_seconds=12,
             )
 
-    result = await ensure_history_split(
+    result = await ensure_corpus_split(
+        history_split_intent(
+            output_dir=tmp_path / "history",
+            working_dir=tmp_path / "work",
+            history_plan=plan,
+        ),
         materialization=CorpusSplitMaterializationSpec(
             chain_name=config.chain.name,
             expected_chain_id=config.chain.runtime.chain_id,
             chunk_size=4,
         ),
         block_source=Source(),
-        output_dir=tmp_path / "history",
-        working_dir=tmp_path / "work",
-        history_plan=plan,
         controller=AcquisitionPullController.from_config(config.acquisition),
     )
     return result.outcome, sorted(path.name for path in result.path.glob("*.parquet"))
@@ -351,12 +354,14 @@ def test_evaluation_split_extension_reuses_whole_existing_chunks(tmp_path) -> No
             )
 
     result = asyncio.run(
-        ensure_evaluation_split(
+        ensure_corpus_split(
+            evaluation_split_intent(
+                output_dir=output_dir,
+                working_dir=working_dir,
+                evaluation_plan=plan,
+            ),
             materialization=materialization,
             block_source=Source(),
-            output_dir=output_dir,
-            working_dir=working_dir,
-            evaluation_plan=plan,
             controller=AcquisitionPullController(
                 configured_batch_size=2,
                 min_batch_size=1,

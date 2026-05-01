@@ -19,8 +19,9 @@ from .planning import HISTORY_REFILL_ATTEMPT_LIMIT, CorpusCapabilityPlanningCont
 from .split_materialization import (
     CorpusSplitMaterializationSpec,
     DatasetBuildResult,
-    ensure_evaluation_split,
-    ensure_history_split,
+    ensure_corpus_split,
+    evaluation_split_intent,
+    history_split_intent,
 )
 
 ACQUIRE_STAGE_DIR_NAME = ".acquire-staging"
@@ -91,12 +92,14 @@ class CorpusAcquisitionStage:
                 status=status,
             )
         )
-        evaluation_result = await ensure_evaluation_split(
+        evaluation_result = await ensure_corpus_split(
+            evaluation_split_intent(
+                output_dir=self.roots.corpus.evaluation_dir,
+                working_dir=self.temp_root,
+                evaluation_plan=evaluation_plan,
+            ),
             materialization=self.materialization,
             block_source=block_source,
-            output_dir=self.roots.corpus.evaluation_dir,
-            working_dir=self.temp_root,
-            evaluation_plan=evaluation_plan,
             controller=self.controller,
             status=status,
         )
@@ -142,12 +145,14 @@ class CorpusAcquisitionStage:
         status: StatusCallback,
     ) -> tuple[DatasetBuildResult, int, BlockPullPlan, int]:
         history_plan = initial_history_plan
-        history_result = await ensure_history_split(
+        history_result = await ensure_corpus_split(
+            history_split_intent(
+                output_dir=self.roots.corpus.history_dir,
+                working_dir=self.temp_root / "history-initial",
+                history_plan=history_plan,
+            ),
             materialization=self.materialization,
             block_source=block_source,
-            output_dir=self.roots.corpus.history_dir,
-            working_dir=self.temp_root / "history-initial",
-            history_plan=history_plan,
             controller=self.controller,
             status=status,
         )
@@ -167,12 +172,14 @@ class CorpusAcquisitionStage:
             requested_history_window_seconds = refill_plan.requested_history_window_seconds
             history_plan = refill_plan.history_plan
             status(refill_plan.status_message)
-            history_result = await ensure_history_split(
+            history_result = await ensure_corpus_split(
+                history_split_intent(
+                    output_dir=history_result.path,
+                    working_dir=self.temp_root / f"history-refill-{refill_attempt}",
+                    history_plan=history_plan,
+                ),
                 materialization=self.materialization,
                 block_source=block_source,
-                output_dir=history_result.path,
-                working_dir=self.temp_root / f"history-refill-{refill_attempt}",
-                history_plan=history_plan,
                 controller=self.controller,
                 status=status,
             )

@@ -8,7 +8,7 @@ import torch
 from spice.evaluation import EvaluationRun, EvaluationSummary
 from spice.modeling.evaluation_runtime import EvaluationScoringRuntimePlan
 from spice.modeling.representations import RepresentationRuntimeContext
-from spice.modeling.scoring import EvaluationScoringContext, ModelScoringInput, score_evaluation
+from spice.modeling.scoring import ModelScoringInput, score_evaluation
 from spice.prediction import MetricSet
 
 
@@ -51,19 +51,17 @@ def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> 
     monkeypatch.setattr("spice.modeling.scoring.predict_with_model", fake_predict_with_model)
 
     result = score_evaluation(
-        EvaluationScoringContext(
-            model_input=ModelScoringInput(
-                model=SimpleNamespace(),
-                model_config=SimpleNamespace(),
-                prediction_contract=SimpleNamespace(decoded_result_id="offsets"),
-                representation_contract=SimpleNamespace(),
-                execution_policy=SimpleNamespace(name="policy"),
-                store=SimpleNamespace(),
-                sample_indices=np.array([2, 4], dtype=np.int64),
-                runtime_plan=runtime_plan,
-            ),
-            evaluator_contract=FakeEvaluator(),
-        )
+        model_input=ModelScoringInput(
+            model=SimpleNamespace(),
+            model_config=SimpleNamespace(),
+            prediction_contract=SimpleNamespace(decoded_result_id="offsets"),
+            representation_contract=SimpleNamespace(),
+            execution_policy=SimpleNamespace(name="policy"),
+            store=SimpleNamespace(),
+            sample_indices=np.array([2, 4], dtype=np.int64),
+            runtime_plan=runtime_plan,
+        ),
+        evaluator_contract=FakeEvaluator(),
     )
 
     assert result is summary

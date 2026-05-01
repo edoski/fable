@@ -11,10 +11,11 @@ from pydantic import ValidationError
 from ..config.models import ArtifactVariant, EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from ..config.resolution import WorkflowConfig, resolve_workflow_config
 from ..config.selections import EvaluateWorkflowSelection, TrainWorkflowSelection, WorkflowSelection
-from ..core.errors import ConfigResolutionError, SelectorResolutionError
-from ..storage.catalog.index import resolve_study_record
-from ..storage.root_producer_handles import produced_artifact_id, produced_study_id
-from ..storage.selectors import StudySelector
+from ..core.errors import ConfigResolutionError
+from ..storage.dependency_root_materialization import (
+    materialize_dependency_artifact,
+    materialize_dependency_study_id,
+)
 from .models import BenchmarkPlanEntry
 from .planning import BenchmarkWorkflowSelection
 
@@ -89,22 +90,25 @@ def _materialized_selection(
         and workflow_selection.variant == ArtifactVariant.TUNED.value
         and workflow_selection.study_id is None
     ):
-        study_id = _dependency_study_id(selection, configs_by_run_id)
+        study_id = materialize_dependency_study_id(
+            depends_on=selection.depends_on,
+            configs_by_run_id=configs_by_run_id,
+        )
         return workflow_selection.model_copy(update={"study_id": study_id, "dataset_id": None})
     if (
         selection.workflow is WorkflowTask.EVALUATE
         and isinstance(workflow_selection, EvaluateWorkflowSelection)
         and selection.artifact_from is not None
     ):
-        source = configs_by_run_id[selection.artifact_from]
-        if not isinstance(source, TrainConfig):
-            raise ConfigResolutionError("artifact_from may reference train steps only")
-        dataset_id = _train_dataset_id(source, configs_by_run_id)
+        materialized = materialize_dependency_artifact(
+            artifact_from=selection.artifact_from,
+            configs_by_run_id=configs_by_run_id,
+        )
         updates: dict[str, object] = {
-            "artifact_id": produced_artifact_id(source, dataset_id=dataset_id)
+            "artifact_id": materialized.artifact_id,
         }
         if workflow_selection.dataset_id is None:
-            updates["dataset_id"] = dataset_id
+            updates["dataset_id"] = materialized.dataset_id
         return workflow_selection.model_copy(update=updates)
     return workflow_selection
 
@@ -113,35 +117,3 @@ def _resolved_benchmark_config(config: WorkflowConfig) -> TrainConfig | TuneConf
     if isinstance(config, (TrainConfig, TuneConfig, EvaluateConfig)):
         return config
     raise ConfigResolutionError("benchmark plans support train, tune, and evaluate workflows")
-
-
-def _dependency_study_id(
-    selection: BenchmarkWorkflowSelection,
-    configs_by_run_id: Mapping[str, WorkflowConfig],
-) -> str:
-    for run_id in selection.depends_on:
-        config = configs_by_run_id[run_id]
-        if isinstance(config, TuneConfig):
-            return produced_study_id(config)
-    raise ConfigResolutionError("tuned train requires a tune dependency or explicit study_id")
-
-
-def _train_dataset_id(
-    config: TrainConfig,
-    configs_by_run_id: Mapping[str, WorkflowConfig],
-) -> str:
-    if config.dataset_id is not None:
-        return config.dataset_id
-    if config.study_id is None:
-        raise ConfigResolutionError("train artifact source did not declare dataset_id or study_id")
-    for candidate in configs_by_run_id.values():
-        if isinstance(candidate, TuneConfig) and produced_study_id(candidate) == config.study_id:
-            return candidate.dataset_id
-    try:
-        study = resolve_study_record(
-            config.storage.root,
-            selector=StudySelector(study_id=config.study_id),
-        )
-    except SelectorResolutionError as exc:
-        raise ConfigResolutionError(str(exc)) from exc
-    return study.dataset_id

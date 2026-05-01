@@ -12,6 +12,8 @@ Prediction chooses an action. Training and inference need to know which actions 
 
 Policies must be compiled contracts, not workflow branches. Config-facing payload errors use `ConfigResolutionError`. Evaluators receive an execution-policy contract and a decoded prediction result, then compute metrics from the problem store.
 
+The prepared Action Space is the policy-owned alignment object for selected samples. It carries sample indices, action width, and the action mask used by model-input representation, prediction targets, and decoding.
+
 ## Extension Points
 
 Add a policy for a new action-to-outcome rule. Keep policy metadata explicit so artifacts can be understood later.
@@ -36,4 +38,4 @@ The model's output is not automatically an economic result. It is an action. The
 
 ## Contract Rule
 
-Model-input representation, prediction target construction, and evaluators receive an execution-policy contract, not a policy id string. That contract exposes action masks, target behavior, realization behavior, and semantics without requiring callers to know concrete policy classes.
+Model-input representation, prediction target construction, and evaluators receive an execution-policy contract, not a policy id string. Representation and target construction consume the same prepared Action Space, so selected-sample alignment is not re-derived or cross-checked through duplicate masks.

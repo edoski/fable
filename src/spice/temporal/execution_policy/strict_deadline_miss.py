@@ -37,7 +37,12 @@ def _prepare_action_space(
     store: CompiledProblemStore,
     sample_indices: IntVector,
 ) -> PreparedActionSpace:
-    return PreparedActionSpace(action_mask=_action_mask(store, sample_indices))
+    resolved_sample_indices = sample_indices.astype(np.int64, copy=False)
+    return PreparedActionSpace(
+        sample_indices=resolved_sample_indices,
+        max_candidate_slots=store.max_candidate_slots,
+        action_mask=_action_mask(store, resolved_sample_indices),
+    )
 
 
 def _reachable_optimum(
@@ -53,15 +58,17 @@ def _reachable_optimum(
 
 def _prepare_supervised_targets(
     store: CompiledProblemStore,
-    sample_indices: IntVector,
+    action_space: PreparedActionSpace,
 ) -> PreparedSupervisedExecutionTargets:
+    sample_indices = action_space.sample_indices
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
+    if action_space.max_candidate_slots != store.max_candidate_slots:
+        raise ValueError("Action Space action width does not match store")
     resolved_indices = sample_indices.astype(np.int64, copy=False)
     window_summary = store.candidate_windows(resolved_indices)
     batch_size = int(resolved_indices.shape[0])
-    max_candidate_slots = int(store.max_candidate_slots)
-    action_mask = np.zeros((batch_size, max_candidate_slots), dtype=np.bool_)
+    max_candidate_slots = int(action_space.max_candidate_slots)
     candidate_log_fees = np.zeros((batch_size, max_candidate_slots), dtype=np.float32)
     optimum_offsets = np.empty(batch_size, dtype=np.int64)
     optimum_log_fees = np.empty(batch_size, dtype=np.float32)
@@ -76,7 +83,6 @@ def _prepare_supervised_targets(
         )
     ):
         candidate_values = store.log_base_fees[start_row:end_row]
-        action_mask[row, :] = True
         slot_count = min(int(candidate_count), max_candidate_slots)
         candidate_log_fees[row, :slot_count] = candidate_values[:slot_count]
         _, reachable_offset, reachable_log_fee = _reachable_optimum(
@@ -94,7 +100,6 @@ def _prepare_supervised_targets(
                 )
             candidate_log_fees[row, candidate_count:] = store.log_base_fees[int(end_row)]
     return PreparedSupervisedExecutionTargets(
-        action_mask=action_mask,
         candidate_log_fees=candidate_log_fees,
         optimum_offsets=optimum_offsets,
         optimum_log_fees=optimum_log_fees,

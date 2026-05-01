@@ -9,21 +9,23 @@ from typing import Annotated
 
 import typer
 
+from ...config.command_selection import (
+    build_acquire_command_selection,
+    build_evaluate_command_selection,
+    build_train_command_selection,
+    build_tune_command_selection,
+)
 from ...config.models import AcquireConfig, WorkflowTask
 from ...config.resolution import WorkflowConfig, resolve_workflow_config
 from ...config.selections import (
-    AcquireWorkflowSelection,
-    EvaluateWorkflowSelection,
     TrainWorkflowSelection,
     TuneWorkflowSelection,
     WorkflowSelection,
-    workflow_selection_payload,
 )
 from ...core.errors import SpiceOperatorError
 from ...execution.session import ExecutionSession, open_execution_session
 from ..options import DEFAULT_REMOTE_TARGET, RemoteTargetOption
 
-ModelWorkflowSelectionType = type[TrainWorkflowSelection] | type[TuneWorkflowSelection]
 ModelWorkflowSelection = TrainWorkflowSelection | TuneWorkflowSelection
 
 
@@ -95,7 +97,7 @@ def _build_acquire_workflow_config(
 ) -> AcquireConfig:
     config = _resolve_selection_for_task(
         WorkflowTask.ACQUIRE,
-        AcquireWorkflowSelection(
+        build_acquire_command_selection(
             surface=surface,
             chain=chain,
             problem=problem,
@@ -110,96 +112,14 @@ def _build_acquire_workflow_config(
     return config
 
 
-def _build_model_workflow_selection(
-    workflow: WorkflowTask,
-    *,
-    selection_type: ModelWorkflowSelectionType,
-    surface: str | None,
-    chain: str | None,
-    problem: str | None,
-    features: str | None,
-    objective: str | None,
-    evaluation: str | None,
-    model: str | None,
-    tuning_space: str | None,
-    training: str | None,
-    split: str | None,
-    tuning: str | None,
-    study: str | None,
-    dataset_id: str | None = None,
-    study_id: str | None = None,
-    variant: str | None = None,
-    trial_count: int | None = None,
-) -> ModelWorkflowSelection:
-    return selection_type.model_validate(
-        workflow_selection_payload(
-            workflow,
-            {
-                "surface": surface,
-                "chain": chain,
-                "problem": problem,
-                "features": features,
-                "objective": objective,
-                "evaluation": evaluation,
-                "model": model,
-                "tuning_space": tuning_space,
-                "training": training,
-                "split": split,
-                "tuning": tuning,
-                "study": study,
-                "dataset_id": dataset_id,
-                "study_id": study_id,
-                "variant": variant,
-                "trial_count": trial_count,
-                "storage_root": None,
-            },
-        )
-    )
-
-
 def _build_model_workflow_config(
     *,
     task: WorkflowTask,
-    selection_type: ModelWorkflowSelectionType,
-    surface: str | None,
-    chain: str | None,
-    problem: str | None,
-    features: str | None,
-    objective: str | None,
-    evaluation: str | None,
-    model: str | None,
-    tuning_space: str | None,
-    training: str | None,
-    split: str | None,
-    tuning: str | None,
-    study: str | None,
-    dataset_id: str | None = None,
-    study_id: str | None = None,
-    variant: str | None = None,
-    trial_count: int | None = None,
+    selection: ModelWorkflowSelection,
 ) -> WorkflowConfig:
     return _resolve_selection_for_task(
         task,
-        _build_model_workflow_selection(
-            task,
-            selection_type=selection_type,
-            surface=surface,
-            chain=chain,
-            problem=problem,
-            features=features,
-            objective=objective,
-            evaluation=evaluation,
-            model=model,
-            tuning_space=tuning_space,
-            training=training,
-            split=split,
-            tuning=tuning,
-            study=study,
-            dataset_id=dataset_id,
-            study_id=study_id,
-            variant=variant,
-            trial_count=trial_count,
-        ),
+        selection,
     )
 
 
@@ -213,8 +133,7 @@ def _build_evaluate_workflow_config(
 ) -> WorkflowConfig:
     return _resolve_selection_for_task(
         WorkflowTask.EVALUATE,
-        EvaluateWorkflowSelection(
-            storage_root=None,
+        build_evaluate_command_selection(
             artifact_id=artifact_id,
             dataset_id=dataset_id,
             evaluation=evaluation,
@@ -227,46 +146,14 @@ def _build_evaluate_workflow_config(
 def _submit_model_workflow(
     *,
     task: WorkflowTask,
-    selection_type: type[TrainWorkflowSelection] | type[TuneWorkflowSelection],
+    selection: ModelWorkflowSelection,
     target: str,
     dependency: str | None,
     detach: bool,
-    surface: str | None,
-    chain: str | None,
-    problem: str | None,
-    features: str | None,
-    objective: str | None,
-    evaluation: str | None,
-    model: str | None,
-    tuning_space: str | None,
-    training: str | None,
-    split: str | None,
-    tuning: str | None,
-    study: str | None,
-    dataset_id: str | None = None,
-    study_id: str | None = None,
-    variant: str | None = None,
-    trial_count: int | None = None,
 ) -> None:
     config = _build_model_workflow_config(
         task=task,
-        selection_type=selection_type,
-        surface=surface,
-        chain=chain,
-        problem=problem,
-        features=features,
-        objective=objective,
-        evaluation=evaluation,
-        model=model,
-        tuning_space=tuning_space,
-        training=training,
-        split=split,
-        tuning=tuning,
-        study=study,
-        dataset_id=dataset_id,
-        study_id=study_id,
-        variant=variant,
-        trial_count=trial_count,
+        selection=selection,
     )
     session = open_execution_session(target)
     _submit_selected_workflow(
@@ -448,25 +335,26 @@ def train_command(
 ) -> None:
     _submit_model_workflow(
         task=WorkflowTask.TRAIN,
-        selection_type=TrainWorkflowSelection,
+        selection=build_train_command_selection(
+            surface=surface,
+            chain=chain,
+            problem=problem,
+            features=features,
+            objective=objective,
+            evaluation=evaluation,
+            model=model,
+            tuning_space=tuning_space,
+            training=training,
+            split=split,
+            tuning=tuning,
+            study=study,
+            dataset_id=dataset_id,
+            study_id=study_id,
+            variant=variant,
+        ),
         target=target,
         dependency=dependency,
         detach=detach,
-        surface=surface,
-        chain=chain,
-        problem=problem,
-        features=features,
-        objective=objective,
-        evaluation=evaluation,
-        model=model,
-        tuning_space=tuning_space,
-        training=training,
-        split=split,
-        tuning=tuning,
-        study=study,
-        dataset_id=dataset_id,
-        study_id=study_id,
-        variant=variant,
     )
 
 
@@ -575,24 +463,25 @@ def tune_command(
 ) -> None:
     _submit_model_workflow(
         task=WorkflowTask.TUNE,
-        selection_type=TuneWorkflowSelection,
+        selection=build_tune_command_selection(
+            surface=surface,
+            chain=chain,
+            problem=problem,
+            features=features,
+            objective=objective,
+            evaluation=evaluation,
+            model=model,
+            tuning_space=tuning_space,
+            training=training,
+            split=split,
+            tuning=tuning,
+            study=study,
+            dataset_id=dataset_id,
+            trial_count=trial_count,
+        ),
         target=target,
         dependency=dependency,
         detach=detach,
-        surface=surface,
-        chain=chain,
-        problem=problem,
-        features=features,
-        objective=objective,
-        evaluation=evaluation,
-        model=model,
-        tuning_space=tuning_space,
-        training=training,
-        split=split,
-        tuning=tuning,
-        study=study,
-        dataset_id=dataset_id,
-        trial_count=trial_count,
     )
 
 

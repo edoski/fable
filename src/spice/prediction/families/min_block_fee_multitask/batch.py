@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import numpy as np
 import torch
 
 from ....temporal.execution_policy import CompiledExecutionPolicyContract, PreparedActionSpace
@@ -13,19 +12,13 @@ from ....temporal.problem_store import CompiledProblemStore
 
 def materialize_min_block_fee_targets(
     store: CompiledProblemStore,
-    sample_indices: np.ndarray,
     execution_policy: CompiledExecutionPolicyContract,
     action_space: PreparedActionSpace,
 ) -> PreparedMinBlockFeeTargets:
     supervised = execution_policy.prepare_supervised_targets(
         store,
-        sample_indices.astype(np.int64, copy=False),
+        action_space,
     )
-    if supervised.action_mask.shape != action_space.action_mask.shape or not np.array_equal(
-        supervised.action_mask,
-        action_space.action_mask,
-    ):
-        raise ValueError("supervised target action_mask does not match prepared Action Space")
     return PreparedMinBlockFeeTargets(
         action_mask=torch.from_numpy(action_space.action_mask),
         min_block_offsets=torch.from_numpy(supervised.optimum_offsets),

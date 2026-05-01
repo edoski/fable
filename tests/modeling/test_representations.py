@@ -83,7 +83,11 @@ def _masking_policy() -> CompiledExecutionPolicyContract:
     def prepare_action_space(store, sample_indices):
         mask = np.ones((sample_indices.shape[0], store.max_candidate_slots), dtype=np.bool_)
         mask[:, -1] = False
-        return PreparedActionSpace(action_mask=mask)
+        return PreparedActionSpace(
+            sample_indices=sample_indices,
+            max_candidate_slots=store.max_candidate_slots,
+            action_mask=mask,
+        )
 
     return replace(_execution_policy(), prepare_action_space_fn=prepare_action_space)
 
@@ -104,7 +108,6 @@ def test_sequence_input_storage_modes_yield_identical_batches() -> None:
     action_space = _action_space(policy, store, sample_indices)
     streaming = contract.prepare(
         store,
-        sample_indices,
         execution_policy=policy,
         action_space=action_space,
         runtime_context=RepresentationRuntimeContext(
@@ -114,7 +117,6 @@ def test_sequence_input_storage_modes_yield_identical_batches() -> None:
     )
     materialized = contract.prepare(
         store,
-        sample_indices,
         execution_policy=policy,
         action_space=action_space,
         runtime_context=RepresentationRuntimeContext(
@@ -172,7 +174,6 @@ def test_sequence_input_batches_use_execution_policy_action_mask() -> None:
     policy = _masking_policy()
     prepared = sequence_input_contract().prepare(
         store,
-        sample_indices,
         execution_policy=policy,
         action_space=_action_space(policy, store, sample_indices),
         runtime_context=RepresentationRuntimeContext(

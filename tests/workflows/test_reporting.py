@@ -106,7 +106,7 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
         loaded_artifact=SimpleNamespace(manifest=object()),
         prepared=prepared,
         evaluator_contract=evaluator_contract,
-        scoring_context=object(),
+        scoring_input=object(),
         delay_seconds=36,
     )
     evaluation = EvaluationSummary(
@@ -133,8 +133,12 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
         calls.append(f"prepare:{active_config.delay_seconds}:{artifact.root_path.name}")
         return context
 
-    def fake_score(scoring_context):
-        calls.append(f"score:{scoring_context is context.scoring_context}")
+    def fake_score(*, model_input, evaluator_contract):
+        calls.append(
+            "score:"
+            f"{model_input is context.scoring_input}:"
+            f"{evaluator_contract is context.evaluator_contract}"
+        )
         return evaluation
 
     monkeypatch.setattr(
@@ -162,7 +166,7 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
     evaluate_workflow.run(config, reporter=reporter)
 
     assert calls[0].startswith(f"prepare:{config.delay_seconds}:")
-    assert calls[1:] == ["score:True"]
+    assert calls[1:] == ["score:True:True"]
     rendered = output.getvalue()
     assert "evaluate dataset=test_dataset dataset_id=" in rendered
     assert "prepare history_rows=10 evaluation_rows=5 samples=2" in rendered
