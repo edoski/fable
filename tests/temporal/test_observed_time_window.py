@@ -22,7 +22,7 @@ def _feature_contract():
                 "outputs": [
                     "log_base_fee_per_gas",
                     "log_prev_gas_used",
-                    "prev_priority_fee_p50",
+                    "prev_fee_history_gas_used_ratio",
                 ],
             }
         )

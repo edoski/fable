@@ -1,10 +1,10 @@
 cases:
-  - id: priority_fee_trends_ablation
+  - id: priority_fee_ablation
     base:
       surface: current_row_fee_dynamics
       training: default
       split: default
-      study: priority_fee_trends_ablation
+      study: priority_fee_ablation
     dimensions:
       data:
         - set: {chain: ethereum, dataset_id: cor_9a73b1e88edb488afb1e}
@@ -12,7 +12,7 @@ cases:
         - set: {chain: avalanche, dataset_id: cor_91fa9b80b6014317c148}
       features:
         - set: {features: core_fee_dynamics}
-        - set: {features: core_fee_dynamics_priority_trends}
+        - set: {features: core_fee_dynamics_with_priority_fee}
       models:
         - set:
             model: lstm

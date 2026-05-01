@@ -113,6 +113,24 @@ def _sources() -> dict[str, SourceSpec]:
             required_after_warmup=True,
             compute=lambda blocks: _float_column(blocks, "base_fee_per_gas"),
         ),
+        "current_gas_used": SourceSpec(
+            source_columns=("gas_used",),
+            warmup_rows=0,
+            required_after_warmup=True,
+            compute=lambda blocks: _float_column(blocks, "gas_used"),
+        ),
+        "current_gas_limit": SourceSpec(
+            source_columns=("gas_limit",),
+            warmup_rows=0,
+            required_after_warmup=True,
+            compute=lambda blocks: _float_column(blocks, "gas_limit"),
+        ),
+        "current_tx_count": SourceSpec(
+            source_columns=("tx_count",),
+            warmup_rows=0,
+            required_after_warmup=True,
+            compute=lambda blocks: _float_column(blocks, "tx_count"),
+        ),
         "prev_gas_used": SourceSpec(
             source_columns=("gas_used",),
             warmup_rows=1,
@@ -161,6 +179,12 @@ def _sources() -> dict[str, SourceSpec]:
             required_after_warmup=True,
             compute=lambda blocks: shifted_column(blocks, "fee_history_gas_used_ratio"),
         ),
+        "current_fee_history_gas_used_ratio": SourceSpec(
+            source_columns=("fee_history_gas_used_ratio",),
+            warmup_rows=0,
+            required_after_warmup=True,
+            compute=lambda blocks: _float_column(blocks, "fee_history_gas_used_ratio"),
+        ),
     }
 
 
@@ -183,12 +207,26 @@ def _features() -> dict[str, FeatureSpec]:
             warmup_rows=1,
             compute=lambda blocks, series, sources, features: _log1p(sources["prev_gas_used"]),
         ),
+        "log_current_gas_used": FeatureSpec(
+            source_dependencies=("current_gas_used",),
+            feature_dependencies=(),
+            history_seconds=0,
+            warmup_rows=0,
+            compute=lambda blocks, series, sources, features: _log1p(sources["current_gas_used"]),
+        ),
         "log_prev_gas_limit": FeatureSpec(
             source_dependencies=("prev_gas_limit",),
             feature_dependencies=(),
             history_seconds=0,
             warmup_rows=1,
             compute=lambda blocks, series, sources, features: _log1p(sources["prev_gas_limit"]),
+        ),
+        "log_current_gas_limit": FeatureSpec(
+            source_dependencies=("current_gas_limit",),
+            feature_dependencies=(),
+            history_seconds=0,
+            warmup_rows=0,
+            compute=lambda blocks, series, sources, features: _log1p(sources["current_gas_limit"]),
         ),
         "prev_gas_utilization": FeatureSpec(
             source_dependencies=("prev_gas_used", "prev_gas_limit"),
@@ -198,6 +236,16 @@ def _features() -> dict[str, FeatureSpec]:
             compute=lambda blocks, series, sources, features: _gas_utilization(
                 sources["prev_gas_used"],
                 sources["prev_gas_limit"],
+            ),
+        ),
+        "current_gas_utilization": FeatureSpec(
+            source_dependencies=("current_gas_used", "current_gas_limit"),
+            feature_dependencies=(),
+            history_seconds=0,
+            warmup_rows=0,
+            compute=lambda blocks, series, sources, features: _gas_utilization(
+                sources["current_gas_used"],
+                sources["current_gas_limit"],
             ),
         ),
         "prev_eip1559_pressure": FeatureSpec(
@@ -210,12 +258,29 @@ def _features() -> dict[str, FeatureSpec]:
                 sources["prev_gas_limit"] / 2.0,
             ),
         ),
+        "current_eip1559_pressure": FeatureSpec(
+            source_dependencies=("current_gas_used", "current_gas_limit"),
+            feature_dependencies=(),
+            history_seconds=0,
+            warmup_rows=0,
+            compute=lambda blocks, series, sources, features: _gas_utilization(
+                sources["current_gas_used"],
+                sources["current_gas_limit"] / 2.0,
+            ),
+        ),
         "log_prev_tx_count": FeatureSpec(
             source_dependencies=("prev_tx_count",),
             feature_dependencies=(),
             history_seconds=0,
             warmup_rows=1,
             compute=lambda blocks, series, sources, features: _log1p(sources["prev_tx_count"]),
+        ),
+        "log_current_tx_count": FeatureSpec(
+            source_dependencies=("current_tx_count",),
+            feature_dependencies=(),
+            history_seconds=0,
+            warmup_rows=0,
+            compute=lambda blocks, series, sources, features: _log1p(sources["current_tx_count"]),
         ),
         "seconds_since_previous_block": FeatureSpec(
             source_dependencies=(),
@@ -294,6 +359,15 @@ def _features() -> dict[str, FeatureSpec]:
             warmup_rows=1,
             compute=lambda blocks, series, sources, features: sources[
                 "prev_fee_history_gas_used_ratio"
+            ],
+        ),
+        "current_fee_history_gas_used_ratio": FeatureSpec(
+            source_dependencies=("current_fee_history_gas_used_ratio",),
+            feature_dependencies=(),
+            history_seconds=0,
+            warmup_rows=0,
+            compute=lambda blocks, series, sources, features: sources[
+                "current_fee_history_gas_used_ratio"
             ],
         ),
         "log_prev_priority_fee_p50": FeatureSpec(
@@ -443,6 +517,29 @@ def _features() -> dict[str, FeatureSpec]:
                 ddof=1,
             ),
         )
+        features[f"roll{window}_mean_current_gas_utilization"] = FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("current_gas_utilization",),
+            history_seconds=0,
+            warmup_rows=window - 1,
+            compute=lambda blocks, series, sources, features, window=window: rolling_stat(
+                features["current_gas_utilization"],
+                window=window,
+                stat="mean",
+            ),
+        )
+        features[f"roll{window}_std_current_gas_utilization"] = FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("current_gas_utilization",),
+            history_seconds=0,
+            warmup_rows=window - 1,
+            compute=lambda blocks, series, sources, features, window=window: rolling_stat(
+                features["current_gas_utilization"],
+                window=window,
+                stat="std",
+                ddof=1,
+            ),
+        )
         for priority_name in ("p50", "spread"):
             log_feature = f"log_prev_priority_fee_{priority_name}"
             features[f"roll{window}_mean_{log_feature}"] = FeatureSpec(
@@ -477,6 +574,16 @@ def _features() -> dict[str, FeatureSpec]:
             warmup_rows=lag + 1,
             compute=lambda blocks, series, sources, features, lag=lag: shift(
                 features["prev_gas_utilization"],
+                lag=lag,
+            ),
+        )
+        features[f"current_gas_utilization_lag{lag}"] = FeatureSpec(
+            source_dependencies=(),
+            feature_dependencies=("current_gas_utilization",),
+            history_seconds=0,
+            warmup_rows=lag,
+            compute=lambda blocks, series, sources, features, lag=lag: shift(
+                features["current_gas_utilization"],
                 lag=lag,
             ),
         )
@@ -519,10 +626,6 @@ CORE_FEE_DYNAMICS_OUTPUTS = (
     "roll100_mean_logfee",
     "roll100_std_logfee",
     "roll100_min_logfee",
-    "prev_priority_fee_p10",
-    "prev_priority_fee_p50",
-    "prev_priority_fee_p90",
-    "prev_priority_fee_spread",
     "prev_fee_history_gas_used_ratio",
     "dlog_base_fee",
     "base_fee_trend",
@@ -544,7 +647,50 @@ CORE_FEE_DYNAMICS_OUTPUTS = (
     "roll200_mean_prev_gas_utilization",
     "roll200_std_prev_gas_utilization",
 )
-CORE_FEE_DYNAMICS_PRIORITY_TRENDS_OUTPUTS = CORE_FEE_DYNAMICS_OUTPUTS + (
+CORE_FEE_DYNAMICS_UNSAFE_OUTPUTS = (
+    "log_base_fee_per_gas",
+    "log_current_gas_used",
+    "log_current_gas_limit",
+    "current_gas_utilization",
+    "current_eip1559_pressure",
+    "log_current_tx_count",
+    "seconds_since_previous_block",
+    "hour_sin",
+    "hour_cos",
+    "dow_sin",
+    "dow_cos",
+    "roll25_mean_logfee",
+    "roll25_std_logfee",
+    "roll25_min_logfee",
+    "roll100_mean_logfee",
+    "roll100_std_logfee",
+    "roll100_min_logfee",
+    "current_fee_history_gas_used_ratio",
+    "dlog_base_fee",
+    "base_fee_trend",
+    *(f"dlog_base_fee_lag{lag}" for lag in range(1, 7)),
+    *(f"current_gas_utilization_lag{lag}" for lag in range(1, 7)),
+    "roll10_mean_logfee",
+    "roll10_std_logfee",
+    "roll10_min_logfee",
+    "roll50_mean_logfee",
+    "roll50_std_logfee",
+    "roll50_min_logfee",
+    "roll200_mean_logfee",
+    "roll200_std_logfee",
+    "roll200_min_logfee",
+    "roll10_mean_current_gas_utilization",
+    "roll10_std_current_gas_utilization",
+    "roll50_mean_current_gas_utilization",
+    "roll50_std_current_gas_utilization",
+    "roll200_mean_current_gas_utilization",
+    "roll200_std_current_gas_utilization",
+)
+CORE_FEE_DYNAMICS_PRIORITY_FEE_OUTPUTS = CORE_FEE_DYNAMICS_OUTPUTS + (
+    "prev_priority_fee_p10",
+    "prev_priority_fee_p50",
+    "prev_priority_fee_p90",
+    "prev_priority_fee_spread",
     "log_prev_priority_fee_p50",
     "dlog_prev_priority_fee_p50",
     *(f"dlog_prev_priority_fee_p50_lag{lag}" for lag in range(1, 7)),

@@ -192,15 +192,15 @@ Feature-set stabilization sequence:
 1. The submitted local-trends A/B grid completed cleanly. Local trends won 6/9 cells, tied Avalanche Transformer-LSTM, narrowly lost Polygon LSTM, and lost Avalanche Transformer.
 2. The restored safe local-trend outputs are promoted into canonical `core_fee_dynamics`. This means `core_fee_dynamics` is now the expanded safe fee-dynamics set; do not keep a long-term separate local-trends feature axis.
 3. Rerun `safe_baseline_grid` and `large_capacity_hpo` once on the promoted `core_fee_dynamics` definition. These runs establish the first clean post-promotion baseline and tuned reference.
-4. Before the broad baseline/HPO rerun, run the focused `priority_fee_trends_ablation`. It compares canonical `core_fee_dynamics` against `core_fee_dynamics_priority_trends`, a narrow extension using lagged/public `eth_feeHistory` priority-fee p50 and spread log levels, deltas, delta lags, and 10/50/200 rolling stats. It intentionally excludes p10/p90 tails, private mempool data, same-row facts, and bundle contents.
-5. If the priority-fee trends ablation materially improves held-out evaluation, expand canonical `core_fee_dynamics` again and rerun `safe_baseline_grid` plus `large_capacity_hpo`. If it is neutral or noisy, keep it as diagnostic evidence only and leave canonical `core_fee_dynamics` unchanged.
+4. Run `priority_fee_ablation` if priority fees need a current-semantics comparison. It compares canonical no-priority `core_fee_dynamics` against `core_fee_dynamics_with_priority_fee`, which adds lagged/public priority-fee scalars and p50/spread local trends.
+5. Run `unsafe_core_fee_dynamics_ablation` to isolate same-block gas/tx leakage without priority-fee features in either arm.
 6. Only after feature-set stabilization should the broader structural sweeps run: `slot_spacing_sweep`, `lookback_window_sweep`, `delay_degradation_sweep`, and optionally `elapsed_position_ablation`.
 
 Priority-fee local-trends rationale:
 
 - Base fee moves mechanically; priority-fee percentiles and spread can capture the urgency layer of the fee market before base fee fully reacts.
 - MEV/private orderflow is not a leakage problem if the selected inputs remain lagged public `eth_feeHistory` summaries, but it can make priority-fee signals incomplete or chain-dependent because bundles may pay through private routes or coinbase transfers.
-- Same-row priority-fee statistics remain forbidden because they are finalized current-block facts. Use `prev_*` sources and explicit lag/warmup policy only.
+- Same-row priority-fee statistics remain forbidden because they are finalized current-block facts. The unsafe A/B is limited to gas/tx and fee-history gas-ratio leakage.
 
 Benchmark sweep operator flow:
 
@@ -219,7 +219,8 @@ Configured sweep specs awaiting launch decisions:
 
 - `safe_baseline_grid`: untuned ETH/POL/AVAX by LSTM/Transformer/Transformer-LSTM on `current_row_fee_dynamics`, `core_fee_dynamics`, default 1M `current_row_nominal`, and `poisson_replay_2h`.
 - `large_capacity_hpo`: bounded calibration HPO over the same 3x3 chain/model grid, large-capacity tuning spaces, 40 trials per cell, tuned train, and tuned `poisson_replay_2h` evaluation.
-- `priority_fee_trends_ablation`: fixed train/evaluate comparison of canonical `core_fee_dynamics` against `core_fee_dynamics_priority_trends` across the same 3x3 safe grid. No per-cell HPO.
+- `priority_fee_ablation`: fixed train/evaluate comparison of canonical `core_fee_dynamics` against `core_fee_dynamics_with_priority_fee` across the same 3x3 safe grid. No per-cell HPO.
+- `unsafe_core_fee_dynamics_ablation`: fixed train/evaluate comparison of canonical `core_fee_dynamics` against `core_fee_dynamics_unsafe` across the same 3x3 safe grid. No per-cell HPO.
 - `lookback_window_sweep`: fixed train/evaluate grid over ETH/POL/AVAX, LSTM/Transformer/Transformer-LSTM, and `600s`/`900s`/`1200s` lookbacks. No per-cell HPO.
 - `slot_spacing_sweep`: fixed train/evaluate comparison of `current_row_nominal` and `current_row_recent_median` across the same 3x3 safe grid. No per-cell HPO.
 - `elapsed_position_ablation`: fixed train/evaluate comparison of `core_fee_dynamics` against `core_fee_dynamics_elapsed_position` across the same 3x3 safe grid.
@@ -249,7 +250,7 @@ Metrics plan:
 
 `current_row_fee_dynamics` is the primary current runnable surface. It composes `core_fee_dynamics`, 1M-sample `current_row_nominal`, `fixed_sequence_temporal`, `lstm`, `icdcs_2026`, `profit_poisson_replay_2h`, and `poisson_replay_2h` by default. Sample-count sweeps are deferred until exact chain/date ranges and protocol-regime boundaries are explicit.
 
-`core_fee_dynamics` is safe by construction. The source layer allows current `base_fee_per_gas[t]` because EIP-1559 base fee for block `t` is deterministic from parent state before block `t` execution. Finalized current-block facts such as gas used, gas limit, transaction count, and fee-history priority-fee summaries are lagged to `t-1`.
+`core_fee_dynamics` is safe by construction. The source layer allows current `base_fee_per_gas[t]` because EIP-1559 base fee for block `t` is deterministic from parent state before block `t` execution. Finalized current-block facts such as gas used, gas limit, transaction count, and fee-history gas-used ratio are lagged to `t-1`.
 
 The feature matrix invariant is finite `float32` only. Pre-warmup placeholders may exist only to keep arrays aligned; invalid pre-warmup anchors are excluded before splitting. Required selected sources must be finite after warmup or matrix construction fails.
 

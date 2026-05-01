@@ -19,7 +19,8 @@ def _features_entries() -> dict[str, FeaturesEntry]:
         CORE_FEE_DYNAMICS,
         CORE_FEE_DYNAMICS_ELAPSED_POSITION_OUTPUTS,
         CORE_FEE_DYNAMICS_OUTPUTS,
-        CORE_FEE_DYNAMICS_PRIORITY_TRENDS_OUTPUTS,
+        CORE_FEE_DYNAMICS_PRIORITY_FEE_OUTPUTS,
+        CORE_FEE_DYNAMICS_UNSAFE_OUTPUTS,
     )
 
     return {
@@ -31,9 +32,13 @@ def _features_entries() -> dict[str, FeaturesEntry]:
             catalog=CORE_FEE_DYNAMICS,
             allowed_outputs=CORE_FEE_DYNAMICS_ELAPSED_POSITION_OUTPUTS,
         ),
-        "core_fee_dynamics_priority_trends": FeaturesEntry(
+        "core_fee_dynamics_unsafe": FeaturesEntry(
             catalog=CORE_FEE_DYNAMICS,
-            allowed_outputs=CORE_FEE_DYNAMICS_PRIORITY_TRENDS_OUTPUTS,
+            allowed_outputs=CORE_FEE_DYNAMICS_UNSAFE_OUTPUTS,
+        ),
+        "core_fee_dynamics_with_priority_fee": FeaturesEntry(
+            catalog=CORE_FEE_DYNAMICS,
+            allowed_outputs=CORE_FEE_DYNAMICS_PRIORITY_FEE_OUTPUTS,
         ),
     }
 

@@ -1,4 +1,4 @@
-id: core_fee_dynamics_priority_trends
+id: core_fee_dynamics_with_priority_fee
 outputs:
   - log_base_fee_per_gas
   - log_prev_gas_used
@@ -17,10 +17,6 @@ outputs:
   - roll100_mean_logfee
   - roll100_std_logfee
   - roll100_min_logfee
-  - prev_priority_fee_p10
-  - prev_priority_fee_p50
-  - prev_priority_fee_p90
-  - prev_priority_fee_spread
   - prev_fee_history_gas_used_ratio
   - dlog_base_fee
   - base_fee_trend
@@ -51,6 +47,10 @@ outputs:
   - roll50_std_prev_gas_utilization
   - roll200_mean_prev_gas_utilization
   - roll200_std_prev_gas_utilization
+  - prev_priority_fee_p10
+  - prev_priority_fee_p50
+  - prev_priority_fee_p90
+  - prev_priority_fee_spread
   - log_prev_priority_fee_p50
   - dlog_prev_priority_fee_p50
   - dlog_prev_priority_fee_p50_lag1

@@ -22,7 +22,7 @@ FeatureSpec formulas
 ResolvedFeatureTable
 ```
 
-`SourceSpec` owns causality and availability. Current base fee is allowed as `base_fee_per_gas[t]` because EIP-1559 base fee for block `t` is deterministic from parent state and observable before block `t` execution. Finalized current-block facts such as gas used, tx count, priority-fee percentiles, and fee-history gas-used ratio are exposed only through lagged sources.
+`SourceSpec` owns causality and availability. Current base fee is allowed as `base_fee_per_gas[t]` because EIP-1559 base fee for block `t` is deterministic from parent state and observable before block `t` execution. Canonical finalized block facts such as gas used, tx count, and fee-history gas-used ratio are exposed only through lagged sources. The explicit unsafe family exposes same-block gas/tx facts only for leakage A/B benchmarks.
 
 `FeatureSpec` owns formulas over source and feature dependencies. The default catalog is `core_fee_dynamics`.
 
@@ -37,14 +37,16 @@ The current catalog is protocol-first and includes the safe local-trend signals 
 | Transaction count | `log_prev_tx_count` | Captures recent activity density without receipt/log ingestion. |
 | Cadence/calendar | `seconds_since_previous_block`, `hour_*`, `dow_*` | Captures timing irregularity and coarse daily/weekly effects. |
 | Rolling fee context | `roll25_*_logfee`, `roll100_*_logfee` | Captures local fee level, volatility, and recent minima. |
-| Fee history | `prev_priority_fee_p10/p50/p90/spread`, `prev_fee_history_gas_used_ratio` | Captures recent priority-fee market pressure from RPC `eth_feeHistory`. |
+| Fee history gas ratio | `prev_fee_history_gas_used_ratio` | Captures recent gas pressure from RPC `eth_feeHistory`. |
 | Base-fee local trends | `dlog_base_fee`, `base_fee_trend`, `dlog_base_fee_lag1..6` | Captures short-term base-fee direction and persistence from known current/past base fees. |
 | Gas-utilization local trends | `prev_gas_utilization_lag1..6`, `roll10/50/200_*_prev_gas_utilization` | Captures safe pressure history using lagged finalized gas facts. |
 | Additional rolling fee context | `roll10/50/200_*_logfee` | Captures shorter and longer fee regimes than the original 25/100 windows. |
 
 All previous-block facts are lagged inside their `SourceSpec`, not ad hoc in dataset builders or models. That keeps causality local to the source that owns availability.
 
-`core_fee_dynamics_priority_trends` is a temporary diagnostic feature spec that extends canonical `core_fee_dynamics` with lagged public priority-fee p50/spread dynamics. It deliberately excludes p10/p90 tails until the central-fee/spread signal is tested.
+`core_fee_dynamics_unsafe` is the same no-priority feature concept with finalized gas, tx-count, and fee-history gas-ratio facts exposed from the current row. It is not deployable; it exists as an explicit same-block leakage comparator.
+
+`core_fee_dynamics_with_priority_fee` extends canonical `core_fee_dynamics` with lagged public priority-fee p10/p50/p90/spread scalars plus p50/spread local trend features.
 
 `elapsed_seconds` remains implemented only for the `core_fee_dynamics_elapsed_position` ablation spec. It measures timestamp distance from the first row in the materialized feature table. It is not part of the default catalog because it can encode corpus position, long-term regime, or split-specific trends rather than reusable fee dynamics.
 
