@@ -169,13 +169,12 @@ source .venv/bin/activate
 
 `uv` manages the repo-local `.venv/`. Without activation, prefix commands with `uv run`.
 
-Repo helper:
+Push to both remotes:
 
 ```bash
-spice-sync-remote <branch>
+git push origin main
+git push university main
 ```
-
-This pushes the branch to both `origin` and `university`.
 
 ## CLI Quickstart
 
