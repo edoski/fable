@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, NamedTuple, Protocol, TypeVar
 
 import numpy as np
@@ -61,21 +61,49 @@ class SequenceInputBatch(NamedTuple):
 
 
 @dataclass(frozen=True, slots=True)
+class DeviceStorageBudget:
+    phase: Literal["disabled", "coarse", "measured"]
+    bytes: int | None
+
+    @classmethod
+    def disabled(cls) -> DeviceStorageBudget:
+        return cls(phase="disabled", bytes=0)
+
+    @classmethod
+    def coarse(cls, bytes: int | None) -> DeviceStorageBudget:
+        return cls(phase="coarse", bytes=bytes)
+
+    @classmethod
+    def measured(cls, bytes: int) -> DeviceStorageBudget:
+        return cls(phase="measured", bytes=bytes)
+
+    def __post_init__(self) -> None:
+        if self.phase not in ("disabled", "coarse", "measured"):
+            raise ValueError("device storage budget phase is unsupported")
+        if self.bytes is not None and self.bytes < 0:
+            raise ValueError("device storage budget bytes must be non-negative")
+        if self.phase == "disabled" and self.bytes not in (0, None):
+            raise ValueError("disabled device storage budget must not carry positive bytes")
+        if self.phase == "measured" and self.bytes is None:
+            raise ValueError("measured device storage budget requires bytes")
+
+
+@dataclass(frozen=True, slots=True)
 class RepresentationRuntimeContext:
     batch_size: int
     available_host_memory_bytes: int
-    available_device_memory_bytes: int | None = None
+    device_storage_budget: DeviceStorageBudget = field(
+        default_factory=DeviceStorageBudget.disabled
+    )
 
-    def with_device_memory_budget(
+    def with_device_storage_budget(
         self,
-        available_device_memory_bytes: int | None,
+        device_storage_budget: DeviceStorageBudget,
     ) -> RepresentationRuntimeContext:
-        if available_device_memory_bytes is not None and available_device_memory_bytes < 0:
-            raise ValueError("available_device_memory_bytes must be non-negative")
         return RepresentationRuntimeContext(
             batch_size=self.batch_size,
             available_host_memory_bytes=self.available_host_memory_bytes,
-            available_device_memory_bytes=available_device_memory_bytes,
+            device_storage_budget=device_storage_budget,
         )
 
 

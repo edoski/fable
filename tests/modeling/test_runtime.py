@@ -5,10 +5,11 @@ import torch
 
 from spice.core.errors import SpiceOperatorError
 from spice.modeling._runtime import (
+    build_representation_runtime_context,
     compute_device_resident_budget,
     default_device_resident_safety_margin,
     ensure_cuda_runtime_ready,
-    resolve_available_device_memory_budget,
+    resolve_coarse_device_storage_budget,
 )
 from spice.modeling.families.lstm import LstmModelConfig
 from spice.modeling.families.registry import (
@@ -17,6 +18,7 @@ from spice.modeling.families.registry import (
 )
 from spice.modeling.families.transformer import TransformerModelConfig
 from spice.modeling.families.transformer_lstm import TransformerLstmModelConfig
+from spice.modeling.representations import DeviceStorageBudget
 
 
 def test_ensure_cuda_runtime_ready_raises_clear_error_for_broken_cuda_runtime(
@@ -45,11 +47,11 @@ def test_ensure_cuda_runtime_ready_rejects_rocm(monkeypatch) -> None:
         ensure_cuda_runtime_ready(torch.device("cuda"))
 
 
-def test_available_device_memory_budget_returns_none_for_cpu() -> None:
-    assert resolve_available_device_memory_budget(torch.device("cpu")) is None
+def test_coarse_device_storage_budget_returns_none_for_cpu() -> None:
+    assert resolve_coarse_device_storage_budget(torch.device("cpu")) is None
 
 
-def test_available_device_memory_budget_uses_current_cuda_device(monkeypatch) -> None:
+def test_coarse_device_storage_budget_uses_current_cuda_device(monkeypatch) -> None:
     seen_devices: list[int] = []
     monkeypatch.setattr(torch.cuda, "current_device", lambda: 2)
 
@@ -59,11 +61,11 @@ def test_available_device_memory_budget_uses_current_cuda_device(monkeypatch) ->
 
     monkeypatch.setattr(torch.cuda, "mem_get_info", fake_mem_get_info)
 
-    assert resolve_available_device_memory_budget(torch.device("cuda")) == 500
+    assert resolve_coarse_device_storage_budget(torch.device("cuda")) == 500
     assert seen_devices == [2]
 
 
-def test_available_device_memory_budget_uses_explicit_cuda_device(monkeypatch) -> None:
+def test_coarse_device_storage_budget_uses_explicit_cuda_device(monkeypatch) -> None:
     seen_devices: list[int] = []
 
     def fake_mem_get_info(device):
@@ -72,8 +74,27 @@ def test_available_device_memory_budget_uses_explicit_cuda_device(monkeypatch) -
 
     monkeypatch.setattr(torch.cuda, "mem_get_info", fake_mem_get_info)
 
-    assert resolve_available_device_memory_budget(torch.device("cuda:3")) == 1_000
+    assert resolve_coarse_device_storage_budget(torch.device("cuda:3")) == 1_000
     assert seen_devices == [3]
+
+
+def test_representation_runtime_context_wraps_coarse_device_storage_budget(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("spice.modeling._runtime._available_system_memory_bytes", lambda: 4096)
+    monkeypatch.setattr(
+        "spice.modeling._runtime.resolve_coarse_device_storage_budget",
+        lambda _device: 123,
+    )
+
+    context = build_representation_runtime_context(
+        device=torch.device("cuda"),
+        batch_size=8,
+    )
+
+    assert context.batch_size == 8
+    assert context.available_host_memory_bytes == 4096
+    assert context.device_storage_budget == DeviceStorageBudget.coarse(123)
 
 
 def test_transformer_disables_auto_compile_on_cuda() -> None:

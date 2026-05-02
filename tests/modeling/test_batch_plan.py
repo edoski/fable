@@ -10,7 +10,7 @@ from spice.modeling.batch_plan import (
     build_model_input_batch_plan,
     build_prediction_batch_plan,
 )
-from spice.modeling.representations import RepresentationRuntimeContext
+from spice.modeling.representations import DeviceStorageBudget, RepresentationRuntimeContext
 from spice.temporal import PreparedActionSpace
 
 
@@ -99,11 +99,13 @@ class _PredictionContract:
         return self.targets
 
 
-def _runtime_context(*, device_budget: int | None = None) -> RepresentationRuntimeContext:
+def _runtime_context(
+    *, device_storage_budget: DeviceStorageBudget | None = None
+) -> RepresentationRuntimeContext:
     return RepresentationRuntimeContext(
         batch_size=2,
         available_host_memory_bytes=1024,
-        available_device_memory_bytes=device_budget,
+        device_storage_budget=device_storage_budget or DeviceStorageBudget.disabled(),
     )
 
 
@@ -188,13 +190,47 @@ def test_prediction_batch_plan_binds_targets_to_input_sample_positions() -> None
     assert plan.estimated_storage_bytes == 1280
 
 
+@pytest.mark.parametrize(
+    ("device_storage_budget", "expected_storage_mode", "expected_device_storage_calls"),
+    [
+        (DeviceStorageBudget.disabled(), "host_materialized", 0),
+        (DeviceStorageBudget.coarse(None), "host_materialized", 0),
+        (DeviceStorageBudget.coarse(2048), "cuda_materialized", 1),
+        (DeviceStorageBudget.measured(0), "host_materialized", 0),
+        (DeviceStorageBudget.measured(2048), "cuda_materialized", 1),
+    ],
+)
+def test_cuda_batch_plan_consumes_device_storage_budget_phase(
+    device_storage_budget: DeviceStorageBudget,
+    expected_storage_mode: str,
+    expected_device_storage_calls: int,
+) -> None:
+    prepared = _Prepared()
+
+    plan = build_model_input_batch_plan(
+        _Store(),
+        np.arange(4, dtype=np.int64),
+        representation_contract=_RepresentationContract(prepared),
+        execution_policy=_ExecutionPolicy(),
+        runtime_context=_runtime_context(device_storage_budget=device_storage_budget),
+        resolved_device=torch.device("cuda"),
+        seed=2026,
+    )
+
+    assert plan.storage_mode == expected_storage_mode
+    assert prepared.device_storage_calls == expected_device_storage_calls
+    assert next(iter(plan.source)).sample_positions.tolist() == [1, 3]
+
+
 def test_device_resident_plan_exposes_storage_mode() -> None:
     plan = build_model_input_batch_plan(
         _Store(),
         np.arange(4, dtype=np.int64),
         representation_contract=_RepresentationContract(_Prepared()),
         execution_policy=_ExecutionPolicy(),
-        runtime_context=_runtime_context(device_budget=2048),
+        runtime_context=_runtime_context(
+            device_storage_budget=DeviceStorageBudget.measured(2048)
+        ),
         resolved_device=torch.device("cuda"),
         seed=2026,
     )
@@ -211,7 +247,9 @@ def test_zero_device_budget_uses_host_loader_without_device_materialization() ->
         np.arange(4, dtype=np.int64),
         representation_contract=_RepresentationContract(prepared),
         execution_policy=_ExecutionPolicy(),
-        runtime_context=_runtime_context(device_budget=0),
+        runtime_context=_runtime_context(
+            device_storage_budget=DeviceStorageBudget.measured(0)
+        ),
         resolved_device=torch.device("cuda"),
         seed=2026,
     )
@@ -230,7 +268,9 @@ def test_device_resident_oom_falls_back_to_host_loader(monkeypatch) -> None:
         np.arange(4, dtype=np.int64),
         representation_contract=_RepresentationContract(_Prepared(fail_device_storage=True)),
         execution_policy=_ExecutionPolicy(),
-        runtime_context=_runtime_context(device_budget=2048),
+        runtime_context=_runtime_context(
+            device_storage_budget=DeviceStorageBudget.measured(2048)
+        ),
         resolved_device=torch.device("cuda"),
         seed=2026,
     )

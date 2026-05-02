@@ -10,7 +10,7 @@ from spice.modeling.forward_runtime import (
     run_planned_model_input_forward,
     run_planned_prediction_forward,
 )
-from spice.modeling.representations import RepresentationRuntimeContext
+from spice.modeling.representations import DeviceStorageBudget, RepresentationRuntimeContext
 
 
 def test_planned_model_input_forward_uses_host_warmup_then_measured_budget(
@@ -19,15 +19,15 @@ def test_planned_model_input_forward_uses_host_warmup_then_measured_budget(
     runtime_context = RepresentationRuntimeContext(
         batch_size=2,
         available_host_memory_bytes=1024,
-        available_device_memory_bytes=999,
+        device_storage_budget=DeviceStorageBudget.coarse(999),
     )
     sources = [[SimpleNamespace(name="warmup")], [SimpleNamespace(name="final")]]
-    budgets: list[int | None] = []
+    budgets: list[DeviceStorageBudget] = []
     execution_policy = SimpleNamespace(name="policy")
     policies = []
 
     def fake_build_model_input_batch_plan(*_args, runtime_context, execution_policy, **_kwargs):
-        budgets.append(runtime_context.available_device_memory_bytes)
+        budgets.append(runtime_context.device_storage_budget)
         policies.append(execution_policy)
         return SimpleNamespace(source=sources[len(budgets) - 1])
 
@@ -43,7 +43,7 @@ def test_planned_model_input_forward_uses_host_warmup_then_measured_budget(
         fake_build_model_input_batch_plan,
     )
     monkeypatch.setattr(
-        "spice.modeling.forward_runtime.measure_forward_device_resident_budget",
+        "spice.modeling.forward_runtime._measure_forward_batch_budget",
         lambda _model, *, loader, **_kwargs: measured_sources.append(loader) or 77,
     )
     monkeypatch.setattr(
@@ -64,7 +64,7 @@ def test_planned_model_input_forward_uses_host_warmup_then_measured_budget(
         on_outputs=lambda batch, _outputs: seen_batches.append(batch),
     )
 
-    assert budgets == [0, 77]
+    assert budgets == [DeviceStorageBudget.disabled(), DeviceStorageBudget.measured(77)]
     assert policies == [execution_policy, execution_policy]
     assert measured_sources == [sources[0]]
     assert seen_batches == sources[1]
@@ -76,14 +76,14 @@ def test_planned_prediction_forward_preserves_callback_and_final_source(
     runtime_context = RepresentationRuntimeContext(
         batch_size=2,
         available_host_memory_bytes=1024,
-        available_device_memory_bytes=999,
+        device_storage_budget=DeviceStorageBudget.coarse(999),
     )
     sources = [[SimpleNamespace(name="warmup")], [SimpleNamespace(name="final")]]
-    budgets: list[int | None] = []
+    budgets: list[DeviceStorageBudget] = []
     shuffles: list[bool | None] = []
 
     def fake_build_prediction_batch_plan(*_args, runtime_context, shuffle=None, **_kwargs):
-        budgets.append(runtime_context.available_device_memory_bytes)
+        budgets.append(runtime_context.device_storage_budget)
         shuffles.append(shuffle)
         return SimpleNamespace(source=sources[len(budgets) - 1])
 
@@ -98,7 +98,7 @@ def test_planned_prediction_forward_preserves_callback_and_final_source(
         fake_build_prediction_batch_plan,
     )
     monkeypatch.setattr(
-        "spice.modeling.forward_runtime.measure_forward_device_resident_budget",
+        "spice.modeling.forward_runtime._measure_forward_batch_budget",
         lambda _model, *, loader, **_kwargs: 55 if loader == sources[0] else 0,
     )
     monkeypatch.setattr(
@@ -120,7 +120,7 @@ def test_planned_prediction_forward_preserves_callback_and_final_source(
         on_outputs=lambda batch, _outputs: seen_batches.append(batch),
     )
 
-    assert budgets == [0, 55]
+    assert budgets == [DeviceStorageBudget.disabled(), DeviceStorageBudget.measured(55)]
     assert shuffles == [False, False]
     assert seen_batches == sources[1]
 

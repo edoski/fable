@@ -49,13 +49,13 @@ The sequence representation builds tensors:
 
 Windows are front-packed. Models use `take_last_valid` to read the final real context position.
 
-Batch Plan binds representation batches with prediction targets, orders samples by batch signature, and chooses host or device-resident storage after runtime memory budget is known. CUDA budget discovery belongs to runtime; Batch Plan only consumes the supplied representation runtime context and handles device-materialization OOM fallback.
+Batch Plan binds representation batches with prediction targets, orders samples by batch signature, and chooses host or device-resident storage after runtime device-storage budget is known. `DeviceStorageBudget` names the phase of that budget: disabled host-only storage, coarse startup estimate, or measured residual capacity after a runtime probe. CUDA budget discovery belongs to runtime; Batch Plan only consumes the supplied representation runtime context and handles device-materialization OOM fallback.
 
 ## Training Loop
 
 Training is CUDA-only. It sets seeds, configures deterministic behavior when requested, plans runtime memory, and chooses device-resident batch storage when possible. `_runtime.py` owns coarse CUDA budget discovery and shared budget arithmetic.
 
-`training_runtime.plan_training_runtime()` performs the gradient-bearing warmup: unshuffled host Batch Plan, temporary AdamW, one probe step, CUDA budget calculation, model-state restore, and cache cleanup. Restore and cleanup run even if the probe fails. The returned prediction training state is semantic-immutable and reused for train, validation, returned training results, and split metrics. The plan also carries the model-bound evaluation scoring runtime used by evaluation objectives.
+`training_runtime.plan_training_runtime()` uses the private runtime probe helper for the shared host-warmup and measured-budget mechanics, then performs the gradient-bearing warmup body: unshuffled host Batch Plan, temporary AdamW, one probe step, model-state restore, and cache cleanup. Restore and cleanup run even if the probe fails. The returned prediction training state is semantic-immutable and reused for train, validation, returned training results, and split metrics. The plan also carries the model-bound evaluation scoring runtime used by evaluation objectives.
 
 `_epoch_execution` owns the mechanics inside a train or validation epoch. `_fit_policy` owns finite-metric behavior, objective history, strict `min_delta`, best-state tracking, progress payloads, and patience stopping. `training_runner.run_training_fit()` calls callbacks, keeps the best state in memory, restores it before returning, and assembles the public result.
 
@@ -106,7 +106,7 @@ sample_indices
 
 `DecodedOffsets` is the current candidate-offset decoded result ABI consumed by evaluators.
 
-Forward-only inference and split-metric passes use `forward_runtime`: host warmup Batch Plan with device budget `0`, CUDA forward memory measurement, final Batch Plan with the measured budget, then model forward execution. Normal forward measurement does not clear CUDA cache; cache clearing is limited to Batch Plan OOM fallback and destructive training-probe cleanup.
+Forward-only inference and split-metric passes use `forward_runtime`: host warmup Batch Plan with disabled device-storage budget, private measured-budget wrapper around a one-batch forward probe, final Batch Plan with the measured budget, then model forward execution. Normal forward measurement does not clear CUDA cache; cache clearing is limited to Batch Plan OOM fallback and destructive training-probe cleanup.
 
 ## Scoring Service
 

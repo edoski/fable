@@ -7,9 +7,8 @@ import pytest
 import torch
 
 from spice.config.models import TrainingConfig
-from spice.modeling._runtime import CudaMemorySnapshot
 from spice.modeling.evaluation_runtime import EvaluationScoringRuntimePlan
-from spice.modeling.representations import RepresentationRuntimeContext
+from spice.modeling.representations import DeviceStorageBudget, RepresentationRuntimeContext
 from spice.modeling.training_runtime import plan_training_runtime
 
 
@@ -38,7 +37,7 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
     runtime_context = RepresentationRuntimeContext(
         batch_size=1,
         available_host_memory_bytes=1024,
-        available_device_memory_bytes=999,
+        device_storage_budget=DeviceStorageBudget.coarse(999),
     )
     calls = []
     prediction_state = object()
@@ -46,7 +45,7 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
     def fake_build_prediction_batch_plan(*_args, runtime_context, seed, shuffle, **_kwargs):
         calls.append(
             {
-                "budget": runtime_context.available_device_memory_bytes,
+                "budget": runtime_context.device_storage_budget,
                 "seed": seed,
                 "shuffle": shuffle,
             }
@@ -87,26 +86,8 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
         fake_execute_training_batch,
     )
     monkeypatch.setattr(
-        "spice.modeling.training_runtime.snapshot_cuda_memory",
-        lambda _device: CudaMemorySnapshot(
-            free_bytes=1000,
-            total_bytes=10000,
-            allocated_bytes=10,
-            reserved_bytes=100,
-        ),
-    )
-    monkeypatch.setattr(
-        "spice.modeling.training_runtime.reset_cuda_peak_memory",
-        lambda _device: None,
-    )
-    monkeypatch.setattr(
-        "spice.modeling.training_runtime.peak_cuda_reserved_bytes",
-        lambda _device: 200,
-    )
-    monkeypatch.setattr(
-        "spice.modeling.training_runtime.compute_device_resident_budget",
-        lambda **kwargs: kwargs["free_bytes"]
-        - (kwargs["peak_reserved_bytes"] - kwargs["baseline_reserved_bytes"]),
+        "spice.modeling.training_runtime.measure_device_resident_budget",
+        lambda *, run_probe, **_kwargs: run_probe() or 900,
     )
     monkeypatch.setattr(
         "spice.modeling.training_runtime.torch.cuda.empty_cache",
@@ -128,15 +109,15 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
     )
 
     assert calls == [
-        {"budget": 0, "seed": 7, "shuffle": False},
-        {"budget": 900, "seed": 7, "shuffle": True},
-        {"budget": 900, "seed": 7, "shuffle": False},
+        {"budget": DeviceStorageBudget.disabled(), "seed": 7, "shuffle": False},
+        {"budget": DeviceStorageBudget.measured(900), "seed": 7, "shuffle": True},
+        {"budget": DeviceStorageBudget.measured(900), "seed": 7, "shuffle": False},
     ]
     assert optimizers[0].lr == 0.02
     assert optimizers[0].weight_decay == 0.03
     assert len(fit_state_calls) == 1
     assert plan.prediction_training_state is prediction_state
-    assert plan.runtime_context.available_device_memory_bytes == 900
+    assert plan.runtime_context.device_storage_budget == DeviceStorageBudget.measured(900)
     assert plan.evaluation_scoring_runtime_plan == EvaluationScoringRuntimePlan(
         resolved_device=torch.device("cpu"),
         precision="32-true",
@@ -157,7 +138,7 @@ def test_plan_training_runtime_restores_model_and_clears_cache_after_probe_failu
     runtime_context = RepresentationRuntimeContext(
         batch_size=1,
         available_host_memory_bytes=1024,
-        available_device_memory_bytes=999,
+        device_storage_budget=DeviceStorageBudget.coarse(999),
     )
     empty_cache_calls = []
 
@@ -170,17 +151,8 @@ def test_plan_training_runtime_restores_model_and_clears_cache_after_probe_failu
         lambda params, **_kwargs: SimpleNamespace(params=list(params)),
     )
     monkeypatch.setattr(
-        "spice.modeling.training_runtime.snapshot_cuda_memory",
-        lambda _device: CudaMemorySnapshot(
-            free_bytes=1000,
-            total_bytes=10000,
-            allocated_bytes=10,
-            reserved_bytes=100,
-        ),
-    )
-    monkeypatch.setattr(
-        "spice.modeling.training_runtime.reset_cuda_peak_memory",
-        lambda _device: None,
+        "spice.modeling.training_runtime.measure_device_resident_budget",
+        lambda *, run_probe, **_kwargs: run_probe(),
     )
     monkeypatch.setattr(
         "spice.modeling.training_runtime.torch.cuda.empty_cache",

@@ -99,6 +99,7 @@ modeling/
   dataset_builders/       temporal dataset preparation and tensorization strategies
   families/               neural network family configs/builders/tuning hooks
   batch_plan.py           training/inference batch planning
+  _runtime_probe.py       private host-warmup and measured-budget helpers
   forward_runtime.py      forward-only warmup, memory measurement, and execution
   training_runtime.py     training warmup, budget planning, and prediction state fitting
   training_runner.py      fit and split metric execution
@@ -117,4 +118,4 @@ modeling/
 
 Add a model family for a new neural architecture. Add a dataset builder for a new tensorization strategy. Add scoring behavior only when it is generic model-to-evaluator bridging; evaluator-specific scoring belongs in `evaluation`.
 
-Runtime planning is intentionally split from fit policy. `_runtime.py` owns CUDA memory discovery, budget arithmetic, and shared model-forward execution. `batch_plan.py` consumes a supplied representation runtime context to choose sample order, target binding, host/device storage, and OOM fallback; it does not probe CUDA memory. `forward_runtime.py` owns forward-only host warmup and measured final batch planning for inference and split metrics. `training_runtime.py` owns the destructive gradient-bearing probe, restores model state, clears CUDA cache after that probe, and returns final train/validation batch plans plus one reusable prediction training state. `training_runner.py` remains the public fit interface and keeps callback, best-state, and result assembly ownership.
+Runtime planning is intentionally split from fit policy. `_runtime.py` owns raw CUDA facts, budget arithmetic, backend setup, and shared model-forward execution. `RepresentationRuntimeContext` carries a `DeviceStorageBudget`, which names whether CUDA-resident batch storage is disabled, coarse, or measured. `_runtime_probe.py` owns host-warmup context construction and the measured device-budget wrapper. `batch_plan.py` consumes the budget to choose sample order, target binding, host/device storage, and OOM fallback; it does not probe CUDA memory. `forward_runtime.py` owns the forward-only probe body and final batch planning for inference and split metrics. `training_runtime.py` owns the destructive gradient-bearing probe body, restores model state, clears CUDA cache after that probe, and returns final train/validation batch plans plus one reusable prediction training state. `training_runner.py` remains the public fit interface and keeps callback, best-state, and result assembly ownership.

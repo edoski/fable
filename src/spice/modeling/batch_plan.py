@@ -472,7 +472,9 @@ def _should_use_device_resident(
 ) -> bool:
     if resolved_device.type != "cuda":
         return False
-    available_device_memory_bytes = runtime_context.available_device_memory_bytes
-    if available_device_memory_bytes is None or available_device_memory_bytes <= 0:
+    device_budget = runtime_context.device_storage_budget
+    if device_budget.phase == "disabled":
         return False
-    return required_bytes <= available_device_memory_bytes
+    if device_budget.bytes is None or device_budget.bytes <= 0:
+        return False
+    return required_bytes <= device_budget.bytes

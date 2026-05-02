@@ -17,7 +17,7 @@ from numpy.typing import NDArray
 from ..core.errors import SpiceOperatorError
 from .batch_plan import BatchSource
 from .models import ModelOutputs, TemporalModel
-from .representations import RepresentationRuntimeContext
+from .representations import DeviceStorageBudget, RepresentationRuntimeContext
 
 try:
     import psutil
@@ -153,11 +153,13 @@ def build_representation_runtime_context(
     return RepresentationRuntimeContext(
         batch_size=batch_size,
         available_host_memory_bytes=_available_system_memory_bytes(),
-        available_device_memory_bytes=resolve_available_device_memory_budget(device),
+        device_storage_budget=DeviceStorageBudget.coarse(
+            resolve_coarse_device_storage_budget(device)
+        ),
     )
 
 
-def resolve_available_device_memory_budget(resolved_device: torch.device) -> int | None:
+def resolve_coarse_device_storage_budget(resolved_device: torch.device) -> int | None:
     if resolved_device.type != "cuda":
         return None
     device_index = _cuda_device_index(resolved_device)
@@ -228,30 +230,6 @@ def run_model_forward_pass(
             with precision_context(precision=precision):
                 outputs = model(**device_batch.model_kwargs())
             on_outputs(device_batch, outputs)
-
-
-def measure_forward_device_resident_budget(
-    model: TemporalModel,
-    *,
-    loader: BatchSource[ForwardBatchT],
-    resolved_device: torch.device,
-    precision: str,
-) -> int:
-    baseline = snapshot_cuda_memory(resolved_device)
-    reset_cuda_peak_memory(resolved_device)
-    model.eval()
-    with torch.no_grad():
-        batch = next(iter(loader))
-        device_batch = cast(ForwardBatchT, batch.to_device(resolved_device))
-        with precision_context(precision=precision):
-            _ = model(**device_batch.model_kwargs())
-    torch.cuda.synchronize(_cuda_device_index(resolved_device))
-    return compute_device_resident_budget(
-        free_bytes=baseline.free_bytes,
-        baseline_reserved_bytes=baseline.reserved_bytes,
-        peak_reserved_bytes=peak_cuda_reserved_bytes(resolved_device),
-        total_bytes=baseline.total_bytes,
-    )
 
 
 def _available_system_memory_bytes() -> int:

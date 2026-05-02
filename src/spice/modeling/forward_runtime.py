@@ -11,18 +11,18 @@ from ..prediction import CompiledPredictionContract
 from ..prediction.contracts import ModelInputBatch, PredictionBatch
 from ..temporal.execution_policy import CompiledExecutionPolicyContract
 from ..temporal.problem_store import CompiledProblemStore, IntVector
-from ._runtime import measure_forward_device_resident_budget, run_model_forward_pass
-from .batch_plan import BatchPlan, build_model_input_batch_plan, build_prediction_batch_plan
+from ._runtime import ForwardBatch, precision_context, run_model_forward_pass
+from ._runtime_probe import measure_device_resident_budget, measured_runtime_context
+from .batch_plan import (
+    BatchPlan,
+    BatchSource,
+    build_model_input_batch_plan,
+    build_prediction_batch_plan,
+)
 from .models import ModelOutputs, TemporalModel
 from .representations import CompiledRepresentationContract, RepresentationRuntimeContext
 
 ForwardBatchT = TypeVar("ForwardBatchT", ModelInputBatch, PredictionBatch)
-
-
-def _host_warmup_context(
-    runtime_context: RepresentationRuntimeContext,
-) -> RepresentationRuntimeContext:
-    return runtime_context.with_device_memory_budget(0)
 
 
 def _require_non_empty_samples(sample_indices: IntVector) -> None:
@@ -39,15 +39,16 @@ def _run_planned_forward(
     precision: str,
     on_outputs: Callable[[ForwardBatchT, ModelOutputs], None],
 ) -> None:
-    warmup_plan = build_plan(_host_warmup_context(base_runtime_context))
-    budget = measure_forward_device_resident_budget(
-        model,
-        loader=warmup_plan.source,
-        resolved_device=resolved_device,
-        precision=precision,
+    planned_runtime_context = measured_runtime_context(
+        base_runtime_context,
+        build_warmup_plan=build_plan,
+        measure_warmup_budget=lambda warmup_plan: _measure_forward_batch_budget(
+            model,
+            loader=warmup_plan.source,
+            resolved_device=resolved_device,
+            precision=precision,
+        ),
     )
-    planned_runtime_context = base_runtime_context.with_device_memory_budget(budget)
-    del warmup_plan
     batch_plan = build_plan(planned_runtime_context)
     run_model_forward_pass(
         model,
@@ -55,6 +56,27 @@ def _run_planned_forward(
         resolved_device=resolved_device,
         precision=precision,
         on_outputs=on_outputs,
+    )
+
+
+def _measure_forward_batch_budget(
+    model: TemporalModel,
+    *,
+    loader: BatchSource[ForwardBatch],
+    resolved_device: torch.device,
+    precision: str,
+) -> int:
+    def _run_forward_probe() -> None:
+        model.eval()
+        with torch.no_grad():
+            batch = next(iter(loader))
+            device_batch = batch.to_device(resolved_device)
+            with precision_context(precision=precision):
+                _ = model(**device_batch.model_kwargs())
+
+    return measure_device_resident_budget(
+        resolved_device=resolved_device,
+        run_probe=_run_forward_probe,
     )
 
 

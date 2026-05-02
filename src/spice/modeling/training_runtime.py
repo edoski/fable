@@ -13,12 +13,7 @@ from ..prediction.contracts import PredictionBatch
 from ..temporal.execution_policy import CompiledExecutionPolicyContract
 from ..temporal.problem_store import CompiledProblemStore, IntVector
 from ._epoch_execution import execute_training_batch
-from ._runtime import (
-    compute_device_resident_budget,
-    peak_cuda_reserved_bytes,
-    reset_cuda_peak_memory,
-    snapshot_cuda_memory,
-)
+from ._runtime_probe import measure_device_resident_budget, measured_runtime_context
 from .batch_plan import BatchPlan, build_prediction_batch_plan
 from .evaluation_runtime import EvaluationScoringRuntimePlan
 from .models import TemporalModel
@@ -45,12 +40,6 @@ def _clone_cpu_state(model: TemporalModel) -> dict[str, torch.Tensor]:
     }
 
 
-def _host_warmup_context(
-    runtime_context: RepresentationRuntimeContext,
-) -> RepresentationRuntimeContext:
-    return runtime_context.with_device_memory_budget(0)
-
-
 def plan_training_runtime(
     model: TemporalModel,
     *,
@@ -65,57 +54,34 @@ def plan_training_runtime(
     training_config: TrainingConfig,
     precision: str,
 ) -> TrainingRuntimePlan:
-    warmup_plan = build_prediction_batch_plan(
-        store,
-        train_sample_indices,
-        representation_contract=representation_contract,
-        prediction_contract=prediction_contract,
-        execution_policy=execution_policy,
-        runtime_context=_host_warmup_context(base_runtime_context),
-        resolved_device=resolved_device,
-        seed=training_config.seed,
-        shuffle=False,
-    )
-    warmup_state = _clone_cpu_state(_unwrap_compiled_model(model))
-    warmup_optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=training_config.learning_rate,
-        weight_decay=training_config.weight_decay,
-    )
     prediction_training_state = prediction_contract.fit_training_state(
         store,
         train_sample_indices,
         execution_policy=execution_policy,
     )
-    budget = 0
-    try:
-        baseline_memory = snapshot_cuda_memory(resolved_device)
-        reset_cuda_peak_memory(resolved_device)
-        batch = next(iter(warmup_plan.source))
-        execute_training_batch(
-            model,
-            batch,
+    planned_runtime_context = measured_runtime_context(
+        base_runtime_context,
+        build_warmup_plan=lambda runtime_context: build_prediction_batch_plan(
+            store,
+            train_sample_indices,
+            representation_contract=representation_contract,
+            prediction_contract=prediction_contract,
+            execution_policy=execution_policy,
+            runtime_context=runtime_context,
             resolved_device=resolved_device,
-            precision=precision,
+            seed=training_config.seed,
+            shuffle=False,
+        ),
+        measure_warmup_budget=lambda warmup_plan: _measure_training_batch_budget(
+            model,
+            warmup_plan=warmup_plan,
             prediction_contract=prediction_contract,
             prediction_training_state=prediction_training_state,
-            optimizer=warmup_optimizer,
-            gradient_clip_norm=training_config.gradient_clip_norm,
-            zero_after_step=True,
-        )
-        if resolved_device.type == "cuda":
-            torch.cuda.synchronize(resolved_device)
-        budget = compute_device_resident_budget(
-            free_bytes=baseline_memory.free_bytes,
-            baseline_reserved_bytes=baseline_memory.reserved_bytes,
-            peak_reserved_bytes=peak_cuda_reserved_bytes(resolved_device),
-            total_bytes=baseline_memory.total_bytes,
-        )
-    finally:
-        _unwrap_compiled_model(model).load_state_dict(warmup_state)
-        del warmup_plan, warmup_optimizer
-        torch.cuda.empty_cache()
-    planned_runtime_context = base_runtime_context.with_device_memory_budget(budget)
+            resolved_device=resolved_device,
+            training_config=training_config,
+            precision=precision,
+        ),
+    )
     train_batch_plan = build_prediction_batch_plan(
         store,
         train_sample_indices,
@@ -151,3 +117,44 @@ def plan_training_runtime(
         ),
         prediction_training_state=prediction_training_state,
     )
+
+
+def _measure_training_batch_budget(
+    model: TemporalModel,
+    *,
+    warmup_plan: BatchPlan[PredictionBatch],
+    prediction_contract: CompiledPredictionContract,
+    prediction_training_state: object | None,
+    resolved_device: torch.device,
+    training_config: TrainingConfig,
+    precision: str,
+) -> int:
+    warmup_state = _clone_cpu_state(_unwrap_compiled_model(model))
+    warmup_optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=training_config.learning_rate,
+        weight_decay=training_config.weight_decay,
+    )
+
+    def _run_training_probe() -> None:
+        batch = next(iter(warmup_plan.source))
+        execute_training_batch(
+            model,
+            batch,
+            resolved_device=resolved_device,
+            precision=precision,
+            prediction_contract=prediction_contract,
+            prediction_training_state=prediction_training_state,
+            optimizer=warmup_optimizer,
+            gradient_clip_norm=training_config.gradient_clip_norm,
+            zero_after_step=True,
+        )
+
+    try:
+        return measure_device_resident_budget(
+            resolved_device=resolved_device,
+            run_probe=_run_training_probe,
+        )
+    finally:
+        _unwrap_compiled_model(model).load_state_dict(warmup_state)
+        torch.cuda.empty_cache()
