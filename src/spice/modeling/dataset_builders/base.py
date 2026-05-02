@@ -58,7 +58,7 @@ class FixedSequenceTemporalDatasetBuilderConfig(DatasetBuilderConfig):
 
 
 class BuilderRuntimeMetadata(ConfigModel):
-    compiler_runtime_metadata: dict[str, object]
+    pass
 
 
 class FixedSequenceTemporalBuilderRuntimeMetadata(BuilderRuntimeMetadata):
@@ -114,10 +114,6 @@ class CompiledDatasetBuilderContract:
             self.dataset_builder_id,
             spec.builder_runtime_metadata,
         )
-        compiler_runtime_metadata = compiler_runtime_metadata_from_builder_payload(
-            builder_runtime_metadata,
-            compiler_id=spec.problem_contract.compiler_id,
-        )
         return self.prepare_inference_fn(
             history_blocks,
             evaluation_blocks,
@@ -126,9 +122,8 @@ class CompiledDatasetBuilderContract:
                 problem_contract=spec.problem_contract,
                 delay_seconds=spec.delay_seconds,
                 builder_runtime_metadata=builder_runtime_metadata,
-                compiler_runtime_metadata=compiler_runtime_metadata,
                 scaler=spec.scaler,
-                max_candidate_slots=spec.max_candidate_slots,
+                temporal_capability=spec.temporal_capability,
                 window_start_timestamp=spec.evaluation_start_timestamp,
                 window_end_timestamp=spec.evaluation_end_timestamp + 1,
             ),
@@ -165,37 +160,16 @@ def dataset_builder_spec(builder_id: str) -> DatasetBuilderSpec:
 
 def fixed_sequence_temporal_runtime_metadata(
     *,
-    compiler_id: str,
-    compiler_runtime_metadata: object,
     sequence_length: int,
     median_dt_seconds: float,
     min_sequence_length: int,
     max_sequence_length: int,
 ) -> FixedSequenceTemporalBuilderRuntimeMetadata:
-    from ...temporal.contracts import problem_runtime_metadata_payload
-
     return FixedSequenceTemporalBuilderRuntimeMetadata(
-        compiler_runtime_metadata=problem_runtime_metadata_payload(
-            compiler_id,
-            compiler_runtime_metadata,
-        ),
         sequence_length=sequence_length,
         median_dt_seconds=median_dt_seconds,
         min_sequence_length=min_sequence_length,
         max_sequence_length=max_sequence_length,
-    )
-
-
-def compiler_runtime_metadata_from_builder_payload(
-    payload: BuilderRuntimeMetadata,
-    *,
-    compiler_id: str,
-) -> object:
-    from ...temporal.contracts import problem_runtime_metadata_from_compiler_payload
-
-    return problem_runtime_metadata_from_compiler_payload(
-        compiler_id,
-        payload.compiler_runtime_metadata,
     )
 
 

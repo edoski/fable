@@ -50,18 +50,21 @@ Config-facing dataset-builder and builder-runtime-metadata envelope failures use
 
 ## Runtime Metadata
 
-Runtime metadata exists because some builders learn non-model assumptions during training. Examples include sequence length, calibrated timing assumptions, or compiler runtime metadata.
+Runtime metadata exists because some builders learn non-model assumptions during training. Examples include sequence length and calibrated timing assumptions.
 
 ```text
 training prepare
   -> builder runtime metadata
+  -> Temporal Capability
   -> artifact manifest
   -> Artifact Inference Context validation
   -> evaluation prepare
   -> reconstruct same assumptions
 ```
 
-Artifact Inference Context validates artifact and corpus compatibility, then passes trusted artifact facts into the dataset-builder contract. The contract coerces builder runtime metadata, decodes compiler runtime metadata, and normalizes evaluation-window timestamps before the concrete builder prepares inference data.
+Artifact Inference Context validates artifact and corpus compatibility, then passes trusted artifact facts into the dataset-builder contract. The contract coerces builder runtime metadata, passes the artifact Temporal Capability through, and normalizes evaluation-window timestamps before the concrete builder prepares inference data.
+
+Builder runtime metadata is builder-local. Compiler runtime metadata is not hidden inside it; compiler metadata travels with Temporal Capability so artifact action width and compiler assumptions stay one typed value.
 
 ## Preparation Types
 

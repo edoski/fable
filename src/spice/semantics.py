@@ -84,6 +84,15 @@ class DatasetBuilderSemantics:
 
 
 @dataclass(frozen=True, slots=True)
+class TemporalCapabilitySemantics:
+    """Stable semantic projection of the trained artifact's temporal capability."""
+
+    compiler_id: str
+    max_delay_seconds: int
+    action_width: int
+
+
+@dataclass(frozen=True, slots=True)
 class StudySemantics:
     """Canonical study provenance bundled from the compiled architectural seams."""
 
@@ -109,4 +118,4 @@ class ArtifactSemantics:
     input_normalization: InputNormalizationSemantics
     representation: RepresentationSemantics
     dataset_builder: DatasetBuilderSemantics
-    max_candidate_slots: int
+    temporal_capability: TemporalCapabilitySemantics

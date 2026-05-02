@@ -85,7 +85,7 @@ def prepare_artifact_inference_context(
             delay_seconds=delay_seconds,
             builder_runtime_metadata=manifest.builder_runtime_metadata,
             scaler=manifest.scaler,
-            max_candidate_slots=manifest.max_candidate_slots,
+            temporal_capability=manifest.temporal_capability,
             evaluation_start_timestamp=corpus_manifest.coverage.evaluation.start_timestamp,
             evaluation_end_timestamp=corpus_manifest.coverage.evaluation.end_timestamp,
         ),

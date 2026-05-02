@@ -9,11 +9,18 @@ from typing import TYPE_CHECKING
 from ..config.models import ChainRuntimeSpec, ProblemSpec
 from ..features import CompiledFeatureContract, FeaturePrerequisites
 from ..semantics import ProblemSemantics
+from .capability import TemporalCapability
 from .execution_policy import CompiledExecutionPolicyContract, compile_execution_policy_contract
 
 if TYPE_CHECKING:
     from ..features import ResolvedFeatureTable
     from .problem_store import CompiledProblemStore
+
+
+@dataclass(frozen=True, slots=True)
+class TemporalCapabilityStore:
+    store: CompiledProblemStore
+    capability: TemporalCapability
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +61,7 @@ class CompiledProblemContract:
     def build_capability_store(
         self,
         feature_table: ResolvedFeatureTable,
-    ) -> tuple[CompiledProblemStore, object]:
+    ) -> TemporalCapabilityStore:
         raise NotImplementedError
 
     def build_delay_store(
@@ -62,8 +69,7 @@ class CompiledProblemContract:
         feature_table: ResolvedFeatureTable,
         delay_seconds: int,
         *,
-        compiler_runtime_metadata: object,
-        max_candidate_slots: int,
+        capability: TemporalCapability,
     ) -> CompiledProblemStore:
         raise NotImplementedError
 
@@ -103,3 +109,49 @@ def problem_runtime_metadata_from_compiler_payload(
     )
 
     return compiler_metadata_from_payload(compiler_id, payload)
+
+
+def temporal_capability_payload(capability: TemporalCapability) -> dict[str, object]:
+    return {
+        "compiler_id": capability.compiler_id,
+        "max_delay_seconds": capability.max_delay_seconds,
+        "action_width": capability.action_width,
+        "compiler_runtime_metadata": problem_runtime_metadata_payload(
+            capability.compiler_id,
+            capability.compiler_runtime_metadata,
+        ),
+    }
+
+
+def temporal_capability_from_payload(payload: Mapping[str, object]) -> TemporalCapability:
+    compiler_id = _string_payload(payload, "compiler_id")
+    return TemporalCapability(
+        compiler_id=compiler_id,
+        max_delay_seconds=_int_payload(payload, "max_delay_seconds"),
+        action_width=_int_payload(payload, "action_width"),
+        compiler_runtime_metadata=problem_runtime_metadata_from_compiler_payload(
+            compiler_id,
+            _mapping_payload(payload, "compiler_runtime_metadata"),
+        ),
+    )
+
+
+def _mapping_payload(payload: Mapping[str, object], key: str) -> Mapping[str, object]:
+    value = payload[key]
+    if not isinstance(value, dict):
+        raise ValueError(f"temporal_capability.{key} must be a mapping")
+    return {str(item_key): item_value for item_key, item_value in value.items()}
+
+
+def _string_payload(payload: Mapping[str, object], key: str) -> str:
+    value = payload[key]
+    if not isinstance(value, str):
+        raise ValueError(f"temporal_capability.{key} must be a string")
+    return value
+
+
+def _int_payload(payload: Mapping[str, object], key: str) -> int:
+    value = payload[key]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"temporal_capability.{key} must be an integer")
+    return value

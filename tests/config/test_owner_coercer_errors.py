@@ -123,7 +123,6 @@ def test_owner_coercers_preserve_typed_config_identity() -> None:
     metadata = coerce_builder_runtime_metadata(
         "fixed_sequence_temporal",
         {
-            "compiler_runtime_metadata": {},
             "sequence_length": 64,
             "median_dt_seconds": 1.0,
             "min_sequence_length": 64,

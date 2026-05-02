@@ -28,6 +28,7 @@ from ..modeling.dataset_builders import (
 from ..modeling.families.base import ModelConfig
 from ..objectives import ObjectiveConfig
 from ..semantics import ArtifactSemantics
+from ..temporal.capability import TemporalCapability
 from ..temporal.scaling import ScalerStats
 from .training_run import TrainingRunResult
 
@@ -69,6 +70,7 @@ class TrainingArtifactManifest:
     training: TrainingConfig
     scaler: ScalerStats
     builder_runtime_metadata: BuilderRuntimeMetadata
+    temporal_capability: TemporalCapability
     semantics: ArtifactSemantics
 
     @property
@@ -108,8 +110,8 @@ class TrainingArtifactManifest:
         return self.semantics.feature.feature_prerequisites
 
     @property
-    def max_candidate_slots(self) -> int:
-        return self.semantics.max_candidate_slots
+    def action_width(self) -> int:
+        return self.temporal_capability.action_width
 
     @property
     def feature_graph_fingerprint(self) -> str:

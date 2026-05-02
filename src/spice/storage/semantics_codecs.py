@@ -7,7 +7,7 @@ from pydantic import TypeAdapter
 from ..core.errors import StateLayoutError
 from ..features import FeaturePrerequisites
 from ..metrics import MetricDescriptor
-from ..semantics import ArtifactSemantics, StudySemantics
+from ..semantics import ArtifactSemantics, StudySemantics, TemporalCapabilitySemantics
 from .payloads import type_adapter_payload, type_adapter_value
 
 _STUDY_SEMANTICS_ADAPTER = TypeAdapter(StudySemantics)
@@ -16,6 +16,7 @@ _ARTIFACT_SEMANTICS_ADAPTER = TypeAdapter(ArtifactSemantics)
 _ADAPTER_NAMESPACE = {
     "FeaturePrerequisites": FeaturePrerequisites,
     "MetricDescriptor": MetricDescriptor,
+    "TemporalCapabilitySemantics": TemporalCapabilitySemantics,
 }
 for _adapter in (
     _STUDY_SEMANTICS_ADAPTER,

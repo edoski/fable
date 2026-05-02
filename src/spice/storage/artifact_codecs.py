@@ -21,6 +21,10 @@ from ..modeling.dataset_builders import (
 )
 from ..modeling.families.registry import coerce_model_config
 from ..objectives import coerce_objective_config
+from ..temporal.contracts import (
+    temporal_capability_from_payload,
+    temporal_capability_payload,
+)
 from ..temporal.scaling import ScalerStats
 from .payloads import (
     PayloadModel,
@@ -94,6 +98,7 @@ class ArtifactManifestPayload(PayloadModel):
     training: dict[str, object]
     scaler: dict[str, object]
     builder_runtime_metadata: dict[str, object]
+    temporal_capability: dict[str, object]
     semantics: dict[str, object]
 
     @classmethod
@@ -116,6 +121,7 @@ class ArtifactManifestPayload(PayloadModel):
             training=manifest.training.model_dump(mode="json"),
             scaler=manifest.scaler.model_dump(mode="json", exclude_none=True),
             builder_runtime_metadata=manifest.builder_runtime_metadata.model_dump(mode="json"),
+            temporal_capability=temporal_capability_payload(manifest.temporal_capability),
             semantics=artifact_semantics_payload(manifest.semantics),
         )
 
@@ -146,6 +152,12 @@ class ArtifactManifestPayload(PayloadModel):
                     self.builder_runtime_metadata,
                     label="artifact_manifest.builder_runtime_metadata",
                 ),
+            ),
+            temporal_capability=temporal_capability_from_payload(
+                mapping_payload(
+                    self.temporal_capability,
+                    label="artifact_manifest.temporal_capability",
+                )
             ),
             semantics=artifact_semantics_from_payload(self.semantics),
         )

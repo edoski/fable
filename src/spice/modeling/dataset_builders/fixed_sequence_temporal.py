@@ -8,6 +8,7 @@ import numpy as np
 import polars as pl
 
 from ...core.errors import ConfigResolutionError
+from ...temporal.contracts import TemporalCapabilityStore
 from ...temporal.problem_store import (
     CompiledProblemStore,
     DatasetSplitIndices,
@@ -62,7 +63,7 @@ def _build_selected_store(
     blocks: pl.DataFrame,
     *,
     spec: TrainingDatasetPreparationSpec,
-) -> tuple[CompiledProblemStore, object]:
+) -> TemporalCapabilityStore:
     feature_table = spec.feature_contract.build_table(_prepare_blocks(blocks))
     validate_feature_prerequisites(
         feature_table.feature_prerequisites,
@@ -136,7 +137,8 @@ def prepare_training_dataset(
             "History dataset is too short for the requested sample count; "
             f"need at least {spec.sample_count} rows, got {sorted_blocks.height}"
         )
-    store_raw, compiler_runtime_metadata = _build_selected_store(sorted_blocks, spec=spec)
+    capability_store = _build_selected_store(sorted_blocks, spec=spec)
+    store_raw = capability_store.store
     raw_selected_sample_indices = store_raw.tail_sample_indices(
         sample_count=spec.sample_count,
     )
@@ -180,13 +182,12 @@ def prepare_training_dataset(
         split_indices=split_indices,
         scaler=scaler,
         builder_runtime_metadata=fixed_sequence_temporal_runtime_metadata(
-            compiler_id=spec.problem_contract.compiler_id,
-            compiler_runtime_metadata=compiler_runtime_metadata,
             sequence_length=int(seq_len),
             median_dt_seconds=float(median_dt_seconds),
             min_sequence_length=spec.dataset_builder.min_sequence_length,
             max_sequence_length=spec.dataset_builder.max_sequence_length,
         ),
+        temporal_capability=capability_store.capability,
     )
 
 
@@ -205,8 +206,7 @@ def prepare_inference_dataset(
     store = spec.problem_contract.build_delay_store(
         feature_table,
         spec.delay_seconds,
-        compiler_runtime_metadata=spec.compiler_runtime_metadata,
-        max_candidate_slots=spec.max_candidate_slots,
+        capability=spec.temporal_capability,
     )
     store = store.with_fixed_context_length(
         context_length=runtime_metadata.sequence_length,

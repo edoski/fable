@@ -186,7 +186,7 @@ def run_training(
         on_prepare_complete(prepared)
     model = build_model(
         prepared.n_features,
-        spec.prediction_contract.build_output_spec(prepared.max_candidate_slots),
+        spec.prediction_contract.build_output_spec(prepared.temporal_capability.action_width),
         spec.model,
     )
     if on_fit_start is not None:

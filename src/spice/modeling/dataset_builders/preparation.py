@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ...config.models import SplitConfig
     from ...features import CompiledFeatureContract
+    from ...temporal.capability import TemporalCapability
     from ...temporal.contracts import CompiledProblemContract
     from ...temporal.execution_policy import CompiledExecutionPolicyContract
     from ...temporal.input_normalization import CompiledInputNormalizationContract
@@ -38,7 +39,7 @@ class ArtifactInferencePreparationSpec:
     delay_seconds: int
     builder_runtime_metadata: BuilderRuntimeMetadata
     scaler: ScalerStats
-    max_candidate_slots: int
+    temporal_capability: TemporalCapability
     evaluation_start_timestamp: int
     evaluation_end_timestamp: int
 
@@ -49,9 +50,8 @@ class CompiledInferenceDatasetPreparationSpec:
     problem_contract: CompiledProblemContract
     delay_seconds: int
     builder_runtime_metadata: BuilderRuntimeMetadata
-    compiler_runtime_metadata: object
     scaler: ScalerStats
-    max_candidate_slots: int
+    temporal_capability: TemporalCapability
     window_start_timestamp: int
     window_end_timestamp: int
 
@@ -66,15 +66,11 @@ class PreparedTrainingDataset:
     split_indices: DatasetSplitIndices
     scaler: ScalerStats
     builder_runtime_metadata: BuilderRuntimeMetadata
+    temporal_capability: TemporalCapability
 
     @property
     def n_features(self) -> int:
         return self.store.n_features
-
-    @property
-    def max_candidate_slots(self) -> int:
-        return self.store.max_candidate_slots
-
 
 @dataclass(slots=True)
 class PreparedInferenceDataset:

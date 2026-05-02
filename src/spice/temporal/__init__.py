@@ -1,5 +1,6 @@
 """Temporal package."""
 
+from .capability import TemporalCapability
 from .execution_policy import (
     CompiledExecutionPolicyContract,
     ExecutionPolicyConfig,
@@ -12,6 +13,7 @@ from .execution_policy import (
 
 __all__ = [
     "CompiledExecutionPolicyContract",
+    "TemporalCapability",
     "PreparedActionSpace",
     "PreparedSupervisedExecutionTargets",
     "ExecutionPolicyConfig",

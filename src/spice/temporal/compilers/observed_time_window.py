@@ -16,7 +16,8 @@ from ...features import (
     ResolvedFeatureTable,
 )
 from ...modeling.families.base import ConfigModel
-from ..contracts import CompiledProblemContract
+from ..capability import TemporalCapability
+from ..contracts import CompiledProblemContract, TemporalCapabilityStore
 from ..execution_policy import CompiledExecutionPolicyContract
 from ..problem_store import CompiledProblemStore
 from ._shared import (
@@ -183,7 +184,6 @@ class ObservedTimeWindowCompilerConfig(ProblemCompilerConfig):
 class ObservedTimeWindowRuntimeMetadata:
     slot_spacing_id: str
     slot_spacing_seconds: float
-    capability_action_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,20 +209,19 @@ class ObservedTimeWindowCompiledProblemContract(CompiledProblemContract):
         )
 
     def count_valid_capability_samples(self, feature_table: ResolvedFeatureTable) -> int:
-        store, _ = self.build_capability_store(feature_table)
-        return store.n_samples
+        return self.build_capability_store(feature_table).store.n_samples
 
     def build_capability_store(
         self,
         feature_table: ResolvedFeatureTable,
-    ) -> tuple[CompiledProblemStore, ObservedTimeWindowRuntimeMetadata]:
+    ) -> TemporalCapabilityStore:
         slot_spacing_seconds = _slot_spacing_spec(
             self.slot_spacing.id
         ).resolve_slot_spacing_seconds(
             feature_table,
             self.nominal_block_time_seconds,
         )
-        capability_action_count = _action_count_for_delay(
+        action_width = _action_count_for_delay(
             self.max_delay_seconds,
             slot_spacing_seconds,
         )
@@ -231,15 +230,19 @@ class ObservedTimeWindowCompiledProblemContract(CompiledProblemContract):
             feature_prerequisites=self.feature_prerequisites,
             lookback_seconds=self.lookback_seconds,
             delay_seconds=self.max_delay_seconds,
-            max_candidate_slots=capability_action_count,
+            max_candidate_slots=action_width,
             requires_post_window_row=self.execution_policy.requires_post_window_row,
         )
-        return (
-            store,
-            ObservedTimeWindowRuntimeMetadata(
-                slot_spacing_id=self.slot_spacing.id,
-                slot_spacing_seconds=slot_spacing_seconds,
-                capability_action_count=capability_action_count,
+        return TemporalCapabilityStore(
+            store=store,
+            capability=TemporalCapability(
+                compiler_id=self.compiler_id,
+                max_delay_seconds=self.max_delay_seconds,
+                action_width=action_width,
+                compiler_runtime_metadata=ObservedTimeWindowRuntimeMetadata(
+                    slot_spacing_id=self.slot_spacing.id,
+                    slot_spacing_seconds=slot_spacing_seconds,
+                ),
             ),
         )
 
@@ -248,30 +251,43 @@ class ObservedTimeWindowCompiledProblemContract(CompiledProblemContract):
         feature_table: ResolvedFeatureTable,
         delay_seconds: int,
         *,
-        compiler_runtime_metadata: object,
-        max_candidate_slots: int,
+        capability: TemporalCapability,
     ) -> CompiledProblemStore:
-        if not isinstance(compiler_runtime_metadata, ObservedTimeWindowRuntimeMetadata):
-            raise TypeError("observed_time_window requires ObservedTimeWindowRuntimeMetadata")
-        if max_candidate_slots != compiler_runtime_metadata.capability_action_count:
+        if capability.compiler_id != self.compiler_id:
             raise ValueError(
-                "artifact action width does not match observed_time_window runtime metadata: "
-                f"{max_candidate_slots} != "
-                f"{compiler_runtime_metadata.capability_action_count}"
+                "temporal capability compiler does not match problem compiler: "
+                f"{capability.compiler_id} != {self.compiler_id}"
+            )
+        if capability.max_delay_seconds != self.max_delay_seconds:
+            raise ValueError(
+                "temporal capability delay does not match problem capability: "
+                f"{capability.max_delay_seconds} != {self.max_delay_seconds}"
+            )
+        metadata = capability.compiler_runtime_metadata
+        if not isinstance(metadata, ObservedTimeWindowRuntimeMetadata):
+            raise TypeError("observed_time_window requires ObservedTimeWindowRuntimeMetadata")
+        expected_action_width = _action_count_for_delay(
+            capability.max_delay_seconds,
+            metadata.slot_spacing_seconds,
+        )
+        if capability.action_width != expected_action_width:
+            raise ValueError(
+                "temporal capability action width does not match observed_time_window metadata: "
+                f"{capability.action_width} != {expected_action_width}"
             )
         if delay_seconds <= 0:
             raise ValueError("delay_seconds must be positive")
-        if delay_seconds > self.max_delay_seconds:
+        if delay_seconds > capability.max_delay_seconds:
             raise ValueError(
                 "delay_seconds exceeds problem capability: "
-                f"{delay_seconds} > {self.max_delay_seconds}"
+                f"{delay_seconds} > {capability.max_delay_seconds}"
             )
         return build_timestamp_window_store(
             feature_table,
             feature_prerequisites=self.feature_prerequisites,
             lookback_seconds=self.lookback_seconds,
             delay_seconds=delay_seconds,
-            max_candidate_slots=max_candidate_slots,
+            max_candidate_slots=capability.action_width,
             requires_post_window_row=self.execution_policy.requires_post_window_row,
         )
 
@@ -314,7 +330,6 @@ def runtime_metadata_payload(metadata: object) -> dict[str, object]:
     return {
         "slot_spacing_id": metadata.slot_spacing_id,
         "slot_spacing_seconds": metadata.slot_spacing_seconds,
-        "capability_action_count": metadata.capability_action_count,
     }
 
 
@@ -325,7 +340,6 @@ def runtime_metadata_from_payload(
     return ObservedTimeWindowRuntimeMetadata(
         slot_spacing_id=_str_payload(raw_payload, "slot_spacing_id"),
         slot_spacing_seconds=_float_payload(raw_payload, "slot_spacing_seconds"),
-        capability_action_count=_int_payload(raw_payload, "capability_action_count"),
     )
 
 

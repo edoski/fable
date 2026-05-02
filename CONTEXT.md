@@ -48,6 +48,10 @@ _Avoid_: YAML helper, generic config loader
 The typed temporal problem definition selected by a workflow.
 _Avoid_: problem config, problem preset
 
+**Temporal Capability**:
+Typed value carried by trained artifacts that bundles the problem compiler runtime metadata with the artifact action width and maximum supported delay.
+_Avoid_: max slots, compiler metadata payload
+
 **Benchmark**:
 A named matrix of workflow selections used to compare experiment variants.
 _Avoid_: experiment batch

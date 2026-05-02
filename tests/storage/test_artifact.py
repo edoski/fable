@@ -43,6 +43,7 @@ from spice.semantics import (
     DatasetBuilderSemantics,
     InputNormalizationSemantics,
     ObjectiveSemantics,
+    TemporalCapabilitySemantics,
 )
 from spice.storage.artifact import (
     _evaluation_storage_id,
@@ -66,6 +67,7 @@ from spice.storage.semantics_codecs import (
     artifact_semantics_from_payload,
     artifact_semantics_payload,
 )
+from spice.temporal import TemporalCapability
 from spice.temporal.compilers.observed_time_window import ObservedTimeWindowRuntimeMetadata
 from spice.temporal.contracts import compile_problem_contract
 from spice.temporal.scaling import ScalerStats
@@ -205,16 +207,19 @@ def _manifest(
         training=_training_config(),
         scaler=ScalerStats(means=[0.0, 1.0], scales=[1.0, 1.0]),
         builder_runtime_metadata=fixed_sequence_temporal_runtime_metadata(
-            compiler_id=problem_contract.compiler_id,
-            compiler_runtime_metadata=ObservedTimeWindowRuntimeMetadata(
-                slot_spacing_id="nominal",
-                slot_spacing_seconds=12.0,
-                capability_action_count=4,
-            ),
             sequence_length=16,
             median_dt_seconds=12.0,
             min_sequence_length=8,
             max_sequence_length=64,
+        ),
+        temporal_capability=TemporalCapability(
+            compiler_id=problem_contract.compiler_id,
+            max_delay_seconds=36,
+            action_width=4,
+            compiler_runtime_metadata=ObservedTimeWindowRuntimeMetadata(
+                slot_spacing_id="nominal",
+                slot_spacing_seconds=12.0,
+            ),
         ),
         semantics=ArtifactSemantics(
             problem=problem_contract.semantics,
@@ -232,7 +237,11 @@ def _manifest(
             ),
             representation=representation_contract.semantics,
             dataset_builder=DatasetBuilderSemantics(dataset_builder_id="fixed_sequence_temporal"),
-            max_candidate_slots=2,
+            temporal_capability=TemporalCapabilitySemantics(
+                compiler_id=problem_contract.compiler_id,
+                max_delay_seconds=36,
+                action_width=4,
+            ),
         ),
     )
 

@@ -12,10 +12,10 @@ candidate_start = anchor row
 candidate_end = first row with timestamp > anchor_ts + delay_seconds
 ```
 
-`slot_spacing` converts the maximum delay into a fixed prediction head width:
+`slot_spacing` converts the maximum delay into the artifact action width:
 
 ```text
-max_candidate_slots = floor(max_delay_seconds / slot_spacing_seconds) + 1
+action_width = floor(max_delay_seconds / slot_spacing_seconds) + 1
 ```
 
 The extra slot includes offset `0`.
@@ -25,7 +25,7 @@ Slot-spacing ids:
 - `nominal`: chain runtime nominal block time.
 - `recent_median`: median positive timestamp delta from the feature table.
 
-The compiler persists runtime metadata with `slot_spacing_id`, `slot_spacing_seconds`, and `capability_action_count`.
+The compiler returns a Temporal Capability with `compiler_id`, `max_delay_seconds`, `action_width`, and typed runtime metadata. For `observed_time_window`, runtime metadata contains `slot_spacing_id` and `slot_spacing_seconds`.
 
 This compiler is online-safe because context rows end at the anchor row, candidate rows are future outcome rows only, and feature prerequisites/warmup filtering happens before train/validation/test splitting. It does not reveal a future row count from evaluation timestamps to the model; `slot_spacing` only fixes the prediction head width.
 
@@ -44,4 +44,4 @@ The feature table remains row-aligned with the corpus. Warmup placeholders exist
 
 ## Invariants
 
-Timestamps and arrays align by row. Candidate end is exclusive. Evaluation delay cannot exceed trained capability. Runtime compiler metadata must round-trip through dataset builder and artifact manifests.
+Timestamps and arrays align by row. Candidate end is exclusive. Evaluation delay cannot exceed trained capability. Runtime compiler metadata must round-trip through the Temporal Capability in artifact manifests.

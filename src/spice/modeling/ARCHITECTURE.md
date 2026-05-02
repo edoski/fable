@@ -71,7 +71,7 @@ Artifact training and temporary tuning trials use separate training-spec entrypo
 
 ## Dataset Builders
 
-Dataset builders adapt canonical block frames into model-ready training and inference datasets. They own tensorization policy, split behavior, runtime metadata, scaler fitting inputs, and inference-time reconstruction of builder/compiler runtime state. They do not own corpus IO, feature semantics, prediction losses, or evaluator metrics.
+Dataset builders adapt canonical block frames into model-ready training and inference datasets. They own tensorization policy, split behavior, builder runtime metadata, scaler fitting inputs, and inference-time reconstruction from the artifact Temporal Capability. They do not own corpus IO, feature semantics, prediction losses, or evaluator metrics.
 
 ```text
 raw/canonical blocks
@@ -83,10 +83,10 @@ builder-local frame preparation
 feature table
     |
     v
-problem store
+problem store + Temporal Capability
     |
     v
-prepared dataset + runtime metadata
+prepared dataset + builder runtime metadata
 ```
 
 Shared dataset-builder abstractions should remove real duplication without hiding sample-ordering, split, candidate-window, or empty-frame policy.

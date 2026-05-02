@@ -97,12 +97,12 @@ def artifact_sections(
                 ("study", manifest.study.name if manifest.study is not None else "n/a"),
                 ("study id", manifest.study_id or "n/a"),
                 ("capability", f"{manifest.max_delay_seconds}s"),
+                ("action width", str(manifest.action_width)),
                 ("lookback", f"{manifest.lookback_seconds}s"),
                 (
                     "feature prerequisites",
                     feature_prerequisites_string(manifest.feature_prerequisites),
                 ),
-                ("max slots", str(manifest.max_candidate_slots)),
             ],
         ),
     ]

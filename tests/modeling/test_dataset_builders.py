@@ -123,7 +123,7 @@ def test_fixed_context_dataset_builder_prepares_seq_len_without_builder_owned_cl
     )
     assert prepared.builder_runtime_metadata.sequence_length >= 64
     assert prepared.builder_runtime_metadata.median_dt_seconds > 0.0
-    assert prepared.max_candidate_slots == prepared.store.max_candidate_slots
+    assert prepared.temporal_capability.action_width == prepared.store.max_candidate_slots
     assert prepared.sample_count == config.problem.sample_count
     assert prepared.store.n_samples > prepared.sample_count
     assert prepared.split_indices.train.size > 0
@@ -284,7 +284,7 @@ def test_fixed_sequence_inference_prep_reconstructs_artifact_runtime_state(
             delay_seconds=12,
             builder_runtime_metadata=trained.builder_runtime_metadata,
             scaler=trained.scaler,
-            max_candidate_slots=trained.max_candidate_slots,
+            temporal_capability=trained.temporal_capability,
             evaluation_start_timestamp=evaluation_start,
             evaluation_end_timestamp=evaluation_end,
         ),
@@ -294,6 +294,6 @@ def test_fixed_sequence_inference_prep_reconstructs_artifact_runtime_state(
     assert prepared.n_history_rows == len(history_rows)
     assert prepared.n_evaluation_rows == len(evaluation_rows)
     assert prepared.sample_count > 0
-    assert prepared.store.max_candidate_slots == trained.max_candidate_slots
+    assert prepared.store.max_candidate_slots == trained.temporal_capability.action_width
     assert int(sample_timestamps.min()) >= evaluation_start
     assert int(sample_timestamps.max()) <= evaluation_end

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import polars as pl
 import pytest
@@ -7,6 +9,7 @@ import pytest
 from spice.config import coerce_features_config, coerce_problem_spec
 from spice.config.models import ChainRuntimeSpec
 from spice.features import compile_feature_contract
+from spice.temporal.compilers.observed_time_window import ObservedTimeWindowRuntimeMetadata
 from spice.temporal.contracts import (
     compile_problem_contract,
     problem_runtime_metadata_from_compiler_payload,
@@ -84,11 +87,17 @@ def test_observed_time_window_builds_timestamp_bounded_windows() -> None:
     )
 
     assert contract.execution_policy.requires_post_window_row is True
-    store, runtime_metadata = contract.build_capability_store(feature_table)
+    capability_store = contract.build_capability_store(feature_table)
+    store = capability_store.store
+    capability = capability_store.capability
+    runtime_metadata = capability.compiler_runtime_metadata
 
+    assert isinstance(runtime_metadata, ObservedTimeWindowRuntimeMetadata)
+    assert capability.compiler_id == "observed_time_window"
+    assert capability.max_delay_seconds == 36
+    assert capability.action_width == 4
     assert runtime_metadata.slot_spacing_id == "nominal"
     assert runtime_metadata.slot_spacing_seconds == 12.0
-    assert runtime_metadata.capability_action_count == 4
     assert store.max_candidate_slots == 4
     np.testing.assert_array_equal(store.candidate_start_rows, store.anchor_rows)
     assert np.all(store.context_start_rows <= store.anchor_rows)
@@ -103,7 +112,9 @@ def test_observed_time_window_runtime_metadata_round_trips() -> None:
         feature_contract=feature_contract,
         chain_runtime=_chain(),
     )
-    _, runtime_metadata = contract.build_capability_store(feature_table)
+    capability = contract.build_capability_store(feature_table).capability
+    runtime_metadata = capability.compiler_runtime_metadata
+    assert isinstance(runtime_metadata, ObservedTimeWindowRuntimeMetadata)
 
     payload = problem_runtime_metadata_payload("observed_time_window", runtime_metadata)
     assert problem_runtime_metadata_from_compiler_payload(
@@ -120,14 +131,13 @@ def test_observed_time_window_delay_store_rejects_artifact_action_width_mismatch
         feature_contract=feature_contract,
         chain_runtime=_chain(),
     )
-    _, runtime_metadata = contract.build_capability_store(feature_table)
+    capability = contract.build_capability_store(feature_table).capability
 
-    with pytest.raises(ValueError, match="artifact action width"):
+    with pytest.raises(ValueError, match="action width"):
         contract.build_delay_store(
             feature_table,
             delay_seconds=12,
-            compiler_runtime_metadata=runtime_metadata,
-            max_candidate_slots=runtime_metadata.capability_action_count + 1,
+            capability=replace(capability, action_width=capability.action_width + 1),
         )
 
 
@@ -143,7 +153,10 @@ def test_recent_median_slot_spacing_is_scoped_to_slot_spacing() -> None:
         chain_runtime=_chain(),
     )
 
-    _, runtime_metadata = contract.build_capability_store(feature_table)
+    runtime_metadata = (
+        contract.build_capability_store(feature_table).capability.compiler_runtime_metadata
+    )
+    assert isinstance(runtime_metadata, ObservedTimeWindowRuntimeMetadata)
 
     assert runtime_metadata.slot_spacing_id == "recent_median"
     assert runtime_metadata.slot_spacing_seconds == 11.0

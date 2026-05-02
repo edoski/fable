@@ -15,6 +15,8 @@ from spice.modeling.artifact_inference import prepare_artifact_inference_context
 from spice.modeling.evaluation_runtime import EvaluationScoringRuntimePlan
 from spice.modeling.representations import RepresentationRuntimeContext
 from spice.storage.workflow_roots import CorpusRootHandle, EvaluateWorkflowRoots
+from spice.temporal import TemporalCapability
+from spice.temporal.compilers.observed_time_window import ObservedTimeWindowRuntimeMetadata
 from tests.root_handle_helpers import artifact_handle, corpus_handle, evaluate_roots
 
 
@@ -50,7 +52,16 @@ def _roots(config: EvaluateConfig) -> EvaluateWorkflowRoots:
 
 def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_delay: int = 36):
     calls: list[str] = []
-    runtime_metadata = SimpleNamespace(compiler_runtime_metadata={"compiler": "payload"})
+    runtime_metadata = SimpleNamespace()
+    temporal_capability = TemporalCapability(
+        compiler_id="observed_time_window",
+        max_delay_seconds=max_delay,
+        action_width=4,
+        compiler_runtime_metadata=ObservedTimeWindowRuntimeMetadata(
+            slot_spacing_id="nominal",
+            slot_spacing_seconds=12.0,
+        ),
+    )
     loaded_artifact = SimpleNamespace(
         manifest=SimpleNamespace(
             chain_name="ethereum",
@@ -58,7 +69,7 @@ def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_
             dataset_builder=SimpleNamespace(id="fixed_sequence_temporal"),
             builder_runtime_metadata=runtime_metadata,
             scaler=object(),
-            max_candidate_slots=4,
+            temporal_capability=temporal_capability,
             model=object(),
             features=object(),
             feature_graph_fingerprint="feature-fp",
@@ -170,7 +181,7 @@ def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_
     def fake_prepare_inference_dataset(*_args, spec):
         calls.append("prepare_inference")
         assert spec.builder_runtime_metadata is runtime_metadata
-        assert spec.max_candidate_slots == loaded_artifact.manifest.max_candidate_slots
+        assert spec.temporal_capability is temporal_capability
         return prepared
 
     loaded_artifact.dataset_builder_contract = SimpleNamespace(

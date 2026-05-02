@@ -54,6 +54,8 @@ CompiledProblemContract
 
 Compilers publish feature prerequisites and runtime metadata codecs. Dataset builders and workflows call compiler contracts; they should not inspect concrete compiler classes.
 
+Training compiles the maximum supported delay into a capability store and a **Temporal Capability**. The capability is the artifact-facing value that carries compiler runtime metadata, maximum delay, and action width into inference. Evaluation compiles a concrete delay store from that capability; it does not rediscover action width from the evaluation corpus.
+
 ## Execution Policy
 
 Prediction chooses an action. Execution policy defines what that action means in the problem:
@@ -81,4 +83,4 @@ Model-input representation and prediction target construction consume the same p
 
 ## Extension Points
 
-Add a compiler when example construction changes. Add a execution policy when outcome semantics change. Add input normalization when scaler fitting policy changes. Keep runtime metadata typed and routed through owner registries.
+Add a compiler when example construction changes. Add a execution policy when outcome semantics change. Add input normalization when scaler fitting policy changes. Keep runtime metadata typed, routed through compiler registries, and bundled into Temporal Capability at artifact boundaries.
