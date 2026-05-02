@@ -40,6 +40,8 @@ fee = exp(log_base_fee)
 
 Ratios are computed on real fee values, not log values. The Temporal Replay Runner validates decoded replay inputs and asks evaluator Adapters for selected events; Temporal Accounting is shared after that selection.
 
+Temporal replay has a private typed result ABI between Temporal Accounting and the Temporal Replay Runner. It carries run metrics, event metric sums, window summaries, and metadata as replay concepts. The runner converts it to generic `EvaluationSummary` at the evaluator boundary.
+
 ## Temporal Accounting
 
 Temporal Accounting receives selected sample positions from the Temporal Replay Runner and computes realized, baseline, and optimum fee outcomes.

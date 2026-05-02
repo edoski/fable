@@ -87,6 +87,8 @@ selected sample positions
 
 `poisson_replay_2h` selects positions by sampled arrivals. `full_temporal_replay` selects every supplied sample position once. Both use the same Temporal Accounting implementation.
 
+Temporal Accounting returns evaluation-private temporal replay result types. The Temporal Replay Runner converts those typed replay results to generic `EvaluationSummary` before the result leaves `evaluation`, so storage, benchmarks, reporting, and modeling keep one public evaluation result ABI.
+
 ## Metric Descriptor Rule
 
 ```text
@@ -105,6 +107,7 @@ evaluation/
   metrics.py         metric descriptor definitions
   sampling.py        Poisson arrival and chronological sample helpers
   temporal_replay_runner.py shared decoded validation and replay accounting loop
+  temporal_replay_results.py private typed temporal replay results and summary conversion
   poisson_replay.py  Poisson replay evaluator adapter
   full_temporal_replay.py full supplied-sample evaluator adapter
   temporal_accounting.py shared temporal decision accounting

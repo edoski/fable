@@ -7,12 +7,16 @@ import numpy as np
 import pytest
 import torch
 
-from spice.evaluation import EvaluationRun, EvaluationSummary
+from spice.evaluation.temporal_replay_results import (
+    TemporalReplayEventMetricSums,
+    TemporalReplayMetrics,
+    TemporalReplayResult,
+    TemporalReplayRunResult,
+)
 from spice.evaluation.temporal_replay_runner import (
     TemporalReplaySelection,
     run_temporal_replay,
 )
-from spice.prediction import MetricSet
 from spice.prediction.decoded_offsets import DecodedOffsets
 from spice.temporal import CompiledExecutionPolicyContract
 from spice.temporal.problem_store import CompiledProblemStore
@@ -71,11 +75,30 @@ def test_temporal_replay_runner_passes_selection_metadata_to_accounting(
         selected_positions=np.array([0], dtype=np.int64),
         metadata={"mode": "test"},
     )
-    summary = EvaluationSummary(
-        metrics=MetricSet({"score": 1.0}),
+    temporal_run = TemporalReplayRunResult(
+        n_events=1,
+        metrics=TemporalReplayMetrics(
+            profit_over_baseline=1.0,
+            cost_over_optimum=2.0,
+            baseline_cost_over_optimum=3.0,
+            exact_optimum_hit_rate=4.0,
+            realized_fee_sum=5.0,
+            baseline_fee_sum=6.0,
+            optimum_fee_sum=7.0,
+        ),
+        event_metric_sums=TemporalReplayEventMetricSums(
+            profit_over_baseline=1.0,
+            cost_over_optimum=2.0,
+            baseline_cost_over_optimum=3.0,
+            exact_optimum_hit_rate=4.0,
+        ),
+        metadata={"mode": "test"},
+    )
+    replay_result = TemporalReplayResult(
+        metrics=temporal_run.metrics,
         window_metrics={},
         total_events=1,
-        runs=[EvaluationRun(n_events=1, metrics={"score": 1.0}, metadata={"mode": "test"})],
+        runs=(temporal_run,),
     )
 
     def fake_summarize_selected_temporal_decisions(
@@ -97,7 +120,7 @@ def test_temporal_replay_runner_passes_selection_metadata_to_accounting(
                 "metadata": metadata,
             }
         )
-        return SimpleNamespace(run="accounting-run")
+        return temporal_run
 
     monkeypatch.setattr(
         "spice.evaluation.temporal_replay_runner.summarize_selected_temporal_decisions",
@@ -105,7 +128,7 @@ def test_temporal_replay_runner_passes_selection_metadata_to_accounting(
     )
     monkeypatch.setattr(
         "spice.evaluation.temporal_replay_runner.summarize_temporal_accounting_runs",
-        lambda runs: summary if len(runs) == 1 else None,
+        lambda runs: replay_result if runs == [temporal_run] else None,
     )
     decoded_offsets = DecodedOffsets(torch.tensor([0], dtype=torch.int64))
     sample_indices = np.array([0], dtype=np.int64)
@@ -120,7 +143,9 @@ def test_temporal_replay_runner_passes_selection_metadata_to_accounting(
         adapter=_Adapter([selection]),
     )
 
-    assert result is summary
+    assert result.metrics.values == replay_result.metrics.values()
+    assert result.runs[0].metrics == replay_result.metrics.values()
+    assert result.runs[0].metadata == {"mode": "test"}
     assert seen["store"] is store
     assert seen["execution_policy"] is execution_policy
     assert seen["decoded_offsets"] is decoded_offsets

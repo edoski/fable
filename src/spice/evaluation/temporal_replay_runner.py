@@ -19,6 +19,7 @@ from .temporal_accounting import (
     summarize_selected_temporal_decisions,
     summarize_temporal_accounting_runs,
 )
+from .temporal_replay_results import temporal_replay_result_to_summary
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +101,7 @@ def run_temporal_replay(
         )
     if not runs:
         raise adapter.no_runs_error()
-    return summarize_temporal_accounting_runs(runs)
+    return temporal_replay_result_to_summary(summarize_temporal_accounting_runs(runs))
 
 
 def _validated_selected_positions(
