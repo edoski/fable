@@ -21,7 +21,7 @@ from ..core.specs import (
     validate_owner_config,
 )
 from .families.base import ModelTuningSpaceConfig, TunedModelParams
-from .families.registry import model_spec
+from .families.registry import model_spec, sample_model_tuned_parameters
 
 
 def coerce_tuning_space_config(
@@ -41,6 +41,8 @@ def coerce_tuning_space_config(
         training_payload = payload.training
         problem_payload = payload.problem
         model_payload = payload.model
+        if payload.model.id != model_config.id:
+            raise ConfigResolutionError("tuning_space.model.id must match model.id")
     else:
         raw_payload = owner_payload(
             payload,
@@ -59,6 +61,8 @@ def coerce_tuning_space_config(
         id_label="tuning_space.model.id",
     )
     spec = model_spec(model_id)
+    if model_id != model_config.id:
+        raise ConfigResolutionError("tuning_space.model.id must match model.id")
     training = (
         None
         if training_payload is None
@@ -214,8 +218,7 @@ def sample_tuned_parameters(
             )
         if problem_values:
             problem_params = validate_owner_config(problem_values, TunedProblemParams)
-    spec = model_spec(tuning_space.model.id)
-    model_params = spec.sample_model_params(trial, tuning_space.model)
+    model_params = sample_model_tuned_parameters(trial, tuning_space.model)
     return TunedParameterSet(
         training=training_params,
         problem=problem_params,

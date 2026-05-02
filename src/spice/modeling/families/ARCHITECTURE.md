@@ -40,3 +40,9 @@ An LSTM, transformer, or hybrid architecture is a way to transform input tensors
 Model-family config owns architectural hyperparameters such as hidden size, dropout, layers, or attention dimensions. Training config owns optimizer and loop behavior such as learning rate, epochs, batch size, and early stopping.
 
 Config-facing model-family coercion normalizes invalid payload envelopes to `ConfigResolutionError` and returns already typed model configs unchanged.
+
+## Tuning Adapter
+
+Family registration is the tuning adapter. It owns the typed model config, tuning-space config, tuned-parameter config, model factory, tuning validation hook, tunable field specs, compile policy, and precision policy.
+
+Generic tuning code samples declared categorical fields and applies tuned params by validated config copy through this boundary. Family modules keep architecture rules that are not generic, such as Transformer attention constraints and `feedforward_multiplier` derivation.

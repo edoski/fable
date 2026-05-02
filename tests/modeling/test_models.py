@@ -5,6 +5,7 @@ import pytest
 import torch
 
 from spice.modeling.families.lstm import LstmModelConfig
+from spice.modeling.families.registry import build_model
 from spice.modeling.families.transformer import TransformerModelConfig
 from spice.modeling.families.transformer_lstm import TransformerLstmModelConfig
 from spice.modeling.models import (
@@ -70,6 +71,55 @@ def _assert_model_ignores_padded_timesteps(model, inputs, input_mask, max_candid
 
     assert tuple(baseline.shape) == (inputs.shape[0], max_candidate_slots)
     assert torch.allclose(baseline, changed, atol=1e-5, rtol=1e-5)
+
+
+@pytest.mark.parametrize(
+    ("model_type", "config"),
+    [
+        (
+            LSTMBaseline,
+            LstmModelConfig(
+                input_projection_dim=8,
+                hidden_size=8,
+                num_layers=2,
+                dropout=0.0,
+                head_hidden_dim=4,
+            ),
+        ),
+        (
+            TransformerBaseline,
+            TransformerModelConfig(
+                dropout=0.0,
+                d_model=4,
+                nhead=2,
+                transformer_layers=1,
+                feedforward_dim=16,
+                head_hidden_dim=4,
+            ),
+        ),
+        (
+            TransformerLSTMBaseline,
+            TransformerLstmModelConfig(
+                hidden_size=8,
+                num_layers=2,
+                dropout=0.0,
+                d_model=4,
+                nhead=2,
+                transformer_layers=1,
+                feedforward_dim=16,
+                head_hidden_dim=4,
+            ),
+        ),
+    ],
+)
+def test_model_family_factory_builds_registered_architectures(model_type, config) -> None:
+    model = build_model(
+        n_features=3,
+        output_spec=build_output_spec(max_candidate_slots=3),
+        config=config,
+    )
+
+    assert isinstance(model, model_type)
 
 
 @pytest.mark.parametrize(

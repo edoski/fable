@@ -14,12 +14,21 @@ from spice.config import (
 )
 from spice.config.models import TunedTrainingParams, TuningProblemSearchSpace
 from spice.core.errors import ConfigResolutionError
+from spice.modeling.families.lstm import (
+    LstmModelConfig,
+    LstmTunedModelParams,
+)
+from spice.modeling.families.registry import apply_model_tuned_parameters
 from spice.modeling.families.transformer import (
     TransformerModelConfig,
     TransformerTunedModelParams,
 )
+from spice.modeling.families.transformer_lstm import (
+    TransformerLstmModelConfig,
+    TransformerLstmTunedModelParams,
+)
 from spice.modeling.tuned_config import coerce_tuning_space_config, sample_tuned_parameters
-from spice.modeling.tuning import apply_study_best_params, apply_tuned_parameters
+from spice.modeling.tuning import apply_study_best_params
 from tests.root_handle_helpers import corpus_handle, study_handle
 
 
@@ -32,6 +41,39 @@ def _transformer_model() -> TransformerModelConfig:
         head_hidden_dim=256,
         dropout=0.2,
     )
+
+
+def _lstm_model() -> LstmModelConfig:
+    return LstmModelConfig(
+        input_projection_dim=128,
+        hidden_size=256,
+        num_layers=2,
+        head_hidden_dim=128,
+        dropout=0.2,
+    )
+
+
+def _transformer_lstm_model() -> TransformerLstmModelConfig:
+    return TransformerLstmModelConfig(
+        hidden_size=256,
+        num_layers=2,
+        d_model=256,
+        nhead=4,
+        transformer_layers=4,
+        feedforward_dim=512,
+        head_hidden_dim=256,
+        dropout=0.2,
+    )
+
+
+def _model_config(model_id: str):
+    if model_id == "lstm":
+        return _lstm_model()
+    if model_id == "transformer":
+        return _transformer_model()
+    if model_id == "transformer_lstm":
+        return _transformer_lstm_model()
+    raise AssertionError(f"unknown model id {model_id}")
 
 
 def _problem():
@@ -50,16 +92,37 @@ def _problem():
     )
 
 
-def test_sample_transformer_large_capacity_params_derives_feedforward_dim() -> None:
-    tuning_space = coerce_tuning_space_config(
-        {
-            "training": {
-                "learning_rate": [0.0001],
-                "weight_decay": [0.001],
-                "batch_size": [128],
+@pytest.mark.parametrize(
+    ("model_id", "model_space", "trial_values", "params_type", "expected"),
+    [
+        (
+            "lstm",
+            {
+                "input_projection_dim": [64],
+                "hidden_size": [128],
+                "num_layers": [3],
+                "head_hidden_dim": [256],
+                "dropout": [0.1],
             },
-            "model": {
-                "id": "transformer",
+            {
+                "model.input_projection_dim": 64,
+                "model.hidden_size": 128,
+                "model.num_layers": 3,
+                "model.head_hidden_dim": 256,
+                "model.dropout": 0.1,
+            },
+            LstmTunedModelParams,
+            {
+                "input_projection_dim": 64,
+                "hidden_size": 128,
+                "num_layers": 3,
+                "head_hidden_dim": 256,
+                "dropout": 0.1,
+            },
+        ),
+        (
+            "transformer",
+            {
                 "d_model": [512],
                 "nhead": [8],
                 "transformer_layers": [6],
@@ -67,8 +130,97 @@ def test_sample_transformer_large_capacity_params_derives_feedforward_dim() -> N
                 "head_hidden_dim": [1024],
                 "dropout": [0.1],
             },
+            {
+                "model.d_model": 512,
+                "model.nhead": 8,
+                "model.transformer_layers": 6,
+                "model.feedforward_multiplier": 4,
+                "model.head_hidden_dim": 1024,
+                "model.dropout": 0.1,
+            },
+            TransformerTunedModelParams,
+            {
+                "d_model": 512,
+                "nhead": 8,
+                "transformer_layers": 6,
+                "feedforward_dim": 2048,
+                "head_hidden_dim": 1024,
+                "dropout": 0.1,
+            },
+        ),
+        (
+            "transformer_lstm",
+            {
+                "hidden_size": [384],
+                "num_layers": [3],
+                "d_model": [512],
+                "nhead": [8],
+                "transformer_layers": [6],
+                "feedforward_multiplier": [4],
+                "head_hidden_dim": [1024],
+                "dropout": [0.1],
+            },
+            {
+                "model.hidden_size": 384,
+                "model.num_layers": 3,
+                "model.d_model": 512,
+                "model.nhead": 8,
+                "model.transformer_layers": 6,
+                "model.feedforward_multiplier": 4,
+                "model.head_hidden_dim": 1024,
+                "model.dropout": 0.1,
+            },
+            TransformerLstmTunedModelParams,
+            {
+                "hidden_size": 384,
+                "num_layers": 3,
+                "d_model": 512,
+                "nhead": 8,
+                "transformer_layers": 6,
+                "feedforward_dim": 2048,
+                "head_hidden_dim": 1024,
+                "dropout": 0.1,
+            },
+        ),
+    ],
+)
+def test_sample_model_tuned_params_uses_registered_family_adapter(
+    model_id: str,
+    model_space: dict[str, object],
+    trial_values: dict[str, object],
+    params_type: type[object],
+    expected: dict[str, object],
+) -> None:
+    tuning_space = coerce_tuning_space_config(
+        {
+            "model": {"id": model_id, **model_space},
         },
-        model_config=_transformer_model(),
+        model_config=_model_config(model_id),
+        problem_config=_problem(),
+    )
+    assert tuning_space is not None
+
+    params = sample_tuned_parameters(
+        FixedTrial(trial_values),
+        tuning_space=tuning_space,
+    )
+
+    assert isinstance(params.model, params_type)
+    assert params.model.model_dump(exclude={"id"}, exclude_none=True) == expected
+
+
+def test_sample_tuned_parameters_samples_shared_training_and_problem_params() -> None:
+    tuning_space = coerce_tuning_space_config(
+        {
+            "training": {
+                "learning_rate": [0.0001],
+                "weight_decay": [0.001],
+                "batch_size": [128],
+            },
+            "problem": {"lookback_seconds": [1800]},
+            "model": {"id": "lstm"},
+        },
+        model_config=_lstm_model(),
         problem_config=_problem(),
     )
     assert tuning_space is not None
@@ -79,58 +231,58 @@ def test_sample_transformer_large_capacity_params_derives_feedforward_dim() -> N
                 "training.learning_rate": 0.0001,
                 "training.weight_decay": 0.001,
                 "training.batch_size": 128,
-                "model.d_model": 512,
-                "model.nhead": 8,
-                "model.transformer_layers": 6,
-                "model.feedforward_multiplier": 4,
-                "model.head_hidden_dim": 1024,
-                "model.dropout": 0.1,
+                "problem.lookback_seconds": 1800,
             }
         ),
         tuning_space=tuning_space,
     )
 
     assert params.training is not None
+    assert params.training.learning_rate == 0.0001
+    assert params.training.weight_decay == 0.001
     assert params.training.batch_size == 128
-    assert isinstance(params.model, TransformerTunedModelParams)
-    assert params.model.d_model == 512
-    assert params.model.nhead == 8
-    assert params.model.transformer_layers == 6
-    assert params.model.feedforward_dim == 2048
-    assert params.model.head_hidden_dim == 1024
+    assert params.problem is not None
+    assert params.problem.lookback_seconds == 1800
+    assert params.model is None
 
 
-def test_apply_transformer_tuned_params_updates_model_config(tmp_path) -> None:
-    config = resolve_workflow_config(
-        WorkflowTask.TRAIN,
-        TrainWorkflowSelection(
-            surface="current_row_fee_dynamics",
-            dataset_id="cor_9a73b1e88edb488afb1e",
-            model="transformer",
-            variant="baseline",
-            storage_root=tmp_path / "outputs",
+@pytest.mark.parametrize(
+    ("base_config", "tuned_params", "expected"),
+    [
+        (
+            _lstm_model(),
+            LstmTunedModelParams(hidden_size=512, dropout=0.15),
+            {"hidden_size": 512, "num_layers": 2, "dropout": 0.15},
         ),
-    )
-
-    tuned = apply_tuned_parameters(
-        config,
-        TunedParameterSet(
-            model=TransformerTunedModelParams(
-                d_model=512,
-                nhead=8,
-                transformer_layers=6,
-                feedforward_dim=2048,
-                head_hidden_dim=1024,
-            )
+        (
+            _transformer_model(),
+            TransformerTunedModelParams(d_model=512, nhead=8, feedforward_dim=2048),
+            {"d_model": 512, "nhead": 8, "feedforward_dim": 2048, "transformer_layers": 4},
         ),
-    )
+        (
+            _transformer_lstm_model(),
+            TransformerLstmTunedModelParams(hidden_size=384, d_model=512, nhead=8),
+            {"hidden_size": 384, "d_model": 512, "nhead": 8, "num_layers": 2},
+        ),
+    ],
+)
+def test_apply_tuned_parameters_uses_registered_family_adapter(
+    base_config,
+    tuned_params,
+    expected: dict[str, object],
+) -> None:
+    tuned = apply_model_tuned_parameters(base_config, tuned_params)
 
-    assert isinstance(tuned.model, TransformerModelConfig)
-    assert tuned.model.d_model == 512
-    assert tuned.model.nhead == 8
-    assert tuned.model.transformer_layers == 6
-    assert tuned.model.feedforward_dim == 2048
-    assert tuned.model.head_hidden_dim == 1024
+    for field, value in expected.items():
+        assert getattr(tuned, field) == value
+
+
+def test_apply_tuned_parameters_revalidates_model_config() -> None:
+    with pytest.raises(ValueError, match="d_model must be divisible"):
+        apply_model_tuned_parameters(
+            _transformer_model(),
+            TransformerTunedModelParams(d_model=384, nhead=7),
+        )
 
 
 def test_apply_study_best_params_uses_manifest_study_name(tmp_path, monkeypatch) -> None:
@@ -190,17 +342,36 @@ def test_apply_study_best_params_uses_manifest_study_name(tmp_path, monkeypatch)
     assert applied.config.study.name == "manifest_study"
 
 
-def test_transformer_tuning_space_rejects_incompatible_attention_dimensions() -> None:
-    with pytest.raises(ValueError, match="d_model values must be divisible"):
+@pytest.mark.parametrize("model_id", ["transformer", "transformer_lstm"])
+@pytest.mark.parametrize(
+    ("model_space", "message"),
+    [
+        ({"d_model": [383], "nhead": [1]}, "d_model values must be even"),
+        ({"d_model": [384], "nhead": [7]}, "d_model values must be divisible"),
+        (
+            {"feedforward_multiplier": [4]},
+            "feedforward_multiplier requires d_model",
+        ),
+    ],
+)
+def test_attention_family_tuning_space_validates_shared_attention_constraints(
+    model_id: str,
+    model_space: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
         coerce_tuning_space_config(
-            {
-                "model": {
-                    "id": "transformer",
-                    "d_model": [384],
-                    "nhead": [7],
-                },
-            },
-            model_config=_transformer_model(),
+            {"model": {"id": model_id, **model_space}},
+            model_config=_model_config(model_id),
+            problem_config=_problem(),
+        )
+
+
+def test_tuning_space_rejects_model_id_mismatch() -> None:
+    with pytest.raises(ConfigResolutionError, match="tuning_space.model.id must match model.id"):
+        coerce_tuning_space_config(
+            {"model": {"id": "transformer", "d_model": [256]}},
+            model_config=_lstm_model(),
             problem_config=_problem(),
         )
 

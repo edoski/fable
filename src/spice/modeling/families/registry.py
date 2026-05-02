@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar, cast
 
@@ -17,11 +17,18 @@ from ...core.specs import (
 )
 from ...prediction import PredictionOutputSpec
 from ..models import TemporalModel
-from .base import ModelConfig, ModelTuningSpaceConfig, TunedModelParams
+from .base import (
+    ModelConfig,
+    ModelTuningSpaceConfig,
+    TunableFieldSpec,
+    TunedModelParams,
+    TunedScalar,
+)
 
 ModelConfigT = TypeVar("ModelConfigT", bound=ModelConfig)
 ModelTuningSpaceT = TypeVar("ModelTuningSpaceT", bound=ModelTuningSpaceConfig)
 ModelTunedParamsT = TypeVar("ModelTunedParamsT", bound=TunedModelParams)
+DeriveTunedValues = Callable[[dict[str, TunedScalar]], Mapping[str, TunedScalar]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,10 +37,10 @@ class ModelSpec(Generic[ModelConfigT, ModelTuningSpaceT, ModelTunedParamsT]):
     tuning_space_type: type[ModelTuningSpaceT]
     tuned_params_type: type[ModelTunedParamsT]
     build_model: Callable[[int, PredictionOutputSpec, ModelConfigT], TemporalModel]
-    sample_model_params: Callable[[optuna.Trial, ModelTuningSpaceT], ModelTunedParamsT | None]
-    apply_model_params: Callable[[ModelConfigT, ModelTunedParamsT], ModelConfigT]
     resolve_training_precision: Callable[[torch.device], str]
     resolve_compile_enabled: Callable[[torch.device], bool]
+    tunable_fields: tuple[TunableFieldSpec, ...] = ()
+    derive_tuned_values: DeriveTunedValues | None = None
     validate_tuning_space: Callable[[ModelConfigT, ModelTuningSpaceT], None] | None = None
 
 
@@ -103,4 +110,34 @@ def apply_model_tuned_parameters(
         spec.tuned_params_type,
         "tuned model params",
     )
-    return spec.apply_model_params(concrete_config, concrete_params)
+    updates = concrete_params.model_dump(exclude={"id"}, exclude_none=True, mode="python")
+    config_payload = concrete_config.model_dump(mode="python", exclude_none=True)
+    return spec.model_config_type.model_validate({**config_payload, **updates})
+
+
+def sample_model_tuned_parameters(
+    trial: optuna.Trial,
+    tuning_space: ModelTuningSpaceConfig[str],
+) -> TunedModelParams[str] | None:
+    spec = model_spec(tuning_space.id)
+    concrete_space = require_spec_config(
+        tuning_space,
+        spec.tuning_space_type,
+        "tuning_space.model",
+    )
+    sampled: dict[str, TunedScalar] = {}
+    for field in spec.tunable_fields:
+        candidates = getattr(concrete_space, field.name)
+        if candidates is None:
+            continue
+        sampled[field.name] = field.coerce_sample(
+            trial.suggest_categorical(field.parameter_name, candidates)
+        )
+    if not sampled:
+        return None
+    values: Mapping[str, TunedScalar]
+    if spec.derive_tuned_values is None:
+        values = sampled
+    else:
+        values = spec.derive_tuned_values(sampled)
+    return spec.tuned_params_type.model_validate({"id": concrete_space.id, **values})

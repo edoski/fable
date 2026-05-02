@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-import optuna
 from pydantic import Field, field_validator, model_validator
 
 from ...prediction import PredictionOutputSpec
 from .._runtime import require_cuda_device
 from ..models import LSTMBaseline, TemporalModel
-from .base import ModelConfig, ModelTuningSpaceConfig, TunedModelParams
+from .base import ModelConfig, ModelTuningSpaceConfig, TunableFieldSpec, TunedModelParams
 from .registry import ModelSpec
 
 
@@ -75,47 +74,6 @@ def _build_model(
     return LSTMBaseline(n_features, output_spec, config)
 
 
-def _sample_model_params(
-    trial: optuna.Trial,
-    tuning_space: LstmTuningSpaceModelConfig,
-) -> LstmTunedModelParams | None:
-    values: dict[str, float | int] = {}
-    if tuning_space.input_projection_dim is not None:
-        values["input_projection_dim"] = int(
-            trial.suggest_categorical(
-                "model.input_projection_dim",
-                tuning_space.input_projection_dim,
-            )
-        )
-    if tuning_space.hidden_size is not None:
-        values["hidden_size"] = int(
-            trial.suggest_categorical("model.hidden_size", tuning_space.hidden_size)
-        )
-    if tuning_space.num_layers is not None:
-        values["num_layers"] = int(
-            trial.suggest_categorical("model.num_layers", tuning_space.num_layers)
-        )
-    if tuning_space.head_hidden_dim is not None:
-        values["head_hidden_dim"] = int(
-            trial.suggest_categorical("model.head_hidden_dim", tuning_space.head_hidden_dim)
-        )
-    if tuning_space.dropout is not None:
-        values["dropout"] = float(trial.suggest_categorical("model.dropout", tuning_space.dropout))
-    if not values:
-        return None
-    return LstmTunedModelParams.model_validate({"id": "lstm", **values})
-
-
-def _apply_model_params(
-    model_config: LstmModelConfig,
-    params: LstmTunedModelParams,
-) -> LstmModelConfig:
-    updates = params.model_dump(exclude={"id"}, exclude_none=True)
-    return LstmModelConfig.model_validate(
-        {**model_config.model_dump(mode="json", exclude_none=True), **updates}
-    )
-
-
 def _resolve_training_precision(device) -> str:
     require_cuda_device(device)
     return "32-true"
@@ -131,8 +89,13 @@ MODEL_SPEC = ModelSpec(
     tuning_space_type=LstmTuningSpaceModelConfig,
     tuned_params_type=LstmTunedModelParams,
     build_model=_build_model,
-    sample_model_params=_sample_model_params,
-    apply_model_params=_apply_model_params,
     resolve_training_precision=_resolve_training_precision,
     resolve_compile_enabled=_resolve_compile_enabled,
+    tunable_fields=(
+        TunableFieldSpec("input_projection_dim", int),
+        TunableFieldSpec("hidden_size", int),
+        TunableFieldSpec("num_layers", int),
+        TunableFieldSpec("head_hidden_dim", int),
+        TunableFieldSpec("dropout", float),
+    ),
 )

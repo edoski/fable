@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from typing import Literal
 
-import optuna
 from pydantic import Field, field_validator, model_validator
 
 from ...prediction import PredictionOutputSpec
 from .._runtime import require_cuda_device
 from ..models import TemporalModel, TransformerBaseline
-from .base import ModelConfig, ModelTuningSpaceConfig, TunedModelParams
+from .base import (
+    ModelConfig,
+    ModelTuningSpaceConfig,
+    TunableFieldSpec,
+    TunedModelParams,
+    TunedScalar,
+)
 from .registry import ModelSpec
 
 
@@ -111,50 +116,15 @@ def _validate_tuning_space(
         raise ValueError("tuning_space.model.feedforward_multiplier requires d_model")
 
 
-def _sample_model_params(
-    trial: optuna.Trial,
-    tuning_space: TransformerTuningSpaceModelConfig,
-) -> TransformerTunedModelParams | None:
-    values: dict[str, float | int] = {}
-    if tuning_space.d_model is not None:
-        values["d_model"] = int(trial.suggest_categorical("model.d_model", tuning_space.d_model))
-    if tuning_space.nhead is not None:
-        values["nhead"] = int(trial.suggest_categorical("model.nhead", tuning_space.nhead))
-    if tuning_space.transformer_layers is not None:
-        values["transformer_layers"] = int(
-            trial.suggest_categorical(
-                "model.transformer_layers",
-                tuning_space.transformer_layers,
-            )
-        )
-    if tuning_space.feedforward_multiplier is not None:
-        assert tuning_space.d_model is not None
-        multiplier = int(
-            trial.suggest_categorical(
-                "model.feedforward_multiplier",
-                tuning_space.feedforward_multiplier,
-            )
-        )
-        values["feedforward_dim"] = int(values["d_model"]) * multiplier
-    if tuning_space.head_hidden_dim is not None:
-        values["head_hidden_dim"] = int(
-            trial.suggest_categorical("model.head_hidden_dim", tuning_space.head_hidden_dim)
-        )
-    if tuning_space.dropout is not None:
-        values["dropout"] = float(trial.suggest_categorical("model.dropout", tuning_space.dropout))
-    if not values:
-        return None
-    return TransformerTunedModelParams.model_validate({"id": "transformer", **values})
-
-
-def _apply_model_params(
-    model_config: TransformerModelConfig,
-    params: TransformerTunedModelParams,
-) -> TransformerModelConfig:
-    updates = params.model_dump(exclude={"id"}, exclude_none=True)
-    return TransformerModelConfig.model_validate(
-        {**model_config.model_dump(mode="json", exclude_none=True), **updates}
-    )
+def _derive_tuned_values(sampled: dict[str, TunedScalar]) -> dict[str, TunedScalar]:
+    values = dict(sampled)
+    multiplier = values.pop("feedforward_multiplier", None)
+    if multiplier is not None:
+        d_model = values.get("d_model")
+        if d_model is None:
+            raise ValueError("tuning_space.model.feedforward_multiplier requires d_model")
+        values["feedforward_dim"] = int(d_model) * int(multiplier)
+    return values
 
 
 def _resolve_training_precision(device) -> str:
@@ -173,8 +143,15 @@ MODEL_SPEC = ModelSpec(
     tuned_params_type=TransformerTunedModelParams,
     build_model=_build_model,
     validate_tuning_space=_validate_tuning_space,
-    sample_model_params=_sample_model_params,
-    apply_model_params=_apply_model_params,
     resolve_training_precision=_resolve_training_precision,
     resolve_compile_enabled=_resolve_compile_enabled,
+    tunable_fields=(
+        TunableFieldSpec("d_model", int),
+        TunableFieldSpec("nhead", int),
+        TunableFieldSpec("transformer_layers", int),
+        TunableFieldSpec("feedforward_multiplier", int),
+        TunableFieldSpec("head_hidden_dim", int),
+        TunableFieldSpec("dropout", float),
+    ),
+    derive_tuned_values=_derive_tuned_values,
 )

@@ -67,6 +67,8 @@ For block-fee data, this means the model can learn patterns such as "recent gas 
 
 The implementation is CUDA-oriented and does not use compile-time graph capture.
 
+Tunable fields: `input_projection_dim`, `hidden_size`, `num_layers`, `head_hidden_dim`, and `dropout`.
+
 ## `transformer`
 
 The Transformer family uses input projection, sinusoidal positional encoding, and a Transformer encoder with a padding mask.
@@ -87,6 +89,8 @@ Important constraints:
 
 Large CUDA runs can use model compilation when the family enables it. Current registered families resolve training precision to `32-true`; no family currently opts into bf16 or fp16 mixed precision.
 
+Tunable fields: `d_model`, `nhead`, `transformer_layers`, `feedforward_multiplier`, `head_hidden_dim`, and `dropout`. `feedforward_multiplier` is sampled but not stored directly; the family derives tuned `feedforward_dim` as `d_model * feedforward_multiplier`.
+
 ## `transformer_lstm`
 
 This family runs a Transformer encoder first, then an LSTM. The Transformer builds context-aware row embeddings; the LSTM aggregates them in temporal order.
@@ -103,6 +107,8 @@ project inputs
 This combines attention-based context mixing with recurrent sequence summarization.
 
 The practical reason to combine them is bias. The Transformer stage is good at comparing rows globally. The LSTM stage then imposes an ordered summarization step before the heads. That can help when the final decision should depend on both "which earlier rows matter" and "how the sequence evolved toward the anchor."
+
+Tunable fields: `hidden_size`, `num_layers`, `d_model`, `nhead`, `transformer_layers`, `feedforward_multiplier`, `head_hidden_dim`, and `dropout`. Like the Transformer family, it derives tuned `feedforward_dim` from `d_model * feedforward_multiplier`.
 
 ## Output Heads
 
