@@ -9,6 +9,7 @@ from typing import Any, Literal
 import polars as pl
 from pydantic import Field, field_validator, model_validator
 
+from ...core.config_model import ConfigModel
 from ...core.specs import (
     lookup_local_spec,
     owner_payload,
@@ -17,7 +18,6 @@ from ...core.specs import (
     validate_owner_config,
 )
 from ...core.validation import validate_path_segment
-from ...modeling.families.base import ConfigModel
 from ...semantics import DatasetBuilderSemantics
 from .preparation import (
     ArtifactInferencePreparationSpec,

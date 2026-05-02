@@ -8,6 +8,7 @@ from typing import Literal, TypeVar, overload
 
 from pydantic import ValidationError
 
+from ..core.config_model import ConfigModel
 from ..core.errors import ConfigResolutionError
 from ..evaluation import EvaluatorConfig
 from ..modeling.families.base import ModelConfig
@@ -17,7 +18,6 @@ from .models import (
     AcquireConfig,
     ArtifactConfig,
     ChainSpec,
-    ConfigModel,
     DatasetBuilderConfig,
     DatasetSpec,
     EvaluateConfig,

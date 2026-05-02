@@ -15,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 
+from ..core.config_model import ConfigModel as _ConfigModel
 from ..core.errors import ConfigResolutionError
 from ..core.specs import owner_payload, validate_owner_config
 from ..core.validation import validate_path_segment
@@ -22,7 +23,6 @@ from ..evaluation import EvaluatorConfig
 from ..features import validate_feature_selection
 from ..modeling.dataset_builders import DatasetBuilderConfig
 from ..modeling.families.base import (
-    ConfigModel,
     ModelConfig,
     ModelTuningSpaceConfig,
     TunedModelParams,
@@ -57,13 +57,13 @@ def _validate_http_endpoint_url(value: str, *, label: str) -> str:
     return value
 
 
-class ChainRuntimeSpec(ConfigModel):
+class ChainRuntimeSpec(_ConfigModel):
     chain_id: int = Field(gt=0)
     uses_poa_extra_data: bool
     nominal_block_time_seconds: float = Field(gt=0.0)
 
 
-class ChainSpec(ConfigModel):
+class ChainSpec(_ConfigModel):
     name: str
     runtime: ChainRuntimeSpec
 
@@ -73,7 +73,7 @@ class ChainSpec(ConfigModel):
         return validate_path_segment(value, label="chain.name")
 
 
-class DatasetSpec(ConfigModel):
+class DatasetSpec(_ConfigModel):
     name: str
     evaluation_date: date
 
@@ -83,11 +83,11 @@ class DatasetSpec(ConfigModel):
         return validate_path_segment(value, label="dataset.name")
 
 
-class StorageSpec(ConfigModel):
+class StorageSpec(_ConfigModel):
     root: Path = Path("outputs")
 
 
-class ProblemSpec(ConfigModel):
+class ProblemSpec(_ConfigModel):
     id: str
     lookback_seconds: int = Field(gt=0)
     sample_count: int = Field(gt=0)
@@ -132,7 +132,7 @@ def coerce_problem_spec(payload: object) -> ProblemSpec:
     return validate_owner_config(raw_payload, ProblemSpec)
 
 
-class SplitConfig(ConfigModel):
+class SplitConfig(_ConfigModel):
     train_fraction: float = Field(gt=0.0, lt=1.0)
     validation_fraction: float = Field(ge=0.0, lt=1.0)
 
@@ -143,12 +143,12 @@ class SplitConfig(ConfigModel):
         return self
 
 
-class EarlyStoppingConfig(ConfigModel):
+class EarlyStoppingConfig(_ConfigModel):
     patience: int = Field(gt=0)
     min_delta: float = Field(ge=0.0)
 
 
-class TrainingConfig(ConfigModel):
+class TrainingConfig(_ConfigModel):
     learning_rate: float = Field(gt=0.0)
     weight_decay: float = Field(ge=0.0)
     batch_size: int = Field(gt=0)
@@ -181,7 +181,7 @@ def _default_input_normalization_config() -> InputNormalizationConfig:
     return coerce_input_normalization_config({"id": "window_weighted_standard"})
 
 
-class AcquisitionRpcConfig(ConfigModel):
+class AcquisitionRpcConfig(_ConfigModel):
     batch_size: int = Field(gt=0)
     concurrency: int = Field(gt=0)
     min_batch_size: int = Field(gt=0)
@@ -202,13 +202,13 @@ class AcquisitionRpcConfig(ConfigModel):
         return self
 
 
-class AcquisitionConfig(ConfigModel):
+class AcquisitionConfig(_ConfigModel):
     dry_run: bool = False
     chunk_size: int = Field(gt=0)
     rpc: AcquisitionRpcConfig
 
 
-class FeaturesConfig(ConfigModel):
+class FeaturesConfig(_ConfigModel):
     id: str
     outputs: list[str] = Field(min_length=1)
 
@@ -239,7 +239,7 @@ def coerce_features_config(payload: object) -> FeaturesConfig:
     )
 
 
-class PredictionConfig(ConfigModel):
+class PredictionConfig(_ConfigModel):
     id: str
     family_id: str
 
@@ -256,7 +256,7 @@ class PredictionConfig(ConfigModel):
         )
 
 
-class StudyConfig(ConfigModel):
+class StudyConfig(_ConfigModel):
     name: str = "default"
 
     @field_validator("name")
@@ -265,11 +265,11 @@ class StudyConfig(ConfigModel):
         return validate_path_segment(value, label="study.name")
 
 
-class ArtifactConfig(ConfigModel):
+class ArtifactConfig(_ConfigModel):
     variant: ArtifactVariant = ArtifactVariant.BASELINE
 
 
-class TuningTrainingSearchSpace(ConfigModel):
+class TuningTrainingSearchSpace(_ConfigModel):
     learning_rate: list[float] | None = Field(default=None, min_length=1)
     weight_decay: list[float] | None = Field(default=None, min_length=1)
     batch_size: list[int] | None = Field(default=None, min_length=1)
@@ -306,7 +306,7 @@ class TuningTrainingSearchSpace(ConfigModel):
         return self
 
 
-class TuningProblemSearchSpace(ConfigModel):
+class TuningProblemSearchSpace(_ConfigModel):
     lookback_seconds: list[int] | None = Field(default=None, min_length=1)
 
     @field_validator("lookback_seconds")
@@ -326,7 +326,7 @@ class TuningProblemSearchSpace(ConfigModel):
         return self
 
 
-class TuningSpaceConfig(ConfigModel):
+class TuningSpaceConfig(_ConfigModel):
     training: TuningTrainingSearchSpace | None = None
     problem: TuningProblemSearchSpace | None = None
     model: SerializeAsAny[ModelTuningSpaceConfig]
@@ -340,7 +340,7 @@ class TuningSpaceConfig(ConfigModel):
         )
 
 
-class TunedTrainingParams(ConfigModel):
+class TunedTrainingParams(_ConfigModel):
     learning_rate: float | None = Field(default=None, gt=0.0)
     weight_decay: float | None = Field(default=None, ge=0.0)
     batch_size: int | None = Field(default=None, gt=0)
@@ -356,7 +356,7 @@ class TunedTrainingParams(ConfigModel):
         return self
 
 
-class TunedProblemParams(ConfigModel):
+class TunedProblemParams(_ConfigModel):
     lookback_seconds: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
@@ -366,7 +366,7 @@ class TunedProblemParams(ConfigModel):
         return self
 
 
-class TunedParameterSet(ConfigModel):
+class TunedParameterSet(_ConfigModel):
     training: TunedTrainingParams | None = None
     problem: TunedProblemParams | None = None
     model: SerializeAsAny[TunedModelParams] | None = None
@@ -382,7 +382,7 @@ class TunedParameterSet(ConfigModel):
         return self
 
 
-class TuningConfig(ConfigModel):
+class TuningConfig(_ConfigModel):
     trial_count: int = Field(gt=0)
     timeout_seconds: int | None = Field(default=None, gt=0)
     sampler_seed: int = Field(ge=0)
@@ -396,12 +396,12 @@ class TuningConfig(ConfigModel):
         )
 
 
-class TuningSearchConfig(ConfigModel):
+class TuningSearchConfig(_ConfigModel):
     sampler_seed: int = Field(ge=0)
     enable_pruning: bool
 
 
-class ProviderEndpointConfig(ConfigModel):
+class ProviderEndpointConfig(_ConfigModel):
     url: str
     reference: str | None = None
 
@@ -411,13 +411,13 @@ class ProviderEndpointConfig(ConfigModel):
         return _validate_http_endpoint_url(value, label="provider.endpoints.url")
 
 
-class ProviderTransportConfig(ConfigModel):
+class ProviderTransportConfig(_ConfigModel):
     timeout_seconds: float = Field(gt=0.0)
     retry_count: int = Field(ge=0)
     backoff_factor: float = Field(ge=0.0)
 
 
-class ResolvedRpcEndpointConfig(ConfigModel):
+class ResolvedRpcEndpointConfig(_ConfigModel):
     provider_name: str
     url: str
     reference: str
@@ -436,7 +436,7 @@ class ResolvedRpcEndpointConfig(ConfigModel):
         return _validate_http_endpoint_url(value, label="rpc_endpoint.url")
 
 
-class ProviderSpec(ConfigModel):
+class ProviderSpec(_ConfigModel):
     name: str
     transport: ProviderTransportConfig
     acquisition: AcquisitionConfig | None = None
@@ -464,7 +464,7 @@ class ProviderSpec(ConfigModel):
             ) from exc
 
 
-class WorkflowConfig(ConfigModel):
+class WorkflowConfig(_ConfigModel):
     workflow: WorkflowTask
     chain: ChainSpec
     dataset: DatasetSpec
@@ -547,7 +547,7 @@ class TuneConfig(ObjectiveModelWorkflowConfig):
         return self
 
 
-class EvaluateConfig(ConfigModel):
+class EvaluateConfig(_ConfigModel):
     workflow: WorkflowTask = WorkflowTask.EVALUATE
     storage: StorageSpec = Field(default_factory=StorageSpec)
     artifact_id: str

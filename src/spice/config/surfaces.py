@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypeVar, cast
 
-from ..modeling.families.base import ConfigModel
+from ..core.config_model import ConfigModel
 from .models import ArtifactConfig, ProblemSpec, StorageSpec, StudyConfig
 from .registry import load_surface_frame as _load_surface_frame
 from .selections import (

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`modeling.families` owns concrete neural network architectures and their config models.
+`modeling.families` owns concrete neural network architectures and their model-family config models. The generic strict config base lives in `core.config_model`.
 
 ## Theory
 

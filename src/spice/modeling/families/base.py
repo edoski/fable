@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Generic, TypeAlias, TypeVar
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import field_validator
 
+from ...core.config_model import ConfigModel as _ConfigModel
 from ...core.validation import validate_path_segment
 
 ModelIdT = TypeVar("ModelIdT", bound=str)
@@ -27,11 +28,7 @@ class TunableFieldSpec:
         return self.value_type(value)
 
 
-class ConfigModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
-
-
-class ModelConfig(ConfigModel, Generic[ModelIdT]):
+class ModelConfig(_ConfigModel, Generic[ModelIdT]):
     id: ModelIdT
 
     @field_validator("id")
@@ -40,7 +37,7 @@ class ModelConfig(ConfigModel, Generic[ModelIdT]):
         return validate_path_segment(value, label="model.id")
 
 
-class ModelTuningSpaceConfig(ConfigModel, Generic[ModelIdT]):
+class ModelTuningSpaceConfig(_ConfigModel, Generic[ModelIdT]):
     id: ModelIdT
 
     @field_validator("id")
@@ -49,7 +46,7 @@ class ModelTuningSpaceConfig(ConfigModel, Generic[ModelIdT]):
         return validate_path_segment(value, label="tuning_space.model.id")
 
 
-class TunedModelParams(ConfigModel, Generic[ModelIdT]):
+class TunedModelParams(_ConfigModel, Generic[ModelIdT]):
     id: ModelIdT
 
     @field_validator("id")

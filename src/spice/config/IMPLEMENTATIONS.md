@@ -13,7 +13,7 @@ authored YAML
   -> compiled runtime contract
 ```
 
-YAML is user-facing. Pydantic models are the internal boundary. Compiled contracts are executable objects used by modeling, acquisition, and evaluation.
+YAML is user-facing. Pydantic models are the internal boundary. Concrete config models inherit the strict `core.config_model.ConfigModel` base; implementation packages own their fields and owner coercers. Compiled contracts are executable objects used by modeling, acquisition, and evaluation.
 
 A Concrete Owner Config is the concrete local-spec config selected by an owner id. Owner coercers may preserve that object by identity. Abstract typed selector configs are redispatched by id and validated against the concrete type before runtime modules receive them.
 
@@ -133,4 +133,4 @@ Execution and transfer code do not guess a remote target. That keeps command erg
 
 ## Extension Pattern
 
-To add a concrete config type, add the Pydantic model in the package that owns the implementation, register the local spec id, and make the compiler require that concrete model. The config package should resolve names and load resolved workflow snapshots; implementation packages should own implementation-specific fields.
+To add a concrete config type, subclass the shared config base in the package that owns the implementation, register the local spec id, and make the compiler require that concrete model. The config package should resolve names and load resolved workflow snapshots; implementation packages should own implementation-specific fields.

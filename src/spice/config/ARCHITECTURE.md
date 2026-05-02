@@ -29,6 +29,8 @@ composition  choose named pieces and apply selection overrides
 validation   turn those pieces into typed models with clear errors
 ```
 
+Concrete config models inherit the shared strict `core.config_model.ConfigModel` base. The config package and owner packages own their fields and coercers; `core` only owns the generic Pydantic policy.
+
 The config package should not train models, evaluate predictions, acquire blocks, or write artifacts. It resolves intent.
 
 ## Workflow Selection
@@ -94,6 +96,8 @@ Tuned-parameter application is a typed transform. It rebuilds `TrainConfig` or `
 ## Public API Boundary
 
 `spice.config` exports resolved config types, workflow selection types, `resolve_workflow_config()`, `resolve_workflow_command_config()`, workflow snapshot codecs, and config-owned coercers such as `coerce_problem_spec()` and `coerce_features_config()`.
+
+The generic `ConfigModel` base is intentionally not a public `spice.config` export. Modules that define config models import it from `spice.core.config_model`.
 
 It does not re-export dataset-builder coercion. Dataset-builder config coercion belongs to `spice.modeling.dataset_builders`.
 

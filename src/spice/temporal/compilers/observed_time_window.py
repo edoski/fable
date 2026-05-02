@@ -9,13 +9,13 @@ from typing import TYPE_CHECKING
 
 from pydantic import SerializeAsAny, field_validator
 
+from ...core.config_model import ConfigModel
 from ...core.specs import lookup_local_spec, owner_payload_id, validate_owner_config
 from ...core.validation import validate_path_segment
 from ...features import (
     CompiledFeatureContract,
     ResolvedFeatureTable,
 )
-from ...modeling.families.base import ConfigModel
 from ..capability import TemporalCapability
 from ..contracts import CompiledProblemContract, TemporalCapabilityStore
 from ..execution_policy import CompiledExecutionPolicyContract

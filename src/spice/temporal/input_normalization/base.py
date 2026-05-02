@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from pydantic import field_validator
 
+from ...core.config_model import ConfigModel
 from ...core.specs import (
     lookup_local_spec,
     owner_payload_id,
@@ -15,7 +16,6 @@ from ...core.specs import (
     validate_owner_config,
 )
 from ...core.validation import validate_path_segment
-from ...modeling.families.base import ConfigModel
 from ...semantics import InputNormalizationSemantics
 from ..scaling import FloatMatrix, IntVector, ScalerStats
 

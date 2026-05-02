@@ -2,11 +2,13 @@
 
 ## Purpose
 
-`core` contains primitives that are smaller than any domain package: error types, filesystem atomicity, local spec lookup helpers, validation helpers, reporting, constants, and metric rendering.
+`core` contains primitives that are smaller than any domain package: error types, filesystem atomicity, local spec lookup helpers, the shared strict config model base, validation helpers, reporting, constants, and metric rendering.
 
 It should stay boring. If a helper knows what an evaluator, model, corpus, or workflow means, it probably belongs outside `core`.
 
 ## Spec Helpers
+
+`core.config_model.ConfigModel` owns the shared Pydantic config defaults used by config-facing models: extra fields are rejected and assignment is validated. Domain packages own their concrete fields and owner coercers; `core` owns only the boring base policy.
 
 Local implementation registries use three core helpers:
 

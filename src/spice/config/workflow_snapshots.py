@@ -9,6 +9,7 @@ from typing import TypeAlias, TypeVar, cast
 
 from pydantic import ValidationError
 
+from ..core.config_model import ConfigModel
 from ..core.errors import ConfigResolutionError
 from ..evaluation import EvaluatorConfig, coerce_evaluator_config
 from ..modeling.dataset_builders import coerce_dataset_builder_config
@@ -18,7 +19,6 @@ from ..objectives import ObjectiveConfig, coerce_objective_config
 from .models import (
     ArtifactConfig,
     ChainSpec,
-    ConfigModel,
     DatasetBuilderConfig,
     DatasetSpec,
     EvaluateConfig,

@@ -8,8 +8,8 @@ from typing import Literal, TypeAlias, overload
 
 from pydantic import Field
 
+from ..core.config_model import ConfigModel
 from ..core.errors import ConfigResolutionError
-from ..modeling.families.base import ConfigModel
 from .models import ProblemSpec, WorkflowTask
 
 

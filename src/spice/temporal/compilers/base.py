@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pydantic import field_validator
 
+from ...core.config_model import ConfigModel
 from ...core.validation import validate_path_segment
-from ...modeling.families.base import ConfigModel
 
 
 class ProblemCompilerConfig(ConfigModel):

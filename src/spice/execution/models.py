@@ -6,8 +6,8 @@ from pathlib import Path
 
 from pydantic import Field, field_validator
 
+from ..core.config_model import ConfigModel
 from ..core.validation import validate_path_segment
-from ..modeling.families.base import ConfigModel
 
 
 class ExecutionSshSpec(ConfigModel):
