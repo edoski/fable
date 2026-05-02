@@ -32,7 +32,7 @@ Default remote target is `disi_l40` at the CLI layer.
 
 ## Storage Show Commands
 
-`show dataset`, `show study`, and `show artifact` query the catalog. With broad filters, they list matches. With one exact match and detail options, they render root-specific state.
+`show dataset`, `show study`, and `show artifact` pass catalog selectors to `storage.operator`. With broad filters, storage returns a list outcome. With one exact match and detail options, storage returns root-specific sections. Ambiguous detail requests return diagnostic sections plus narrowing attributes; CLI maps those attributes to flags.
 
 Detail panels:
 
@@ -44,7 +44,7 @@ Detail panels:
 
 ## Delete Commands
 
-Delete commands require one resolved root. Dataset and study deletes protect dependent roots unless cascade is explicitly requested.
+Delete commands require one resolved root id. Dataset and study deletes protect dependent roots unless cascade is explicitly requested. Storage returns delete-blocked diagnostics with dependent root sections; CLI only prints them and reports the operator error.
 
 ```text
 selector

@@ -2,32 +2,25 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from enum import StrEnum
-from pathlib import Path
 from typing import Annotated, NoReturn
 
 import typer
 
-from ...core.errors import DeleteBlockedError, SelectorResolutionError, SpiceOperatorError
-from ...storage.catalog.index import (
-    CatalogRefreshSummary,
-    list_artifact_records,
-    list_dataset_records,
-    list_study_records,
-    refresh_catalog,
-    resolve_artifact_record,
-    resolve_dataset_record,
-    resolve_study_record,
-)
-from ...storage.inspect import describe_root, sectioned_summary
-from ...storage.inspect_artifact import artifact_list_sections
-from ...storage.inspect_dataset import dataset_list_sections
-from ...storage.inspect_study import study_list_sections
-from ...storage.lifecycle import (
-    delete_artifact_record,
-    delete_dataset_record,
-    delete_study_record,
+from ...core.errors import SpiceOperatorError
+from ...storage.operator import (
+    ArtifactInspectionDetail,
+    DatasetInspectionDetail,
+    StorageDeleteCommand,
+    StorageDeleteCompleted,
+    StorageDeleteFailure,
+    StorageShowFailure,
+    StorageShowQuery,
+    StorageShowRendered,
+    StudyInspectionDetail,
+    delete_storage,
+    refresh_storage_catalog,
+    render_catalog_refresh,
+    show_storage,
 )
 from ...storage.selectors import ArtifactSelector, DatasetSelector, StudySelector
 from ..options import (
@@ -63,26 +56,12 @@ refresh_app = typer.Typer(
 )
 
 
-class DatasetDetail(StrEnum):
-    RUNS = "runs"
-
-
-class StudyDetail(StrEnum):
-    TRIALS = "trials"
-    CONFIG = "config"
-
-
-class ArtifactDetail(StrEnum):
-    EPOCHS = "epochs"
-    RUNS = "runs"
-
-
 DatasetDetailOption = Annotated[
-    DatasetDetail | None,
+    DatasetInspectionDetail | None,
     typer.Option("--detail", metavar="DETAIL", help="Show one detail table: runs."),
 ]
 StudyDetailOption = Annotated[
-    StudyDetail | None,
+    StudyInspectionDetail | None,
     typer.Option(
         "--detail",
         metavar="DETAIL",
@@ -90,7 +69,7 @@ StudyDetailOption = Annotated[
     ),
 ]
 ArtifactDetailOption = Annotated[
-    ArtifactDetail | None,
+    ArtifactInspectionDetail | None,
     typer.Option(
         "--detail",
         metavar="DETAIL",
@@ -135,90 +114,47 @@ def _dataset_selector(
     return DatasetSelector(dataset_id=dataset_id, chain_name=chain, dataset_name=dataset)
 
 
-def _show_root_detail(root_path: Path, *, detail: str | None) -> None:
-    description = describe_root(root_path, detail=detail)
-    title, sections = sectioned_summary(description)
-    print_sections(title, sections)
-
-
-def _show_records(
-    *,
-    kind: str,
-    records,
-    has_filters: bool,
-    detail: str | None,
-    list_sections,
-    selector: object,
-) -> None:
-    if not records:
-        raise SpiceOperatorError(f"No {kind} matches found")
-    if detail is not None and len(records) != 1:
-        print_sections(f"{kind} matches", list_sections(records), err=True)
-        raise SpiceOperatorError(
-            f"--detail requires exactly one {kind} match"
-            f"{_narrowing_guidance(kind, records, selector=selector)}"
-        )
-    if detail is not None:
-        _show_root_detail(records[0].root_path, detail=detail)
-        return
-    if not has_filters or len(records) != 1:
-        print_sections(f"{kind} list", list_sections(records))
-        return
-    _show_root_detail(records[0].root_path, detail=None)
-
-
-def _handle_selector_error(
-    error: SelectorResolutionError,
-    *,
-    list_sections,
-    selector: object,
-) -> NoReturn:
-    if error.records:
-        print_sections(f"{error.kind} matches", list_sections(list(error.records)), err=True)
+def _raise_show_failure(outcome: StorageShowFailure) -> NoReturn:
+    for diagnostic in outcome.diagnostics:
+        print_sections(diagnostic.title, diagnostic.sections, err=True)
     raise SpiceOperatorError(
-        f"{error}{_narrowing_guidance(error.kind, error.records, selector=selector)}"
+        f"{outcome.message}{_narrowing_guidance(outcome.narrowing_attributes)}"
     )
 
 
-def _narrowing_guidance(kind: str, records: Sequence[object], *, selector: object) -> str:
-    if len(records) <= 1:
-        return ""
+def _raise_delete_failure(outcome: StorageDeleteFailure) -> NoReturn:
+    for diagnostic in outcome.diagnostics:
+        print_sections(diagnostic.title, diagnostic.sections, err=True)
+    raise SpiceOperatorError(
+        f"{outcome.message}"
+        f"{_cascade_guidance(outcome)}"
+        f"{_narrowing_guidance(outcome.narrowing_attributes)}"
+    )
+
+
+def _narrowing_guidance(attributes: tuple[str, ...]) -> str:
     flags = [
-        flag
-        for attribute, flag in _SELECTOR_FLAGS.get(kind, {}).items()
-        if getattr(selector, attribute, None) is None
-        and len({getattr(record, attribute, None) for record in records}) > 1
+        flag for kind_flags in _SELECTOR_FLAGS.values() for attribute in attributes
+        if (flag := kind_flags.get(attribute)) is not None
     ]
     if not flags:
         return ""
-    return f". Try {', '.join(flags)}."
+    return f". Try {', '.join(dict.fromkeys(flags))}."
 
 
-def _handle_delete_blocked(error: DeleteBlockedError) -> NoReturn:
-    if error.artifact_records:
-        print_sections(
-            "artifact matches",
-            artifact_list_sections(list(error.artifact_records)),
-            err=True,
-        )
-    if error.study_records:
-        print_sections(
-            "study matches",
-            study_list_sections(list(error.study_records)),
-            err=True,
-        )
-    raise SpiceOperatorError(str(error))
+def _cascade_guidance(outcome: StorageDeleteFailure) -> str:
+    return " Re-run with --cascade." if outcome.cascade_available else ""
 
 
-def _render_catalog_refresh(summary: CatalogRefreshSummary) -> str:
-    return " ".join(
-        [
-            "catalog refreshed",
-            f"datasets={summary.dataset_roots}",
-            f"studies={summary.study_roots}",
-            f"artifacts={summary.artifact_roots}",
-        ]
-    )
+def _render_show(outcome: StorageShowRendered | StorageShowFailure) -> None:
+    if isinstance(outcome, StorageShowFailure):
+        _raise_show_failure(outcome)
+    print_sections(outcome.renderable.title, outcome.renderable.sections)
+
+
+def _handle_delete(outcome: StorageDeleteCompleted | StorageDeleteFailure) -> None:
+    if isinstance(outcome, StorageDeleteFailure):
+        _raise_delete_failure(outcome)
 
 
 @show_app.command(
@@ -238,17 +174,16 @@ def show_dataset_command(
 ) -> None:
     root = resolve_storage_root(storage_root)
     selector = _dataset_selector(dataset_id=dataset_id, chain=chain, dataset=dataset)
-    records = list_dataset_records(
-        root,
-        selector=selector,
-    )
-    _show_records(
-        kind="dataset",
-        records=records,
-        has_filters=dataset_id is not None or chain is not None or dataset is not None,
-        detail=None if detail is None else detail.value,
-        list_sections=dataset_list_sections,
-        selector=selector,
+    _render_show(
+        show_storage(
+            StorageShowQuery(
+                storage_root=root,
+                kind="dataset",
+                selector=selector,
+                has_filters=dataset_id is not None or chain is not None or dataset is not None,
+                detail=None if detail is None else detail.value,
+            )
+        )
     )
 
 
@@ -283,20 +218,28 @@ def show_study_command(
         problem_id=problem,
         study_name=study,
     )
-    records = list_study_records(
-        root,
-        selector=selector,
-    )
-    _show_records(
-        kind="study",
-        records=records,
-        has_filters=any(
-            value is not None
-            for value in (study_id, chain, dataset, features, prediction, model, problem, study)
-        ),
-        detail=None if detail is None else detail.value,
-        list_sections=study_list_sections,
-        selector=selector,
+    _render_show(
+        show_storage(
+            StorageShowQuery(
+                storage_root=root,
+                kind="study",
+                selector=selector,
+                has_filters=any(
+                    value is not None
+                    for value in (
+                        study_id,
+                        chain,
+                        dataset,
+                        features,
+                        prediction,
+                        model,
+                        problem,
+                        study,
+                    )
+                ),
+                detail=None if detail is None else detail.value,
+            )
+        )
     )
 
 
@@ -343,32 +286,31 @@ def show_artifact_command(
         variant=variant,
         study_name=study,
     )
-    records = list_artifact_records(
-        root,
-        selector=selector,
-    )
-    _show_records(
-        kind="artifact",
-        records=records,
-        has_filters=any(
-            value is not None
-            for value in (
-                artifact_id,
-                dataset_id,
-                study_id,
-                chain,
-                dataset,
-                features,
-                prediction,
-                model,
-                problem,
-                variant,
-                study,
+    _render_show(
+        show_storage(
+            StorageShowQuery(
+                storage_root=root,
+                kind="artifact",
+                selector=selector,
+                has_filters=any(
+                    value is not None
+                    for value in (
+                        artifact_id,
+                        dataset_id,
+                        study_id,
+                        chain,
+                        dataset,
+                        features,
+                        prediction,
+                        model,
+                        problem,
+                        variant,
+                        study,
+                    )
+                ),
+                detail=None if detail is None else detail.value,
             )
-        ),
-        detail=None if detail is None else detail.value,
-        list_sections=artifact_list_sections,
-        selector=selector,
+        )
     )
 
 
@@ -385,11 +327,15 @@ def delete_artifact_command(
     storage_root: StorageRootDeleteOption = None,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    record = resolve_artifact_record(
-        root,
-        selector=ArtifactSelector(artifact_id=artifact_id),
+    _handle_delete(
+        delete_storage(
+            StorageDeleteCommand(
+                storage_root=root,
+                kind="artifact",
+                selector=ArtifactSelector(artifact_id=artifact_id),
+            )
+        )
     )
-    delete_artifact_record(root, record=record)
 
 
 @delete_app.command(
@@ -409,11 +355,16 @@ def delete_study_command(
     ] = False,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    record = resolve_study_record(root, selector=StudySelector(study_id=study_id))
-    try:
-        delete_study_record(root, record=record, cascade=cascade)
-    except DeleteBlockedError as error:
-        _handle_delete_blocked(error)
+    _handle_delete(
+        delete_storage(
+            StorageDeleteCommand(
+                storage_root=root,
+                kind="study",
+                selector=StudySelector(study_id=study_id),
+                cascade=cascade,
+            )
+        )
+    )
 
 
 @refresh_app.command("catalog", short_help="Rebuild the derived storage catalog.")
@@ -421,7 +372,7 @@ def refresh_catalog_command(
     storage_root: StorageRootReadOption = None,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    typer.echo(_render_catalog_refresh(refresh_catalog(root)))
+    typer.echo(render_catalog_refresh(refresh_storage_catalog(root)))
 
 
 @delete_app.command(
@@ -443,11 +394,13 @@ def delete_dataset_command(
     ] = False,
 ) -> None:
     root = resolve_storage_root(storage_root)
-    record = resolve_dataset_record(
-        root,
-        selector=DatasetSelector(dataset_id=dataset_id),
+    _handle_delete(
+        delete_storage(
+            StorageDeleteCommand(
+                storage_root=root,
+                kind="dataset",
+                selector=DatasetSelector(dataset_id=dataset_id),
+                cascade=cascade,
+            )
+        )
     )
-    try:
-        delete_dataset_record(root, record=record, cascade=cascade)
-    except DeleteBlockedError as error:
-        _handle_delete_blocked(error)

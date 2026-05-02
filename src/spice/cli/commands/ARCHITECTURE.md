@@ -10,7 +10,7 @@ Command modules should translate user language into typed workflow selections. T
 
 ## Invariants
 
-Workflow commands construct workflow selection models and call config resolution once. Transfer commands use storage selectors over existing catalog records. Config commands use registry APIs. Command modules may format output, but persistence and ML behavior remain elsewhere.
+Workflow commands construct workflow selection models and call config resolution once. Storage commands map options into storage selectors and render Storage Operator Outcomes. Transfer commands use storage selectors over existing catalog records. Config commands use registry APIs. Command modules may format output, but persistence, match policy, and ML behavior remain elsewhere.
 
 Remote workflow commands and transfer commands share the same remote-target option. The default target is provided by the CLI layer, then passed downstream explicitly.
 
@@ -38,4 +38,4 @@ Workflow Selection -> build future work
 catalog selector   -> find existing persisted root
 ```
 
-Do not mix these concepts. A storage command should not need a surface. A workflow command should not need a catalog record unless it is loading existing artifact or study state through workflow config.
+Do not mix these concepts. A storage command should not need a surface. A workflow command should not need a catalog record unless it is loading existing artifact or study state through workflow config. Storage command modules do not decide show/delete ambiguity; they print storage-owned outcomes and translate narrowing attributes to CLI flag names.

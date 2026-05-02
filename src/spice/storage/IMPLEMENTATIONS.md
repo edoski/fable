@@ -86,6 +86,10 @@ Training state stores one summary and ordered epoch rows. Evaluation state store
 
 Study state stores a SPICE study manifest and Optuna's RDB tables in the same SQLite file. The study manifest validates that resumed tuning belongs to the same study definition. Trial attributes store sampled params and best epoch. `storage.study_optuna` owns the RDB adapter and study read APIs; `modeling.tuning_execution` owns opening execution, running trials, and writing per-trial execution metadata.
 
+## Operator Outcomes
+
+`storage.operator` is the command/query Module for existing roots. It takes catalog selectors, decides whether a show request lists matches or renders one root, validates detail requests, returns ambiguity diagnostics with narrowing attributes, and converts blocked deletes into renderable dependent-root sections. It does not know CLI flag spelling; command modules map selector attributes such as `model_id` to flags such as `--model`.
+
 ## Staging And Commit
 
 Full-root commits use hidden staged roots:

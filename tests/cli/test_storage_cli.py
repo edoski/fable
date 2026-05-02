@@ -9,6 +9,7 @@ from spice.cli.commands import storage as storage_commands
 from spice.storage.catalog import CatalogArtifactRecord
 from spice.storage.catalog.registry import ARTIFACT_ROOT_SPEC
 from spice.storage.layout import catalog_db_path
+from spice.storage.operator import RenderableSections, StorageShowRendered
 
 runner = CliRunner()
 
@@ -63,14 +64,26 @@ def test_show_writes_success_to_stdout_and_ambiguous_detail_to_stderr(tmp_path: 
 
 def test_show_detail_uses_unique_filtered_match(tmp_path: Path, monkeypatch) -> None:
     storage_root = tmp_path / "outputs"
-    _write_artifact_record(storage_root, "art_1", model_id="lstm")
-    _write_artifact_record(storage_root, "art_2", model_id="transformer")
     seen: dict[str, object] = {}
 
-    def fake_show_root_detail(root_path: Path, *, detail: str | None) -> None:
-        seen.update({"root_path": root_path, "detail": detail})
+    def fake_show_storage(query):
+        seen.update(
+            {
+                "storage_root": query.storage_root,
+                "kind": query.kind,
+                "model": query.selector.model_id,
+                "detail": query.detail,
+                "has_filters": query.has_filters,
+            }
+        )
+        return StorageShowRendered(
+            RenderableSections(
+                title="artifact summary",
+                sections=[("artifact", [("artifact id", "art_1")])],
+            )
+        )
 
-    monkeypatch.setattr(storage_commands, "_show_root_detail", fake_show_root_detail)
+    monkeypatch.setattr(storage_commands, "show_storage", fake_show_storage)
 
     result = runner.invoke(
         app,
@@ -88,6 +101,9 @@ def test_show_detail_uses_unique_filtered_match(tmp_path: Path, monkeypatch) -> 
 
     assert result.exit_code == 0, result.stdout
     assert seen == {
-        "root_path": storage_root / "artifacts" / "ethereum" / "art_1",
+        "storage_root": storage_root,
+        "kind": "artifact",
+        "model": "lstm",
         "detail": "epochs",
+        "has_filters": True,
     }

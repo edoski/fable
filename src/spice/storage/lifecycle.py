@@ -176,7 +176,7 @@ def delete_dataset_record(
     dependent_studies = list_studies_for_dataset(storage_root, dataset_id=record.dataset_id)
     if (dependent_artifacts or dependent_studies) and not cascade:
         raise DeleteBlockedError(
-            message="Dataset has dependent studies or artifacts. Re-run with --cascade.",
+            message="Dataset has dependent studies or artifacts.",
             artifact_records=dependent_artifacts,
             study_records=dependent_studies,
         )
@@ -199,7 +199,7 @@ def delete_study_record(
     dependent_artifacts = list_artifacts_for_study(storage_root, study_id=record.study_id)
     if dependent_artifacts and not cascade:
         raise DeleteBlockedError(
-            message="Study has dependent artifacts. Re-run with --cascade.",
+            message="Study has dependent artifacts.",
             artifact_records=dependent_artifacts,
         )
     for artifact_record in dependent_artifacts:

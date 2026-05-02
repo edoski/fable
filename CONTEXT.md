@@ -16,6 +16,10 @@ _Avoid_: request
 Explicit existing-root id intent for a workflow or action that reads an existing corpus, study, or artifact.
 _Avoid_: config echo, fuzzy selector
 
+**Storage Operator Outcome**:
+Renderable result produced by storage-owned show/delete command logic for an existing persisted root.
+_Avoid_: CLI storage policy, print helper result
+
 **Producer Root Identity**:
 Deterministic id for a corpus, study, or artifact a workflow will produce from semantic provenance.
 _Avoid_: output path, generated selector

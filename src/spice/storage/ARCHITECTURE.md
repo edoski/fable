@@ -83,6 +83,7 @@ storage/
   study_models.py    study runtime read models
   study_optuna.py    Optuna storage adapter and read access
   artifact.py        artifact-root persistence
+  operator.py        show/delete command outcomes and ambiguity policy
   workflow_roots.py  workflow-facing roots, producer identity, and root operations
   lifecycle.py       staging, promotion, partial commit, delete cascade
   sync_cli.py        remote-side path/root-kind helper commands
@@ -93,6 +94,8 @@ storage/
 Storage owns persisted payload ABI. Modeling and evaluation own runtime result objects; storage codecs translate those objects at the SQLite table boundary. Artifact manifests persist Temporal Capability as the artifact-facing compiler capability bundle and persist artifact semantics as its normalized semantic projection. Artifact evaluation state stores an **Evaluation Config Snapshot**, not a live evaluator config object, so evaluation storage identity is based on immutable evaluator provenance.
 
 Producer identity and consumer selection stay separate inside `workflow_roots.py`. Producer helpers derive ids and root handles for roots that workflows are about to create. Consumer helpers resolve existing roots through the catalog before workflows read them. Workflow roots expose storage-owned operations for manifest loading, staging, promotion, reindexing, and evaluation-state upsert; lower-level lifecycle remains path and root-kind infrastructure.
+
+`operator.py` owns Storage Operator Outcomes for show/delete command behavior: list-vs-detail selection, detail ambiguity, narrowing attributes, delete-blocked diagnostics, and refresh rendering. CLI code maps options to selectors, maps narrowing attributes to flag names, and prints renderable sections.
 
 ## Remote Transfer Boundary
 
