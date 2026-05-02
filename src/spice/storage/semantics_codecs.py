@@ -6,7 +6,7 @@ from pydantic import TypeAdapter
 
 from ..core.errors import StateLayoutError
 from ..features import FeaturePrerequisites
-from ..prediction import MetricDescriptor
+from ..metrics import MetricDescriptor
 from ..semantics import ArtifactSemantics, StudySemantics
 from .payloads import type_adapter_payload, type_adapter_value
 

@@ -9,12 +9,12 @@ import torch
 
 from spice.core.errors import ConfigResolutionError
 from spice.evaluation import EvaluationSummary
+from spice.metrics import MetricDescriptor, MetricSet
 from spice.modeling.evaluation_runtime import EvaluationScoringRuntimePlan
 from spice.modeling.objective_runtime import compile_objective_runtime
 from spice.modeling.representations import RepresentationRuntimeContext
 from spice.modeling.scoring import ModelScoringInput
 from spice.objectives import ObjectiveConfig, ObjectiveDirection
-from spice.prediction import MetricDescriptor, MetricSet
 
 
 def _objective_config(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..prediction.base import MetricSet, WindowMetricSummary
+from ..metrics import MetricSet, WindowMetricSummary
 from .contracts import EvaluationMetadataValue, EvaluationRun, EvaluationSummary
 
 PROFIT_OVER_BASELINE = "profit_over_baseline"

@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from spice.metrics import MetricSet
 from spice.modeling.persisted_training import run_persisted_training
 from spice.modeling.training_run import TrainingRunResult
 from spice.modeling.training_runner import TrainingResult
-from spice.prediction import MetricSet
 
 
 def _training_run(*, model: object) -> TrainingRunResult:

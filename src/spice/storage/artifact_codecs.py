@@ -14,13 +14,13 @@ from ..config.models import (
     coerce_problem_spec,
 )
 from ..evaluation import EvaluationRun
+from ..metrics import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..modeling.dataset_builders import (
     coerce_builder_runtime_metadata,
     coerce_dataset_builder_config,
 )
 from ..modeling.families.registry import coerce_model_config
 from ..objectives import coerce_objective_config
-from ..prediction import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..temporal.scaling import ScalerStats
 from .payloads import (
     PayloadModel,

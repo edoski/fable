@@ -11,7 +11,8 @@ import torch
 from numpy.typing import NDArray
 
 from ..config.models import TrainingConfig
-from ..prediction import CompiledPredictionContract, MetricSet
+from ..metrics import MetricSet
+from ..prediction import CompiledPredictionContract
 from ..prediction.contracts import PredictionBatch
 from ..temporal.execution_policy import CompiledExecutionPolicyContract
 from ..temporal.problem_store import CompiledProblemStore

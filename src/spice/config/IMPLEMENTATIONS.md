@@ -90,7 +90,7 @@ Training and tuning can optimize either validation metrics or evaluator metrics.
 
 ```text
 validation objective
-  -> use validation MetricSet directly
+  -> use shared MetricSet directly
 
 evaluation objective
   -> compile named evaluator

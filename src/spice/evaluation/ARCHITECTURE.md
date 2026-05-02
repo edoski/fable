@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`evaluation` scores decoded predictions against temporal problem stores. It owns evaluator config validation, evaluator contracts, metric descriptors, event selection, shared Temporal Accounting, and decoded-result checks.
+`evaluation` scores decoded predictions against temporal problem stores. It owns evaluator config validation, evaluator contracts, evaluator metric descriptors, event selection, shared Temporal Accounting, and decoded-result checks. Generic metric result types live in `spice.metrics`.
 
 Training metrics answer “did the model optimize its objective?” Evaluation metrics answer “were the decoded decisions good under the temporal problem?” These are related but not identical.
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import torch
 
-from ...base import MetricDescriptor, MetricSet
+from ....metrics import MetricDescriptor, MetricSet
 from .._offset_metrics import (
     OffsetClassificationCounts,
     add_offset_classification_counts,

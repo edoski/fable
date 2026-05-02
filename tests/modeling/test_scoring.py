@@ -6,10 +6,10 @@ import numpy as np
 import torch
 
 from spice.evaluation import EvaluationRun, EvaluationSummary
+from spice.metrics import MetricSet
 from spice.modeling.evaluation_runtime import EvaluationScoringRuntimePlan
 from spice.modeling.representations import RepresentationRuntimeContext
 from spice.modeling.scoring import ModelScoringInput, score_evaluation
-from spice.prediction import MetricSet
 
 
 def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> None:

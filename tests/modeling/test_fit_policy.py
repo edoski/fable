@@ -4,9 +4,9 @@ import pytest
 import torch
 
 from spice.core.errors import SpiceOperatorError
+from spice.metrics import MetricSet
 from spice.modeling._fit_policy import CompletedEpoch, TrainingFitPolicy
 from spice.objectives import CompiledObjectiveContract
-from spice.prediction import MetricSet
 
 
 def _objective(*, direction: str = "maximize") -> CompiledObjectiveContract:

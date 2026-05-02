@@ -9,8 +9,8 @@ from optuna.trial import TrialState
 from spice.config import EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from spice.core.reporting import Reporter
 from spice.evaluation import EvaluationSummary, coerce_evaluator_config
+from spice.metrics import MetricDescriptor, MetricSet
 from spice.modeling.training_runner import TrainingEpochProgress
-from spice.prediction import MetricDescriptor, MetricSet
 from spice.storage.workflow_roots import ArtifactRootHandle, CorpusRootHandle, StudyRootHandle
 from spice.workflows import evaluate as evaluate_workflow
 from spice.workflows import train as train_workflow

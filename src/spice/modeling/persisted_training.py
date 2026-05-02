@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..prediction import MetricSet
+from ..metrics import MetricSet
 from ..storage.artifact import write_training_state
 from .artifacts import (
     TrainingArtifactManifest,

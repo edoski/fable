@@ -36,7 +36,8 @@ corpus       canonical block data and coverage
 features     observable feature columns and prerequisites
 temporal     anchors, context rows, candidate windows, execution policies
 modeling     tensorization, training, inference, scoring bridge
-prediction   targets, losses, metrics, decoded-result kinds
+metrics      shared metric descriptors, metric sets, and window summaries
+prediction   targets, losses, training metric production, decoded-result kinds
 evaluation   decision-quality scoring over decoded results
 objectives   scalar metrics for training/tuning decisions
 benchmarks   benchmark specs, workflow-selection plans, run state, collection
@@ -87,6 +88,7 @@ spice/
   evaluation/       decoded decision scoring
   execution/        remote execution, transfer, and Slurm submission
   features/         observable feature construction
+  metrics.py        shared metric result ABI
   modeling/         datasets, models, training, inference
   objectives/       train/tune objective contracts
   prediction/       target/loss/decode semantics

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .features import FeaturePrerequisites
-    from .prediction.base import MetricDescriptor
+    from .metrics import MetricDescriptor
 
 
 @dataclass(frozen=True, slots=True)

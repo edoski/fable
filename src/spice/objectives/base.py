@@ -12,8 +12,8 @@ from ..core.errors import ConfigResolutionError
 from ..core.specs import owner_payload, validate_owner_config
 from ..core.validation import validate_path_segment
 from ..evaluation import EvaluatorConfig
+from ..metrics import MetricSet
 from ..modeling.families.base import ConfigModel
-from ..prediction import MetricSet
 from ..semantics import ObjectiveSemantics
 
 

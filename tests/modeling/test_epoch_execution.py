@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import torch
 
+from spice.metrics import MetricSet
 from spice.modeling._epoch_execution import execute_training_batch, run_epoch
-from spice.prediction import MetricSet
 
 
 class _Batch:

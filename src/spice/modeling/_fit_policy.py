@@ -9,8 +9,8 @@ import numpy as np
 import torch
 
 from ..core.errors import SpiceOperatorError
+from ..metrics import MetricSet
 from ..objectives import CompiledObjectiveContract
-from ..prediction import MetricSet
 from .models import TemporalModel
 
 

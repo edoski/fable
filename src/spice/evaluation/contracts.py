@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from ..prediction.base import MetricDescriptor, MetricSet, WindowMetricSummary
+from ..metrics import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..prediction.decoding import DecodedPredictionResult
 from ..temporal.execution_policy import CompiledExecutionPolicyContract
 from ..temporal.problem_store import CompiledProblemStore

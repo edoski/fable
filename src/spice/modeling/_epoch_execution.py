@@ -6,7 +6,8 @@ from typing import cast
 
 import torch
 
-from ..prediction import CompiledPredictionContract, MetricSet
+from ..metrics import MetricSet
+from ..prediction import CompiledPredictionContract
 from ..prediction.contracts import PredictionBatch
 from ._runtime import precision_context
 from .batch_plan import BatchSource

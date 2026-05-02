@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..prediction.base import MetricDescriptor
+from ..metrics import MetricDescriptor
 
 TEMPORAL_REPLAY_METRIC_DESCRIPTORS: tuple[MetricDescriptor, ...] = (
     MetricDescriptor(

@@ -10,14 +10,11 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 
+from ..metrics import MetricDescriptor, MetricSet
 from ..semantics import PredictionSemantics
 from ..temporal.execution_policy import CompiledExecutionPolicyContract, PreparedActionSpace
 from ..temporal.problem_store import CompiledProblemStore
-from .base import (
-    MetricDescriptor,
-    MetricSet,
-    PredictionOutputSpec,
-)
+from .base import PredictionOutputSpec
 from .decoding import ActionSpaceDecodeContext, DecodedPredictionResult
 
 if TYPE_CHECKING:

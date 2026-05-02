@@ -18,7 +18,7 @@ from spice.evaluation.sampling import (
     sample_poisson_arrivals,
     select_sample_positions_for_arrivals,
 )
-from spice.prediction import MetricDescriptor, MetricSet
+from spice.metrics import MetricDescriptor, MetricSet
 from spice.prediction.decoded_offsets import OFFSET_DECODED_RESULT_ID, DecodedOffsets
 from spice.temporal import (
     CompiledExecutionPolicyContract,

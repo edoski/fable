@@ -9,6 +9,7 @@ import pytest
 import torch
 
 from spice.config.models import TrainingConfig
+from spice.metrics import MetricSet
 from spice.modeling._runtime import CudaModelingRuntime
 from spice.modeling.evaluation_runtime import EvaluationScoringRuntimePlan
 from spice.modeling.objective_runtime import CompiledObjectiveRuntime
@@ -22,7 +23,6 @@ from spice.modeling.training_runner import (
 )
 from spice.modeling.training_runtime import TrainingRuntimePlan
 from spice.objectives import CompiledObjectiveContract
-from spice.prediction import MetricSet
 
 
 class _TinyModel(torch.nn.Module):

@@ -18,6 +18,7 @@ from ..config.models import (
     TrainingConfig,
 )
 from ..evaluation import EvaluationRun, EvaluationSummary, EvaluatorConfig
+from ..metrics import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..modeling.dataset_builders import (
     BuilderRuntimeMetadata,
     DatasetBuilderConfig,
@@ -26,7 +27,6 @@ from ..modeling.dataset_builders import (
 )
 from ..modeling.families.base import ModelConfig
 from ..objectives import ObjectiveConfig
-from ..prediction import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..semantics import ArtifactSemantics
 from ..temporal.scaling import ScalerStats
 from .training_run import TrainingRunResult

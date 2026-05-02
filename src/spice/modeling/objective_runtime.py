@@ -9,8 +9,8 @@ from dataclasses import dataclass
 
 from ..core.errors import ConfigResolutionError
 from ..evaluation import EvaluatorConfig, compile_evaluator_contract
+from ..metrics import MetricDescriptor, MetricSet
 from ..objectives import CompiledObjectiveContract, ObjectiveConfig, compile_objective_contract
-from ..prediction import MetricDescriptor, MetricSet
 from .scoring import ModelScoringInput, score_evaluation
 
 EvaluateObjectiveMetricsFn = Callable[

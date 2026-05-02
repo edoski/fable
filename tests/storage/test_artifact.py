@@ -18,6 +18,7 @@ from spice.config import (
 from spice.core.errors import StateLayoutError
 from spice.evaluation import EvaluationRun, PoissonReplayEvaluatorConfig, coerce_evaluator_config
 from spice.features import compile_feature_contract
+from spice.metrics import MetricDescriptor, MetricSet, WindowMetricSummary
 from spice.modeling.dataset_builders import (
     coerce_dataset_builder_config,
     fixed_sequence_temporal_runtime_metadata,
@@ -35,9 +36,6 @@ from spice.modeling.results import (
 )
 from spice.objectives import coerce_objective_config
 from spice.prediction import (
-    MetricDescriptor,
-    MetricSet,
-    WindowMetricSummary,
     compile_prediction_contract,
 )
 from spice.semantics import (
