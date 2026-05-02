@@ -7,9 +7,9 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import cast
+from typing import TypeVar, cast
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..config.models import WorkflowTask
 from ..config.workflow_snapshots import (
@@ -17,12 +17,16 @@ from ..config.workflow_snapshots import (
     workflow_config_snapshot_payload,
 )
 from ..core.errors import SpiceOperatorError
+from .dependency_ledger import BenchmarkDependencyLedger
 from .models import BenchmarkPlanEntry
+from .root_ledger import BenchmarkRootLedger
+from .selection_ledger import BenchmarkSelectionLedger
 
 PLAN_FILENAME = "plan.jsonl"
 SUBMISSION_FILENAME = "submission.jsonl"
 METADATA_FILENAME = "metadata.json"
 COLLECTION_FILENAME = "collection.json"
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class BenchmarkRunMetadata(BaseModel):
@@ -63,11 +67,16 @@ def plan_entry_json_dict(entry: BenchmarkPlanEntry) -> dict[str, object]:
         "case_id": entry.case_id,
         "step_id": entry.step_id,
         "workflow": entry.workflow.value,
-        "depends_on": list(entry.depends_on),
-        "external_dependencies": list(entry.external_dependencies),
+        "dependencies": {
+            "local_run_ids": list(entry.dependencies.local_run_ids),
+            "external_slurm_dependencies": list(
+                entry.dependencies.external_slurm_dependencies
+            ),
+            "artifact_from_run_id": entry.dependencies.artifact_from_run_id,
+        },
         "dimension_labels": dict(entry.dimension_labels),
-        "selection": dict(entry.selection),
-        "artifact_from_run_id": entry.artifact_from_run_id,
+        "selection": entry.selection.model_dump(mode="json", exclude_none=True),
+        "roots": entry.roots.model_dump(mode="json", exclude_none=True),
         "config": workflow_config_snapshot_payload(entry.config),
     }
 
@@ -83,13 +92,11 @@ def load_plan_jsonl(run_dir: Path) -> list[BenchmarkPlanEntry]:
                 case_id=string_payload(payload.get("case_id"), label="case_id"),
                 step_id=string_payload(payload.get("step_id"), label="step_id"),
                 workflow=workflow,
-                depends_on=string_tuple_payload(
-                    payload.get("depends_on", []),
-                    label="depends_on",
-                ),
-                external_dependencies=string_tuple_payload(
-                    payload.get("external_dependencies", []),
-                    label="external_dependencies",
+                dependencies=_benchmark_dependency_ledger(
+                    mapping_payload(
+                        payload.get("dependencies", {}),
+                        label="dependencies",
+                    )
                 ),
                 dimension_labels=string_mapping_payload(
                     mapping_payload(
@@ -98,10 +105,18 @@ def load_plan_jsonl(run_dir: Path) -> list[BenchmarkPlanEntry]:
                     ),
                     label="dimension_labels",
                 ),
-                selection=dict(mapping_payload(payload.get("selection", {}), label="selection")),
-                artifact_from_run_id=_optional_string(
-                    required_payload(payload, "artifact_from_run_id"),
-                    label="artifact_from_run_id",
+                selection=_plan_model_payload(
+                    BenchmarkSelectionLedger,
+                    mapping_payload(payload.get("selection", {}), label="selection"),
+                    label="selection",
+                ),
+                roots=_plan_model_payload(
+                    BenchmarkRootLedger,
+                    mapping_payload(
+                        required_payload(payload, "roots"),
+                        label="roots",
+                    ),
+                    label="roots",
                 ),
                 config=hydrate_workflow_config_snapshot(workflow, config_payload),
             )
@@ -137,6 +152,35 @@ def load_collection_snapshot(run_dir: Path):
     from .result_records import BenchmarkCollectionSnapshot
 
     return BenchmarkCollectionSnapshot.model_validate(read_json(collection_snapshot_path(run_dir)))
+
+
+def _benchmark_dependency_ledger(payload: dict[str, object]) -> BenchmarkDependencyLedger:
+    return BenchmarkDependencyLedger(
+        local_run_ids=string_tuple_payload(
+            payload.get("local_run_ids", []),
+            label="dependencies.local_run_ids",
+        ),
+        external_slurm_dependencies=string_tuple_payload(
+            payload.get("external_slurm_dependencies", []),
+            label="dependencies.external_slurm_dependencies",
+        ),
+        artifact_from_run_id=_optional_string(
+            payload.get("artifact_from_run_id"),
+            label="dependencies.artifact_from_run_id",
+        ),
+    )
+
+
+def _plan_model_payload(
+    model_type: type[ModelT],
+    payload: dict[str, object],
+    *,
+    label: str,
+) -> ModelT:
+    try:
+        return model_type.model_validate(payload)
+    except ValidationError as exc:
+        raise SpiceOperatorError(f"Invalid benchmark {label}: {exc}") from exc
 
 
 def read_json(path: Path) -> dict[str, object]:

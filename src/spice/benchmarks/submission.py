@@ -72,8 +72,8 @@ def _submit_benchmark_entries(
     records: list[SubmittedBenchmarkWorkflow] = []
     for entry in entries:
         dependency = compose_dependency(
-            local_job_ids=[submitted[run_id] for run_id in entry.depends_on],
-            external_dependencies=entry.external_dependencies,
+            local_job_ids=[submitted[run_id] for run_id in entry.dependencies.local_run_ids],
+            external_dependencies=entry.dependencies.external_slurm_dependencies,
         )
         submission = session.submit_workflow(
             entry.workflow,

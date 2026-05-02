@@ -8,8 +8,13 @@ from types import SimpleNamespace
 import pytest
 
 from spice.benchmarks.collection import collect_benchmark_run
+from spice.benchmarks.dependency_ledger import BenchmarkDependencyLedger
 from spice.benchmarks.models import BenchmarkPlanEntry
 from spice.benchmarks.result_store import index_counts
+from spice.benchmarks.root_ledger import (
+    BenchmarkConsumedRoots,
+    BenchmarkRootLedger,
+)
 from spice.benchmarks.runs import (
     BenchmarkSubmissionRecord,
     append_submission_jsonl,
@@ -19,6 +24,7 @@ from spice.benchmarks.runs import (
     load_plan_jsonl,
     write_plan_jsonl,
 )
+from spice.benchmarks.selection_ledger import BenchmarkSelectionLedger
 from spice.config import EvaluateConfig, StorageSpec, WorkflowTask
 from spice.config.models import ArtifactVariant
 from spice.config.registry import load_named_group_payload
@@ -46,16 +52,22 @@ def _write_evaluate_run(run_dir: Path, config) -> None:
         case_id="case",
         step_id="evaluate",
         workflow=WorkflowTask.EVALUATE,
-        depends_on=(),
-        external_dependencies=(),
+        dependencies=BenchmarkDependencyLedger(
+            local_run_ids=(),
+            external_slurm_dependencies=(),
+            artifact_from_run_id=None,
+        ),
         dimension_labels={"models": "lstm"},
-        artifact_from_run_id=None,
-        selection={
-            "artifact_id": config.artifact_id,
-            "dataset_id": config.dataset_id,
-            "evaluation": config.evaluation.id,
-            "delay_seconds": config.delay_seconds,
-        },
+        selection=BenchmarkSelectionLedger(
+            evaluation=config.evaluation.id,
+            delay_seconds=config.delay_seconds,
+        ),
+        roots=BenchmarkRootLedger(
+            consumed=BenchmarkConsumedRoots(
+                artifact_id=config.artifact_id,
+                dataset_id=config.dataset_id,
+            )
+        ),
         config=config,
     )
     write_plan_jsonl(run_dir, [entry])
@@ -148,16 +160,24 @@ def test_benchmark_plan_jsonl_round_trips_plan_entry(tmp_path: Path) -> None:
         case_id="case",
         step_id="evaluate",
         workflow=WorkflowTask.EVALUATE,
-        depends_on=("case.train",),
-        external_dependencies=("afterok:42",),
+        dependencies=BenchmarkDependencyLedger(
+            local_run_ids=("case.train",),
+            external_slurm_dependencies=("afterok:42",),
+            artifact_from_run_id="case.train",
+        ),
         dimension_labels={"features": "core"},
-        artifact_from_run_id="case.train",
-        selection={
-            "surface": "current_row_fee_dynamics",
-            "artifact_id": config.artifact_id,
-            "dataset_id": config.dataset_id,
-            "evaluation": config.evaluation.id,
-        },
+        selection=BenchmarkSelectionLedger(
+            surface="current_row_fee_dynamics",
+            evaluation=config.evaluation.id,
+        ),
+        roots=BenchmarkRootLedger(
+            consumed=BenchmarkConsumedRoots(
+                artifact_id=config.artifact_id,
+                dataset_id=config.dataset_id,
+            ),
+            artifact_from_run_id="case.train",
+            artifact_source_dataset_id=config.dataset_id,
+        ),
         config=config,
     )
 
@@ -167,11 +187,12 @@ def test_benchmark_plan_jsonl_round_trips_plan_entry(tmp_path: Path) -> None:
     assert len(loaded) == 1
     restored = loaded[0]
     assert restored.run_id == entry.run_id
-    assert restored.depends_on == ("case.train",)
-    assert restored.external_dependencies == ("afterok:42",)
+    assert restored.dependencies.local_run_ids == ("case.train",)
+    assert restored.dependencies.external_slurm_dependencies == ("afterok:42",)
     assert restored.dimension_labels == {"features": "core"}
-    assert restored.artifact_from_run_id == "case.train"
+    assert restored.dependencies.artifact_from_run_id == "case.train"
     assert restored.selection == entry.selection
+    assert restored.roots == entry.roots
     assert restored.config.model_dump(mode="json") == config.model_dump(mode="json")
 
 
@@ -187,16 +208,19 @@ def test_benchmark_plan_jsonl_rejects_non_list_dependencies(tmp_path: Path) -> N
         case_id="case",
         step_id="evaluate",
         workflow=WorkflowTask.EVALUATE,
-        depends_on=(),
-        external_dependencies=(),
+        dependencies=BenchmarkDependencyLedger(
+            local_run_ids=(),
+            external_slurm_dependencies=(),
+            artifact_from_run_id=None,
+        ),
         dimension_labels={},
-        artifact_from_run_id=None,
-        selection={},
+        selection=BenchmarkSelectionLedger(),
+        roots=BenchmarkRootLedger(),
         config=config,
     )
     write_plan_jsonl(run_dir, [entry])
     payload = json.loads((run_dir / "plan.jsonl").read_text(encoding="utf-8"))
-    payload["depends_on"] = "case.train"
+    payload["dependencies"]["local_run_ids"] = "case.train"
     (run_dir / "plan.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
     with pytest.raises(SpiceOperatorError, match="benchmark JSONL field must be a list"):
@@ -207,9 +231,10 @@ def test_benchmark_plan_jsonl_rejects_non_list_dependencies(tmp_path: Path) -> N
     "mutate",
     [
         lambda payload: payload.__setitem__("run_id", 123),
-        lambda payload: payload.__setitem__("depends_on", [123]),
+        lambda payload: payload["dependencies"].__setitem__("local_run_ids", [123]),
         lambda payload: payload.__setitem__("dimension_labels", {"models": 123}),
-        lambda payload: payload.__setitem__("artifact_from_run_id", 123),
+        lambda payload: payload["dependencies"].__setitem__("artifact_from_run_id", 123),
+        lambda payload: payload["roots"]["consumed"].__setitem__("artifact_id", 123),
     ],
 )
 def test_benchmark_plan_jsonl_rejects_non_string_identity_fields(
@@ -227,11 +252,17 @@ def test_benchmark_plan_jsonl_rejects_non_string_identity_fields(
         case_id="case",
         step_id="evaluate",
         workflow=WorkflowTask.EVALUATE,
-        depends_on=(),
-        external_dependencies=(),
+        dependencies=BenchmarkDependencyLedger(
+            local_run_ids=(),
+            external_slurm_dependencies=(),
+            artifact_from_run_id="case.train",
+        ),
         dimension_labels={"models": "lstm"},
-        artifact_from_run_id="case.train",
-        selection={},
+        selection=BenchmarkSelectionLedger(),
+        roots=BenchmarkRootLedger(
+            consumed=BenchmarkConsumedRoots(artifact_id="artifact-1"),
+            artifact_from_run_id="case.train",
+        ),
         config=config,
     )
     write_plan_jsonl(run_dir, [entry])
@@ -239,7 +270,7 @@ def test_benchmark_plan_jsonl_rejects_non_string_identity_fields(
     mutate(payload)
     (run_dir / "plan.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
-    with pytest.raises(SpiceOperatorError, match="must be a string"):
+    with pytest.raises(SpiceOperatorError, match="string"):
         load_plan_jsonl(run_dir)
 
 
@@ -346,11 +377,19 @@ def test_benchmark_collect_pulls_same_artifact_once_for_multiple_evaluations(
         case_id="case",
         step_id="evaluate_a",
         workflow=WorkflowTask.EVALUATE,
-        depends_on=(),
-        external_dependencies=(),
+        dependencies=BenchmarkDependencyLedger(
+            local_run_ids=(),
+            external_slurm_dependencies=(),
+            artifact_from_run_id=None,
+        ),
         dimension_labels={},
-        artifact_from_run_id=None,
-        selection={"artifact_id": config.artifact_id},
+        selection=BenchmarkSelectionLedger(),
+        roots=BenchmarkRootLedger(
+            consumed=BenchmarkConsumedRoots(
+                artifact_id=config.artifact_id,
+                dataset_id=config.dataset_id,
+            )
+        ),
         config=config,
     )
     second = replace(first, run_id="case.evaluate_b", step_id="evaluate_b")

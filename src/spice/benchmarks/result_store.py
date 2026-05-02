@@ -28,8 +28,9 @@ class IndexedBenchmarkResult:
     git_commit: str
     execution_ref: str
     chain_name: str
-    dataset_id: str
-    dataset_name: str
+    artifact_dataset_id: str
+    evaluation_dataset_id: str
+    artifact_dataset_name: str
     surface: str
     features_id: str
     model_id: str
@@ -117,10 +118,11 @@ def upsert_collection_snapshot(path: Path, snapshot: BenchmarkCollectionSnapshot
                         execution_ref=record.execution_ref,
                         artifact_id=record.artifact_id,
                         evaluation_storage_id=record.evaluation_storage_id,
-                        dataset_id=record.dataset_id,
+                        artifact_dataset_id=record.artifact_dataset_id,
+                        evaluation_dataset_id=record.evaluation_dataset_id,
                         chain_name=record.chain_name,
-                        dataset_name=record.dataset_name,
-                        surface=str(record.selection.get("surface", "")),
+                        artifact_dataset_name=record.artifact_dataset_name,
+                        surface=record.selection.surface or "",
                         features_id=record.features_id,
                         model_id=record.model_id,
                         problem_id=record.problem_id,
@@ -213,8 +215,9 @@ def list_indexed_results(
         result_observations.c.git_commit,
         result_observations.c.execution_ref,
         result_observations.c.chain_name,
-        result_observations.c.dataset_id,
-        result_observations.c.dataset_name,
+        result_observations.c.artifact_dataset_id,
+        result_observations.c.evaluation_dataset_id,
+        result_observations.c.artifact_dataset_name,
         result_observations.c.surface,
         result_observations.c.features_id,
         result_observations.c.model_id,
@@ -272,8 +275,9 @@ def list_indexed_results(
                     git_commit=str(row["git_commit"]),
                     execution_ref=str(row["execution_ref"]),
                     chain_name=str(row["chain_name"]),
-                    dataset_id=str(row["dataset_id"]),
-                    dataset_name=str(row["dataset_name"]),
+                    artifact_dataset_id=str(row["artifact_dataset_id"]),
+                    evaluation_dataset_id=str(row["evaluation_dataset_id"]),
+                    artifact_dataset_name=str(row["artifact_dataset_name"]),
                     surface=str(row["surface"]),
                     features_id=str(row["features_id"]),
                     model_id=str(row["model_id"]),

@@ -80,6 +80,14 @@ _Avoid_: task
 One durable executable benchmark row with run id, dependencies, selection ledger, and a Resolved Workflow Snapshot.
 _Avoid_: benchmark workflow selection, expanded row
 
+**Benchmark Dependency Ledger**:
+Benchmark-owned durable scheduling facts for a Benchmark Plan Entry: matched local run ids, external Slurm dependencies, and the `artifact_from` source run when present.
+_Avoid_: depends-on tuple, submission helper state
+
+**Benchmark Root Ledger**:
+Benchmark-owned durable root facts for a Benchmark Plan Entry, separating consumed root ids, produced root ids, and artifact-source dataset identity from benchmark selection coordinates.
+_Avoid_: injected selection ids, materialization state dict
+
 **Benchmark Plan Materialization**:
 Benchmark module that turns Benchmark Specs, Cases, and Steps into Benchmark Plan Entries by expanding dimensions, matching dependencies, deriving dependency-produced root ids, and resolving Workflow Config snapshots.
 _Avoid_: benchmark compilation helper, id patching

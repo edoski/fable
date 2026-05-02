@@ -84,7 +84,7 @@ def result_record_csv_row(record: IndexedBenchmarkResult) -> dict[str, str]:
         "artifact_id": record.artifact_id,
         "evaluation_storage_id": record.evaluation_storage_id,
         "chain": record.chain_name,
-        "dataset": record.dataset_name,
+        "dataset": record.artifact_dataset_name,
         "surface": record.surface,
         "features": record.features_id,
         "model": record.model_id,

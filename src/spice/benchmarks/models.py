@@ -8,6 +8,9 @@ from dataclasses import dataclass
 
 from ..config.models import WorkflowTask
 from ..config.workflow_snapshots import ResolvedWorkflowConfig
+from .dependency_ledger import BenchmarkDependencyLedger
+from .root_ledger import BenchmarkRootLedger
+from .selection_ledger import BenchmarkSelectionLedger
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,9 +19,8 @@ class BenchmarkPlanEntry:
     case_id: str
     step_id: str
     workflow: WorkflowTask
-    depends_on: tuple[str, ...]
-    external_dependencies: tuple[str, ...]
+    dependencies: BenchmarkDependencyLedger
     dimension_labels: dict[str, str]
-    selection: dict[str, object]
-    artifact_from_run_id: str | None
+    selection: BenchmarkSelectionLedger
+    roots: BenchmarkRootLedger
     config: ResolvedWorkflowConfig

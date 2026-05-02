@@ -8,13 +8,19 @@ from typing import Any, cast
 import yaml
 from typer.testing import CliRunner
 
+from spice.benchmarks.dependency_ledger import BenchmarkDependencyLedger
 from spice.benchmarks.result_index import upsert_benchmark_collection_snapshot
 from spice.benchmarks.result_records import (
     BenchmarkCollectionSnapshot,
     BenchmarkResultRecord,
     MetricValueRecord,
 )
+from spice.benchmarks.root_ledger import (
+    BenchmarkConsumedRoots,
+    BenchmarkRootLedger,
+)
 from spice.benchmarks.runs import create_benchmark_run_dir, write_collection_snapshot
+from spice.benchmarks.selection_ledger import BenchmarkSelectionLedger
 from spice.cli import app
 from spice.config import WorkflowTask
 from spice.core.errors import SpiceOperatorError
@@ -34,11 +40,21 @@ def _benchmark_record() -> BenchmarkResultRecord:
         case_id="case",
         step_id="evaluate",
         workflow=WorkflowTask.EVALUATE,
-        depends_on=("case.train",),
-        external_dependencies=(),
+        dependencies=BenchmarkDependencyLedger(
+            local_run_ids=("case.train",),
+            external_slurm_dependencies=(),
+            artifact_from_run_id="case.train",
+        ),
         dimension_labels={"models": "lstm"},
-        selection={"surface": "current_row_fee_dynamics"},
-        artifact_from_run_id="case.train",
+        selection=BenchmarkSelectionLedger(surface="current_row_fee_dynamics"),
+        roots=BenchmarkRootLedger(
+            consumed=BenchmarkConsumedRoots(
+                dataset_id="dataset-1",
+                artifact_id="artifact-1",
+            ),
+            artifact_from_run_id="case.train",
+            artifact_source_dataset_id="dataset-1",
+        ),
         job_id="42",
         execution_ref="slurm:42",
         git_commit="abc123",
@@ -51,8 +67,9 @@ def _benchmark_record() -> BenchmarkResultRecord:
         evaluation_target="disi_l40",
         artifact_id="artifact-1",
         evaluation_storage_id="eval-1",
-        dataset_id="dataset-1",
-        dataset_name="icdcs_2026",
+        artifact_dataset_id="dataset-1",
+        artifact_dataset_name="icdcs_2026",
+        evaluation_dataset_id="dataset-1",
         chain_name="ethereum",
         features_id="core_fee_dynamics",
         model_id="lstm",

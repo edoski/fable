@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from spice.benchmarks.dependency_ledger import BenchmarkDependencyLedger
 from spice.benchmarks.ledger import export_results_csv
 from spice.benchmarks.result_index import (
     list_benchmark_results,
@@ -18,7 +19,12 @@ from spice.benchmarks.result_records import (
     MetricValueRecord,
 )
 from spice.benchmarks.result_store import index_counts
+from spice.benchmarks.root_ledger import (
+    BenchmarkConsumedRoots,
+    BenchmarkRootLedger,
+)
 from spice.benchmarks.runs import create_benchmark_run_dir, write_collection_snapshot
+from spice.benchmarks.selection_ledger import BenchmarkSelectionLedger
 from spice.config import WorkflowTask
 from spice.core.errors import SpiceOperatorError
 
@@ -34,11 +40,21 @@ def _record(
         case_id="case",
         step_id="evaluate",
         workflow=WorkflowTask.EVALUATE,
-        depends_on=("case.train",),
-        external_dependencies=(),
+        dependencies=BenchmarkDependencyLedger(
+            local_run_ids=("case.train",),
+            external_slurm_dependencies=(),
+            artifact_from_run_id="case.train",
+        ),
         dimension_labels={"models": "lstm"},
-        selection={"surface": "current_row_fee_dynamics"},
-        artifact_from_run_id="case.train",
+        selection=BenchmarkSelectionLedger(surface="current_row_fee_dynamics"),
+        roots=BenchmarkRootLedger(
+            consumed=BenchmarkConsumedRoots(
+                dataset_id="evaluation-dataset-1",
+                artifact_id="artifact-1",
+            ),
+            artifact_from_run_id="case.train",
+            artifact_source_dataset_id="dataset-1",
+        ),
         job_id="42",
         execution_ref="slurm:42",
         git_commit="abc123",
@@ -51,8 +67,9 @@ def _record(
         evaluation_target="disi_l40",
         artifact_id="artifact-1",
         evaluation_storage_id="eval-1",
-        dataset_id="dataset-1",
-        dataset_name="icdcs_2026",
+        artifact_dataset_id="dataset-1",
+        artifact_dataset_name="icdcs_2026",
+        evaluation_dataset_id="evaluation-dataset-1",
         chain_name="ethereum",
         features_id="core_fee_dynamics",
         model_id="lstm",
@@ -160,6 +177,12 @@ def test_index_query_and_export_use_normalized_rows_not_payload_json(tmp_path: P
 
     assert [summary.artifact_id for summary in summaries] == ["artifact-1"]
     assert rows[0]["artifact_id"] == "artifact-1"
+    assert rows[0]["surface"] == "current_row_fee_dynamics"
+    with sqlite3.connect(index_path) as connection:
+        indexed = connection.execute(
+            "select artifact_dataset_id, evaluation_dataset_id from result_observations"
+        ).fetchone()
+    assert indexed == ("dataset-1", "evaluation-dataset-1")
 
 
 def test_index_query_rejects_metric_id_collision_across_sources(tmp_path: Path) -> None:

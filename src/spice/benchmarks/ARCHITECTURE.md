@@ -30,14 +30,17 @@ collect all expected evaluate results -> collection.json
 results.sqlite projection -> CSV export/query
 ```
 
-**Benchmark Plan Materialization** expands dimensions, matches local dependencies and `artifact_from` step references, derives dependency-produced root ids, calls normal workflow resolution, and produces durable plan entries with resolved workflow snapshots. Inline problem grids produce inline `ProblemSpec` values during materialization; plan JSON stores the selected problem id, while the resolved workflow config stores the full executable problem.
+**Benchmark Plan Materialization** expands dimensions, asks the **Benchmark Dependency Ledger** to match local dependencies and `artifact_from` step references, asks the **Benchmark Root Ledger** to derive dependency-produced root ids, calls normal workflow resolution, and produces durable plan entries with resolved workflow snapshots. Inline problem grids produce inline `ProblemSpec` values during materialization; the selection ledger stores the selected problem id, while the resolved workflow config stores the full executable problem.
 
 ## Module Map
 
 ```text
 benchmarks/
   schema.py      benchmark YAML schema
-  materialization.py  spec expansion, dependency matching, root-id materialization, and config resolution
+  materialization.py  spec expansion and plan-entry orchestration
+  dependency_ledger.py  dependency graph validation and row matching
+  root_ledger.py  consumed/produced root-id materialization
+  selection_ledger.py  typed benchmark coordinate ledger
   models.py      benchmark plan data models
   result_records.py  collection snapshot and result records
   result_store.py    low-level SQLite result projection

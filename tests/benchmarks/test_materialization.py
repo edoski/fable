@@ -60,7 +60,8 @@ def test_materialization_injects_study_id_for_tuned_train_dependency(
     assert isinstance(train.config, TrainConfig)
     assert train.config.study_id == produced_study_id(tune.config)
     assert train.config.dataset_id is None
-    assert train.selection["study_id"] == train.config.study_id
+    assert train.roots.consumed.study_id == train.config.study_id
+    assert train.selection.study == "case_study"
 
 
 def test_materialization_injects_artifact_and_dataset_for_artifact_from(
@@ -99,14 +100,16 @@ def test_materialization_injects_artifact_and_dataset_for_artifact_from(
 
     assert isinstance(train.config, TrainConfig)
     assert isinstance(evaluate.config, EvaluateConfig)
-    assert evaluate.artifact_from_run_id == train.run_id
+    assert evaluate.dependencies.artifact_from_run_id == train.run_id
+    assert evaluate.roots.artifact_from_run_id == train.run_id
     assert evaluate.config.dataset_id == ETH_DATASET_ID
     assert evaluate.config.artifact_id == produced_artifact_id(
         train.config,
         dataset_id=ETH_DATASET_ID,
     )
-    assert evaluate.selection["dataset_id"] == ETH_DATASET_ID
-    assert evaluate.selection["artifact_id"] == evaluate.config.artifact_id
+    assert evaluate.roots.consumed.dataset_id == ETH_DATASET_ID
+    assert evaluate.roots.consumed.artifact_id == evaluate.config.artifact_id
+    assert evaluate.roots.artifact_source_dataset_id == ETH_DATASET_ID
 
 
 def test_materialization_preserves_explicit_evaluate_dataset_id_with_artifact_from(
@@ -155,8 +158,9 @@ def test_materialization_preserves_explicit_evaluate_dataset_id_with_artifact_fr
         train.config,
         dataset_id=ETH_DATASET_ID,
     )
-    assert evaluate.selection["dataset_id"] == evaluate_dataset_id
-    assert evaluate.selection["artifact_id"] == evaluate.config.artifact_id
+    assert evaluate.roots.consumed.dataset_id == evaluate_dataset_id
+    assert evaluate.roots.consumed.artifact_id == evaluate.config.artifact_id
+    assert evaluate.roots.artifact_source_dataset_id == ETH_DATASET_ID
 
 
 def test_materialization_uses_catalog_dataset_for_explicit_tuned_study(
@@ -260,7 +264,7 @@ def test_materialization_preserves_selection_ledger_context(
     evaluate = next(entry for entry in entries if entry.workflow is WorkflowTask.EVALUATE)
 
     assert isinstance(evaluate.config, EvaluateConfig)
-    assert evaluate.selection["surface"] == "current_row_fee_dynamics"
-    assert evaluate.selection["objective"] == "validation_total_loss"
-    assert evaluate.selection["dataset_id"] == ETH_DATASET_ID
-    assert evaluate.selection["artifact_id"] == evaluate.config.artifact_id
+    assert evaluate.selection.surface == "current_row_fee_dynamics"
+    assert evaluate.selection.objective == "validation_total_loss"
+    assert evaluate.roots.consumed.dataset_id == ETH_DATASET_ID
+    assert evaluate.roots.consumed.artifact_id == evaluate.config.artifact_id

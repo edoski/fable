@@ -10,8 +10,11 @@ from pydantic import BaseModel, ConfigDict
 
 from ..config.models import WorkflowTask
 from ..modeling.results import LoadedEvaluationSummary, LoadedTrainingSummary
+from .dependency_ledger import BenchmarkDependencyLedger
 from .models import BenchmarkPlanEntry
+from .root_ledger import BenchmarkRootLedger
 from .runs import BenchmarkSubmissionRecord, format_datetime
+from .selection_ledger import BenchmarkSelectionLedger
 
 
 class MetricValueRecord(BaseModel):
@@ -37,11 +40,10 @@ class BenchmarkResultRecord(BaseModel):
     case_id: str
     step_id: str
     workflow: WorkflowTask
-    depends_on: tuple[str, ...]
-    external_dependencies: tuple[str, ...]
+    dependencies: BenchmarkDependencyLedger
     dimension_labels: dict[str, str]
-    selection: dict[str, object]
-    artifact_from_run_id: str | None
+    selection: BenchmarkSelectionLedger
+    roots: BenchmarkRootLedger
 
     job_id: str
     execution_ref: str
@@ -57,8 +59,9 @@ class BenchmarkResultRecord(BaseModel):
 
     artifact_id: str
     evaluation_storage_id: str
-    dataset_id: str
-    dataset_name: str
+    artifact_dataset_id: str
+    artifact_dataset_name: str
+    evaluation_dataset_id: str
     chain_name: str
     features_id: str
     model_id: str
@@ -124,11 +127,10 @@ def build_benchmark_result_record(
         case_id=entry.case_id,
         step_id=entry.step_id,
         workflow=entry.workflow,
-        depends_on=entry.depends_on,
-        external_dependencies=entry.external_dependencies,
+        dependencies=entry.dependencies,
         dimension_labels=dict(entry.dimension_labels),
-        selection=dict(entry.selection),
-        artifact_from_run_id=entry.artifact_from_run_id,
+        selection=entry.selection,
+        roots=entry.roots,
         job_id=submission.job_id,
         execution_ref=submission.execution_ref,
         git_commit=submission.git_commit,
@@ -141,8 +143,9 @@ def build_benchmark_result_record(
         evaluation_target=None if provenance is None else provenance.target,
         artifact_id=manifest.artifact_id,
         evaluation_storage_id=evaluation.evaluation_id,
-        dataset_id=manifest.dataset_id,
-        dataset_name=manifest.dataset_name,
+        artifact_dataset_id=manifest.dataset_id,
+        artifact_dataset_name=manifest.dataset_name,
+        evaluation_dataset_id=entry.roots.consumed.dataset_id or "",
         chain_name=manifest.chain_name,
         features_id=manifest.features_id,
         model_id=manifest.model.id,

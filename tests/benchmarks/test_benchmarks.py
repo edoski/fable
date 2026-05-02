@@ -108,7 +108,7 @@ def test_benchmark_dimensions_expand_tuned_train_and_artifact_from(
     )
     assert train.config.model_dump()["study_id"]
     assert isinstance(evaluate.config, EvaluateConfig)
-    assert evaluate.artifact_from_run_id == evaluate.depends_on[0]
+    assert evaluate.dependencies.artifact_from_run_id == evaluate.dependencies.local_run_ids[0]
     assert evaluate.config.dataset_id == ETH_DATASET_ID
     assert evaluate.config.artifact_id.startswith("art_")
     assert evaluate.config.delay_seconds == 36
@@ -138,7 +138,10 @@ def test_packaged_benchmark_yamls_keep_expected_shapes() -> None:
         assert evaluate_entries
         assert train_entries
         assert all(isinstance(entry.config, EvaluateConfig) for entry in evaluate_entries)
-        assert all(entry.artifact_from_run_id in entry.depends_on for entry in evaluate_entries)
+        assert all(
+            entry.dependencies.artifact_from_run_id in entry.dependencies.local_run_ids
+            for entry in evaluate_entries
+        )
 
 
 def test_evaluator_objective_grid_keeps_cross_evaluation_bindings() -> None:
@@ -161,11 +164,11 @@ def test_evaluator_objective_grid_keeps_cross_evaluation_bindings() -> None:
 
     assert isinstance(poisson_full.config, EvaluateConfig)
     assert poisson_full.config.evaluation.id == "full_temporal_replay"
-    assert poisson_full.selection["surface"] == "current_row_fee_dynamics"
-    assert poisson_full.selection["model"] == "lstm"
-    assert poisson_full.selection["problem"] == "current_row_nominal"
-    assert poisson_full.selection["artifact_id"] == poisson_full.config.artifact_id
-    assert poisson_full.depends_on == (
+    assert poisson_full.selection.surface == "current_row_fee_dynamics"
+    assert poisson_full.selection.model == "lstm"
+    assert poisson_full.selection.problem == "current_row_nominal"
+    assert poisson_full.roots.consumed.artifact_id == poisson_full.config.artifact_id
+    assert poisson_full.dependencies.local_run_ids == (
         "evaluator_objective_grid."
         "data-chain-ethereum__dataset_id-cor_9a73b1e88edb488afb1e."
         "models-model-lstm__tuning_space-lstm_large_capacity."
@@ -174,7 +177,7 @@ def test_evaluator_objective_grid_keeps_cross_evaluation_bindings() -> None:
     )
     assert isinstance(full_poisson.config, EvaluateConfig)
     assert full_poisson.config.evaluation.id == "poisson_replay_2h"
-    assert full_poisson.depends_on == (
+    assert full_poisson.dependencies.local_run_ids == (
         "evaluator_objective_grid."
         "data-chain-ethereum__dataset_id-cor_9a73b1e88edb488afb1e."
         "models-model-lstm__tuning_space-lstm_large_capacity."
@@ -241,12 +244,12 @@ def test_evaluate_plan_entries_keep_inherited_ledger_context(isolate_conf_root) 
     )
 
     assert isinstance(evaluate.config, EvaluateConfig)
-    assert evaluate.selection["surface"] == "current_row_fee_dynamics"
-    assert evaluate.selection["objective"] == "validation_total_loss"
-    assert evaluate.selection["model"] == "lstm"
-    assert evaluate.selection["problem"] == "current_row_nominal"
-    assert evaluate.selection["dataset_id"] == ETH_DATASET_ID
-    assert evaluate.selection["artifact_id"] == evaluate.config.artifact_id
+    assert evaluate.selection.surface == "current_row_fee_dynamics"
+    assert evaluate.selection.objective == "validation_total_loss"
+    assert evaluate.selection.model == "lstm"
+    assert evaluate.selection.problem == "current_row_nominal"
+    assert evaluate.roots.consumed.dataset_id == ETH_DATASET_ID
+    assert evaluate.roots.consumed.artifact_id == evaluate.config.artifact_id
 
 
 def test_artifact_from_explicit_tuned_study_uses_catalog_dataset(
