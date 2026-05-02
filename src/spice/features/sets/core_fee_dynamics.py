@@ -173,18 +173,6 @@ def _sources() -> dict[str, SourceSpec]:
             required_after_warmup=True,
             compute=lambda blocks: shifted_column(blocks, "priority_fee_spread"),
         ),
-        "prev_fee_history_gas_used_ratio": SourceSpec(
-            source_columns=("fee_history_gas_used_ratio",),
-            warmup_rows=1,
-            required_after_warmup=True,
-            compute=lambda blocks: shifted_column(blocks, "fee_history_gas_used_ratio"),
-        ),
-        "current_fee_history_gas_used_ratio": SourceSpec(
-            source_columns=("fee_history_gas_used_ratio",),
-            warmup_rows=0,
-            required_after_warmup=True,
-            compute=lambda blocks: _float_column(blocks, "fee_history_gas_used_ratio"),
-        ),
     }
 
 
@@ -246,26 +234,6 @@ def _features() -> dict[str, FeatureSpec]:
             compute=lambda blocks, series, sources, features: _gas_utilization(
                 sources["current_gas_used"],
                 sources["current_gas_limit"],
-            ),
-        ),
-        "prev_eip1559_pressure": FeatureSpec(
-            source_dependencies=("prev_gas_used", "prev_gas_limit"),
-            feature_dependencies=(),
-            history_seconds=0,
-            warmup_rows=1,
-            compute=lambda blocks, series, sources, features: _gas_utilization(
-                sources["prev_gas_used"],
-                sources["prev_gas_limit"] / 2.0,
-            ),
-        ),
-        "current_eip1559_pressure": FeatureSpec(
-            source_dependencies=("current_gas_used", "current_gas_limit"),
-            feature_dependencies=(),
-            history_seconds=0,
-            warmup_rows=0,
-            compute=lambda blocks, series, sources, features: _gas_utilization(
-                sources["current_gas_used"],
-                sources["current_gas_limit"] / 2.0,
             ),
         ),
         "log_prev_tx_count": FeatureSpec(
@@ -351,24 +319,6 @@ def _features() -> dict[str, FeatureSpec]:
             history_seconds=0,
             warmup_rows=1,
             compute=lambda blocks, series, sources, features: sources["prev_priority_fee_spread"],
-        ),
-        "prev_fee_history_gas_used_ratio": FeatureSpec(
-            source_dependencies=("prev_fee_history_gas_used_ratio",),
-            feature_dependencies=(),
-            history_seconds=0,
-            warmup_rows=1,
-            compute=lambda blocks, series, sources, features: sources[
-                "prev_fee_history_gas_used_ratio"
-            ],
-        ),
-        "current_fee_history_gas_used_ratio": FeatureSpec(
-            source_dependencies=("current_fee_history_gas_used_ratio",),
-            feature_dependencies=(),
-            history_seconds=0,
-            warmup_rows=0,
-            compute=lambda blocks, series, sources, features: sources[
-                "current_fee_history_gas_used_ratio"
-            ],
         ),
         "log_prev_priority_fee_p50": FeatureSpec(
             source_dependencies=("prev_priority_fee_p50",),
@@ -613,7 +563,6 @@ CORE_FEE_DYNAMICS_OUTPUTS = (
     "log_prev_gas_used",
     "log_prev_gas_limit",
     "prev_gas_utilization",
-    "prev_eip1559_pressure",
     "log_prev_tx_count",
     "seconds_since_previous_block",
     "hour_sin",
@@ -626,7 +575,6 @@ CORE_FEE_DYNAMICS_OUTPUTS = (
     "roll100_mean_logfee",
     "roll100_std_logfee",
     "roll100_min_logfee",
-    "prev_fee_history_gas_used_ratio",
     "dlog_base_fee",
     "base_fee_trend",
     *(f"dlog_base_fee_lag{lag}" for lag in range(1, 7)),
@@ -652,7 +600,6 @@ CORE_FEE_DYNAMICS_UNSAFE_OUTPUTS = (
     "log_current_gas_used",
     "log_current_gas_limit",
     "current_gas_utilization",
-    "current_eip1559_pressure",
     "log_current_tx_count",
     "seconds_since_previous_block",
     "hour_sin",
@@ -665,7 +612,6 @@ CORE_FEE_DYNAMICS_UNSAFE_OUTPUTS = (
     "roll100_mean_logfee",
     "roll100_std_logfee",
     "roll100_min_logfee",
-    "current_fee_history_gas_used_ratio",
     "dlog_base_fee",
     "base_fee_trend",
     *(f"dlog_base_fee_lag{lag}" for lag in range(1, 7)),

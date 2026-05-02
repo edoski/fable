@@ -46,7 +46,6 @@ def test_build_canonical_block_row_accepts_hex_rpc_quantities() -> None:
         priority_fee_p10=1,
         priority_fee_p50=2,
         priority_fee_p90=4,
-        fee_history_gas_used_ratio=0.5,
     )
 
     assert row["block_number"] == 100

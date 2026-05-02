@@ -14,6 +14,7 @@ from .core import (
     build_feature_table,
     feature_graph_fingerprint,
     feature_prerequisites,
+    feature_source_columns,
 )
 from .registry import feature_entry
 
@@ -27,6 +28,7 @@ class CompiledFeatureContract:
     feature_names: tuple[str, ...]
     feature_graph_fingerprint: str
     feature_prerequisites: FeaturePrerequisites
+    required_source_columns: frozenset[str] = frozenset()
 
     @property
     def semantics(self) -> FeatureSemantics:
@@ -61,4 +63,5 @@ def compile_feature_contract(*, features: FeaturesConfig) -> CompiledFeatureCont
             fingerprint_sources=catalog.fingerprint_sources,
         ),
         feature_prerequisites=feature_prerequisites(catalog, feature_names),
+        required_source_columns=feature_source_columns(catalog, feature_names),
     )

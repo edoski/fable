@@ -22,7 +22,7 @@ def _feature_contract():
                 "outputs": [
                     "log_base_fee_per_gas",
                     "log_prev_gas_used",
-                    "prev_fee_history_gas_used_ratio",
+                    "prev_gas_utilization",
                 ],
             }
         )
@@ -45,7 +45,6 @@ def _blocks(row_count: int = 80) -> pl.DataFrame:
             "priority_fee_p50": np.full(row_count, 2_000_000, dtype=np.int64),
             "priority_fee_p90": np.full(row_count, 4_000_000, dtype=np.int64),
             "priority_fee_spread": np.full(row_count, 3_000_000, dtype=np.int64),
-            "fee_history_gas_used_ratio": np.full(row_count, 0.6, dtype=np.float64),
             "chain_id": np.ones(row_count, dtype=np.int64),
         }
     )

@@ -13,7 +13,8 @@ from spice.acquisition import (
     BlockRange,
     TimestampRange,
 )
-from spice.config import AcquireConfig, WorkflowTask
+from spice.config import AcquireConfig, WorkflowTask, coerce_features_config
+from spice.config.registry import load_named_group_payload
 from spice.core.reporting import Reporter
 from spice.storage.catalog.index import list_dataset_records
 from spice.storage.corpus import list_acquire_runs, load_dataset_manifest
@@ -60,6 +61,28 @@ def _plan_for_window(
         block_range=BlockRange(start=start_block, end=start_block + row_count),
         expected_rows=row_count,
     )
+
+
+def test_acquire_fetches_fee_history_only_for_priority_fee_features(
+    tmp_path,
+    load_workflow_config,
+    acquire_override,
+) -> None:
+    config = _load_test_acquire_config(
+        load_workflow_config,
+        tmp_path,
+        override=acquire_override(),
+    )
+    priority_config = config.model_copy(
+        update={
+            "features": coerce_features_config(
+                load_named_group_payload("core_fee_dynamics_with_priority_fee", "features")
+            )
+        }
+    )
+
+    assert acquire_workflow._requires_priority_fee_fetch(config) is False
+    assert acquire_workflow._requires_priority_fee_fetch(priority_config) is True
 
 
 def test_acquire_workflow_writes_canonical_corpus_and_metadata(

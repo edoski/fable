@@ -75,7 +75,6 @@ def make_block_rows(
                 "priority_fee_p50": 2_000_000,
                 "priority_fee_p90": 4_000_000,
                 "priority_fee_spread": 3_000_000,
-                "fee_history_gas_used_ratio": 0.6,
                 "chain_id": chain_id,
             }
         )

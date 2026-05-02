@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import SupportsFloat, SupportsInt, TypedDict, cast
+from typing import SupportsInt, TypedDict, cast
 
 import polars as pl
 from polars.datatypes.classes import DataTypeClass
@@ -29,7 +29,6 @@ class CanonicalBlockRow(TypedDict):
     priority_fee_p50: int | None
     priority_fee_p90: int | None
     priority_fee_spread: int | None
-    fee_history_gas_used_ratio: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,12 +49,6 @@ def _optional_int(value: object) -> int | None:
     if value is None:
         return None
     return _as_int(value)
-
-
-def _optional_float(value: object) -> float | None:
-    if value is None:
-        return None
-    return float(cast(SupportsFloat, value))
 
 
 CANONICAL_BLOCK_FIELDS = (
@@ -115,10 +108,6 @@ CANONICAL_BLOCK_FIELDS = (
         name="priority_fee_spread",
         dtype=pl.Int64,
     ),
-    CanonicalBlockFieldSpec(
-        name="fee_history_gas_used_ratio",
-        dtype=pl.Float64,
-    ),
 )
 
 BLOCK_SCHEMA = {field.name: field.dtype for field in CANONICAL_BLOCK_FIELDS}
@@ -146,7 +135,6 @@ def build_canonical_block_row(
     priority_fee_p10: int | None = None,
     priority_fee_p50: int | None = None,
     priority_fee_p90: int | None = None,
-    fee_history_gas_used_ratio: float | None = None,
 ) -> CanonicalBlockRow:
     try:
         transactions = block.get("transactions")
@@ -172,7 +160,6 @@ def build_canonical_block_row(
             priority_fee_p50=priority_fee_p50,
             priority_fee_p90=priority_fee_p90,
             priority_fee_spread=priority_fee_spread,
-            fee_history_gas_used_ratio=_optional_float(fee_history_gas_used_ratio),
         )
     except KeyError as exc:
         raise KeyError(f"Missing RPC block field while extracting canonical row: {exc}") from exc

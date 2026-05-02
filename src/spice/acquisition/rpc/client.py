@@ -35,13 +35,13 @@ class _FeeHistoryRow:
     priority_fee_p10: int | None
     priority_fee_p50: int | None
     priority_fee_p90: int | None
-    gas_used_ratio: float | None
 
 
 @dataclass(slots=True)
 class BlockRpcClient:
     rpc_endpoint: ResolvedRpcEndpointConfig
     chain: ChainSpec
+    include_priority_fees: bool = False
     _web3: AsyncWeb3 = field(init=False, repr=False)
     _fee_history_unsupported: bool = field(default=False, init=False, repr=False)
 
@@ -135,7 +135,11 @@ class BlockRpcClient:
                     f"Expected {end - start} block responses, got {len(blocks)}"
                 )
             self._validate_range_blocks(blocks, start=start, end=end)
-            fee_history_rows = await self._fee_history_rows(start, end)
+            fee_history_rows = (
+                await self._fee_history_rows(start, end)
+                if self.include_priority_fees
+                else self._null_fee_history_rows(end - start)
+            )
             return [
                 build_canonical_block_row(
                     block,
@@ -143,7 +147,6 @@ class BlockRpcClient:
                     priority_fee_p10=fee_history.priority_fee_p10,
                     priority_fee_p50=fee_history.priority_fee_p50,
                     priority_fee_p90=fee_history.priority_fee_p90,
-                    fee_history_gas_used_ratio=fee_history.gas_used_ratio,
                 )
                 for block, fee_history in zip(blocks, fee_history_rows, strict=True)
             ]
@@ -215,25 +218,15 @@ class BlockRpcClient:
             raise ValueError(
                 f"eth_feeHistory oldestBlock mismatch: expected {start}, got {oldest_block}"
             )
-        gas_used_ratios = raw_response.get("gasUsedRatio")
         rewards = raw_response.get("reward")
-        if not isinstance(gas_used_ratios, list | tuple):
-            raise TypeError("eth_feeHistory gasUsedRatio must be a sequence")
         if not isinstance(rewards, list | tuple):
             raise TypeError("eth_feeHistory reward must be a sequence")
-        if len(gas_used_ratios) != block_count:
-            raise ValueError(
-                "eth_feeHistory gasUsedRatio length mismatch: "
-                f"expected {block_count}, got {len(gas_used_ratios)}"
-            )
         if len(rewards) != block_count:
             raise ValueError(
                 f"eth_feeHistory reward length mismatch: expected {block_count}, got {len(rewards)}"
             )
         rows: list[_FeeHistoryRow] = []
-        for index, (reward_row, gas_used_ratio) in enumerate(
-            zip(rewards, gas_used_ratios, strict=True)
-        ):
+        for index, reward_row in enumerate(rewards):
             if not isinstance(reward_row, list | tuple):
                 raise TypeError(f"eth_feeHistory reward row {index} must be a sequence")
             if len(reward_row) != len(FEE_HISTORY_REWARD_PERCENTILES):
@@ -246,7 +239,6 @@ class BlockRpcClient:
                     priority_fee_p10=self._quantity_int(reward_row[0]),
                     priority_fee_p50=self._quantity_int(reward_row[1]),
                     priority_fee_p90=self._quantity_int(reward_row[2]),
-                    gas_used_ratio=float(gas_used_ratio),
                 )
             )
         return rows
@@ -258,7 +250,6 @@ class BlockRpcClient:
                 priority_fee_p10=None,
                 priority_fee_p50=None,
                 priority_fee_p90=None,
-                gas_used_ratio=None,
             )
             for _ in range(block_count)
         ]

@@ -9,6 +9,7 @@ from ..config.models import AcquireConfig
 from ..core.async_runtime import run_interruptibly
 from ..core.reporting import Reporter
 from ..corpus.assembly import CorpusAssemblyRequest, assemble_corpus
+from ..features import compile_feature_contract
 from ..corpus.summary import acquire_dry_run_fields, acquisition_result_fields
 from ..storage.workflow_roots import resolve_acquire_producer_roots
 
@@ -20,6 +21,18 @@ def _workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:
         ("problem", config.problem.id),
         ("provider", config.rpc_endpoint.provider_name),
     ]
+
+
+def _requires_priority_fee_fetch(config: AcquireConfig) -> bool:
+    required_columns = compile_feature_contract(features=config.features).required_source_columns
+    return bool(
+        {
+            "priority_fee_p10",
+            "priority_fee_p50",
+            "priority_fee_p90",
+            "priority_fee_spread",
+        }.intersection(required_columns)
+    )
 
 
 def run(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
@@ -34,6 +47,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
     active_reporter = reporter or Reporter()
     active_reporter.header("acquire", _workflow_facts(config))
     block_client = BlockRpcClient(config.rpc_endpoint, config.chain)
+    block_client.include_priority_fees = _requires_priority_fee_fetch(config)
     try:
         result = await assemble_corpus(
             CorpusAssemblyRequest(config=config, roots=roots),

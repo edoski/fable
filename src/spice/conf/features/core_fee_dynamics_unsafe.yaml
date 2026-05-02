@@ -4,7 +4,6 @@ outputs:
   - log_current_gas_used
   - log_current_gas_limit
   - current_gas_utilization
-  - current_eip1559_pressure
   - log_current_tx_count
   - seconds_since_previous_block
   - hour_sin
@@ -17,7 +16,6 @@ outputs:
   - roll100_mean_logfee
   - roll100_std_logfee
   - roll100_min_logfee
-  - current_fee_history_gas_used_ratio
   - dlog_base_fee
   - base_fee_trend
   - dlog_base_fee_lag1

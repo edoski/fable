@@ -24,7 +24,6 @@ BASELINE_OUTPUTS = [
     "log_prev_gas_used",
     "log_prev_gas_limit",
     "prev_gas_utilization",
-    "prev_eip1559_pressure",
     "log_prev_tx_count",
     "seconds_since_previous_block",
     "hour_sin",
@@ -37,7 +36,6 @@ BASELINE_OUTPUTS = [
     "roll100_mean_logfee",
     "roll100_std_logfee",
     "roll100_min_logfee",
-    "prev_fee_history_gas_used_ratio",
     "dlog_base_fee",
     "base_fee_trend",
     *[f"dlog_base_fee_lag{lag}" for lag in range(1, 7)],
@@ -63,7 +61,6 @@ UNSAFE_OUTPUTS = [
     "log_current_gas_used",
     "log_current_gas_limit",
     "current_gas_utilization",
-    "current_eip1559_pressure",
     "log_current_tx_count",
     "seconds_since_previous_block",
     "hour_sin",
@@ -76,7 +73,6 @@ UNSAFE_OUTPUTS = [
     "roll100_mean_logfee",
     "roll100_std_logfee",
     "roll100_min_logfee",
-    "current_fee_history_gas_used_ratio",
     "dlog_base_fee",
     "base_fee_trend",
     *[f"dlog_base_fee_lag{lag}" for lag in range(1, 7)],
@@ -140,7 +136,6 @@ def _frame(row_count: int = 140) -> pl.DataFrame:
             "priority_fee_p50": np.full(row_count, 2_000_000, dtype=np.int64),
             "priority_fee_p90": np.full(row_count, 4_000_000, dtype=np.int64),
             "priority_fee_spread": np.full(row_count, 3_000_000, dtype=np.int64),
-            "fee_history_gas_used_ratio": np.full(row_count, 0.5, dtype=np.float64),
             "chain_id": np.ones(row_count, dtype=np.int64),
         }
     ).sample(fraction=1.0, shuffle=True, seed=7)
@@ -159,7 +154,7 @@ def test_core_fee_dynamics_builds_finite_aligned_feature_table() -> None:
             "log_prev_gas_used",
             "prev_gas_utilization",
             "roll100_mean_logfee",
-            "prev_fee_history_gas_used_ratio",
+            "dlog_base_fee",
         ]
     )
 
@@ -170,19 +165,19 @@ def test_core_fee_dynamics_builds_finite_aligned_feature_table() -> None:
     assert np.isfinite(table.feature_matrix).all()
     assert table.series.block_numbers[0] == 10_000
     assert table.feature_matrix[0, 1] == 0.0
-    assert table.feature_matrix[99, 4] == pytest.approx(0.5)
+    assert table.feature_matrix[99, 4] > 0.0
 
 
 def test_core_fee_dynamics_lags_finalized_current_block_facts() -> None:
     table = _contract(
         [
             "log_prev_gas_used",
-            "prev_fee_history_gas_used_ratio",
+            "prev_gas_utilization",
         ]
     ).build_table(_frame(4))
 
     assert table.feature_matrix[1, 0] == pytest.approx(np.log1p(15_000_000))
-    assert table.feature_matrix[1, 1] == pytest.approx(0.5)
+    assert table.feature_matrix[1, 1] == pytest.approx(15_000_000 / 30_000_000)
 
 
 def test_core_fee_dynamics_requires_base_fee_after_warmup() -> None:
@@ -207,18 +202,6 @@ def test_core_fee_dynamics_validates_sources_before_global_feature_warmup() -> N
 
     with pytest.raises(ValueError, match="current_base_fee_per_gas"):
         _contract(["log_base_fee_per_gas", "roll100_mean_logfee"]).build_table(frame)
-
-
-def test_core_fee_dynamics_requires_lagged_fee_history_after_warmup() -> None:
-    frame = _frame(4).with_columns(
-        pl.when(pl.col("block_number") == 10_001)
-        .then(None)
-        .otherwise(pl.col("fee_history_gas_used_ratio"))
-        .alias("fee_history_gas_used_ratio")
-    )
-
-    with pytest.raises(ValueError, match="prev_fee_history_gas_used_ratio"):
-        _contract(["prev_fee_history_gas_used_ratio"]).build_table(frame)
 
 
 def test_feature_selection_validation_rejects_unknown_outputs() -> None:
@@ -307,6 +290,18 @@ def test_core_fee_dynamics_config_includes_restored_safe_local_trends() -> None:
     coerce_features_config(baseline)
 
 
+def test_core_fee_dynamics_source_columns_do_not_require_fee_history() -> None:
+    baseline_contract = _contract(BASELINE_OUTPUTS)
+    priority_contract = _contract(
+        [*BASELINE_OUTPUTS, "prev_priority_fee_p50"],
+        features_id="core_fee_dynamics_with_priority_fee",
+    )
+
+    assert "fee_history_gas_used_ratio" not in baseline_contract.required_source_columns
+    assert "priority_fee_p50" not in baseline_contract.required_source_columns
+    assert "priority_fee_p50" in priority_contract.required_source_columns
+
+
 def test_core_fee_dynamics_restored_local_trends_build_finite_aligned_table() -> None:
     contract = _contract(
         [
@@ -362,7 +357,6 @@ def test_core_fee_dynamics_unsafe_uses_same_block_facts() -> None:
         [
             "log_current_gas_used",
             "current_gas_utilization",
-            "current_fee_history_gas_used_ratio",
             "current_gas_utilization_lag1",
         ],
         features_id="core_fee_dynamics_unsafe",
@@ -371,8 +365,7 @@ def test_core_fee_dynamics_unsafe_uses_same_block_facts() -> None:
     assert table.feature_prerequisites == FeaturePrerequisites(warmup_rows=1)
     assert table.feature_matrix[3, 0] == pytest.approx(np.log1p(15_000_003))
     assert table.feature_matrix[3, 1] == pytest.approx((15_000_000 + 3) / 30_000_000)
-    assert table.feature_matrix[3, 2] == pytest.approx(0.5)
-    assert table.feature_matrix[3, 3] == pytest.approx((15_000_000 + 2) / 30_000_000)
+    assert table.feature_matrix[3, 2] == pytest.approx((15_000_000 + 2) / 30_000_000)
 
 
 def test_priority_fee_config_adds_scalar_and_trend_outputs() -> None:

@@ -131,6 +131,19 @@ def feature_prerequisites(
     )
 
 
+def feature_source_columns(
+    catalog: FeatureCatalog,
+    feature_names: tuple[str, ...],
+) -> frozenset[str]:
+    ordered = _dependency_order(feature_names, catalog=catalog)
+    return frozenset(
+        column
+        for feature_name in ordered
+        for source_name in catalog.features[feature_name].source_dependencies
+        for column in catalog.sources[source_name].source_columns
+    )
+
+
 def feature_graph_fingerprint(
     features_id: str,
     feature_names: tuple[str, ...],

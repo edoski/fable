@@ -52,7 +52,7 @@ Dataset: `icdcs_2026`.
 
 Features: `core_fee_dynamics` is the canonical no-priority safe set. `core_fee_dynamics_unsafe` is the same concept with unsafe same-block gas/tx facts for leakage A/B only. `core_fee_dynamics_with_priority_fee` adds lagged priority-fee scalars and p50/spread local trends. `core_fee_dynamics_elapsed_position` is a post-refactor ablation spec only; it is identical to `core_fee_dynamics` plus `elapsed_seconds`, a corpus-position signal.
 
-`core_fee_dynamics` selects safe fee, gas-pressure, local trend, cadence/calendar, rolling log-fee, tx-count, and fee-history gas-ratio outputs. It does not include priority-fee, elapsed-time/corpus-position, raw block author/proposer, or same-block finalized gas/tx outputs.
+`core_fee_dynamics` selects safe fee, gas-pressure, local trend, cadence/calendar, rolling log-fee, and tx-count outputs. It does not include priority-fee, elapsed-time/corpus-position, raw block author/proposer, or same-block finalized gas/tx outputs.
 
 Problems:
 
