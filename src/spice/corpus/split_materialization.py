@@ -22,6 +22,16 @@ from ..core.files import remove_path
 from .contract import CanonicalBlockRow, canonicalize_block_frame
 from .io import iter_block_files, load_block_frame, write_block_file
 from .metadata import has_block_files
+from .split_fulfillment_plan import (
+    SplitFulfillmentAction,
+    SplitFulfillmentDecision,
+    SplitFulfillmentOutcome,
+    SplitPullRange,
+    SplitTarget,
+    plan_evaluation_split_fulfillment,
+    plan_history_split_fulfillment,
+    split_dataset_facts,
+)
 from .validation import (
     BlockDatasetValidationReport,
     validate_contiguous_block_frame,
@@ -198,18 +208,6 @@ def load_existing_dataset(
     )
 
 
-def block_range_start(validation: BlockDatasetValidationReport) -> int:
-    if validation.first_block_number is None:
-        raise ValueError("validated dataset is missing the first block number")
-    return validation.first_block_number
-
-
-def block_range_end(validation: BlockDatasetValidationReport) -> int:
-    if validation.last_block_number is None:
-        raise ValueError("validated dataset is missing the last block number")
-    return validation.last_block_number + 1
-
-
 def reused_result(
     existing: ExistingDatasetState,
     *,
@@ -237,6 +235,16 @@ def staged_result(
         promote_dir=existing.path,
         outcome=outcome,
     )
+
+
+def split_facts(existing: ExistingDatasetState | None):
+    if existing is None:
+        return None
+    return split_dataset_facts(existing.path, existing.validation)
+
+
+def split_outcome(outcome: SplitFulfillmentOutcome) -> CorpusSplitOutcome:
+    return CorpusSplitOutcome(outcome.value)
 
 
 def materialize_dataset(
@@ -526,19 +534,52 @@ def combined_frame(*frames: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def partial_plan(
+def pull_range_plan(
     block_source: BlockSource,
+    pull_range: SplitPullRange,
     *,
-    start_block: int,
-    end_block: int,
     window: TimestampRange,
-) -> BlockPullPlan | None:
-    if end_block <= start_block:
-        return None
-    return block_source.plan_block_range(
-        BlockRange(start=start_block, end=end_block),
-        window=window,
+) -> BlockPullPlan:
+    return block_source.plan_block_range(pull_range.block_range, window=window)
+
+
+async def pull_decision_range_to_dir(
+    *,
+    block_source: BlockSource,
+    pull_range: SplitPullRange,
+    window: TimestampRange,
+    working_dir: Path,
+    materialization: CorpusSplitMaterializationSpec,
+    controller: AcquisitionPullController,
+) -> Path:
+    plan = pull_range_plan(block_source, pull_range, window=window)
+    return await pull_plan_to_dir(
+        block_source=block_source,
+        plan=plan,
+        output_dir=plan_pull_dir(working_dir, label=pull_range.label, plan=plan),
+        materialization=materialization,
+        controller=controller,
     )
+
+
+def staged_matches_target(
+    staged: ExistingDatasetState | None,
+    validate_result: ValidationCallback,
+) -> bool:
+    if staged is None or staged.validation.status != "clean":
+        return False
+    staged_validation = staged.validation.model_copy(deep=True)
+    try:
+        validate_result(staged_validation, staged.path)
+    except ValueError:
+        return False
+    return True
+
+
+def reject_invalid_staged(decision: SplitFulfillmentDecision, staged: ExistingDatasetState) -> None:
+    if decision.error_message is None:
+        raise RuntimeError("Cannot resume invalid staged split dataset")
+    raise RuntimeError(f"{decision.error_message}: {staged.validation}")
 
 
 async def _ensure_history_split(
@@ -565,67 +606,67 @@ async def _ensure_history_split(
     def validate_result(validation: BlockDatasetValidationReport, _: Path) -> None:
         validate_history_result(validation, history_plan=history_plan)
 
-    if staged is not None:
-        if staged.validation.status != "clean":
-            raise RuntimeError(f"Cannot resume invalid staged history dataset: {staged.validation}")
-        staged_validation = staged.validation.model_copy(deep=True)
-        try:
-            validate_result(staged_validation, staged.path)
-        except ValueError:
-            pass
-        else:
-            emit("history reused staged dataset")
-            return staged_result(
-                staged,
-                validation=staged_validation,
-                outcome=(
-                    CorpusSplitOutcome.REBUILT
-                    if existing is not None
-                    else CorpusSplitOutcome.CREATED
-                ),
-            )
+    decision = plan_history_split_fulfillment(
+        SplitTarget(
+            kind=intent.kind.value,
+            block_range=history_plan.block_range,
+            window=history_plan.window,
+        ),
+        existing=split_facts(existing),
+        staged=split_facts(staged),
+        staged_matches_target=staged_matches_target(staged, validate_result),
+    )
 
-    if existing is not None and existing.validation.status == "clean":
+    if decision.action is SplitFulfillmentAction.REJECT_INVALID_STAGED:
+        if staged is None:
+            raise RuntimeError("Cannot resume invalid staged history dataset")
+        reject_invalid_staged(decision, staged)
+
+    if decision.action is SplitFulfillmentAction.REUSE_STAGED:
+        if staged is None:
+            raise RuntimeError("history staged reuse decision requires staged dataset")
+        staged_validation = staged.validation.model_copy(deep=True)
+        validate_result(staged_validation, staged.path)
+        emit(decision.status_message)
+        return staged_result(
+            staged,
+            validation=staged_validation,
+            outcome=split_outcome(decision.outcome),
+        )
+
+    if decision.action is SplitFulfillmentAction.REUSE_CACHED:
+        if existing is None:
+            raise RuntimeError("history cached reuse decision requires existing dataset")
+        emit(decision.status_message)
+        validate_history_result(existing.validation, history_plan=history_plan)
+        return reused_result(existing)
+
+    if decision.action is SplitFulfillmentAction.EXTEND_CACHED:
+        if existing is None:
+            raise RuntimeError("history extension decision requires existing dataset")
         if existing.frame is None:
             raise RuntimeError("clean history validation requires an in-memory frame")
-        existing_end = block_range_end(existing.validation)
-        if existing_end == history_plan.block_range.end:
-            existing_start = block_range_start(existing.validation)
-            if existing_start <= history_plan.block_range.start:
-                emit("history reused cached dataset")
-                validate_history_result(existing.validation, history_plan=history_plan)
-                return reused_result(existing)
+        if len(decision.pull_ranges) != 1:
+            raise RuntimeError("history extension decision requires one prefix pull range")
+        emit(decision.status_message)
+        prefix_dir = await pull_decision_range_to_dir(
+            block_source=block_source,
+            pull_range=decision.pull_ranges[0],
+            window=history_plan.window,
+            working_dir=working_dir,
+            materialization=materialization,
+            controller=controller,
+        )
+        return materialize_dataset_from_sources(
+            mode="history",
+            materialization=materialization,
+            working_dir=working_dir,
+            validate_result=validate_result,
+            source_dirs=(prefix_dir, existing.path),
+            outcome=split_outcome(decision.outcome),
+        )
 
-            prefix_plan = partial_plan(
-                block_source,
-                start_block=history_plan.block_range.start,
-                end_block=existing_start,
-                window=history_plan.window,
-            )
-            if prefix_plan is None:
-                raise RuntimeError("history prefix plan unexpectedly resolved to empty")
-            emit("history extending cached dataset")
-            prefix_dir = await pull_plan_to_dir(
-                block_source=block_source,
-                plan=prefix_plan,
-                output_dir=plan_pull_dir(
-                    working_dir,
-                    label="history-prefix",
-                    plan=prefix_plan,
-                ),
-                materialization=materialization,
-                controller=controller,
-            )
-            return materialize_dataset_from_sources(
-                mode="history",
-                materialization=materialization,
-                working_dir=working_dir,
-                validate_result=validate_result,
-                source_dirs=(prefix_dir, existing.path),
-                outcome=CorpusSplitOutcome.EXTENDED,
-            )
-
-    emit("history downloading")
+    emit(decision.status_message)
     frame = await pull_plan_to_frame(
         block_source=block_source,
         plan=history_plan,
@@ -639,11 +680,7 @@ async def _ensure_history_split(
         working_dir=working_dir,
         validate_result=validate_result,
         frames=(frame,),
-        outcome=(
-            CorpusSplitOutcome.REBUILT
-            if existing is not None
-            else CorpusSplitOutcome.CREATED
-        ),
+        outcome=split_outcome(decision.outcome),
     )
 
 
@@ -676,106 +713,78 @@ async def _ensure_evaluation_split(
             expected_chain_id=materialization.expected_chain_id,
         )
 
-    if staged is not None:
-        if staged.validation.status != "clean":
-            raise RuntimeError(
-                f"Cannot resume invalid staged evaluation dataset: {staged.validation}"
-            )
-        staged_validation = staged.validation.model_copy(deep=True)
-        try:
-            validate_result(staged_validation, staged.path)
-        except ValueError:
-            pass
-        else:
-            emit("evaluation reused staged dataset")
-            return staged_result(
-                staged,
-                validation=staged_validation,
-                outcome=(
-                    CorpusSplitOutcome.REBUILT
-                    if existing is not None
-                    else CorpusSplitOutcome.CREATED
-                ),
-            )
+    decision = plan_evaluation_split_fulfillment(
+        SplitTarget(
+            kind=intent.kind.value,
+            block_range=evaluation_plan.block_range,
+            window=evaluation_plan.window,
+        ),
+        existing=split_facts(existing),
+        staged=split_facts(staged),
+        staged_matches_target=staged_matches_target(staged, validate_result),
+    )
 
-    if existing is not None and existing.validation.status == "clean":
+    if decision.action is SplitFulfillmentAction.REJECT_INVALID_STAGED:
+        if staged is None:
+            raise RuntimeError("Cannot resume invalid staged evaluation dataset")
+        reject_invalid_staged(decision, staged)
+
+    if decision.action is SplitFulfillmentAction.REUSE_STAGED:
+        if staged is None:
+            raise RuntimeError("evaluation staged reuse decision requires staged dataset")
+        staged_validation = staged.validation.model_copy(deep=True)
+        validate_result(staged_validation, staged.path)
+        emit(decision.status_message)
+        return staged_result(
+            staged,
+            validation=staged_validation,
+            outcome=split_outcome(decision.outcome),
+        )
+
+    if decision.action is SplitFulfillmentAction.REUSE_CACHED:
+        if existing is None:
+            raise RuntimeError("evaluation cached reuse decision requires existing dataset")
+        validation = existing.validation.model_copy(deep=True)
+        emit(decision.status_message)
+        validate_result(validation, existing.path)
+        return reused_result(existing, validation=validation)
+
+    if decision.action is SplitFulfillmentAction.EXTEND_CACHED:
+        if existing is None:
+            raise RuntimeError("evaluation extension decision requires existing dataset")
         if existing.frame is None:
             raise RuntimeError("clean evaluation validation requires an in-memory frame")
-        existing_start = block_range_start(existing.validation)
-        existing_end = block_range_end(existing.validation)
-        target_start = evaluation_plan.block_range.start
-        target_end = evaluation_plan.block_range.end
-
-        if existing_start == target_start and existing_end == target_end:
-            validation = existing.validation.model_copy(deep=True)
-            emit("evaluation reused cached dataset")
-            validate_result(validation, existing.path)
-            return reused_result(existing, validation=validation)
-
-        overlap_start = max(existing_start, target_start)
-        overlap_end = min(existing_end, target_end)
-        if overlap_end > overlap_start:
-            source_dirs: list[Path] = []
-            source_files, frames = reusable_block_files_and_edges(
-                existing.path,
-                block_range=BlockRange(start=overlap_start, end=overlap_end),
-            )
-
-            prefix_plan = partial_plan(
-                block_source,
-                start_block=target_start,
-                end_block=overlap_start,
-                window=evaluation_plan.window,
-            )
-            if prefix_plan is not None:
-                source_dirs.append(
-                    await pull_plan_to_dir(
-                        block_source=block_source,
-                        plan=prefix_plan,
-                        output_dir=plan_pull_dir(
-                            working_dir,
-                            label="evaluation-prefix",
-                            plan=prefix_plan,
-                        ),
-                        materialization=materialization,
-                        controller=controller,
-                    )
+        if decision.reusable_range is None:
+            raise RuntimeError("evaluation extension decision requires reusable range")
+        source_dirs: list[Path] = []
+        source_files, frames = reusable_block_files_and_edges(
+            existing.path,
+            block_range=decision.reusable_range,
+        )
+        for pull_range in decision.pull_ranges:
+            source_dirs.append(
+                await pull_decision_range_to_dir(
+                    block_source=block_source,
+                    pull_range=pull_range,
+                    window=evaluation_plan.window,
+                    working_dir=working_dir,
+                    materialization=materialization,
+                    controller=controller,
                 )
-
-            suffix_plan = partial_plan(
-                block_source,
-                start_block=overlap_end,
-                end_block=target_end,
-                window=evaluation_plan.window,
             )
-            if suffix_plan is not None:
-                source_dirs.append(
-                    await pull_plan_to_dir(
-                        block_source=block_source,
-                        plan=suffix_plan,
-                        output_dir=plan_pull_dir(
-                            working_dir,
-                            label="evaluation-suffix",
-                            plan=suffix_plan,
-                        ),
-                        materialization=materialization,
-                        controller=controller,
-                    )
-                )
+        emit(decision.status_message)
+        return materialize_dataset_from_sources(
+            mode="evaluation",
+            materialization=materialization,
+            working_dir=working_dir,
+            validate_result=validate_result,
+            source_dirs=source_dirs,
+            source_files=source_files,
+            frames=frames,
+            outcome=split_outcome(decision.outcome),
+        )
 
-            emit("evaluation extending cached dataset")
-            return materialize_dataset_from_sources(
-                mode="evaluation",
-                materialization=materialization,
-                working_dir=working_dir,
-                validate_result=validate_result,
-                source_dirs=source_dirs,
-                source_files=source_files,
-                frames=frames,
-                outcome=CorpusSplitOutcome.EXTENDED,
-            )
-
-    emit("evaluation downloading")
+    emit(decision.status_message)
     frame = await pull_plan_to_frame(
         block_source=block_source,
         plan=evaluation_plan,
@@ -789,9 +798,5 @@ async def _ensure_evaluation_split(
         working_dir=working_dir,
         validate_result=validate_result,
         frames=(frame,),
-        outcome=(
-            CorpusSplitOutcome.REBUILT
-            if existing is not None
-            else CorpusSplitOutcome.CREATED
-        ),
+        outcome=split_outcome(decision.outcome),
     )

@@ -47,7 +47,16 @@ Loads scan recursively, skip hidden paths, combine chunks, and sort by `block_nu
 
 ## Corpus Assembly
 
-Corpus Assembly has one public Interface: `assemble_corpus()`. It returns a dry-run plan or a committed corpus result. Corpus Capability Planning owns history sizing and refill decisions. Corpus Split Materialization owns history/evaluation dataset reuse, extension, rebuild, and validation. When extending a split, it copies whole reusable parquet chunks and rewrites only edge or newly pulled ranges.
+Corpus Assembly has one public Interface: `assemble_corpus()`. It returns a dry-run plan or a committed corpus result. Corpus Capability Planning owns history sizing and refill decisions. Corpus Split Materialization owns history/evaluation dataset reuse, extension, rebuild, and validation. When extending a split, the fulfillment plan returns pull ranges and reusable overlap; the materialization session copies whole reusable parquet chunks and rewrites only edge or newly pulled ranges.
+
+| Fulfillment decision | Behavior |
+| --- | --- |
+| Staged reuse | Reuse a clean staged split only when it validates against the current Split Intent. Invalid staged data is fatal; stale clean staged data is ignored. |
+| Cached history reuse | Reuse a clean committed history split when it ends at the requested boundary and starts at or before the requested history start. |
+| Cached evaluation reuse | Reuse a clean committed evaluation split only when block range and exact timestamp-window validation match. |
+| Extension | Pull missing prefix/suffix ranges and reuse overlapping clean parquet chunks or trimmed edge frames. |
+| Full materialization | Create when no committed split exists; rebuild when committed data exists but cannot satisfy the target. |
+| Completed-prefix resume | Pull sinks resume only from a clean contiguous partial dataset starting at the plan start. |
 
 History refill is bounded. Assembly first requests an estimated history window from planning, asks planning to count valid capability samples, and expands the window up to a small internal cap if observed block cadence under-requested usable rows.
 

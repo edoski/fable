@@ -129,12 +129,16 @@ Corpus policy that compiles feature/problem capability requirements, plans acqui
 _Avoid_: history helper, acquisition scheduler
 
 **Corpus Split Materialization**:
-Corpus module that fulfills Split Intents through a materialization session, reusing, extending, rebuilding, and validating canonical history/evaluation block datasets. Extension reuses whole clean parquet chunks and rewrites only missing or edge ranges.
+Corpus module that fulfills Split Intents through a materialization session, reusing, extending, rebuilding, and validating canonical history/evaluation block datasets. A pure fulfillment plan chooses staged reuse, cached reuse, extension, or full materialization; the session executes IO. Extension reuses whole clean parquet chunks and rewrites only missing or edge ranges.
 _Avoid_: parquet helper, acquisition pull
 
 **Split Intent**:
 One requested history or evaluation corpus split fulfillment, including target split kind, block plan, output path, and staging path.
 _Avoid_: split mode flags, parquet request
+
+**Staged Split Resume**:
+Corpus Split Materialization rule that a staged split is reused only when it is clean and validates against the current Split Intent. Invalid staged data is fatal; clean staged data for another Split Intent is ignored.
+_Avoid_: best-effort resume, partial cache
 
 **Artifact Inference Context**:
 Trusted inference inputs reconstructed from a trained artifact manifest, selected corpus manifest, and eval-only controls.
