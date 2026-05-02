@@ -175,7 +175,7 @@ Repo helper:
 spice-sync-remote <branch>
 ```
 
-This pushes the branch to both `origin` and `giano-sync`.
+This pushes the branch to both `origin` and `university`.
 
 ## CLI Quickstart
 
