@@ -58,6 +58,6 @@ Acquire is not routed through this resolved workflow snapshot path. Acquisition 
 
 ## Transfer Boundary
 
-`execution.transfer` owns the **Storage Transfer Transaction**. It receives an **Execution Session**, resolves remote records through the **Remote Catalog Record Codec**, stages roots, invokes rsync, promotes with root-kind validation, and cleans failed stages without hiding the primary failure.
+`execution.transfer` owns Storage Transfer Transaction behavior. It receives an **Execution Session**, resolves remote records through the **Remote Catalog Record Codec**, stages roots, invokes rsync, promotes with root-kind validation, and cleans failed stages without hiding the primary failure. Public callers use `push_dataset_to_cluster()` and `pull_artifact_from_cluster()`; the transaction mechanics stay private to the module.
 
 The remote helper remains `spice.storage.sync_cli` because it performs local storage operations on the remote machine, not workflow execution. Its commands are machine-facing; public operators use `spice transfer push dataset` and `spice transfer pull artifact`.

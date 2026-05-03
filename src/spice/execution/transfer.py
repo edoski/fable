@@ -42,13 +42,15 @@ def push_dataset_to_cluster(
         storage_root,
         selector=DatasetSelector(dataset_id=dataset_id),
     )
-    StorageTransferTransaction(session=session, replace=replace).push(
+    _push_root_to_cluster(
+        session=session,
         local_root=record.root_path,
         destination_root=spec_for_root_kind(RootKind.CORPUS).root_path(
             session.target.spec.paths.storage_root,
             record,
         ),
         root_kind=RootKind.CORPUS,
+        replace=replace,
     )
     return record
 
@@ -62,11 +64,13 @@ def pull_artifact_from_cluster(
 ) -> PulledArtifactRoot:
     record = _resolve_cluster_artifact_record(session, artifact_id=artifact_id)
     destination_root = spec_for_root_kind(RootKind.ARTIFACT).root_path(storage_root, record)
-    promoted = StorageTransferTransaction(session=session, replace=replace).pull(
+    promoted = _pull_root_from_cluster(
+        session=session,
         cluster_root=record.root_path,
         local_storage_root=storage_root,
         destination_root=destination_root,
         root_kind=RootKind.ARTIFACT,
+        replace=replace,
     )
     if not isinstance(promoted.record, CatalogArtifactRecord):
         raise SpiceOperatorError("promoted local record is not an artifact")
@@ -79,58 +83,62 @@ def pull_artifact_from_cluster(
     )
 
 
-@dataclass(frozen=True, slots=True)
-class StorageTransferTransaction:
-    session: ExecutionSession
-    replace: bool
-
-    def push(self, *, local_root: Path, destination_root: Path, root_kind: RootKind) -> None:
-        staged_root = staged_root_path(destination_root, purpose="incoming")
-        try:
-            _prepare_cluster_stage(
-                self.session,
-                destination_root=destination_root,
-                staged_root=staged_root,
-                replace=self.replace,
-            )
-            self.session.rsync_to(source_root=local_root, destination_root=staged_root)
-            _finalize_cluster_stage(
-                self.session,
-                cluster_storage_root=self.session.target.spec.paths.storage_root,
-                destination_root=destination_root,
-                staged_root=staged_root,
-                root_kind=root_kind,
-                replace=self.replace,
-            )
-        except Exception as exc:
-            _cleanup_cluster_path_preserving_primary(self.session, staged_root, exc)
-            raise
-
-    def pull(
-        self,
-        *,
-        cluster_root: Path,
-        local_storage_root: Path,
-        destination_root: Path,
-        root_kind: RootKind,
-    ) -> ReindexedCatalogRoot:
-        staged_root = prepare_root_stage(
+def _push_root_to_cluster(
+    *,
+    session: ExecutionSession,
+    local_root: Path,
+    destination_root: Path,
+    root_kind: RootKind,
+    replace: bool,
+) -> None:
+    staged_root = staged_root_path(destination_root, purpose="incoming")
+    try:
+        _prepare_cluster_stage(
+            session,
             destination_root=destination_root,
-            replace=self.replace,
-            purpose="incoming",
+            staged_root=staged_root,
+            replace=replace,
         )
-        try:
-            self.session.rsync_from(source_root=cluster_root, destination_root=staged_root)
-            return promote_root_stage(
-                storage_root=local_storage_root,
-                destination_root=destination_root,
-                staged_root=staged_root,
-                expected_root_kind=root_kind,
-                replace=self.replace,
-            )
-        except Exception as exc:
-            _cleanup_local_path_preserving_primary(staged_root, exc)
-            raise
+        session.rsync_to(source_root=local_root, destination_root=staged_root)
+        _finalize_cluster_stage(
+            session,
+            cluster_storage_root=session.target.spec.paths.storage_root,
+            destination_root=destination_root,
+            staged_root=staged_root,
+            root_kind=root_kind,
+            replace=replace,
+        )
+    except Exception as exc:
+        _cleanup_cluster_path_preserving_primary(session, staged_root, exc)
+        raise
+
+
+def _pull_root_from_cluster(
+    *,
+    session: ExecutionSession,
+    cluster_root: Path,
+    local_storage_root: Path,
+    destination_root: Path,
+    root_kind: RootKind,
+    replace: bool,
+) -> ReindexedCatalogRoot:
+    staged_root = prepare_root_stage(
+        destination_root=destination_root,
+        replace=replace,
+        purpose="incoming",
+    )
+    try:
+        session.rsync_from(source_root=cluster_root, destination_root=staged_root)
+        return promote_root_stage(
+            storage_root=local_storage_root,
+            destination_root=destination_root,
+            staged_root=staged_root,
+            expected_root_kind=root_kind,
+            replace=replace,
+        )
+    except Exception as exc:
+        _cleanup_local_path_preserving_primary(staged_root, exc)
+        raise
 
 
 def _prepare_cluster_stage(

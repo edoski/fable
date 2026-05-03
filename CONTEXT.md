@@ -137,7 +137,7 @@ Validation, staging, promotion, partial commit, reindex, and delete behavior for
 _Avoid_: storage sync
 
 **Storage Transfer Transaction**:
-Execution-owned push/pull transaction that resolves a catalog root, stages it, rsyncs it, promotes it with root-kind validation, and cleans up failed stages without hiding the primary failure.
+Execution-owned push/pull behavior that resolves a catalog root, stages it, rsyncs it, promotes it with root-kind validation, and cleans up failed stages without hiding the primary failure.
 _Avoid_: sync helper, rsync wrapper
 
 **Remote Catalog Record Codec**:
