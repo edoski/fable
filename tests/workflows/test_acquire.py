@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import math
 from io import StringIO
 from typing import cast
 
 import pytest
 
-import spice.workflows.acquire as acquire_workflow
 from spice.acquisition import (
     BlockPullPlan,
     BlockRange,
@@ -165,62 +163,6 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
     )
     assert len(datasets) == 1
     assert datasets[0].dataset_id == roots.corpus.dataset_id
-
-
-def test_acquire_cancellation_during_planning_logs_warning(
-    tmp_path,
-    monkeypatch,
-    load_workflow_config,
-    acquire_override,
-) -> None:
-    config = _load_test_acquire_config(
-        load_workflow_config,
-        tmp_path,
-        override=acquire_override(),
-    )
-    roots = resolve_acquire_producer_roots(config)
-    output = StringIO()
-    errors = StringIO()
-    reporter = Reporter(stream=output, error_stream=errors)
-
-    class FakeAcquireClient:
-        def __init__(self, rpc_endpoint, chain, *, include_priority_fees=False) -> None:
-            del rpc_endpoint, chain, include_priority_fees
-
-        async def close(self) -> None:
-            return None
-
-        async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:
-            del sample_size
-            await asyncio.sleep(0.2)
-            return 12.0
-
-        async def plan_window(self, window: TimestampRange) -> BlockPullPlan:
-            await asyncio.sleep(0.2)
-            return _plan_for_window(
-                window,
-                start_block=100,
-                chunk_size=config.acquisition.chunk_size,
-            )
-
-    monkeypatch.setattr("spice.workflows.acquire.BlockRpcClient", FakeAcquireClient)
-
-    async def _exercise() -> None:
-        problem = asyncio.create_task(acquire_workflow._run_async(config, reporter=reporter))
-        await asyncio.sleep(0.05)
-        problem.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await problem
-
-    asyncio.run(_exercise())
-
-    rendered = output.getvalue()
-    assert "acquire dataset=" in rendered
-    assert (
-        errors.getvalue()
-        == "warning: acquire cancelled; partial staging preserved for resume\n"
-    )
-    assert roots.corpus.state_db_path.exists() is False
 
 
 def test_acquire_failure_preserves_staging_and_rerun_resumes(

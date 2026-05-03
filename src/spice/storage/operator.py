@@ -8,7 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal, TypeAlias, cast
 
-from ..core.errors import DeleteBlockedError, SpiceOperatorError
+from ..core.errors import SpiceOperatorError
 from .catalog.index import (
     CatalogRefreshSummary,
     list_artifact_records,
@@ -22,6 +22,7 @@ from .catalog.records import (
     CatalogRecord,
     CatalogStudyRecord,
 )
+from .errors import DeleteBlockedError
 from .inspect import describe_root, sectioned_summary
 from .inspect_artifact import artifact_list_sections
 from .inspect_dataset import dataset_list_sections

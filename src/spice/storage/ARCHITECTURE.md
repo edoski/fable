@@ -70,6 +70,7 @@ storage/
   layout.py          canonical paths
   identity.py        provenance payload assembly
   ids.py             deterministic id hashing
+  errors.py          storage-owned operator errors with storage record payloads
   engine.py          SQLite engine and root-kind metadata
   schema.py          root-local state schema
   selectors.py       typed catalog selectors

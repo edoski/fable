@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
-from ..core.errors import DeleteBlockedError, StateConflictError, StateLayoutError
+from ..core.errors import StateConflictError, StateLayoutError
 from ..core.files import (
     prune_empty_directories,
     remove_path,
@@ -28,6 +28,7 @@ from .catalog.index import (
 )
 from .catalog.registry import spec_for_record, spec_for_root_kind
 from .engine import RootKind, detect_root_kind, require_root_kind, state_db_path
+from .errors import DeleteBlockedError
 from .layout import catalog_db_path
 from .selectors import ArtifactSelector, DatasetSelector, StudySelector
 

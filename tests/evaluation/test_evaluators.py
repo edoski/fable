@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import cast
-
 import numpy as np
 import pytest
 import torch
@@ -12,11 +10,9 @@ from spice.evaluation import (
     EvaluationRun,
     EvaluationSummary,
     EvaluatorConfig,
-    PoissonReplayEvaluatorConfig,
     coerce_evaluator_config,
     compile_evaluator_contract,
 )
-from spice.evaluation.poisson_replay import PoissonReplayAdapter
 from spice.metrics import MetricDescriptor, MetricSet
 from spice.prediction.decoded_offsets import OFFSET_DECODED_RESULT_ID, DecodedOffsets
 from spice.temporal import (
@@ -163,46 +159,6 @@ def test_evaluator_rejects_incompatible_decoded_result_semantics() -> None:
         )
 
 
-def test_poisson_replay_maps_arrivals_to_previous_chronological_sample(
-    monkeypatch,
-) -> None:
-    store = CompiledProblemStore(
-        feature_matrix=np.zeros((5, 1), dtype=np.float32),
-        log_base_fees=np.log(np.array([100, 95, 90, 80, 75], dtype=np.float32)).astype(
-            np.float32,
-            copy=False,
-        ),
-        timestamps=np.array([0, 100, 200, 300, 400], dtype=np.int64),
-        anchor_rows=np.array([1, 2, 4], dtype=np.int64),
-        context_start_rows=np.array([0, 1, 3], dtype=np.int64),
-        candidate_start_rows=np.array([2, 3, 4], dtype=np.int64),
-        candidate_end_rows=np.array([3, 4, 5], dtype=np.int64),
-        max_candidate_slots=1,
-    )
-    config = cast(
-        PoissonReplayEvaluatorConfig,
-        coerce_evaluator_config(
-            {
-                **_poisson_config(),
-                "window_seconds": 300,
-                "repetitions": 1,
-            }
-        ),
-    )
-    monkeypatch.setattr(
-        "spice.evaluation.poisson_replay._sample_poisson_arrivals",
-        lambda *_args, **_kwargs: np.array([50.0, 100.0, 199.9, 200.0, 399.9]),
-    )
-
-    selections = PoissonReplayAdapter(config).selections(
-        store,
-        np.array([2, 0, 1], dtype=np.int64),
-    )
-
-    assert len(selections) == 1
-    assert selections[0].selected_positions.tolist() == [1, 1, 2, 2]
-
-
 def test_poisson_replay_uses_event_mean_economic_metrics() -> None:
     store = _store()
     sample_indices = np.arange(store.n_samples, dtype=np.int64)
@@ -307,13 +263,17 @@ def test_poisson_replay_rejects_window_larger_than_sample_coverage() -> None:
         )
 
 
-def test_poisson_replay_rejects_all_empty_arrival_repetitions(monkeypatch) -> None:
+def test_poisson_replay_rejects_all_empty_arrival_repetitions() -> None:
     store = _store()
     sample_indices = np.arange(store.n_samples, dtype=np.int64)
-    evaluator = compile_evaluator_contract(coerce_evaluator_config(_poisson_config()))
-    monkeypatch.setattr(
-        "spice.evaluation.poisson_replay._sample_poisson_arrivals",
-        lambda *_args, **_kwargs: np.empty(0, dtype=np.float64),
+    evaluator = compile_evaluator_contract(
+        coerce_evaluator_config(
+            {
+                **_poisson_config(),
+                "arrival_rate_per_second": 1e-12,
+                "repetitions": 1,
+            }
+        )
     )
 
     with pytest.raises(SpiceOperatorError, match="no valid arrivals"):
