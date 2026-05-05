@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 
 from spice.config import coerce_features_config
-from spice.config.registry import load_named_group_payload
+from spice.config.groups import load_named_group_payload
 from spice.core.errors import ConfigResolutionError
 from spice.features import (
     CompiledFeatureContract,

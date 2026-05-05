@@ -4,13 +4,13 @@ from collections.abc import Callable
 
 import pytest
 
+from spice.config.groups import load_named_group_payload
 from spice.config.models import (
     TrainingConfig,
     TuningSpaceConfig,
     coerce_features_config,
     coerce_problem_spec,
 )
-from spice.config.registry import load_named_group_payload
 from spice.core.errors import ConfigResolutionError
 from spice.evaluation import EvaluatorConfig, coerce_evaluator_config
 from spice.modeling.dataset_builders import (

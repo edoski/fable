@@ -14,6 +14,7 @@ from ..evaluation import EvaluatorConfig
 from ..modeling.families.base import ModelConfig
 from ..modeling.tuned_config import coerce_tuning_space_config
 from ..objectives import ObjectiveConfig
+from .groups import load_named_group_payload
 from .models import (
     AcquireConfig,
     ArtifactConfig,
@@ -36,22 +37,7 @@ from .models import (
     TuningSpaceConfig,
     WorkflowTask,
 )
-from .registry import (
-    load_chain_spec,
-    load_dataset_builder_config,
-    load_dataset_spec,
-    load_evaluator_config,
-    load_features_config,
-    load_model_config,
-    load_named_group_payload,
-    load_objective_config,
-    load_prediction_config,
-    load_problem_spec,
-    load_provider_spec,
-    load_split_config,
-    load_training_config,
-    load_tuning_config,
-)
+from .selection_application import apply_surface_selection
 from .selections import (
     AcquireWorkflowSelection,
     EvaluateWorkflowSelection,
@@ -61,7 +47,22 @@ from .selections import (
     workflow_selection_from_values,
     workflow_selection_type,
 )
-from .surfaces import SurfaceFrame, apply_surface_selection_overrides, load_surface_frame
+from .surfaces import SurfaceFrame
+from .typed_registry import (
+    load_chain_spec,
+    load_dataset_builder_config,
+    load_dataset_spec,
+    load_evaluator_config,
+    load_features_config,
+    load_model_config,
+    load_objective_config,
+    load_prediction_config,
+    load_problem_spec,
+    load_provider_spec,
+    load_split_config,
+    load_training_config,
+    load_tuning_config,
+)
 
 _TUNING_SPACE_GROUP = "tuning_space"
 ConfigModelT = TypeVar("ConfigModelT", bound=ConfigModel)
@@ -205,14 +206,8 @@ def resolve_workflow_config(
             return _resolve_evaluate_config(selection)
         if isinstance(selection, EvaluateWorkflowSelection):
             raise ConfigResolutionError("evaluate selection cannot resolve surface workflows")
-        if selection.surface is None:
-            raise ConfigResolutionError("surface is required")
-        assert selection.surface is not None
-        frame = apply_surface_selection_overrides(
-            load_surface_frame(selection.surface),
-            selection,
-        )
-        return _resolve_surface_frame(workflow_kind, frame, selection=selection)
+        applied = apply_surface_selection(selection)
+        return _resolve_surface_frame(workflow_kind, applied.frame, selection=selection)
     except ConfigResolutionError:
         raise
     except (ValidationError, ValueError, TypeError) as exc:

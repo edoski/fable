@@ -20,7 +20,7 @@ from spice.config import (
     coerce_problem_spec,
     resolve_workflow_config,
 )
-from spice.config.registry import load_named_group_payload
+from spice.config.groups import load_named_group_payload
 from spice.core.errors import ConfigResolutionError
 
 TEST_DATASET_ID = "cor_9a73b1e88edb488afb1e"

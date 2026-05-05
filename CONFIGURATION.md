@@ -54,8 +54,8 @@ Shared train/tune selection options include `--chain`, `--problem`, `--features`
 Resolution order:
 
 1. load the surface
-2. load referenced typed specs
-3. apply CLI or benchmark case overrides
+2. apply CLI or benchmark case overrides
+3. load referenced typed specs
 4. validate the final workflow config
 5. derive storage identity from the resolved config
 
@@ -67,6 +67,9 @@ Storage identity does not include the surface or benchmark name. It changes when
 `base`, standard `dimensions`, and one or more ordered `steps`. Global dimensions apply
 to all steps; step dimensions apply only to that step. Local `after` dependencies become
 Slurm dependencies during remote submission.
+
+Benchmark specs load as raw config groups, then `benchmarks.schema` validates them before
+materialization applies benchmark root policy and calls workflow config resolution.
 
 ```yaml
 cases:

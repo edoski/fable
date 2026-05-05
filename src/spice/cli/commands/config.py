@@ -9,7 +9,7 @@ from typing import Annotated
 
 import typer
 
-from ...config.registry import public_group_help
+from ...config.groups import public_group_help
 from ...core.errors import SpiceOperatorError
 from ..errors import OperatorTyper
 
@@ -44,7 +44,7 @@ def config_list_command(
         typer.Argument(metavar="GROUP", help=_CONFIG_GROUP_HELP),
     ],
 ) -> None:
-    from ...config.registry import list_group_names, normalize_public_group_name
+    from ...config.groups import list_group_names, normalize_public_group_name
 
     _print_config_names(list_group_names(normalize_public_group_name(group)))
 
@@ -64,7 +64,7 @@ def config_show_command(
         typer.Argument(metavar="NAME", help="Saved spec name."),
     ],
 ) -> None:
-    from ...config.registry import normalize_public_group_name, show_named_group
+    from ...config.groups import normalize_public_group_name, show_named_group
 
     typer.echo(show_named_group(normalize_public_group_name(group), name), nl=False)
 
@@ -84,7 +84,7 @@ def config_edit_command(
         typer.Argument(metavar="NAME", help="Saved spec name."),
     ],
 ) -> None:
-    from ...config.registry import ensure_named_group_file, normalize_public_group_name
+    from ...config.groups import ensure_named_group_file, normalize_public_group_name
 
     editor = _resolve_editor()
     path = ensure_named_group_file(normalize_public_group_name(group), name)

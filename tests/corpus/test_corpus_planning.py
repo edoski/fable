@@ -9,7 +9,7 @@ import pytest
 
 from spice.acquisition import BlockPullPlan, BlockRange, TimestampRange
 from spice.config import AcquireConfig, WorkflowTask, coerce_features_config
-from spice.config.registry import load_named_group_payload
+from spice.config.groups import load_named_group_payload
 from spice.corpus.planning import (
     HISTORY_REFILL_ATTEMPT_LIMIT,
     CorpusCapabilityPlanningSpec,

@@ -11,6 +11,7 @@ from typing import cast
 
 from pydantic import ValidationError
 
+from ..config.groups import load_named_group_payload
 from ..config.models import (
     EvaluateConfig,
     TrainConfig,
@@ -18,12 +19,12 @@ from ..config.models import (
     WorkflowTask,
     coerce_problem_spec,
 )
-from ..config.registry import load_named_group_payload, load_problem_spec
 from ..config.resolution import resolve_workflow_config
 from ..config.selections import (
     WorkflowSelection,
     workflow_selection_from_values,
 )
+from ..config.typed_registry import load_problem_spec
 from ..config.workflow_snapshots import ResolvedWorkflowConfig
 from ..core.errors import ConfigResolutionError
 from .dependency_ledger import (

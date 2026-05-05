@@ -82,7 +82,7 @@ spice/
   benchmarks/       benchmark schema, plan materialization, run state, collection
   cli/              command-line adapter
   conf/             checked-in YAML specs
-  config/           config registry, surfaces, resolved workflow snapshots
+  config/           config groups, typed loaders, surfaces, resolved workflow snapshots
   core/             shared primitives and errors
   corpus/           canonical block data and validation
   evaluation/       decoded decision scoring

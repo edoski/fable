@@ -14,7 +14,7 @@ from spice.config import (
     WorkflowTask,
     resolve_workflow_config,
 )
-from spice.config.registry import load_named_group_payload
+from spice.config.groups import load_named_group_payload
 from spice.corpus.metadata import (
     ChainMetadata,
     DatasetCoverageMetadata,

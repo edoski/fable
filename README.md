@@ -254,11 +254,11 @@ uv run pyright
 uv run pytest -q
 ```
 
-YAML specs can be validated through the config registry:
+YAML specs can be validated through raw config group loading:
 
 ```bash
 uv run python - <<'PY'
-from spice.config.registry import load_named_group_payload, named_group_keys, list_group_names
+from spice.config.groups import load_named_group_payload, named_group_keys, list_group_names
 
 count = 0
 errors = []

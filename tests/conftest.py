@@ -21,7 +21,7 @@ from spice.config import (
     WorkflowTask,
     resolve_workflow_config,
 )
-from spice.config.registry import (
+from spice.config.groups import (
     dump_canonical_yaml,
     load_named_group_payload,
     named_group_keys,
@@ -199,12 +199,12 @@ def acquire_override():
 @pytest.fixture
 def isolate_conf_root(tmp_path: Path, monkeypatch):
     def _isolate() -> Path:
-        from spice.config import registry
+        from spice.config import groups
 
         target = tmp_path / "conf"
         if not target.exists():
             shutil.copytree(_CONF_ROOT, target)
-        monkeypatch.setattr(registry, "_CONF_ROOT", target)
+        monkeypatch.setattr(groups, "_CONF_ROOT", target)
         return target
 
     return _isolate

@@ -1,6 +1,6 @@
 # Concrete Config Resolution
 
-Config resolution turns small named YAML fragments into fully typed workflow configs. The concrete implementation is strict: every local spec is validated against the model for its own registry entry before workflow code sees it.
+Config resolution turns small named YAML fragments into fully typed workflow configs. The concrete implementation is strict: every local spec is validated against the model for its own group entry before workflow code sees it.
 
 ## Mental Model
 
@@ -24,10 +24,10 @@ Local specs are small named configs such as `model/lstm.yaml`, `problem/current_
 Config Group Loading has two explicit paths:
 
 ```text
-load_named_group_payload()
+groups.load_named_group_payload()
   -> canonical raw dict for show/edit/template/benchmark raw specs
 
-load_model_config(), load_problem_spec(), ...
+typed_registry.load_model_config(), typed_registry.load_problem_spec(), ...
   -> typed owner config for resolution/runtime callers
 ```
 
@@ -61,7 +61,7 @@ overrides: model=lstm_icdcs_2026, delay_seconds=36
       workflow config model
 ```
 
-Overrides replace selected surface fields before final resolution. The result is a typed acquire, train, tune, or evaluate config.
+`selection_application` replaces selected acquire/train/tune surface fields before final resolution. Evaluate remains root-id based and does not use surface composition. The result is a typed acquire, train, tune, or evaluate config.
 
 Surface resolution is a typed construction path. Once named groups and overrides have been resolved, `resolution.py` instantiates the workflow config from typed pieces. It does not round-trip through raw resolved snapshot hydration.
 

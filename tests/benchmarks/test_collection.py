@@ -26,8 +26,8 @@ from spice.benchmarks.runs import (
 )
 from spice.benchmarks.selection_ledger import BenchmarkSelectionLedger
 from spice.config import EvaluateConfig, StorageSpec, WorkflowTask
+from spice.config.groups import load_named_group_payload
 from spice.config.models import ArtifactVariant
-from spice.config.registry import load_named_group_payload
 from spice.core.errors import SelectorResolutionError, SpiceOperatorError
 from spice.evaluation.registry import coerce_evaluator_config
 from spice.execution.transfer import PulledArtifactRoot

@@ -63,6 +63,9 @@ WorkflowSelection: TypeAlias = (
     | TuneWorkflowSelection
     | EvaluateWorkflowSelection
 )
+SurfaceWorkflowSelection: TypeAlias = (
+    AcquireWorkflowSelection | TrainWorkflowSelection | TuneWorkflowSelection
+)
 
 
 def workflow_selection_type(workflow: WorkflowTask) -> type[WorkflowSelection]:

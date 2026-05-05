@@ -12,7 +12,7 @@ from spice.config import (
     WorkflowTask,
     coerce_problem_spec,
 )
-from spice.config.registry import load_named_group_payload
+from spice.config.groups import load_named_group_payload
 from spice.config.selections import (
     workflow_selection_fields,
     workflow_selection_from_values,

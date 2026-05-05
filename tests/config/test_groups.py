@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from spice.config.registry import (
+from spice.config.groups import (
     ensure_named_group_file,
+    load_named_group_payload,
+)
+from spice.config.typed_registry import (
     load_chain_spec,
     load_dataset_builder_config,
     load_dataset_spec,
@@ -9,7 +12,6 @@ from spice.config.registry import (
     load_execution_spec,
     load_features_config,
     load_model_config,
-    load_named_group_payload,
     load_objective_config,
     load_prediction_config,
     load_problem_spec,

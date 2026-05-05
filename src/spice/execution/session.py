@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config.models import WorkflowTask
-from ..config.registry import load_execution_spec
+from ..config.typed_registry import load_execution_spec
 from ..config.workflow_snapshots import ResolvedWorkflowConfig, workflow_config_snapshot_json
 from ..core.errors import SpiceOperatorError
 from .models import ExecutionSpec, ExecutionWorkflowSpec
