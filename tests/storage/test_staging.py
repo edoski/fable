@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -9,12 +10,12 @@ from spice.storage.catalog import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.catalog.index import ReindexedCatalogRoot
 from spice.storage.engine import RootKind, ensure_state_db, state_db_path
 from spice.storage.lifecycle import (
-    PartialRootCommit,
     delete_catalog_artifact_root,
     prepare_root_stage,
     promote_root_stage,
 )
 from spice.storage.schema import ARTIFACT_TABLES
+from spice.storage.transactions import FullRootTransaction, PartialRootTransaction
 
 
 def test_partial_root_commit_promotes_selected_paths_and_reindexes(
@@ -41,16 +42,51 @@ def test_partial_root_commit_promotes_selected_paths_and_reindexes(
         return ReindexedCatalogRoot(root_kind=RootKind.CORPUS, record=record)
 
     monkeypatch.setattr(
-        "spice.storage.lifecycle.reindex_catalog_root",
+        "spice.storage.transactions.reindex_catalog_root",
         fake_reindex_catalog_root,
     )
 
-    commit = PartialRootCommit(storage_root=storage_root, root_path=root_path)
+    commit = PartialRootTransaction(storage_root=storage_root, root_path=root_path)
     commit.add(root_path / "history", source_dir)
 
     assert commit.commit() == ReindexedCatalogRoot(root_kind=RootKind.CORPUS, record=record)
     assert (root_path / "history" / "blocks.parquet").read_text(encoding="utf-8") == "payload"
     assert captured == {"storage_root": storage_root, "root_path": root_path}
+
+
+def test_full_root_transaction_delegates_stage_policy(tmp_path: Path, monkeypatch) -> None:
+    storage_root = tmp_path / "outputs"
+    destination = storage_root / "artifacts" / "ethereum" / "artifact-1"
+    stage = object()
+    calls: list[dict[str, object]] = []
+
+    @contextmanager
+    def fake_staged_root(**kwargs):
+        calls.append(kwargs)
+        yield stage
+
+    monkeypatch.setattr("spice.storage.transactions.staged_root", fake_staged_root)
+
+    transaction = FullRootTransaction(
+        storage_root=storage_root,
+        destination_root=destination,
+        expected_root_kind=RootKind.ARTIFACT,
+        purpose="training",
+        prune_stop_at=destination.parent.parent,
+    )
+    with transaction.open() as active_stage:
+        assert active_stage is stage
+
+    assert calls == [
+        {
+            "storage_root": storage_root,
+            "destination_root": destination,
+            "expected_root_kind": RootKind.ARTIFACT,
+            "replace": True,
+            "purpose": "training",
+            "prune_stop_at": destination.parent.parent,
+        }
+    ]
 
 
 def test_prepare_root_stage_rejects_existing_destination_without_replace(tmp_path: Path) -> None:

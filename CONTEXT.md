@@ -125,7 +125,7 @@ A typed query for one existing catalog record, preferably by exact root id: data
 _Avoid_: workflow selector
 
 **Root Handle**:
-Resolved runtime reference to a storage root after catalog lookup or deterministic producer identity. Carries root id/name, chain, root path, state database path, root-specific identity, and storage-owned root operations needed by workflows.
+Resolved runtime reference to a storage root after catalog lookup or deterministic producer identity. Carries root id/name, chain, root path, state database path, and root-specific identity. Mutation policy lives in Storage Transactions.
 _Avoid_: path bag, catalog record
 
 **Produced Root Handle**:
@@ -135,6 +135,14 @@ _Avoid_: workflow paths
 **Root Lifecycle**:
 Validation, staging, promotion, partial commit, reindex, and delete behavior for storage roots.
 _Avoid_: storage sync
+
+**Workflow Preparation**:
+Generic preflight seam that resolves consumed and produced roots, loads manifests, applies tuned training params, builds workflow specs or inference contexts, and validates coverage before a workflow runner starts side effects.
+_Avoid_: config resolution, runner body
+
+**Storage Transaction**:
+Storage-owned workflow commit boundary for full-root staging, selected-path corpus commits, and root reindexing. Workflows call transactions instead of attaching mutation methods to Root Handles.
+_Avoid_: root handle operation, workflow staging helper
 
 **Storage Transfer Transaction**:
 Execution-owned push/pull behavior that resolves a catalog root, stages it, rsyncs it, promotes it with root-kind validation, and cleans up failed stages without hiding the primary failure.

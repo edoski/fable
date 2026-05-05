@@ -14,7 +14,7 @@ from ..corpus.assembly import (
     assemble_corpus,
 )
 from ..corpus.summary import acquire_dry_run_fields, acquisition_result_fields
-from ..storage.workflow_roots import resolve_acquire_producer_roots
+from .preparation import prepare_acquire
 
 
 def _workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:
@@ -34,7 +34,7 @@ def run(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
 
 
 async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
-    roots = resolve_acquire_producer_roots(config)
+    prepared = prepare_acquire(config)
     active_reporter = reporter or Reporter()
     active_reporter.header("acquire", _workflow_facts(config))
     source_requirements = acquisition_source_requirements(config)
@@ -47,7 +47,7 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
     )
     try:
         result = await assemble_corpus(
-            CorpusAssemblyRequest(config=config, roots=roots),
+            CorpusAssemblyRequest(config=config, roots=prepared.roots),
             block_client,
             status=active_reporter.milestone,
         )

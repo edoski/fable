@@ -24,7 +24,7 @@ from spice.storage.study_manifest_codecs import (
     study_manifest_from_payload,
     study_manifest_payload,
 )
-from spice.storage.workflow_roots import produced_study_id
+from spice.workflows.preparation import produced_study_id
 from tests.root_handle_helpers import corpus_handle, study_handle
 
 TEST_DATASET_ID = "cor_9a73b1e88edb488afb1e"

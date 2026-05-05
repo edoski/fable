@@ -5,17 +5,17 @@ from __future__ import annotations
 from ..config.models import TuneConfig
 from ..core.rendering import metric_string
 from ..core.reporting import Reporter
-from ..corpus.coverage import training_coverage_requirement, validate_corpus_coverage
 from ..modeling.tuning_execution import (
     TuningBestProgress,
     TuningExecutionCallbacks,
     TuningTrialProgress,
-    build_tuning_coverage_spec,
     open_tuning_execution,
     run_tuning_execution,
 )
 from ..storage.study_render import study_result_fields
-from ..storage.workflow_roots import TuneWorkflowRoots, resolve_tune_roots
+from ..storage.transactions import reindex_root_state
+from ..storage.workflow_roots import TuneWorkflowRoots
+from .preparation import prepare_tune
 
 
 def _workflow_facts(config: TuneConfig, roots: TuneWorkflowRoots) -> list[tuple[str, str]]:
@@ -59,27 +59,17 @@ def _best_message(progress: TuningBestProgress) -> str:
 
 def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
     active_reporter = reporter or Reporter()
-    roots = resolve_tune_roots(config)
-    corpus_manifest = roots.corpus.load_manifest()
+    prepared = prepare_tune(config)
+    roots = prepared.roots
+    corpus_manifest = prepared.corpus_manifest
     active_reporter.header("tune", _workflow_facts(config, roots))
-    spec = build_tuning_coverage_spec(
-        config,
-        roots=roots,
-        corpus_manifest=corpus_manifest,
-    )
-    validate_corpus_coverage(
-        corpus_manifest,
-        contract=spec.problem_contract,
-        feature_contract=spec.feature_contract,
-        requirement=training_coverage_requirement(spec.problem_contract),
-    )
 
     opened = open_tuning_execution(
         config,
         roots=roots,
         corpus_manifest=corpus_manifest,
     )
-    roots.study.reindex()
+    reindex_root_state(roots.study.storage_root, root_path=roots.study.root_path)
     summary = run_tuning_execution(
         opened,
         config=config,
@@ -100,5 +90,5 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
             ),
         ),
     )
-    roots.study.reindex()
+    reindex_root_state(roots.study.storage_root, root_path=roots.study.root_path)
     active_reporter.result("tune", study_result_fields(summary))

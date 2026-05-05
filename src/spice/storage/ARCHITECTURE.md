@@ -49,7 +49,7 @@ tune / evaluate existing roots
   -> reindex only when search records/materialized state change
 ```
 
-`PartialRootCommit` always replaces selected paths. Full root staging keeps explicit `replace` behavior because push/pull operations expose overwrite policy.
+`storage.transactions` owns workflow-facing transaction objects. `PartialRootTransaction` always replaces selected paths. `FullRootTransaction` wraps complete-root staging and keeps explicit `replace` behavior because push/pull operations expose overwrite policy. `workflow_roots.py` carries root handles only; it does not own promotion, reindex, or evaluation-state mutation policy.
 
 ## Identity Rule
 
@@ -85,8 +85,9 @@ storage/
   study_optuna.py    Optuna storage adapter and read access
   artifact.py        artifact-root persistence
   operator.py        show/delete command outcomes and ambiguity policy
-  workflow_roots.py  workflow-facing roots, producer identity, and root operations
-  lifecycle.py       staging, promotion, partial commit, delete cascade
+  workflow_roots.py  workflow-facing root handles and catalog-record conversion
+  transactions.py    workflow-facing root commit/reindex transaction boundaries
+  lifecycle.py       low-level staging, promotion, validation, and delete cascade
   sync_cli.py        remote-side path/root-kind helper commands
   inspect*.py        read-only inspection views
   catalog/           global searchable index, catalog records, schema, store, and codecs
@@ -94,7 +95,7 @@ storage/
 
 Storage owns persisted payload ABI. Modeling and evaluation own runtime result objects; storage codecs translate those objects at the SQLite table boundary. Artifact manifests persist Temporal Capability as the artifact-facing compiler capability bundle and persist artifact semantics as its normalized semantic projection. Artifact evaluation state stores an **Evaluation Config Snapshot**, not a live evaluator config object, so evaluation storage identity is based on immutable evaluator provenance.
 
-Producer identity and consumer selection stay separate inside `workflow_roots.py`. Producer helpers derive ids and root handles for roots that workflows are about to create. Consumer helpers resolve existing roots through the catalog before workflows read them. Workflow roots expose storage-owned operations for manifest loading, staging, promotion, reindexing, and evaluation-state upsert; lower-level lifecycle remains path and root-kind infrastructure.
+Producer identity and consumer selection stay separate inside `workflows.preparation`. Producer helpers derive ids and root handles for roots that workflows are about to create. Consumer helpers resolve existing roots through the catalog before workflows read them. Root handles expose root facts and manifest loading. Storage transactions expose staging, promotion, selected-path commit, and reindex boundaries; lower-level lifecycle remains path and root-kind infrastructure.
 
 `operator.py` owns Storage Operator Outcomes for show/delete command behavior: list-vs-detail selection, detail ambiguity, narrowing attributes, delete-blocked diagnostics, and refresh rendering. CLI code maps options to selectors, maps narrowing attributes to flag names, and prints renderable sections.
 

@@ -19,7 +19,7 @@ from spice.core.errors import ConfigResolutionError
 from spice.storage.catalog import CatalogStudyRecord
 from spice.storage.catalog.index import upsert_catalog_record
 from spice.storage.engine import state_db_path
-from spice.storage.workflow_roots import produced_artifact_id, produced_study_id
+from spice.workflows.preparation import produced_artifact_id, produced_study_id
 
 ETH_DATASET_ID = "cor_9a73b1e88edb488afb1e"
 

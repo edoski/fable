@@ -92,7 +92,7 @@ Study state stores a SPICE study manifest and Optuna's RDB tables in the same SQ
 
 ## Staging And Commit
 
-Full-root commits use hidden staged roots:
+`storage.transactions` is the workflow-facing commit API. Full-root commits use hidden staged roots:
 
 ```text
 write staged root
@@ -102,6 +102,8 @@ write staged root
 ```
 
 Partial commits promote selected paths inside an existing root. Acquire uses partial commit because history, evaluation, and state paths are assembled as parts of a corpus root.
+
+`workflow_roots.py` only exposes root handles and catalog-record conversion. Workflow Preparation derives produced roots and resolves consumed roots; Storage Transactions own promotion, selected-path commit, and reindex boundaries.
 
 ## Transfer Support
 

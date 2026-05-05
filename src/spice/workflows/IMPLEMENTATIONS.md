@@ -1,6 +1,6 @@
 # Concrete Workflows
 
-Workflows orchestrate complete user operations. They do not own model architectures, feature math, storage schema, or evaluator algorithms. They compile configs, validate prerequisites, call owner packages, and commit results.
+Workflows orchestrate complete user operations. They do not own model architectures, feature math, storage schema, or evaluator algorithms. Workflow Preparation performs preflight once, runners call owner packages, and Storage Transactions commit results.
 
 ## Workflow Map
 
@@ -19,7 +19,7 @@ Acquire downloads block data and writes a corpus root.
 
 ```text
 resolve config
-  -> resolve produced corpus roots
+  -> prepare produced corpus root
   -> report plan
   -> create block source
   -> delegate to Corpus Assembly
@@ -36,9 +36,8 @@ Train creates an artifact root.
 
 ```text
 resolve config and identity
-  -> apply best study params if tuned artifact
-  -> validate corpus coverage
-  -> stage artifact root
+  -> prepare roots, active config, corpus manifest, and training spec
+  -> open full-root transaction
   -> train model
   -> write manifest/model/state
   -> promote artifact root
@@ -53,7 +52,7 @@ Tune creates or resumes a study root.
 
 ```text
 resolve study identity
-  -> validate corpus coverage for tuned search space
+  -> prepare roots, corpus manifest, and coverage spec
   -> open tuning execution
   -> delegate trial execution to modeling
   -> report trial and best-trial callbacks
@@ -68,10 +67,7 @@ Evaluate runs diagnostic scoring for an existing artifact.
 
 ```text
 resolve artifact
-  -> load artifact manifest/model
-  -> validate config semantics
-  -> validate delay capability and corpus coverage
-  -> prepare inference dataset
+  -> prepare roots, validate semantics/capability/coverage, and build inference dataset
   -> score evaluator
   -> upsert evaluation state with execution provenance when remote
 ```

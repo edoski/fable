@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from typing import cast
 
 from spice.config import EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
@@ -15,12 +14,14 @@ from spice.storage.workflow_roots import (
     TunedTrainWorkflowRoots,
     artifact_root_from_record,
     corpus_root_from_record,
+    study_root_from_record,
+)
+from spice.workflows.preparation import (
     produced_artifact_id,
     produced_study_id,
     resolve_evaluate_roots,
     resolve_train_roots,
     resolve_tune_roots,
-    study_root_from_record,
 )
 
 
@@ -88,7 +89,7 @@ def test_tune_consumer_roots_resolve_dataset_and_produced_study(
     )
     dataset = _dataset_record(tmp_path, dataset_id=config.dataset_id, chain_name="polygon")
     monkeypatch.setattr(
-        "spice.storage.workflow_roots.resolve_dataset_record",
+        "spice.workflows.preparation.resolve_dataset_record",
         lambda *_args, **_kwargs: dataset,
     )
 
@@ -113,7 +114,7 @@ def test_baseline_train_consumer_roots_resolve_dataset_and_produced_artifact(
     assert config.dataset_id is not None
     dataset = _dataset_record(tmp_path, dataset_id=config.dataset_id, chain_name="polygon")
     monkeypatch.setattr(
-        "spice.storage.workflow_roots.resolve_dataset_record",
+        "spice.workflows.preparation.resolve_dataset_record",
         lambda *_args, **_kwargs: dataset,
     )
 
@@ -144,11 +145,11 @@ def test_tuned_train_consumer_roots_use_study_dataset_for_artifact_identity(
     study = _study_record(tmp_path, dataset_id="cor_from_study", chain_name="polygon")
     dataset = _dataset_record(tmp_path, dataset_id=study.dataset_id, chain_name="polygon")
     monkeypatch.setattr(
-        "spice.storage.workflow_roots.resolve_study_record",
+        "spice.workflows.preparation.resolve_study_record",
         lambda *_args, **_kwargs: study,
     )
     monkeypatch.setattr(
-        "spice.storage.workflow_roots.resolve_dataset_record",
+        "spice.workflows.preparation.resolve_dataset_record",
         lambda *_args, **_kwargs: dataset,
     )
 
@@ -181,11 +182,11 @@ def test_evaluate_consumer_roots_resolve_dataset_and_artifact_independently(
         chain_name="polygon",
     )
     monkeypatch.setattr(
-        "spice.storage.workflow_roots.resolve_dataset_record",
+        "spice.workflows.preparation.resolve_dataset_record",
         lambda *_args, **_kwargs: dataset,
     )
     monkeypatch.setattr(
-        "spice.storage.workflow_roots.resolve_artifact_record",
+        "spice.workflows.preparation.resolve_artifact_record",
         lambda *_args, **_kwargs: artifact,
     )
 
@@ -213,59 +214,19 @@ def test_corpus_root_handle_loads_manifest(tmp_path, monkeypatch) -> None:
     assert calls == [dataset.state_db_path]
 
 
-def test_study_root_handle_reindexes_catalog(tmp_path, monkeypatch) -> None:
+def test_study_root_from_record_preserves_catalog_paths(tmp_path) -> None:
     study = _study_record(tmp_path, dataset_id="cor_existing")
     root = study_root_from_record(tmp_path, study)
-    reindexed = object()
-    calls: list[tuple[object, object]] = []
 
-    monkeypatch.setattr(
-        "spice.storage.workflow_roots.reindex_catalog_root",
-        lambda storage_root, *, root_path: calls.append((storage_root, root_path)) or reindexed,
-    )
-
-    assert root.reindex() is reindexed
-    assert calls == [(tmp_path, study.root_path)]
+    assert root.study_id == study.study_id
+    assert root.root_path == study.root_path
+    assert root.state_db_path == study.state_db_path
 
 
-def test_artifact_root_handle_stages_and_promotes(tmp_path, monkeypatch) -> None:
+def test_artifact_root_from_record_preserves_catalog_paths(tmp_path) -> None:
     artifact = _artifact_record(tmp_path, dataset_id="cor_existing")
     root = artifact_root_from_record(tmp_path, artifact)
-    calls: list[dict[str, object]] = []
-    stage = object()
 
-    @contextmanager
-    def fake_staged_root(**kwargs):
-        calls.append(kwargs)
-        yield stage
-
-    monkeypatch.setattr("spice.storage.workflow_roots.staged_root", fake_staged_root)
-
-    with root.stage(purpose="training") as active_stage:
-        assert active_stage is stage
-
-    assert calls == [
-        {
-            "storage_root": tmp_path,
-            "destination_root": artifact.root_path,
-            "expected_root_kind": "artifact",
-            "replace": True,
-            "purpose": "training",
-            "prune_stop_at": artifact.root_path.parent.parent,
-        }
-    ]
-
-
-def test_artifact_root_handle_upserts_evaluation_state(tmp_path, monkeypatch) -> None:
-    artifact = _artifact_record(tmp_path, dataset_id="cor_existing")
-    root = artifact_root_from_record(tmp_path, artifact)
-    summary = object()
-    calls: list[tuple[object, object]] = []
-
-    monkeypatch.setattr(
-        "spice.storage.workflow_roots.upsert_evaluation_state",
-        lambda db_path, *, summary: calls.append((db_path, summary)) or ("eval-id", 123),
-    )
-
-    assert root.upsert_evaluation_state(summary) == ("eval-id", 123)
-    assert calls == [(artifact.state_db_path, summary)]
+    assert root.artifact_id == artifact.artifact_id
+    assert root.root_path == artifact.root_path
+    assert root.state_db_path == artifact.state_db_path

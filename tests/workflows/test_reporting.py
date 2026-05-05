@@ -10,7 +10,6 @@ from spice.evaluation import EvaluationSummary, coerce_evaluator_config
 from spice.metrics import MetricDescriptor, MetricSet
 from spice.modeling.training_runner import TrainingEpochProgress
 from spice.modeling.tuning_execution import TuningTrialProgress
-from spice.storage.workflow_roots import ArtifactRootHandle, CorpusRootHandle, StudyRootHandle
 from spice.workflows import evaluate as evaluate_workflow
 from spice.workflows import train as train_workflow
 from spice.workflows import tune as tune_workflow
@@ -136,10 +135,9 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
     )
     roots = evaluate_roots(tmp_path / "outputs", corpus=corpus, artifact=artifact)
 
-    def fake_prepare(active_config, *, corpus, artifact):
-        del corpus
+    def fake_prepare_evaluate(active_config):
         calls.append(f"prepare:{active_config.delay_seconds}:{artifact.root_path.name}")
-        return context
+        return SimpleNamespace(roots=roots, inference_context=context)
 
     def fake_score(*, model_input, evaluator_contract):
         calls.append(
@@ -149,28 +147,18 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
         )
         return evaluation
 
-    monkeypatch.setattr(
-        evaluate_workflow,
-        "prepare_artifact_inference_context",
-        fake_prepare,
-    )
+    monkeypatch.setattr(evaluate_workflow, "prepare_evaluate", fake_prepare_evaluate)
     monkeypatch.setattr(evaluate_workflow, "score_evaluation", fake_score)
     monkeypatch.setattr(
-        ArtifactRootHandle,
+        evaluate_workflow,
         "upsert_evaluation_state",
-        lambda _self, _summary: ("poisson_replay_2h-36s-test", 123),
+        lambda _db_path, *, summary: ("poisson_replay_2h-36s-test", 123),
     )
     monkeypatch.setattr(
         evaluate_workflow,
         "evaluation_result_fields",
         lambda _summary: [("evaluation", "poisson_replay_2h"), ("events", "2")],
     )
-    monkeypatch.setattr(
-        evaluate_workflow,
-        "resolve_evaluate_roots",
-        lambda _config: roots,
-    )
-
     evaluate_workflow.run(config, reporter=reporter)
 
     assert calls[0].startswith(f"prepare:{config.delay_seconds}:")
@@ -195,14 +183,19 @@ def test_train_workflow_emits_compact_epoch_output(
     output = StringIO()
     reporter = Reporter(stream=output)
 
-    monkeypatch.setattr(
-        train_workflow,
-        "build_artifact_training_spec",
-        lambda _config, **_kwargs: SimpleNamespace(
-            training=SimpleNamespace(max_epochs=3),
-            prediction_contract=SimpleNamespace(primary_metric_id="profit_over_baseline"),
-            problem_contract=object(),
-            feature_contract=object(),
+    spec = SimpleNamespace(
+        training=SimpleNamespace(max_epochs=3),
+        prediction_contract=SimpleNamespace(primary_metric_id="profit_over_baseline"),
+        problem_contract=object(),
+        feature_contract=object(),
+    )
+    roots = baseline_train_roots(
+        tmp_path / "outputs",
+        corpus=corpus_handle(
+            tmp_path / "outputs",
+            chain_name=config.chain.name,
+            dataset_id=config.dataset_id,
+            dataset_name=config.dataset.name,
         ),
     )
 
@@ -225,27 +218,16 @@ def test_train_workflow_emits_compact_epoch_output(
         )
         return SimpleNamespace(summary=object())
 
-    monkeypatch.setattr(train_workflow, "run_persisted_training", fake_run_persisted_training)
     monkeypatch.setattr(
         train_workflow,
-        "resolve_train_roots",
-        lambda _config: baseline_train_roots(
-            tmp_path / "outputs",
-            corpus=corpus_handle(
-                tmp_path / "outputs",
-                chain_name=config.chain.name,
-                dataset_id=config.dataset_id,
-                dataset_name=config.dataset.name,
-            ),
+        "prepare_train",
+        lambda _config: SimpleNamespace(
+            active_config=config,
+            roots=roots,
+            spec=spec,
         ),
     )
-    monkeypatch.setattr(
-        CorpusRootHandle,
-        "load_manifest",
-        lambda _self: SimpleNamespace(chain=SimpleNamespace(name=config.chain.name)),
-    )
-    monkeypatch.setattr(train_workflow, "training_coverage_requirement", lambda *_args: object())
-    monkeypatch.setattr(train_workflow, "validate_corpus_coverage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(train_workflow, "run_persisted_training", fake_run_persisted_training)
 
     class FakeStage:
         staged_root = tmp_path / "stage"
@@ -260,7 +242,7 @@ def test_train_workflow_emits_compact_epoch_output(
         def promote(self) -> None:
             return None
 
-    monkeypatch.setattr(ArtifactRootHandle, "stage", lambda _self, **_kwargs: FakeStage())
+    monkeypatch.setattr(train_workflow.FullRootTransaction, "open", lambda _self: FakeStage())
     monkeypatch.setattr(
         train_workflow,
         "training_result_fields",
@@ -290,45 +272,26 @@ def test_train_workflow_accepts_id_resolved_corpus_chain(
     )
     reporter = Reporter(stream=StringIO())
 
-    monkeypatch.setattr(
-        train_workflow,
-        "resolve_train_roots",
-        lambda _config: baseline_train_roots(
+    roots = baseline_train_roots(
+        tmp_path / "outputs",
+        corpus=corpus_handle(
             tmp_path / "outputs",
-            corpus=corpus_handle(
-                tmp_path / "outputs",
-                chain_name="polygon",
-                dataset_id=config.dataset_id,
-                dataset_name="polygon_dataset",
-            ),
+            chain_name="polygon",
+            dataset_id=config.dataset_id,
+            dataset_name="polygon_dataset",
         ),
     )
-    corpus_manifest = SimpleNamespace(
-        chain=SimpleNamespace(
-            name="polygon",
-            runtime=SimpleNamespace(),
-        ),
-        dataset=SimpleNamespace(name="polygon_dataset"),
+    spec = SimpleNamespace(
+        training=SimpleNamespace(max_epochs=1),
+        prediction_contract=SimpleNamespace(primary_metric_id="total_loss"),
+        problem_contract=object(),
+        feature_contract=object(),
     )
-    monkeypatch.setattr(CorpusRootHandle, "load_manifest", lambda _self: corpus_manifest)
-
-    def fake_build_training_spec(active_config, *, corpus_manifest, **_kwargs):
-        assert active_config.chain.name == "ethereum"
-        assert corpus_manifest.chain.name == "polygon"
-        return SimpleNamespace(
-            training=SimpleNamespace(max_epochs=1),
-            prediction_contract=SimpleNamespace(primary_metric_id="total_loss"),
-            problem_contract=object(),
-            feature_contract=object(),
-        )
-
     monkeypatch.setattr(
         train_workflow,
-        "build_artifact_training_spec",
-        fake_build_training_spec,
+        "prepare_train",
+        lambda _config: SimpleNamespace(active_config=config, roots=roots, spec=spec),
     )
-    monkeypatch.setattr(train_workflow, "training_coverage_requirement", lambda *_args: object())
-    monkeypatch.setattr(train_workflow, "validate_corpus_coverage", lambda *_args, **_kwargs: None)
 
     class FakeStage:
         staged_root = tmp_path / "stage"
@@ -343,7 +306,7 @@ def test_train_workflow_accepts_id_resolved_corpus_chain(
         def promote(self) -> None:
             return None
 
-    monkeypatch.setattr(ArtifactRootHandle, "stage", lambda _self, **_kwargs: FakeStage())
+    monkeypatch.setattr(train_workflow.FullRootTransaction, "open", lambda _self: FakeStage())
     monkeypatch.setattr(
         train_workflow,
         "run_persisted_training",
@@ -394,49 +357,25 @@ def test_tuned_train_keeps_artifact_path_stable_after_best_params(
         artifact_id="art_original",
     )
     original_artifact_root = roots.artifact.root_path
-    resolved_batch_sizes: list[int] = []
-    captured: dict[str, object] = {}
-
-    def fake_resolve(active_config):
-        resolved_batch_sizes.append(active_config.training.batch_size)
-        return roots
-
     tuned_training = config.training.model_copy(
         update={"batch_size": config.training.batch_size + 7}
     )
     tuned_config = config.model_copy(update={"training": tuned_training})
-    monkeypatch.setattr(train_workflow, "resolve_train_roots", fake_resolve)
-    monkeypatch.setattr(
-        train_workflow,
-        "apply_study_best_params",
-        lambda *_args, **_kwargs: SimpleNamespace(config=tuned_config),
+    spec = SimpleNamespace(
+        training=SimpleNamespace(max_epochs=1),
+        prediction_contract=SimpleNamespace(primary_metric_id="total_loss"),
+        problem_contract=object(),
+        feature_contract=object(),
     )
     monkeypatch.setattr(
-        CorpusRootHandle,
-        "load_manifest",
-        lambda _self: SimpleNamespace(
-            chain=SimpleNamespace(name=config.chain.name, runtime=SimpleNamespace()),
-            dataset=SimpleNamespace(name=config.dataset.name),
+        train_workflow,
+        "prepare_train",
+        lambda _config: SimpleNamespace(
+            active_config=tuned_config,
+            roots=roots,
+            spec=spec,
         ),
     )
-
-    def fake_build_training_spec(active_config, *, artifact, **_kwargs):
-        captured["training_batch_size"] = active_config.training.batch_size
-        captured["artifact_root"] = artifact.root_path
-        return SimpleNamespace(
-            training=SimpleNamespace(max_epochs=1),
-            prediction_contract=SimpleNamespace(primary_metric_id="total_loss"),
-            problem_contract=object(),
-            feature_contract=object(),
-        )
-
-    monkeypatch.setattr(
-        train_workflow,
-        "build_artifact_training_spec",
-        fake_build_training_spec,
-    )
-    monkeypatch.setattr(train_workflow, "training_coverage_requirement", lambda *_args: object())
-    monkeypatch.setattr(train_workflow, "validate_corpus_coverage", lambda *_args, **_kwargs: None)
 
     class FakeStage:
         staged_root = tmp_path / "stage"
@@ -451,7 +390,7 @@ def test_tuned_train_keeps_artifact_path_stable_after_best_params(
         def promote(self) -> None:
             return None
 
-    monkeypatch.setattr(ArtifactRootHandle, "stage", lambda _self, **_kwargs: FakeStage())
+    monkeypatch.setattr(train_workflow.FullRootTransaction, "open", lambda _self: FakeStage())
     monkeypatch.setattr(
         train_workflow,
         "run_persisted_training",
@@ -465,11 +404,7 @@ def test_tuned_train_keeps_artifact_path_stable_after_best_params(
 
     train_workflow.run(config, reporter=reporter)
 
-    assert resolved_batch_sizes == [config.training.batch_size]
-    assert captured == {
-        "training_batch_size": tuned_training.batch_size,
-        "artifact_root": original_artifact_root,
-    }
+    assert roots.artifact.root_path == original_artifact_root
 
 
 def test_tune_workflow_emits_per_trial_not_per_epoch_output(
@@ -505,27 +440,13 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
     roots = tune_roots(tmp_path / "outputs", corpus=corpus, study=study)
     monkeypatch.setattr(
         tune_workflow,
-        "resolve_tune_roots",
-        lambda _config: roots,
-    )
-    monkeypatch.setattr(
-        CorpusRootHandle,
-        "load_manifest",
-        lambda _self: SimpleNamespace(
-            chain=SimpleNamespace(name=config.chain.name),
-            dataset=SimpleNamespace(name=config.dataset.name),
+        "prepare_tune",
+        lambda _config: SimpleNamespace(
+            roots=roots,
+            corpus_manifest=SimpleNamespace(),
+            coverage_spec=SimpleNamespace(),
         ),
     )
-    monkeypatch.setattr(
-        tune_workflow,
-        "build_tuning_coverage_spec",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            problem_contract=object(),
-            feature_contract=object(),
-        ),
-    )
-    monkeypatch.setattr(tune_workflow, "training_coverage_requirement", lambda *_args: object())
-    monkeypatch.setattr(tune_workflow, "validate_corpus_coverage", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         tune_workflow,
         "open_tuning_execution",
@@ -561,7 +482,7 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
         return object()
 
     monkeypatch.setattr(tune_workflow, "run_tuning_execution", fake_run_tuning_execution)
-    monkeypatch.setattr(StudyRootHandle, "reindex", lambda _self: None)
+    monkeypatch.setattr(tune_workflow, "reindex_root_state", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         tune_workflow,
         "study_result_fields",
@@ -596,48 +517,32 @@ def test_tune_workflow_accepts_id_resolved_corpus_chain(
     config = _load_test_tune_config(load_workflow_config, tmp_path, override=override)
     reporter = Reporter(stream=StringIO())
 
+    polygon_corpus = corpus_handle(
+        tmp_path / "outputs",
+        chain_name="polygon",
+        dataset_id=config.dataset_id,
+        dataset_name="polygon_dataset",
+    )
+    roots = tune_roots(
+        tmp_path / "outputs",
+        corpus=polygon_corpus,
+        study=study_handle(
+            tmp_path / "outputs",
+            corpus=polygon_corpus,
+            study_id="std_test",
+            study_name=config.study.name,
+        ),
+    )
     monkeypatch.setattr(
         tune_workflow,
-        "resolve_tune_roots",
-        lambda _config: tune_roots(
-            tmp_path / "outputs",
-            corpus=corpus_handle(
-                tmp_path / "outputs",
-                chain_name="polygon",
-                dataset_id=config.dataset_id,
-                dataset_name="polygon_dataset",
-            ),
-            study=study_handle(
-                tmp_path / "outputs",
-                corpus=corpus_handle(
-                    tmp_path / "outputs",
-                    chain_name="polygon",
-                    dataset_id=config.dataset_id,
-                    dataset_name="polygon_dataset",
-                ),
-                study_id="std_test",
-                study_name=config.study.name,
-            ),
+        "prepare_tune",
+        lambda _config: SimpleNamespace(
+            roots=roots,
+            corpus_manifest=SimpleNamespace(),
+            coverage_spec=SimpleNamespace(),
         ),
     )
-    corpus_manifest = SimpleNamespace(
-        chain=SimpleNamespace(
-            name="polygon",
-            runtime=SimpleNamespace(),
-        ),
-        dataset=SimpleNamespace(name="polygon_dataset"),
-    )
-    monkeypatch.setattr(CorpusRootHandle, "load_manifest", lambda _self: corpus_manifest)
-
-    def fake_coverage_spec(active_config, *, corpus_manifest, **_kwargs):
-        assert active_config.chain.name == "ethereum"
-        assert corpus_manifest.chain.name == "polygon"
-        return SimpleNamespace(problem_contract=object(), feature_contract=object())
-
-    monkeypatch.setattr(tune_workflow, "build_tuning_coverage_spec", fake_coverage_spec)
-    monkeypatch.setattr(tune_workflow, "training_coverage_requirement", lambda *_args: object())
-    monkeypatch.setattr(tune_workflow, "validate_corpus_coverage", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(StudyRootHandle, "reindex", lambda _self: None)
+    monkeypatch.setattr(tune_workflow, "reindex_root_state", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         tune_workflow,
         "open_tuning_execution",

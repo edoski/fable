@@ -17,8 +17,8 @@ from spice.core.reporting import Reporter
 from spice.storage.catalog.index import list_dataset_records
 from spice.storage.corpus import list_acquire_runs, load_dataset_manifest
 from spice.storage.selectors import DatasetSelector
-from spice.storage.workflow_roots import resolve_acquire_producer_roots
 from spice.workflows.acquire import run as run_acquire
+from spice.workflows.preparation import resolve_acquire_producer_roots
 from tests.dataset_helpers import make_block_rows
 
 

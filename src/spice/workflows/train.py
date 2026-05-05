@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-from typing import cast
-
-from ..config.models import ArtifactVariant, TrainConfig
+from ..config.models import TrainConfig
 from ..core.rendering import metric_string
 from ..core.reporting import Reporter
-from ..corpus.coverage import training_coverage_requirement, validate_corpus_coverage
 from ..modeling.persisted_training import run_persisted_training
-from ..modeling.pipeline import build_artifact_training_spec
 from ..modeling.summary import training_result_fields
 from ..modeling.training_runner import TrainingEpochProgress
-from ..modeling.tuning import apply_study_best_params
+from ..storage.engine import ARTIFACT_ROOT_KIND
+from ..storage.transactions import FullRootTransaction
 from ..storage.workflow_roots import (
     TrainWorkflowRoots,
     TunedTrainWorkflowRoots,
-    resolve_train_roots,
 )
+from .preparation import prepare_train
 
 
 def _workflow_facts(config: TrainConfig, roots: TrainWorkflowRoots) -> list[tuple[str, str]]:
@@ -62,33 +59,20 @@ def _fit_epoch_message(
 
 def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
     active_reporter = reporter or Reporter()
-    active_config: TrainConfig = config
-    roots = resolve_train_roots(config)
-    if config.artifact.variant is ArtifactVariant.TUNED:
-        assert isinstance(roots, TunedTrainWorkflowRoots)
-        applied = apply_study_best_params(
-            config,
-            study=roots.study,
-            corpus=roots.corpus,
-        )
-        active_config = cast(TrainConfig, applied.config)
-    corpus_manifest = roots.corpus.load_manifest()
-    active_reporter.header("train", _workflow_facts(active_config, roots))
-    spec = build_artifact_training_spec(
-        active_config,
-        corpus=roots.corpus,
-        artifact=roots.artifact,
-        corpus_manifest=corpus_manifest,
-    )
-    validate_corpus_coverage(
-        corpus_manifest,
-        contract=spec.problem_contract,
-        feature_contract=spec.feature_contract,
-        requirement=training_coverage_requirement(spec.problem_contract),
-    )
+    prepared = prepare_train(config)
+    roots = prepared.roots
+    spec = prepared.spec
+    active_reporter.header("train", _workflow_facts(prepared.active_config, roots))
     artifact_dir = roots.artifact.root_path
     history_block_path = roots.corpus.history_dir
-    with roots.artifact.stage(purpose="staging") as artifact_stage:
+    transaction = FullRootTransaction(
+        storage_root=roots.artifact.storage_root,
+        destination_root=artifact_dir,
+        expected_root_kind=ARTIFACT_ROOT_KIND,
+        purpose="staging",
+        prune_stop_at=artifact_dir.parent.parent,
+    )
+    with transaction.open() as artifact_stage:
         persisted = run_persisted_training(
             history_block_path,
             spec=spec,

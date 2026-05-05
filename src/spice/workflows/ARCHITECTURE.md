@@ -12,20 +12,25 @@ It should not own implementation details from feature families, prediction famil
 resolved typed config
         |
         v
-workflow
+workflow preparation
+        |
+        v
+workflow runner
         |
         +--> contracts and services
-        +--> storage layout/staging primitives
+        +--> storage transactions
         +--> reporter messages
 ```
 
 Workflows receive typed configs. They do not resolve remote target defaults. They do not branch on concrete evaluator or prediction implementation ids.
 
+`preparation.py` is the generic preflight seam. It resolves consumed/produced roots, loads root manifests, applies tuned training params, builds workflow specs, and validates coverage. Runner modules then report progress, call owner packages, and perform one explicit storage effect.
+
 ## Acquire
 
 ```text
 AcquireConfig
-  -> derive produced corpus root
+  -> prepare produced corpus root
   -> report acquisition plan
   -> create block source with corpus-derived source requirements
   -> delegate corpus assembly
@@ -38,15 +43,10 @@ Acquire is deliberately thin. Corpus Assembly owns capability planning, source r
 
 ```text
 TrainConfig
-  -> resolve consumed roots through catalog
-  -> for tuned train, apply best tuned params
-  -> load resolved corpus manifest
-  -> derive produced artifact root
-  -> build artifact training spec
-  -> validate corpus coverage
-  -> staged artifact root
+  -> prepare train roots, manifest, active config, and training spec
+  -> open full-root transaction
   -> persisted training
-  -> validate/promote artifact root
+  -> promote artifact root
   -> report result
 ```
 
@@ -56,10 +56,7 @@ Train uses complete-root staging because it produces a full artifact root.
 
 ```text
 TuneConfig
-  -> resolve consumed dataset root through catalog
-  -> derive produced study root
-  -> build max-search coverage spec
-  -> validate corpus coverage
+  -> prepare tune roots, manifest, and coverage spec
   -> delegate study opening and trial execution to modeling.tuning_execution
   -> reindex study root after materialization
 ```
@@ -70,9 +67,7 @@ Tune mutates study state rather than staging an entire root for each trial.
 
 ```text
 EvaluateConfig
-  -> resolve dataset and artifact roots
-  -> load artifact
-  -> prepare inference dataset
+  -> prepare evaluation roots and inference context
   -> score model with evaluator through modeling.scoring
   -> upsert evaluation state with execution provenance when remote
   -> report result

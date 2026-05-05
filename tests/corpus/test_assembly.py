@@ -10,7 +10,7 @@ from spice.acquisition import BlockPullPlan, BlockRange, TimestampRange
 from spice.config import AcquireConfig, WorkflowTask
 from spice.corpus.assembly import CorpusAssemblyRequest, assemble_corpus
 from spice.corpus.contract import CanonicalBlockRow
-from spice.storage.workflow_roots import resolve_acquire_producer_roots
+from spice.workflows.preparation import resolve_acquire_producer_roots
 from tests.dataset_helpers import make_block_rows
 
 

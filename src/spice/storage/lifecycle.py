@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,7 +13,6 @@ from ..core.files import (
     prune_empty_directories,
     remove_path,
     replace_path_atomic,
-    replace_paths_atomic,
 )
 from .catalog import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
 from .catalog.index import (
@@ -53,22 +52,6 @@ class RootStage:
         )
         self._promoted = True
         return reindexed
-
-
-@dataclass(slots=True)
-class PartialRootCommit:
-    storage_root: Path
-    root_path: Path
-    promotions: list[tuple[Path, Path]] = field(default_factory=list)
-
-    def add(self, target: Path, source: Path | None) -> None:
-        if source is not None:
-            self.promotions.append((target, source))
-
-    def commit(self) -> ReindexedCatalogRoot:
-        if self.promotions:
-            replace_paths_atomic(self.promotions, replace=True)
-        return reindex_catalog_root(self.storage_root, root_path=self.root_path)
 
 
 def staged_root_path(destination_root: Path, *, purpose: str = "staging") -> Path:

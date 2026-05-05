@@ -9,9 +9,10 @@ from pathlib import Path
 
 from ..acquisition import AcquisitionPullController, BlockPullPlan, BlockSource
 from ..config.models import AcquireConfig
-from ..core.files import remove_path
+from ..core.files import remove_path, write_path_atomic
 from ..storage.corpus import write_dataset_state
 from ..storage.engine import RootKind
+from ..storage.transactions import PartialRootTransaction
 from ..storage.workflow_roots import AcquireWorkflowRoots
 from .metadata import AcquireRunRecord, DatasetManifest
 from .planning import HISTORY_REFILL_ATTEMPT_LIMIT, CorpusCapabilityPlanningContext
@@ -128,11 +129,17 @@ class CorpusAcquisitionStage:
             manifest=manifest,
             acquire_run=acquire_run,
         )
-        committed_root_kind = self.roots.corpus.commit_splits(
-            history_source=fulfillment.history_result.promote_dir,
-            evaluation_source=fulfillment.evaluation_result.promote_dir,
-            state_db_source=temp_state_db,
-        ).root_kind
+        transaction = PartialRootTransaction(
+            storage_root=self.roots.corpus.storage_root,
+            root_path=self.roots.corpus.root_path,
+        )
+        transaction.add(self.roots.corpus.history_dir, fulfillment.history_result.promote_dir)
+        transaction.add(
+            self.roots.corpus.evaluation_dir,
+            fulfillment.evaluation_result.promote_dir,
+        )
+        transaction.add(self.roots.corpus.state_db_path, temp_state_db)
+        committed_root_kind = transaction.commit().root_kind
         remove_path(self.temp_root)
         return committed_root_kind
 
@@ -208,5 +215,11 @@ def write_acquire_stage_record(
         "evaluation_date": config.dataset.evaluation_date.isoformat(),
         "corpus_id": corpus_id,
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")
+
+    def write_record(temp_path: Path) -> None:
+        temp_path.write_text(
+            json.dumps(record, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    write_path_atomic(path, write_record)

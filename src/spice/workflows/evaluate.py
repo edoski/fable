@@ -6,7 +6,6 @@ import os
 
 from ..config.models import EvaluateConfig
 from ..core.reporting import Reporter
-from ..modeling.artifact_inference import prepare_artifact_inference_context
 from ..modeling.results import (
     EvaluationExecutionProvenance,
     LoadedEvaluationSummary,
@@ -14,7 +13,9 @@ from ..modeling.results import (
 )
 from ..modeling.scoring import score_evaluation
 from ..modeling.summary import evaluation_result_fields
-from ..storage.workflow_roots import EvaluateWorkflowRoots, resolve_evaluate_roots
+from ..storage.artifact import upsert_evaluation_state
+from ..storage.workflow_roots import EvaluateWorkflowRoots
+from .preparation import prepare_evaluate
 
 
 def _workflow_facts(
@@ -33,14 +34,11 @@ def _workflow_facts(
 
 
 def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
-    roots = resolve_evaluate_roots(config)
+    prepared_workflow = prepare_evaluate(config)
+    roots = prepared_workflow.roots
     active_reporter = reporter or Reporter()
     active_reporter.header("evaluate", _workflow_facts(config, roots))
-    inference_context = prepare_artifact_inference_context(
-        config,
-        corpus=roots.corpus,
-        artifact=roots.artifact,
-    )
+    inference_context = prepared_workflow.inference_context
     prepared = inference_context.prepared
     active_reporter.milestone(
         "prepare "
@@ -61,7 +59,10 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
         metric_descriptors=inference_context.evaluator_contract.metric_descriptors,
         execution_provenance=_current_execution_provenance(),
     )
-    evaluation_storage_id, recorded_at = roots.artifact.upsert_evaluation_state(runtime_summary)
+    evaluation_storage_id, recorded_at = upsert_evaluation_state(
+        roots.artifact.state_db_path,
+        summary=runtime_summary,
+    )
     summary = LoadedEvaluationSummary(
         evaluation_storage_id=evaluation_storage_id,
         recorded_at=recorded_at,

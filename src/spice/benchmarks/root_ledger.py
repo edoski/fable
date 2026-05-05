@@ -18,7 +18,7 @@ from ..core.config_model import ConfigModel
 from ..core.errors import ConfigResolutionError, SelectorResolutionError
 from ..storage.catalog.index import resolve_study_record
 from ..storage.selectors import StudySelector
-from ..storage.workflow_roots import produced_artifact_id, produced_study_id
+from ..workflows.preparation import produced_artifact_id, produced_study_id
 from .dependency_ledger import BenchmarkDependencyLedger
 
 BenchmarkRootRole = Literal["consumed", "produced", "source"]
