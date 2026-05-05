@@ -14,6 +14,7 @@ from ..corpus.metadata import (
     BlockRangeMetadata,
     ChainMetadata,
     CompactValidationReport,
+    CorpusAcquisitionSourceRequirements,
     CorpusSplitManifest,
     CorpusSplitManifests,
     DatasetAcquisitionRuntimeMetadata,
@@ -231,10 +232,41 @@ class CorpusSplitManifestsPayload(PayloadModel):
         )
 
 
+class CorpusAcquisitionSourceRequirementsPayload(PayloadModel):
+    required_columns: list[str]
+    optional_enrichments: list[str]
+    temporal_unit: str
+    ordering_key: str
+    partition_key: str | None
+
+    @classmethod
+    def from_requirements(
+        cls,
+        requirements: CorpusAcquisitionSourceRequirements,
+    ) -> CorpusAcquisitionSourceRequirementsPayload:
+        return cls(
+            required_columns=sorted(requirements.required_columns),
+            optional_enrichments=sorted(requirements.optional_enrichments),
+            temporal_unit=requirements.temporal_unit,
+            ordering_key=requirements.ordering_key,
+            partition_key=requirements.partition_key,
+        )
+
+    def to_requirements(self) -> CorpusAcquisitionSourceRequirements:
+        return CorpusAcquisitionSourceRequirements(
+            required_columns=frozenset(self.required_columns),
+            optional_enrichments=frozenset(self.optional_enrichments),
+            temporal_unit=self.temporal_unit,
+            ordering_key=self.ordering_key,
+            partition_key=self.partition_key,
+        )
+
+
 class DatasetManifestPayload(PayloadModel):
     dataset: DatasetIdentityPayload
     chain: ChainMetadataPayload
     splits: CorpusSplitManifestsPayload
+    source_requirements: CorpusAcquisitionSourceRequirementsPayload
 
     @classmethod
     def from_manifest(cls, manifest: DatasetManifest) -> DatasetManifestPayload:
@@ -242,6 +274,11 @@ class DatasetManifestPayload(PayloadModel):
             dataset=DatasetIdentityPayload.from_identity(manifest.dataset),
             chain=ChainMetadataPayload.from_metadata(manifest.chain),
             splits=CorpusSplitManifestsPayload.from_splits(manifest.splits),
+            source_requirements=(
+                CorpusAcquisitionSourceRequirementsPayload.from_requirements(
+                    manifest.source_requirements
+                )
+            ),
         )
 
     def to_manifest(self) -> DatasetManifest:
@@ -249,6 +286,7 @@ class DatasetManifestPayload(PayloadModel):
             dataset=self.dataset.to_identity(),
             chain=self.chain.to_metadata(),
             splits=self.splits.to_splits(),
+            source_requirements=self.source_requirements.to_requirements(),
         )
 
 

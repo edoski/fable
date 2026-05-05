@@ -10,11 +10,7 @@ from pathlib import Path
 from ..core.files import replace_paths_atomic
 from .catalog.index import ReindexedCatalogRoot, reindex_catalog_root
 from .engine import RootKind
-from .lifecycle import (
-    RootStage,
-    promote_root_stage,
-    staged_root,
-)
+from .lifecycle import RootStage, staged_root
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,23 +49,6 @@ class PartialRootTransaction:
         if self.promotions:
             replace_paths_atomic(self.promotions, replace=True)
         return reindex_catalog_root(self.storage_root, root_path=self.root_path)
-
-
-def promote_full_root_stage(
-    *,
-    storage_root: Path,
-    destination_root: Path,
-    staged_root_path: Path,
-    expected_root_kind: RootKind,
-    replace: bool,
-) -> ReindexedCatalogRoot:
-    return promote_root_stage(
-        storage_root=storage_root,
-        destination_root=destination_root,
-        staged_root=staged_root_path,
-        expected_root_kind=expected_root_kind,
-        replace=replace,
-    )
 
 
 def reindex_root_state(storage_root: Path, *, root_path: Path) -> ReindexedCatalogRoot:

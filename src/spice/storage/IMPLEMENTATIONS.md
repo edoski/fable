@@ -80,7 +80,7 @@ artifact manifest
   -> split/training/model/prediction/objective
 ```
 
-Training state stores one summary and ordered epoch rows. Evaluation state stores multiple summaries keyed by an evaluation id derived from evaluator config, delay, and execution provenance when present.
+Training state stores one summary and ordered epoch rows. Evaluation state stores multiple summaries keyed by an evaluation storage id derived from evaluator config, delay, and execution provenance when present.
 
 ## Study State
 

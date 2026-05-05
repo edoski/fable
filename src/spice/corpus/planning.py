@@ -11,6 +11,7 @@ from ..config.models import ChainRuntimeSpec, FeaturesConfig, ProblemSpec
 from ..features import CompiledFeatureContract, compile_feature_contract
 from ..temporal.contracts import CompiledProblemContract, compile_problem_contract
 from .io import load_block_frame
+from .metadata import CorpusAcquisitionSourceRequirements
 from .validation import BlockDatasetValidationReport
 
 HISTORY_WINDOW_CUSHION_RATIO = 0.10
@@ -49,15 +50,6 @@ class CorpusHistoryRefillPlan:
     history_plan: BlockPullPlan
     requested_history_window_seconds: int
     status_message: str
-
-
-@dataclass(frozen=True, slots=True)
-class CorpusAcquisitionSourceRequirements:
-    required_columns: frozenset[str]
-    optional_enrichments: frozenset[str]
-    temporal_unit: str
-    ordering_key: str
-    partition_key: str | None
 
 
 @dataclass(frozen=True, slots=True)

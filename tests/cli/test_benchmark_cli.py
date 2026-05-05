@@ -98,7 +98,7 @@ def _benchmark_record() -> BenchmarkResultRecord:
         problem_id="current_row_nominal",
         prediction_id="icdcs_2026",
         objective_id="profit_poisson_replay_2h",
-        evaluation_id="poisson_replay_2h",
+        evaluator_id="poisson_replay_2h",
         delay_seconds=36,
         variant="baseline",
         study_id=None,

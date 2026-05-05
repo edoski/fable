@@ -91,7 +91,7 @@ def coerce_objective_config(
 def compile_objective_contract(
     config: ObjectiveConfig,
     *,
-    evaluation_id: str | None,
+    evaluator_id: str | None,
 ) -> CompiledObjectiveContract:
     if config.id == "validation":
         return CompiledObjectiveContract(
@@ -100,17 +100,17 @@ def compile_objective_contract(
             direction=config.direction.value,
             benchmark_id=None,
         )
-    if evaluation_id is None:
+    if evaluator_id is None:
         raise ConfigResolutionError(
             f"objective benchmark {config.benchmark_id} requires evaluation"
         )
-    if config.benchmark_id != evaluation_id:
+    if config.benchmark_id != evaluator_id:
         raise ConfigResolutionError(
-            f"objective benchmark {config.benchmark_id} does not match evaluation {evaluation_id}"
+            f"objective benchmark {config.benchmark_id} does not match evaluator {evaluator_id}"
         )
     return CompiledObjectiveContract(
         objective_id="evaluation",
         metric_id=config.metric_id,
         direction=config.direction.value,
-        benchmark_id=evaluation_id,
+        benchmark_id=evaluator_id,
     )

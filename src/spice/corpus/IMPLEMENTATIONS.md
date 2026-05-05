@@ -28,6 +28,14 @@ Every row uses the same columns:
 | `gas_used` | Gas consumed in the block. |
 | `chain_id` | Numeric chain id. |
 | `gas_limit` | Block gas limit. |
+| `tx_count` | Number of transactions in the block. |
+| `block_size_bytes` | Block size when the RPC payload includes it. |
+| `blob_gas_used` | Blob gas used when available. |
+| `excess_blob_gas` | Excess blob gas when available. |
+| `priority_fee_p10` | Optional priority-fee percentile enrichment. |
+| `priority_fee_p50` | Optional priority-fee percentile enrichment. |
+| `priority_fee_p90` | Optional priority-fee percentile enrichment. |
+| `priority_fee_spread` | Optional p90 minus p10 priority-fee enrichment. |
 
 RPC payload conversion builds this schema. Missing required block fields fail during conversion. Missing `base_fee_per_gas` is stored as `None`, which keeps canonical rows rectangular for chains or blocks where the field is absent.
 
@@ -82,6 +90,7 @@ Corpus state stores split-level provenance:
 DatasetManifest
   dataset
   chain
+  source_requirements
   splits.history
     request
     coverage

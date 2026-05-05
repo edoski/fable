@@ -12,6 +12,7 @@ from spice.corpus.metadata import (
     BlockRangeMetadata,
     ChainMetadata,
     CompactValidationReport,
+    CorpusAcquisitionSourceRequirements,
     CorpusSplitManifest,
     CorpusSplitManifests,
     DatasetIdentity,
@@ -25,7 +26,12 @@ from spice.features import compile_feature_contract
 from spice.temporal.contracts import compile_problem_contract
 
 
-def _manifest(*, history_seconds: int, history_rows: int) -> DatasetManifest:
+def _manifest(
+    *,
+    history_seconds: int,
+    history_rows: int,
+    required_columns: frozenset[str] | None = None,
+) -> DatasetManifest:
     history = _split_manifest(
         "history",
         start_timestamp=1000,
@@ -51,6 +57,27 @@ def _manifest(*, history_seconds: int, history_rows: int) -> DatasetManifest:
             ),
         ),
         splits=CorpusSplitManifests(history=history, evaluation=evaluation),
+        source_requirements=CorpusAcquisitionSourceRequirements(
+            required_columns=(
+                required_columns
+                if required_columns is not None
+                else frozenset(
+                    {
+                        "block_number",
+                        "timestamp",
+                        "chain_id",
+                        "base_fee_per_gas",
+                        "gas_used",
+                        "gas_limit",
+                        "tx_count",
+                    }
+                )
+            ),
+            optional_enrichments=frozenset(),
+            temporal_unit="block",
+            ordering_key="block_number",
+            partition_key="chain_id",
+        ),
     )
 
 
@@ -149,6 +176,40 @@ def test_training_corpus_coverage_rejects_short_history(
             _manifest(
                 history_seconds=requirement.history_seconds - 1,
                 history_rows=requirement.history_rows,
+            ),
+            contract=contract,
+            feature_contract=feature_contract,
+            requirement=requirement,
+        )
+
+
+def test_training_corpus_coverage_rejects_missing_source_columns(
+    tmp_path,
+    load_workflow_config,
+    model_workflow_override,
+) -> None:
+    config = cast(
+        TrainConfig,
+        load_workflow_config(
+            WorkflowTask.TRAIN,
+            workspace=tmp_path,
+            override=model_workflow_override(sample_count=4, lookback_seconds=24),
+        ),
+    )
+    feature_contract = compile_feature_contract(features=config.features)
+    contract = compile_problem_contract(
+        problem=config.problem,
+        feature_contract=feature_contract,
+        chain_runtime=config.chain.runtime,
+    )
+    requirement = training_coverage_requirement(contract)
+
+    with pytest.raises(StateConflictError, match="missing base_fee_per_gas"):
+        validate_corpus_coverage(
+            _manifest(
+                history_seconds=requirement.history_seconds,
+                history_rows=requirement.history_rows,
+                required_columns=frozenset({"block_number", "timestamp", "chain_id"}),
             ),
             contract=contract,
             feature_contract=feature_contract,

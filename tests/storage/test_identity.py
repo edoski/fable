@@ -19,6 +19,7 @@ from spice.corpus.metadata import (
     BlockRangeMetadata,
     ChainMetadata,
     CompactValidationReport,
+    CorpusAcquisitionSourceRequirements,
     CorpusSplitManifest,
     CorpusSplitManifests,
     DatasetIdentity,
@@ -118,6 +119,15 @@ def _corpus_manifest(config: TuneConfig) -> DatasetManifest:
         dataset=DatasetIdentity(id=TEST_DATASET_ID, name=config.dataset.name),
         chain=ChainMetadata(name=config.chain.name, runtime=config.chain.runtime),
         splits=CorpusSplitManifests(history=split, evaluation=split),
+        source_requirements=CorpusAcquisitionSourceRequirements(
+            required_columns=frozenset(
+                {"block_number", "timestamp", "chain_id", "base_fee_per_gas"}
+            ),
+            optional_enrichments=frozenset(),
+            temporal_unit="block",
+            ordering_key="block_number",
+            partition_key="chain_id",
+        ),
     )
 
 

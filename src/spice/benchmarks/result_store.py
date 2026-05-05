@@ -43,7 +43,7 @@ class IndexedBenchmarkResult:
     problem_id: str
     prediction_id: str
     objective_id: str
-    evaluation_id: str
+    evaluator_id: str
     delay_seconds: int
     variant: str
     study_name: str | None
@@ -144,7 +144,7 @@ def upsert_collection_snapshot(path: Path, snapshot: BenchmarkCollectionSnapshot
                         problem_id=record.problem_id,
                         prediction_id=record.prediction_id,
                         objective_id=record.objective_id,
-                        evaluation_id=record.evaluation_id,
+                        evaluator_id=record.evaluator_id,
                         delay_seconds=record.delay_seconds,
                         variant=record.variant,
                         study_name=record.study_name,
@@ -245,7 +245,7 @@ def list_indexed_results(
     if model is not None:
         filters.append(result_observations.c.model_id == model)
     if evaluation is not None:
-        filters.append(result_observations.c.evaluation_id == evaluation)
+        filters.append(result_observations.c.evaluator_id == evaluation)
     statement = select(
         result_observations.c.observation_id,
         result_observations.c.run_id,
@@ -263,7 +263,7 @@ def list_indexed_results(
         result_observations.c.problem_id,
         result_observations.c.prediction_id,
         result_observations.c.objective_id,
-        result_observations.c.evaluation_id,
+        result_observations.c.evaluator_id,
         result_observations.c.delay_seconds,
         result_observations.c.variant,
         result_observations.c.study_name,
@@ -323,7 +323,7 @@ def list_indexed_results(
                     problem_id=str(row["problem_id"]),
                     prediction_id=str(row["prediction_id"]),
                     objective_id=str(row["objective_id"]),
-                    evaluation_id=str(row["evaluation_id"]),
+                    evaluator_id=str(row["evaluator_id"]),
                     delay_seconds=int(row["delay_seconds"]),
                     variant=str(row["variant"]),
                     study_name=None if row["study_name"] is None else str(row["study_name"]),

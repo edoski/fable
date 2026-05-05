@@ -34,9 +34,10 @@ Existing roots from older layouts can be regenerated instead of migrated.
 
 Existing-root workflow consumers resolve ids into typed root handles before orchestration:
 
-- `workflow_roots.py` applies exact Storage Selectors for existing roots.
-- `workflow_roots.py` derives produced-root ids and produced root handles.
-- `workflow_roots.py` carries workflow-facing root identity and storage-owned root operations.
+- `workflows.preparation` applies exact Storage Selectors for existing roots.
+- `workflows.preparation` derives produced-root ids and produced root handles.
+- `workflow_roots.py` carries workflow-facing root identity and catalog-record conversion only.
+- `storage.transactions` carries workflow-facing root mutation boundaries.
 - `acquire` derives its produced corpus root directly from producer identity.
 - Baseline `train` resolves `dataset_id`, then derives the artifact root.
 - Tuned `train` resolves `study_id`, uses the study's dataset id to resolve the corpus, then derives the artifact root.

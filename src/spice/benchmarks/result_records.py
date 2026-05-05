@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, ConfigDict
 
 from ..config.models import WorkflowTask
+from ..core.errors import SpiceOperatorError
 from ..modeling.results import LoadedEvaluationSummary, LoadedTrainingSummary
 from .dependency_ledger import BenchmarkDependencyLedger
 from .models import BenchmarkPlanEntry
@@ -68,7 +69,7 @@ class BenchmarkResultRecord(BaseModel):
     problem_id: str
     prediction_id: str
     objective_id: str
-    evaluation_id: str
+    evaluator_id: str
     delay_seconds: int
     variant: str
     study_id: str | None
@@ -106,6 +107,11 @@ def build_benchmark_result_record(
 ) -> BenchmarkResultRecord:
     manifest = evaluation.manifest
     runtime = evaluation.runtime
+    evaluation_dataset_id = consumed_dataset_id(entry.root_ledger)
+    if evaluation_dataset_id is None:
+        raise SpiceOperatorError(
+            f"benchmark run {entry.run_id} root ledger is missing consumed dataset"
+        )
     metrics: list[MetricValueRecord] = []
     if training is not None:
         metrics.extend(
@@ -145,14 +151,14 @@ def build_benchmark_result_record(
         evaluation_storage_id=evaluation.evaluation_storage_id,
         artifact_dataset_id=manifest.dataset_id,
         artifact_dataset_name=manifest.dataset_name,
-        evaluation_dataset_id=consumed_dataset_id(entry.root_ledger) or "",
+        evaluation_dataset_id=evaluation_dataset_id,
         chain_name=manifest.chain_name,
         features_id=manifest.features_id,
         model_id=manifest.model.id,
         problem_id=manifest.problem_id,
         prediction_id=manifest.prediction_id,
         objective_id=manifest.objective.id,
-        evaluation_id=runtime.evaluator_id,
+        evaluator_id=runtime.evaluator_id,
         delay_seconds=runtime.delay_seconds,
         variant=manifest.variant.value,
         study_id=manifest.study_id,

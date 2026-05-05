@@ -42,7 +42,7 @@ def compile_objective_runtime(
 ) -> CompiledObjectiveRuntime:
     contract = compile_objective_contract(
         objective,
-        evaluation_id=None if evaluator_contract is None else evaluator_contract.evaluator_id,
+        evaluator_id=None if evaluator_contract is None else evaluator_contract.evaluator_id,
     )
     if contract.objective_id == "validation":
         _require_metric_descriptor(

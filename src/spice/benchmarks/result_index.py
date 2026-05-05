@@ -86,7 +86,7 @@ def list_benchmark_results(
             evaluation_storage_id=row.evaluation_storage_id,
             chain=row.chain_name,
             model=row.model_id,
-            evaluation=row.evaluation_id,
+            evaluation=row.evaluator_id,
             delay_seconds=row.delay_seconds,
             sample_count=row.sample_count,
             total_events=row.total_events,

@@ -97,10 +97,20 @@ class CorpusSplitManifests:
 
 
 @dataclass(frozen=True, slots=True)
+class CorpusAcquisitionSourceRequirements:
+    required_columns: frozenset[str]
+    optional_enrichments: frozenset[str]
+    temporal_unit: str
+    ordering_key: str
+    partition_key: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class DatasetManifest:
     dataset: DatasetIdentity
     chain: ChainMetadata
     splits: CorpusSplitManifests
+    source_requirements: CorpusAcquisitionSourceRequirements
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +270,7 @@ def build_dataset_manifest(
     evaluation_outcome: str,
     history_file_count: int,
     evaluation_file_count: int,
+    source_requirements: CorpusAcquisitionSourceRequirements,
 ) -> DatasetManifest:
     return DatasetManifest(
         dataset=DatasetIdentity(
@@ -286,6 +297,7 @@ def build_dataset_manifest(
                 file_count=evaluation_file_count,
             ),
         ),
+        source_requirements=source_requirements,
     )
 
 

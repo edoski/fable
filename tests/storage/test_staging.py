@@ -18,7 +18,7 @@ from spice.storage.schema import ARTIFACT_TABLES
 from spice.storage.transactions import FullRootTransaction, PartialRootTransaction
 
 
-def test_partial_root_commit_promotes_selected_paths_and_reindexes(
+def test_partial_root_transaction_promotes_selected_paths_and_reindexes(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -46,10 +46,13 @@ def test_partial_root_commit_promotes_selected_paths_and_reindexes(
         fake_reindex_catalog_root,
     )
 
-    commit = PartialRootTransaction(storage_root=storage_root, root_path=root_path)
-    commit.add(root_path / "history", source_dir)
+    transaction = PartialRootTransaction(storage_root=storage_root, root_path=root_path)
+    transaction.add(root_path / "history", source_dir)
 
-    assert commit.commit() == ReindexedCatalogRoot(root_kind=RootKind.CORPUS, record=record)
+    assert transaction.commit() == ReindexedCatalogRoot(
+        root_kind=RootKind.CORPUS,
+        record=record,
+    )
     assert (root_path / "history" / "blocks.parquet").read_text(encoding="utf-8") == "payload"
     assert captured == {"storage_root": storage_root, "root_path": root_path}
 

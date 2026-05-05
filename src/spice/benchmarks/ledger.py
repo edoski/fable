@@ -91,7 +91,7 @@ def result_record_csv_row(record: IndexedBenchmarkResult) -> dict[str, str]:
         "problem": record.problem_id,
         "prediction": record.prediction_id,
         "objective": record.objective_id,
-        "evaluation": record.evaluation_id,
+        "evaluation": record.evaluator_id,
         "delay_seconds": str(record.delay_seconds),
         "variant": record.variant,
         "study": record.study_name or "",

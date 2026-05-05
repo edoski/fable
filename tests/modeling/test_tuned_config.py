@@ -343,6 +343,51 @@ def test_apply_study_best_params_uses_manifest_study_name(tmp_path, monkeypatch)
     assert applied.config.study.name == "manifest_study"
 
 
+def test_apply_study_best_params_rejects_mismatched_manifest_before_loading_params(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config = resolve_workflow_config(
+        WorkflowTask.TRAIN,
+        TrainWorkflowSelection(
+            surface="current_row_fee_dynamics",
+            study_id="std_manifest",
+            variant="tuned",
+            storage_root=tmp_path / "outputs",
+        ),
+    )
+    corpus = corpus_handle(
+        tmp_path / "outputs",
+        chain_name=config.chain.name,
+        dataset_id="cor_9a73b1e88edb488afb1e",
+        dataset_name=config.dataset.name,
+    )
+    study = study_handle(
+        tmp_path / "outputs",
+        corpus=corpus,
+        study_id="std_manifest",
+        study_name=config.study.name,
+    )
+    monkeypatch.setattr(
+        "spice.modeling.tuning.load_study_manifest",
+        lambda _path: SimpleNamespace(study_name="manifest_study"),
+    )
+    monkeypatch.setattr(
+        "spice.modeling.tuning.validate_tuned_artifact_definition",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ConfigResolutionError("definition mismatch")
+        ),
+    )
+
+    def fail_load_best_params(*_args, **_kwargs):
+        raise AssertionError("load_best_params should not run after manifest mismatch")
+
+    monkeypatch.setattr("spice.modeling.tuning.load_best_params", fail_load_best_params)
+
+    with pytest.raises(ConfigResolutionError, match="definition mismatch"):
+        apply_study_best_params(config, study=study, corpus=corpus)
+
+
 @pytest.mark.parametrize("model_id", ["transformer", "transformer_lstm"])
 @pytest.mark.parametrize(
     ("model_space", "message"),

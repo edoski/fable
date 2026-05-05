@@ -96,13 +96,13 @@ def _summary(
     config,
     *,
     delay_seconds: int | None = None,
-    evaluation_id: str | None = None,
+    evaluator_id: str | None = None,
     execution_ref: str | None = "slurm:57549",
 ):
     return SimpleNamespace(
         runtime=SimpleNamespace(
             delay_seconds=config.delay_seconds if delay_seconds is None else delay_seconds,
-            evaluator_id=config.evaluation.id if evaluation_id is None else evaluation_id,
+            evaluator_id=config.evaluation.id if evaluator_id is None else evaluator_id,
             execution_provenance=None
             if execution_ref is None
             else SimpleNamespace(execution_ref=execution_ref),
@@ -329,6 +329,27 @@ def test_collection_selection_rejects_root_ledger_mismatch(tmp_path: Path) -> No
                 dimension_labels=entry.dimension_labels,
                 selection=entry.selection,
                 root_ledger=bad_ledger,
+                config=entry.config,
+            ),
+            _submission(),
+        )
+
+
+def test_collection_selection_rejects_missing_root_ledger_entries(tmp_path: Path) -> None:
+    config = _evaluate_config(tmp_path)
+    entry = _entry(config)
+
+    with pytest.raises(SpiceOperatorError, match="missing consumed artifact"):
+        benchmark_collection_selection(
+            entry.__class__(
+                run_id=entry.run_id,
+                case_id=entry.case_id,
+                step_id=entry.step_id,
+                workflow=entry.workflow,
+                dependencies=entry.dependencies,
+                dimension_labels=entry.dimension_labels,
+                selection=entry.selection,
+                root_ledger=BenchmarkRootLedger(),
                 config=entry.config,
             ),
             _submission(),

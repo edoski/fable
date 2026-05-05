@@ -147,6 +147,7 @@ async def assemble_corpus(
         evaluation_outcome=fulfillment.evaluation_result.outcome.value,
         history_file_count=fulfillment.history_result.file_count,
         evaluation_file_count=fulfillment.evaluation_result.file_count,
+        source_requirements=planning_context.source_requirements,
     )
     acquire_run = build_acquire_run_record(
         config=config,

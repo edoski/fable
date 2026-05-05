@@ -87,7 +87,7 @@ Evaluation objectives call evaluator scoring on validation samples during traini
 
 | Failure | Meaning |
 | --- | --- |
-| Unknown evaluation id | Evaluator id is not one of the trusted adapters. |
+| Unknown evaluator id | Evaluator id is not one of the trusted adapters. |
 | Decoded-result id mismatch | Evaluator cannot interpret prediction output. |
 | Empty selected positions | No events to score. |
 | Non-positive fee total | Economic ratio denominator invalid. |

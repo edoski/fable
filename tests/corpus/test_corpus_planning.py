@@ -149,6 +149,10 @@ def test_capability_planning_derives_priority_fee_source_requirements(
         "block_number",
         "timestamp",
         "chain_id",
+        "base_fee_per_gas",
+        "gas_used",
+        "gas_limit",
+        "tx_count",
     }
     assert "priority_fee_percentiles" not in (
         baseline_context.source_requirements.optional_enrichments

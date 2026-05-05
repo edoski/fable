@@ -191,14 +191,14 @@ def upsert_evaluation_state(
     """Persist evaluation runtime summary plus ordered run rows for one artifact root."""
 
     ensure_state_db(db_path, root_kind=ARTIFACT_ROOT_KIND, tables=ARTIFACT_TABLES)
-    evaluation_id = _evaluation_storage_id(summary)
+    evaluation_storage_id = _evaluation_storage_id(summary)
     recorded_at = int(time.time())
     engine = create_state_engine(db_path)
     try:
         with engine.begin() as conn:
             payload = evaluation_summary_payload(summary)
             statement = sqlite_insert(evaluation_summary).values(
-                evaluation_id=evaluation_id,
+                evaluation_id=evaluation_storage_id,
                 recorded_at=recorded_at,
                 payload=payload,
             )
@@ -212,14 +212,16 @@ def upsert_evaluation_state(
                 )
             )
             conn.execute(
-                delete(evaluation_runs).where(evaluation_runs.c.evaluation_id == evaluation_id)
+                delete(evaluation_runs).where(
+                    evaluation_runs.c.evaluation_id == evaluation_storage_id
+                )
             )
             if summary.runs:
                 conn.execute(
                     evaluation_runs.insert(),
                     [
                         {
-                            "evaluation_id": evaluation_id,
+                            "evaluation_id": evaluation_storage_id,
                             "ordinal": ordinal,
                             "payload": evaluation_run_payload(run),
                         }
@@ -229,7 +231,7 @@ def upsert_evaluation_state(
             touch_meta(conn, root_kind=ARTIFACT_ROOT_KIND)
     finally:
         engine.dispose()
-    return evaluation_id, recorded_at
+    return evaluation_storage_id, recorded_at
 
 
 def load_evaluation_summary(
@@ -303,15 +305,15 @@ def list_evaluation_runs(
         with engine.connect() as conn:
             resolved_evaluation_id = evaluation_storage_id
             if resolved_evaluation_id is None:
-                evaluation_ids = _evaluation_ids(conn)
-                if not evaluation_ids:
+                evaluation_storage_ids = _evaluation_storage_ids(conn)
+                if not evaluation_storage_ids:
                     return []
-                if len(evaluation_ids) > 1:
+                if len(evaluation_storage_ids) > 1:
                     raise StateLayoutError(
-                        "Multiple evaluation summaries stored; specify evaluation_id "
+                        "Multiple evaluation summaries stored; specify evaluation_storage_id "
                         "when listing evaluation runs"
                     )
-                resolved_evaluation_id = evaluation_ids[0]
+                resolved_evaluation_id = evaluation_storage_ids[0]
             return _evaluation_runs_by_id(conn).get(resolved_evaluation_id, [])
     finally:
         engine.dispose()
@@ -336,7 +338,7 @@ def _evaluation_storage_id(summary: EvaluationRuntimeSummary) -> str:
     return f"{summary.evaluator_id}-{summary.delay_seconds}s-{digest}"
 
 
-def _evaluation_ids(conn: Connection) -> list[str]:
+def _evaluation_storage_ids(conn: Connection) -> list[str]:
     return [
         str(row["evaluation_id"])
         for row in conn.execute(
@@ -376,8 +378,8 @@ def _evaluation_runs_by_id(conn: Connection) -> dict[str, list[EvaluationRun]]:
         .mappings()
         .all()
     ):
-        evaluation_id = str(row["evaluation_id"])
-        grouped.setdefault(evaluation_id, []).append(
+        evaluation_storage_id = str(row["evaluation_id"])
+        grouped.setdefault(evaluation_storage_id, []).append(
             evaluation_run_from_payload(mapping_payload(row["payload"], label="evaluation_runs"))
         )
     return grouped

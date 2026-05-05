@@ -52,13 +52,21 @@ def benchmark_collection_selection(
     if not isinstance(entry.config, EvaluateConfig):
         raise SpiceOperatorError(f"benchmark run {entry.run_id} is not an evaluate config")
     ledger_artifact_id = consumed_artifact_id(entry.root_ledger)
-    if ledger_artifact_id is not None and ledger_artifact_id != entry.config.artifact_id:
+    if ledger_artifact_id is None:
+        raise SpiceOperatorError(
+            f"benchmark run {entry.run_id} root ledger is missing consumed artifact"
+        )
+    if ledger_artifact_id != entry.config.artifact_id:
         raise SpiceOperatorError(
             f"benchmark run {entry.run_id} root ledger artifact mismatch: "
             f"{ledger_artifact_id} != {entry.config.artifact_id}"
         )
     ledger_dataset_id = consumed_dataset_id(entry.root_ledger)
-    if ledger_dataset_id is not None and ledger_dataset_id != entry.config.dataset_id:
+    if ledger_dataset_id is None:
+        raise SpiceOperatorError(
+            f"benchmark run {entry.run_id} root ledger is missing consumed dataset"
+        )
+    if ledger_dataset_id != entry.config.dataset_id:
         raise SpiceOperatorError(
             f"benchmark run {entry.run_id} root ledger dataset mismatch: "
             f"{ledger_dataset_id} != {entry.config.dataset_id}"

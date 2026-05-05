@@ -41,7 +41,7 @@ result_observations = Table(
     Column("problem_id", String, nullable=False),
     Column("prediction_id", String, nullable=False),
     Column("objective_id", String, nullable=False),
-    Column("evaluation_id", String, nullable=False),
+    Column("evaluator_id", String, nullable=False),
     Column("delay_seconds", Integer, nullable=False),
     Column("variant", String, nullable=False),
     Column("study_name", String),

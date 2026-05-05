@@ -61,26 +61,17 @@ class _MaterializedArtifactRoot:
 @dataclass(frozen=True, slots=True)
 class _PreparedRootSelection:
     selection: WorkflowSelection
-    consumed: BenchmarkConsumedRoots
     artifact_from_run_id: str | None
     artifact_source_dataset_id: str | None
 
 
-def _config_state() -> dict[str, ResolvedWorkflowConfig]:
-    return {}
-
-
 @dataclass(slots=True)
 class BenchmarkRootMaterializer:
-    configs_by_run_id: dict[str, ResolvedWorkflowConfig]
     root_entries: list[BenchmarkMaterializedRoot]
 
     @classmethod
     def create(cls) -> BenchmarkRootMaterializer:
-        return cls(
-            configs_by_run_id=_config_state(),
-            root_entries=[],
-        )
+        return cls(root_entries=[])
 
     def prepare_selection(
         self,
@@ -98,7 +89,6 @@ class BenchmarkRootMaterializer:
             )
             return _PreparedRootSelection(
                 selection=selection,
-                consumed=BenchmarkConsumedRoots(study_id=study_id),
                 artifact_from_run_id=dependencies.artifact_from_run_id,
                 artifact_source_dataset_id=None,
             )
@@ -115,16 +105,11 @@ class BenchmarkRootMaterializer:
             selection = workflow_selection.model_copy(update=updates)
             return _PreparedRootSelection(
                 selection=selection,
-                consumed=BenchmarkConsumedRoots(
-                    artifact_id=materialized.artifact_id,
-                    dataset_id=dataset_id,
-                ),
                 artifact_from_run_id=dependencies.artifact_from_run_id,
                 artifact_source_dataset_id=materialized.dataset_id,
             )
         return _PreparedRootSelection(
             selection=workflow_selection,
-            consumed=BenchmarkConsumedRoots(),
             artifact_from_run_id=dependencies.artifact_from_run_id,
             artifact_source_dataset_id=None,
         )
@@ -137,7 +122,7 @@ class BenchmarkRootMaterializer:
         config: ResolvedWorkflowConfig,
         prepared: _PreparedRootSelection,
     ) -> BenchmarkRootLedger:
-        consumed = self._consumed_roots(config, prepared.consumed)
+        consumed = self._consumed_roots(config)
         produced = self._produced_roots(config)
         entries: list[BenchmarkMaterializedRoot] = []
         if consumed.dataset_id is not None:
@@ -222,14 +207,10 @@ class BenchmarkRootMaterializer:
         config: ResolvedWorkflowConfig,
         ledger: BenchmarkRootLedger,
     ) -> None:
-        self.configs_by_run_id[run_id] = config
+        del run_id, config
         self.root_entries.extend(ledger.entries)
 
-    def _consumed_roots(
-        self,
-        config: ResolvedWorkflowConfig,
-        fallback: BenchmarkConsumedRoots,
-    ) -> BenchmarkConsumedRoots:
+    def _consumed_roots(self, config: ResolvedWorkflowConfig) -> BenchmarkConsumedRoots:
         if isinstance(config, TuneConfig):
             return BenchmarkConsumedRoots(dataset_id=config.dataset_id)
         if isinstance(config, TrainConfig):
@@ -237,7 +218,6 @@ class BenchmarkRootMaterializer:
                 dataset_id=config.dataset_id,
                 study_id=config.study_id,
             )
-        del fallback
         return BenchmarkConsumedRoots(
             dataset_id=config.dataset_id,
             artifact_id=config.artifact_id,

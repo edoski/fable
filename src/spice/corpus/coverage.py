@@ -60,6 +60,15 @@ def validate_corpus_coverage(
         )
     if manifest.chain.chain_id <= 0:
         raise StateConflictError("Corpus manifest has invalid chain metadata")
+    missing_source_columns = (
+        set(feature_contract.required_source_columns)
+        - manifest.source_requirements.required_columns
+    )
+    if missing_source_columns:
+        raise StateConflictError(
+            "Corpus source requirements do not satisfy feature contract: missing "
+            + ", ".join(sorted(missing_source_columns))
+        )
     _validate_clean_split(manifest, split="history")
     _require_window_span(
         manifest.splits.history.coverage,
