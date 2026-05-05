@@ -143,6 +143,60 @@ def test_surface_refs_and_selection_defaults_resolve(
     assert config.artifact.variant.value == "baseline"
 
 
+def test_selection_application_resolves_train_override_outcomes(
+    tmp_path: Path,
+    isolate_conf_root,
+) -> None:
+    conf_root = isolate_conf_root()
+    (conf_root / "training" / "short_run.yaml").write_text(
+        yaml.safe_dump(
+            {
+                **load_named_group_payload("default", "training"),
+                "batch_size": 32,
+                "max_epochs": 7,
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (conf_root / "split" / "narrow_holdout.yaml").write_text(
+        yaml.safe_dump(
+            {
+                **load_named_group_payload("default", "split"),
+                "train_fraction": 0.8,
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    config = cast(
+        TrainConfig,
+        resolve_workflow_config(
+            WorkflowTask.TRAIN,
+            TrainWorkflowSelection(
+                surface="current_row_fee_dynamics",
+                training="short_run",
+                split="narrow_holdout",
+                study_id="stu_test",
+                storage_root=tmp_path / "outputs",
+                study="override-study",
+                variant="tuned",
+            ),
+        ),
+    )
+
+    assert config.training.batch_size == 32
+    assert config.training.max_epochs == 7
+    assert config.split.train_fraction == 0.8
+    assert config.storage.root == tmp_path / "outputs"
+    assert config.study_id == "stu_test"
+    assert config.study.name == "override-study"
+    assert config.artifact.variant.value == "tuned"
+    assert config.tuning is not None
+    assert config.tuning_space is not None
+
+
 def test_acquire_resolution_resolves_one_chain_specific_rpc_endpoint(
     tmp_path: Path,
     isolate_conf_root,
@@ -156,6 +210,7 @@ def test_acquire_resolution_resolves_one_chain_specific_rpc_endpoint(
             AcquireWorkflowSelection(
                 surface="current_row_fee_dynamics",
                 chain="avalanche",
+                dry_run=True,
                 storage_root=tmp_path / "outputs",
             ),
         ),
@@ -164,6 +219,7 @@ def test_acquire_resolution_resolves_one_chain_specific_rpc_endpoint(
     assert config.rpc_endpoint.provider_name == "publicnode"
     assert config.rpc_endpoint.url == "https://avalanche-c-chain-rpc.publicnode.com"
     assert config.rpc_endpoint.reference == "https://avalanche-c-chain-rpc.publicnode.com"
+    assert config.acquisition.dry_run is True
 
 
 def test_acquire_resolution_fails_when_provider_lacks_chain_endpoint(

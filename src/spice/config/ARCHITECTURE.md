@@ -10,7 +10,7 @@
 surface YAML + workflow selection
           |
           v
-surface frame with selection overrides
+workflow-shaped surface refs
           |
           v
 named YAML groups loaded from conf/
@@ -45,7 +45,7 @@ Config groups have two loading interfaces. `groups.load_named_group_payload()` r
 
 `groups` owns named group lookup and identity checks. Owner packages own concrete dispatch inside a group. Tuning-space loading stays in resolution because it depends on the selected model and problem. Benchmark typed loading stays in benchmarks.
 
-`selection_application` owns the surface-only step that loads a named surface and applies acquire/train/tune selection overrides. `surfaces` owns frame models only.
+`selection_application` owns the surface-only step that loads a named surface, understands its nested layout, and emits workflow-shaped refs for acquire/train/tune resolution. `surfaces` owns frame models only.
 
 ## Owner Coercion
 
@@ -67,7 +67,7 @@ A Concrete Owner Config is the concrete local-spec config selected by an owner i
 
 ## Surface Resolution
 
-Surface resolution is the fresh path from Workflow Selection to Workflow Config. It applies selection overrides, loads named config groups, calls owner coercers, and instantiates `AcquireConfig`, `TrainConfig`, `TuneConfig`, or `EvaluateConfig` from already typed pieces.
+Surface resolution is the fresh path from Workflow Selection to Workflow Config. It applies the selection to the Surface, loads named config groups from the resulting workflow-shaped refs, calls owner coercers, and instantiates `AcquireConfig`, `TrainConfig`, `TuneConfig`, or `EvaluateConfig` from already typed pieces.
 
 Surface resolution does not hydrate raw resolved snapshots. Resolved snapshots are already past selection and surface ownership.
 

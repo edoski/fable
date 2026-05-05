@@ -40,27 +40,3 @@ class SurfaceFrame(ConfigModel):
     storage: StorageSpec | None = None
     study: StudyConfig | None = None
     artifact: ArtifactConfig | None = None
-
-    @property
-    def provider(self) -> str:
-        return self.acquisition.provider
-
-    @property
-    def training_id(self) -> str:
-        return self.training.id
-
-    @property
-    def split(self) -> str:
-        return self.training.split
-
-    @property
-    def tuning_id(self) -> str:
-        return self.tuning.id
-
-    @property
-    def tuning_space_id(self) -> str | None:
-        return self.tuning.space
-
-    @property
-    def evaluation_id(self) -> str | None:
-        return self.evaluation.id

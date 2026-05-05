@@ -44,7 +44,7 @@ This gives concrete implementations one owner. For example, the evaluation packa
 
 ## Surface Resolution
 
-A surface is a named bundle of config choices. It resolves into a complete workflow frame:
+A surface is a named bundle of config choices. Surface application turns it into workflow-shaped refs:
 
 ```text
 surface: current_row_fee_dynamics
@@ -61,7 +61,7 @@ overrides: model=lstm_icdcs_2026, delay_seconds=36
       workflow config model
 ```
 
-`selection_application` replaces selected acquire/train/tune surface fields before final resolution. Evaluate remains root-id based and does not use surface composition. The result is a typed acquire, train, tune, or evaluate config.
+`selection_application` applies acquire/train/tune selections to the Surface and emits flat workflow refs before final resolution. Evaluate remains root-id based and does not use surface composition. The result is a typed acquire, train, tune, or evaluate config.
 
 Surface resolution is a typed construction path. Once named groups and overrides have been resolved, `resolution.py` instantiates the workflow config from typed pieces. It does not round-trip through raw resolved snapshot hydration.
 

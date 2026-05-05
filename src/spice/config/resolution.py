@@ -36,7 +36,14 @@ from .models import (
     TuningSpaceConfig,
     WorkflowTask,
 )
-from .selection_application import apply_surface_selection
+from .selection_application import (
+    AppliedAcquireSurfaceSelection,
+    AppliedModelSurfaceSelection,
+    AppliedSurfaceSelection,
+    AppliedTrainSurfaceSelection,
+    AppliedTuneSurfaceSelection,
+    apply_surface_selection,
+)
 from .selections import (
     AcquireWorkflowSelection,
     EvaluateWorkflowSelection,
@@ -46,7 +53,6 @@ from .selections import (
     workflow_selection_from_values,
     workflow_selection_type,
 )
-from .surfaces import SurfaceFrame
 from .typed_registry import (
     load_chain_spec,
     load_dataset_builder_config,
@@ -206,35 +212,29 @@ def resolve_workflow_config(
         if isinstance(selection, EvaluateWorkflowSelection):
             raise ConfigResolutionError("evaluate selection cannot resolve surface workflows")
         applied = apply_surface_selection(selection)
-        return _resolve_surface_frame(workflow_kind, applied.frame, selection=selection)
+        return _resolve_applied_surface_selection(workflow_kind, applied)
     except ConfigResolutionError:
         raise
     except (ValidationError, ValueError, TypeError) as exc:
         raise ConfigResolutionError(str(exc)) from exc
 
 
-def _resolve_surface_frame(
+def _resolve_applied_surface_selection(
     workflow: WorkflowTask,
-    frame: SurfaceFrame,
-    *,
-    selection: WorkflowSelection,
+    applied: AppliedSurfaceSelection,
 ) -> WorkflowConfig:
     if workflow is WorkflowTask.ACQUIRE:
-        if not isinstance(selection, AcquireWorkflowSelection):
-            raise ConfigResolutionError("acquire requires AcquireWorkflowSelection")
-        return _resolve_acquire_config(frame, dry_run=selection.dry_run)
+        if not isinstance(applied, AppliedAcquireSurfaceSelection):
+            raise ConfigResolutionError("acquire requires AppliedAcquireSurfaceSelection")
+        return _resolve_acquire_config(applied)
     if workflow is WorkflowTask.TRAIN:
-        if not isinstance(selection, TrainWorkflowSelection):
-            raise ConfigResolutionError("train requires TrainWorkflowSelection")
-        return _resolve_train_config(frame, selection=selection)
+        if not isinstance(applied, AppliedTrainSurfaceSelection):
+            raise ConfigResolutionError("train requires AppliedTrainSurfaceSelection")
+        return _resolve_train_config(applied)
     if workflow is WorkflowTask.TUNE:
-        if not isinstance(selection, TuneWorkflowSelection):
-            raise ConfigResolutionError("tune requires TuneWorkflowSelection")
-        return _resolve_tune_config(
-            frame,
-            selection=selection,
-            trial_count=selection.trial_count,
-        )
+        if not isinstance(applied, AppliedTuneSurfaceSelection):
+            raise ConfigResolutionError("tune requires AppliedTuneSurfaceSelection")
+        return _resolve_tune_config(applied)
     raise ConfigResolutionError(f"Unsupported workflow: {workflow.value}")
 
 
@@ -294,25 +294,25 @@ def _resolve_artifact(artifact: ArtifactConfig | None) -> ArtifactConfig:
 
 
 def _resolve_model_workflow_base(
-    frame: SurfaceFrame,
+    applied: AppliedModelSurfaceSelection,
     *,
     validate_objective_benchmark: bool,
 ) -> ModelWorkflowBase:
-    dataset = load_dataset_spec(frame.dataset)
-    chain = load_chain_spec(frame.chain)
-    storage = _resolve_storage(frame.storage)
-    problem = _resolve_problem(frame.problem)
-    model = load_model_config(_required(frame.model, "model"))
-    dataset_builder = load_dataset_builder_config(frame.dataset_builder)
-    features = load_features_config(_required(frame.features, "features"))
-    prediction = load_prediction_config(frame.prediction)
+    dataset = load_dataset_spec(applied.dataset)
+    chain = load_chain_spec(applied.chain)
+    storage = _resolve_storage(applied.storage)
+    problem = _resolve_problem(applied.problem)
+    model = load_model_config(_required(applied.model, "model"))
+    dataset_builder = load_dataset_builder_config(applied.dataset_builder)
+    features = load_features_config(_required(applied.features, "features"))
+    prediction = load_prediction_config(applied.prediction)
     objective = _resolve_objective(
-        _required(frame.objective, "objective"),
-        evaluation_name=frame.evaluation_id if validate_objective_benchmark else None,
+        _required(applied.objective, "objective"),
+        evaluation_name=applied.evaluation if validate_objective_benchmark else None,
     )
-    evaluation = _resolve_evaluation(frame.evaluation_id)
-    study = _resolve_study(frame.study)
-    artifact = _resolve_artifact(frame.artifact)
+    evaluation = _resolve_evaluation(applied.evaluation)
+    study = _resolve_study(applied.study)
+    artifact = _resolve_artifact(applied.artifact)
     return ModelWorkflowBase(
         dataset=dataset,
         chain=chain,
@@ -330,7 +330,7 @@ def _resolve_model_workflow_base(
 
 
 def _resolve_model_workflow_spine(
-    frame: SurfaceFrame,
+    applied: AppliedModelSurfaceSelection,
     *,
     model: ModelConfig[str],
     problem: ProblemSpec,
@@ -338,12 +338,12 @@ def _resolve_model_workflow_spine(
     require_tuning: bool,
     allow_tuned_variant: bool,
 ) -> ModelWorkflowSpine:
-    training = load_training_config(frame.training_id)
-    split = load_split_config(frame.split)
+    training = load_training_config(applied.training)
+    split = load_split_config(applied.split)
     if require_tuning or (allow_tuned_variant and artifact.variant.value == "tuned"):
-        tuning = load_tuning_config(frame.tuning_id)
+        tuning = load_tuning_config(applied.tuning)
         tuning_space = load_named_tuning_space(
-            _required(frame.tuning_space_id, "tuning.space"),
+            _required(applied.tuning_space, "tuning.space"),
             model_config=model,
             problem_config=problem,
         )
@@ -361,12 +361,12 @@ def _resolve_model_workflow_spine(
     )
 
 
-def _resolve_acquire_config(frame: SurfaceFrame, *, dry_run: bool | None) -> AcquireConfig:
-    dataset = load_dataset_spec(frame.dataset)
-    chain = load_chain_spec(frame.chain)
-    storage = _resolve_storage(frame.storage)
-    problem = _resolve_problem(frame.problem)
-    provider = load_provider_spec(frame.provider)
+def _resolve_acquire_config(applied: AppliedAcquireSurfaceSelection) -> AcquireConfig:
+    dataset = load_dataset_spec(applied.dataset)
+    chain = load_chain_spec(applied.chain)
+    storage = _resolve_storage(applied.storage)
+    problem = _resolve_problem(applied.problem)
+    provider = load_provider_spec(applied.provider)
     endpoint = provider.endpoint_config_for(chain.name)
     rpc_endpoint = ResolvedRpcEndpointConfig(
         provider_name=provider.name,
@@ -376,14 +376,14 @@ def _resolve_acquire_config(frame: SurfaceFrame, *, dry_run: bool | None) -> Acq
         retry_count=provider.transport.retry_count,
         backoff_factor=provider.transport.backoff_factor,
     )
-    features = load_features_config(_required(frame.features, "features"))
+    features = load_features_config(_required(applied.features, "features"))
     if provider.acquisition is None:
         raise ConfigResolutionError(
             f"provider {provider.name} must define acquisition settings"
         )
     acquisition = provider.acquisition
-    if dry_run is not None:
-        acquisition = _validated_config_update(acquisition, dry_run=dry_run)
+    if applied.dry_run is not None:
+        acquisition = _validated_config_update(acquisition, dry_run=applied.dry_run)
     return AcquireConfig(
         chain=chain,
         dataset=dataset,
@@ -395,14 +395,10 @@ def _resolve_acquire_config(frame: SurfaceFrame, *, dry_run: bool | None) -> Acq
     )
 
 
-def _resolve_train_config(
-    frame: SurfaceFrame,
-    *,
-    selection: TrainWorkflowSelection,
-) -> TrainConfig:
-    base = _resolve_model_workflow_base(frame, validate_objective_benchmark=True)
+def _resolve_train_config(applied: AppliedTrainSurfaceSelection) -> TrainConfig:
+    base = _resolve_model_workflow_base(applied, validate_objective_benchmark=True)
     spine = _resolve_model_workflow_spine(
-        frame,
+        applied,
         model=base.model,
         problem=base.problem,
         artifact=base.artifact,
@@ -413,8 +409,8 @@ def _resolve_train_config(
         chain=base.chain,
         dataset=base.dataset,
         storage=base.storage,
-        dataset_id=selection.dataset_id,
-        study_id=selection.study_id,
+        dataset_id=applied.dataset_id,
+        study_id=applied.study_id,
         problem=base.problem,
         model=base.model,
         dataset_builder=base.dataset_builder,
@@ -431,15 +427,10 @@ def _resolve_train_config(
     )
 
 
-def _resolve_tune_config(
-    frame: SurfaceFrame,
-    *,
-    selection: TuneWorkflowSelection,
-    trial_count: int | None,
-) -> TuneConfig:
-    base = _resolve_model_workflow_base(frame, validate_objective_benchmark=True)
+def _resolve_tune_config(applied: AppliedTuneSurfaceSelection) -> TuneConfig:
+    base = _resolve_model_workflow_base(applied, validate_objective_benchmark=True)
     spine = _resolve_model_workflow_spine(
-        frame,
+        applied,
         model=base.model,
         problem=base.problem,
         artifact=base.artifact,
@@ -449,13 +440,13 @@ def _resolve_tune_config(
     assert spine.tuning is not None
     assert spine.tuning_space is not None
     tuning = spine.tuning
-    if trial_count is not None:
-        tuning = _validated_config_update(tuning, trial_count=trial_count)
+    if applied.trial_count is not None:
+        tuning = _validated_config_update(tuning, trial_count=applied.trial_count)
     return TuneConfig(
         chain=base.chain,
         dataset=base.dataset,
         storage=base.storage,
-        dataset_id=_required(selection.dataset_id, "dataset_id"),
+        dataset_id=_required(applied.dataset_id, "dataset_id"),
         problem=base.problem,
         model=base.model,
         dataset_builder=base.dataset_builder,

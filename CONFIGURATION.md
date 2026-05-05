@@ -54,7 +54,7 @@ Shared train/tune selection options include `--chain`, `--problem`, `--features`
 Resolution order:
 
 1. load the surface
-2. apply CLI or benchmark case overrides
+2. build workflow-shaped refs by applying CLI or benchmark case overrides
 3. load referenced typed specs
 4. validate the final workflow config
 5. derive storage identity from the resolved config
