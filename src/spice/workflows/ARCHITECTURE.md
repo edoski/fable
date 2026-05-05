@@ -24,7 +24,7 @@ workflow runner
 
 Workflows receive typed configs. They do not resolve remote target defaults. They do not branch on concrete evaluator or prediction implementation ids.
 
-`preparation.py` is the generic preflight seam. It consumes storage-materialized roots, loads root manifests, applies tuned training params, builds workflow specs, and validates coverage. Runner modules then report progress, call owner packages, and perform one explicit storage effect.
+`preparation.py` is the generic preflight seam. Its internal modules keep root use, tuned active config, training/tuning coverage preflight, and inference context preparation separate. Runner modules then report progress, call owner packages, and perform one explicit storage effect.
 
 ## Acquire
 

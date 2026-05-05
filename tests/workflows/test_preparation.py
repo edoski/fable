@@ -5,7 +5,7 @@ from typing import cast
 
 from spice.config import TrainConfig, TuneConfig, WorkflowTask
 from spice.storage.workflow_roots import CorpusRootHandle
-from spice.workflows import preparation
+from spice.workflows import _active_config, _root_preparation, _training_preflight, preparation
 from tests.root_handle_helpers import (
     baseline_train_roots,
     corpus_handle,
@@ -56,11 +56,23 @@ def test_train_preparation_uses_resolved_corpus_manifest(
             feature_contract=object(),
         )
 
-    monkeypatch.setattr(preparation, "materialize_train_roots", lambda _config: roots)
+    monkeypatch.setattr(_root_preparation, "prepare_train_roots", lambda _config: roots)
     monkeypatch.setattr(CorpusRootHandle, "load_manifest", lambda _self: corpus_manifest)
-    monkeypatch.setattr(preparation, "build_artifact_training_spec", fake_build_training_spec)
-    monkeypatch.setattr(preparation, "training_coverage_requirement", lambda *_args: object())
-    monkeypatch.setattr(preparation, "validate_corpus_coverage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        _training_preflight,
+        "build_artifact_training_spec",
+        fake_build_training_spec,
+    )
+    monkeypatch.setattr(
+        _training_preflight,
+        "training_coverage_requirement",
+        lambda *_args: object(),
+    )
+    monkeypatch.setattr(
+        _training_preflight,
+        "validate_corpus_coverage",
+        lambda *_args, **_kwargs: None,
+    )
 
     prepared = preparation.prepare_train(config)
 
@@ -122,9 +134,9 @@ def test_tuned_train_preparation_keeps_artifact_root_stable_after_best_params(
             feature_contract=object(),
         )
 
-    monkeypatch.setattr(preparation, "materialize_train_roots", lambda _config: roots)
+    monkeypatch.setattr(_root_preparation, "prepare_train_roots", lambda _config: roots)
     monkeypatch.setattr(
-        preparation,
+        _active_config,
         "apply_study_best_params",
         lambda *_args, **_kwargs: SimpleNamespace(config=tuned_config),
     )
@@ -136,9 +148,21 @@ def test_tuned_train_preparation_keeps_artifact_root_stable_after_best_params(
             dataset=SimpleNamespace(name=config.dataset.name),
         ),
     )
-    monkeypatch.setattr(preparation, "build_artifact_training_spec", fake_build_training_spec)
-    monkeypatch.setattr(preparation, "training_coverage_requirement", lambda *_args: object())
-    monkeypatch.setattr(preparation, "validate_corpus_coverage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        _training_preflight,
+        "build_artifact_training_spec",
+        fake_build_training_spec,
+    )
+    monkeypatch.setattr(
+        _training_preflight,
+        "training_coverage_requirement",
+        lambda *_args: object(),
+    )
+    monkeypatch.setattr(
+        _training_preflight,
+        "validate_corpus_coverage",
+        lambda *_args, **_kwargs: None,
+    )
 
     prepared = preparation.prepare_train(config)
 
@@ -193,11 +217,19 @@ def test_tune_preparation_uses_resolved_corpus_manifest(
         captured["manifest_chain"] = corpus_manifest.chain.name
         return SimpleNamespace(problem_contract=object(), feature_contract=object())
 
-    monkeypatch.setattr(preparation, "materialize_tune_roots", lambda _config: roots)
+    monkeypatch.setattr(_root_preparation, "prepare_tune_roots", lambda _config: roots)
     monkeypatch.setattr(CorpusRootHandle, "load_manifest", lambda _self: corpus_manifest)
-    monkeypatch.setattr(preparation, "build_tuning_coverage_spec", fake_coverage_spec)
-    monkeypatch.setattr(preparation, "training_coverage_requirement", lambda *_args: object())
-    monkeypatch.setattr(preparation, "validate_corpus_coverage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_training_preflight, "build_tuning_coverage_spec", fake_coverage_spec)
+    monkeypatch.setattr(
+        _training_preflight,
+        "training_coverage_requirement",
+        lambda *_args: object(),
+    )
+    monkeypatch.setattr(
+        _training_preflight,
+        "validate_corpus_coverage",
+        lambda *_args, **_kwargs: None,
+    )
 
     prepared = preparation.prepare_tune(config)
 
