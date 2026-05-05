@@ -12,12 +12,13 @@ from spice.corpus.metadata import (
     BlockRangeMetadata,
     ChainMetadata,
     CompactValidationReport,
-    DatasetCoverageMetadata,
+    CorpusSplitManifest,
+    CorpusSplitManifests,
     DatasetIdentity,
     DatasetManifest,
-    DatasetRequestMetadata,
-    DatasetValidationMetadata,
-    DatasetWindowMetadata,
+    SplitCoverageMetadata,
+    SplitMaterializationMetadata,
+    SplitRequestMetadata,
     TimestampRangeMetadata,
 )
 from spice.features import compile_feature_contract
@@ -25,25 +26,19 @@ from spice.temporal.contracts import compile_problem_contract
 
 
 def _manifest(*, history_seconds: int, history_rows: int) -> DatasetManifest:
-    history = DatasetWindowMetadata(start_timestamp=1000, end_timestamp=1000 + history_seconds)
-    evaluation = DatasetWindowMetadata(start_timestamp=2000, end_timestamp=2100)
-    clean_report = CompactValidationReport(
-        status="clean",
+    history = _split_manifest(
+        "history",
+        start_timestamp=1000,
+        end_timestamp=1000 + history_seconds,
+        first_block=1,
         rows=history_rows,
-        block_range=BlockRangeMetadata(first=1, last=history_rows),
-        timestamp_range=TimestampRangeMetadata(
-            first=history.start_timestamp,
-            last=history.end_timestamp,
-        ),
     )
-    evaluation_report = CompactValidationReport(
-        status="clean",
+    evaluation = _split_manifest(
+        "evaluation",
+        start_timestamp=2000,
+        end_timestamp=2100,
+        first_block=10_000,
         rows=64,
-        block_range=BlockRangeMetadata(first=10_000, last=10_063),
-        timestamp_range=TimestampRangeMetadata(
-            first=evaluation.start_timestamp,
-            last=evaluation.end_timestamp,
-        ),
     )
     return DatasetManifest(
         dataset=DatasetIdentity(id="cor_test", name="test"),
@@ -55,12 +50,44 @@ def _manifest(*, history_seconds: int, history_rows: int) -> DatasetManifest:
                 nominal_block_time_seconds=12.0,
             ),
         ),
-        request=DatasetRequestMetadata(history=history, evaluation=evaluation),
-        coverage=DatasetCoverageMetadata(history=history, evaluation=evaluation),
-        validation=DatasetValidationMetadata(
-            history=clean_report,
-            evaluation=evaluation_report,
+        splits=CorpusSplitManifests(history=history, evaluation=evaluation),
+    )
+
+
+def _split_manifest(
+    kind: str,
+    *,
+    start_timestamp: int,
+    end_timestamp: int,
+    first_block: int,
+    rows: int,
+) -> CorpusSplitManifest:
+    last_block = first_block + rows - 1
+    return CorpusSplitManifest(
+        kind=kind,
+        request=SplitRequestMetadata(
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            start_block=first_block,
+            end_block=first_block + rows,
         ),
+        coverage=SplitCoverageMetadata(
+            first_timestamp=start_timestamp,
+            last_timestamp=end_timestamp,
+            first_block=first_block,
+            last_block=last_block,
+            rows=rows,
+        ),
+        validation=CompactValidationReport(
+            status="clean",
+            rows=rows,
+            block_range=BlockRangeMetadata(first=first_block, last=last_block),
+            timestamp_range=TimestampRangeMetadata(
+                first=start_timestamp,
+                last=end_timestamp,
+            ),
+        ),
+        materialization=SplitMaterializationMetadata(outcome="created", file_count=1),
     )
 
 

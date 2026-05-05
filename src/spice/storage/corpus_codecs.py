@@ -14,14 +14,15 @@ from ..corpus.metadata import (
     BlockRangeMetadata,
     ChainMetadata,
     CompactValidationReport,
+    CorpusSplitManifest,
+    CorpusSplitManifests,
     DatasetAcquisitionRuntimeMetadata,
-    DatasetCoverageMetadata,
     DatasetIdentity,
     DatasetManifest,
-    DatasetRequestMetadata,
-    DatasetValidationMetadata,
-    DatasetWindowMetadata,
     ProviderMetadata,
+    SplitCoverageMetadata,
+    SplitMaterializationMetadata,
+    SplitRequestMetadata,
     TimestampRangeMetadata,
 )
 from .payloads import PayloadModel, decode_payload_model, model_payload
@@ -57,52 +58,54 @@ class ChainMetadataPayload(PayloadModel):
         )
 
 
-class DatasetWindowPayload(PayloadModel):
+class SplitRequestPayload(PayloadModel):
     start_timestamp: int
     end_timestamp: int
+    start_block: int
+    end_block: int
 
     @classmethod
-    def from_window(cls, window: DatasetWindowMetadata) -> DatasetWindowPayload:
+    def from_request(cls, request: SplitRequestMetadata) -> SplitRequestPayload:
         return cls(
-            start_timestamp=window.start_timestamp,
-            end_timestamp=window.end_timestamp,
+            start_timestamp=request.start_timestamp,
+            end_timestamp=request.end_timestamp,
+            start_block=request.start_block,
+            end_block=request.end_block,
         )
 
-    def to_window(self) -> DatasetWindowMetadata:
-        return DatasetWindowMetadata(
+    def to_request(self) -> SplitRequestMetadata:
+        return SplitRequestMetadata(
             start_timestamp=self.start_timestamp,
             end_timestamp=self.end_timestamp,
+            start_block=self.start_block,
+            end_block=self.end_block,
         )
 
 
-class DatasetSplitWindowsPayload(PayloadModel):
-    history: DatasetWindowPayload
-    evaluation: DatasetWindowPayload
+class SplitCoveragePayload(PayloadModel):
+    first_timestamp: int | None
+    last_timestamp: int | None
+    first_block: int | None
+    last_block: int | None
+    rows: int
 
     @classmethod
-    def from_request(cls, request: DatasetRequestMetadata) -> DatasetSplitWindowsPayload:
+    def from_coverage(cls, coverage: SplitCoverageMetadata) -> SplitCoveragePayload:
         return cls(
-            history=DatasetWindowPayload.from_window(request.history),
-            evaluation=DatasetWindowPayload.from_window(request.evaluation),
+            first_timestamp=coverage.first_timestamp,
+            last_timestamp=coverage.last_timestamp,
+            first_block=coverage.first_block,
+            last_block=coverage.last_block,
+            rows=coverage.rows,
         )
 
-    @classmethod
-    def from_coverage(cls, coverage: DatasetCoverageMetadata) -> DatasetSplitWindowsPayload:
-        return cls(
-            history=DatasetWindowPayload.from_window(coverage.history),
-            evaluation=DatasetWindowPayload.from_window(coverage.evaluation),
-        )
-
-    def to_request(self) -> DatasetRequestMetadata:
-        return DatasetRequestMetadata(
-            history=self.history.to_window(),
-            evaluation=self.evaluation.to_window(),
-        )
-
-    def to_coverage(self) -> DatasetCoverageMetadata:
-        return DatasetCoverageMetadata(
-            history=self.history.to_window(),
-            evaluation=self.evaluation.to_window(),
+    def to_coverage(self) -> SplitCoverageMetadata:
+        return SplitCoverageMetadata(
+            first_timestamp=self.first_timestamp,
+            last_timestamp=self.last_timestamp,
+            first_block=self.first_block,
+            last_block=self.last_block,
+            rows=self.rows,
         )
 
 
@@ -163,51 +166,89 @@ class CompactValidationReportPayload(PayloadModel):
         )
 
 
-class DatasetValidationPayload(PayloadModel):
-    history: CompactValidationReportPayload
-    evaluation: CompactValidationReportPayload
+class SplitMaterializationPayload(PayloadModel):
+    outcome: str
+    file_count: int
 
     @classmethod
-    def from_validation(
+    def from_materialization(
         cls,
-        validation: DatasetValidationMetadata,
-    ) -> DatasetValidationPayload:
-        return cls(
-            history=CompactValidationReportPayload.from_report(validation.history),
-            evaluation=CompactValidationReportPayload.from_report(validation.evaluation),
+        materialization: SplitMaterializationMetadata,
+    ) -> SplitMaterializationPayload:
+        return cls(outcome=materialization.outcome, file_count=materialization.file_count)
+
+    def to_materialization(self) -> SplitMaterializationMetadata:
+        return SplitMaterializationMetadata(
+            outcome=self.outcome,
+            file_count=self.file_count,
         )
 
-    def to_validation(self) -> DatasetValidationMetadata:
-        return DatasetValidationMetadata(
-            history=self.history.to_report(),
-            evaluation=self.evaluation.to_report(),
+
+class CorpusSplitManifestPayload(PayloadModel):
+    kind: str
+    request: SplitRequestPayload
+    coverage: SplitCoveragePayload
+    validation: CompactValidationReportPayload
+    materialization: SplitMaterializationPayload
+
+    @classmethod
+    def from_split(cls, split: CorpusSplitManifest) -> CorpusSplitManifestPayload:
+        return cls(
+            kind=split.kind,
+            request=SplitRequestPayload.from_request(split.request),
+            coverage=SplitCoveragePayload.from_coverage(split.coverage),
+            validation=CompactValidationReportPayload.from_report(split.validation),
+            materialization=SplitMaterializationPayload.from_materialization(
+                split.materialization
+            ),
+        )
+
+    def to_split(self) -> CorpusSplitManifest:
+        return CorpusSplitManifest(
+            kind=self.kind,
+            request=self.request.to_request(),
+            coverage=self.coverage.to_coverage(),
+            validation=self.validation.to_report(),
+            materialization=self.materialization.to_materialization(),
+        )
+
+
+class CorpusSplitManifestsPayload(PayloadModel):
+    history: CorpusSplitManifestPayload
+    evaluation: CorpusSplitManifestPayload
+
+    @classmethod
+    def from_splits(cls, splits: CorpusSplitManifests) -> CorpusSplitManifestsPayload:
+        return cls(
+            history=CorpusSplitManifestPayload.from_split(splits.history),
+            evaluation=CorpusSplitManifestPayload.from_split(splits.evaluation),
+        )
+
+    def to_splits(self) -> CorpusSplitManifests:
+        return CorpusSplitManifests(
+            history=self.history.to_split(),
+            evaluation=self.evaluation.to_split(),
         )
 
 
 class DatasetManifestPayload(PayloadModel):
     dataset: DatasetIdentityPayload
     chain: ChainMetadataPayload
-    request: DatasetSplitWindowsPayload
-    coverage: DatasetSplitWindowsPayload
-    validation: DatasetValidationPayload
+    splits: CorpusSplitManifestsPayload
 
     @classmethod
     def from_manifest(cls, manifest: DatasetManifest) -> DatasetManifestPayload:
         return cls(
             dataset=DatasetIdentityPayload.from_identity(manifest.dataset),
             chain=ChainMetadataPayload.from_metadata(manifest.chain),
-            request=DatasetSplitWindowsPayload.from_request(manifest.request),
-            coverage=DatasetSplitWindowsPayload.from_coverage(manifest.coverage),
-            validation=DatasetValidationPayload.from_validation(manifest.validation),
+            splits=CorpusSplitManifestsPayload.from_splits(manifest.splits),
         )
 
     def to_manifest(self) -> DatasetManifest:
         return DatasetManifest(
             dataset=self.dataset.to_identity(),
             chain=self.chain.to_metadata(),
-            request=self.request.to_request(),
-            coverage=self.coverage.to_coverage(),
-            validation=self.validation.to_validation(),
+            splits=self.splits.to_splits(),
         )
 
 

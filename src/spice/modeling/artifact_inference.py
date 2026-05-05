@@ -87,8 +87,14 @@ def prepare_artifact_inference_context(
             builder_runtime_metadata=manifest.builder_runtime_metadata,
             scaler=manifest.scaler,
             temporal_capability=manifest.temporal_capability,
-            evaluation_start_timestamp=corpus_manifest.coverage.evaluation.start_timestamp,
-            evaluation_end_timestamp=corpus_manifest.coverage.evaluation.end_timestamp,
+            evaluation_start_timestamp=_required_timestamp(
+                corpus_manifest.splits.evaluation.coverage.first_timestamp,
+                "evaluation first timestamp",
+            ),
+            evaluation_end_timestamp=_required_timestamp(
+                corpus_manifest.splits.evaluation.coverage.last_timestamp,
+                "evaluation last timestamp",
+            ),
         ),
     )
     runtime_plan = build_evaluation_scoring_runtime_plan(
@@ -113,3 +119,9 @@ def prepare_artifact_inference_context(
         evaluator_contract=evaluator_contract,
         scoring_input=scoring_input,
     )
+
+
+def _required_timestamp(value: int | None, label: str) -> int:
+    if value is None:
+        raise ConfigResolutionError(f"Corpus manifest is missing {label}")
+    return value

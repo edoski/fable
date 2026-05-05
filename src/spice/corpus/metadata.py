@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
-from ..acquisition import AcquisitionRuntimeSnapshot
+from ..acquisition import AcquisitionRuntimeSnapshot, BlockPullPlan
 from ..config.models import AcquireConfig, ChainRuntimeSpec
 from ..corpus.io import iter_block_files
 from ..corpus.validation import BlockDatasetValidationReport
@@ -38,21 +38,11 @@ class ProviderMetadata:
 
 
 @dataclass(frozen=True, slots=True)
-class DatasetWindowMetadata:
+class SplitRequestMetadata:
     start_timestamp: int
     end_timestamp: int
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetRequestMetadata:
-    history: DatasetWindowMetadata
-    evaluation: DatasetWindowMetadata
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetCoverageMetadata:
-    history: DatasetWindowMetadata
-    evaluation: DatasetWindowMetadata
+    start_block: int
+    end_block: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,18 +67,40 @@ class CompactValidationReport:
 
 
 @dataclass(frozen=True, slots=True)
-class DatasetValidationMetadata:
-    history: CompactValidationReport
-    evaluation: CompactValidationReport
+class SplitCoverageMetadata:
+    first_timestamp: int | None
+    last_timestamp: int | None
+    first_block: int | None
+    last_block: int | None
+    rows: int
+
+
+@dataclass(frozen=True, slots=True)
+class SplitMaterializationMetadata:
+    outcome: str
+    file_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CorpusSplitManifest:
+    kind: str
+    request: SplitRequestMetadata
+    coverage: SplitCoverageMetadata
+    validation: CompactValidationReport
+    materialization: SplitMaterializationMetadata
+
+
+@dataclass(frozen=True, slots=True)
+class CorpusSplitManifests:
+    history: CorpusSplitManifest
+    evaluation: CorpusSplitManifest
 
 
 @dataclass(frozen=True, slots=True)
 class DatasetManifest:
     dataset: DatasetIdentity
     chain: ChainMetadata
-    request: DatasetRequestMetadata
-    coverage: DatasetCoverageMetadata
-    validation: DatasetValidationMetadata
+    splits: CorpusSplitManifests
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,12 +189,34 @@ def compact_validation_report(report: BlockDatasetValidationReport) -> CompactVa
     )
 
 
-def _coverage_window(report: BlockDatasetValidationReport) -> DatasetWindowMetadata:
-    if report.first_timestamp is None or report.last_timestamp is None:
-        raise ValueError("Clean dataset validation is required before building coverage metadata")
-    return DatasetWindowMetadata(
-        start_timestamp=report.first_timestamp,
-        end_timestamp=report.last_timestamp,
+def split_manifest(
+    *,
+    kind: str,
+    plan: BlockPullPlan,
+    validation: BlockDatasetValidationReport,
+    outcome: str,
+    file_count: int,
+) -> CorpusSplitManifest:
+    return CorpusSplitManifest(
+        kind=kind,
+        request=SplitRequestMetadata(
+            start_timestamp=plan.window.start,
+            end_timestamp=plan.window.end,
+            start_block=plan.block_range.start,
+            end_block=plan.block_range.end,
+        ),
+        coverage=SplitCoverageMetadata(
+            first_timestamp=validation.first_timestamp,
+            last_timestamp=validation.last_timestamp,
+            first_block=validation.first_block_number,
+            last_block=validation.last_block_number,
+            rows=validation.row_count,
+        ),
+        validation=compact_validation_report(validation),
+        materialization=SplitMaterializationMetadata(
+            outcome=outcome,
+            file_count=file_count,
+        ),
     )
 
 
@@ -218,12 +252,14 @@ def build_dataset_manifest(
     *,
     config: AcquireConfig,
     dataset_id: str,
-    history_request_start_timestamp: int,
-    history_request_end_timestamp: int,
-    evaluation_request_start_timestamp: int,
-    evaluation_request_end_timestamp: int,
+    history_plan: BlockPullPlan,
+    evaluation_plan: BlockPullPlan,
     history_validation: BlockDatasetValidationReport,
     evaluation_validation: BlockDatasetValidationReport,
+    history_outcome: str,
+    evaluation_outcome: str,
+    history_file_count: int,
+    evaluation_file_count: int,
 ) -> DatasetManifest:
     return DatasetManifest(
         dataset=DatasetIdentity(
@@ -234,23 +270,21 @@ def build_dataset_manifest(
             name=config.chain.name,
             runtime=config.chain.runtime,
         ),
-        request=DatasetRequestMetadata(
-            history=DatasetWindowMetadata(
-                start_timestamp=history_request_start_timestamp,
-                end_timestamp=history_request_end_timestamp,
+        splits=CorpusSplitManifests(
+            history=split_manifest(
+                kind="history",
+                plan=history_plan,
+                validation=history_validation,
+                outcome=history_outcome,
+                file_count=history_file_count,
             ),
-            evaluation=DatasetWindowMetadata(
-                start_timestamp=evaluation_request_start_timestamp,
-                end_timestamp=evaluation_request_end_timestamp,
+            evaluation=split_manifest(
+                kind="evaluation",
+                plan=evaluation_plan,
+                validation=evaluation_validation,
+                outcome=evaluation_outcome,
+                file_count=evaluation_file_count,
             ),
-        ),
-        coverage=DatasetCoverageMetadata(
-            history=_coverage_window(history_validation),
-            evaluation=_coverage_window(evaluation_validation),
-        ),
-        validation=DatasetValidationMetadata(
-            history=compact_validation_report(history_validation),
-            evaluation=compact_validation_report(evaluation_validation),
         ),
     )
 

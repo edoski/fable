@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from ..core.errors import StateConflictError
 from ..features import CompiledFeatureContract
 from ..temporal.contracts import CompiledProblemContract
-from .metadata import DatasetManifest, DatasetWindowMetadata
+from .metadata import DatasetManifest, SplitCoverageMetadata
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,19 +62,19 @@ def validate_corpus_coverage(
         raise StateConflictError("Corpus manifest has invalid chain metadata")
     _validate_clean_split(manifest, split="history")
     _require_window_span(
-        manifest.coverage.history,
+        manifest.splits.history.coverage,
         minimum_seconds=requirement.history_seconds,
         label="history coverage",
     )
-    if manifest.validation.history.rows < requirement.history_rows:
+    if manifest.splits.history.validation.rows < requirement.history_rows:
         raise StateConflictError(
             "Corpus history rows are insufficient for compiled problem: "
-            f"{manifest.validation.history.rows} < {requirement.history_rows}"
+            f"{manifest.splits.history.validation.rows} < {requirement.history_rows}"
         )
     if requirement.evaluation_delay_seconds is not None:
         _validate_clean_split(manifest, split="evaluation")
         _require_window_span(
-            manifest.coverage.evaluation,
+            manifest.splits.evaluation.coverage,
             minimum_seconds=requirement.evaluation_delay_seconds,
             label="evaluation coverage",
         )
@@ -82,7 +82,9 @@ def validate_corpus_coverage(
 
 def _validate_clean_split(manifest: DatasetManifest, *, split: str) -> None:
     report = (
-        manifest.validation.history if split == "history" else manifest.validation.evaluation
+        manifest.splits.history.validation
+        if split == "history"
+        else manifest.splits.evaluation.validation
     )
     if report.status != "clean":
         raise StateConflictError(f"Corpus {split} validation is not clean: {report.status}")
@@ -91,12 +93,14 @@ def _validate_clean_split(manifest: DatasetManifest, *, split: str) -> None:
 
 
 def _require_window_span(
-    window: DatasetWindowMetadata,
+    window: SplitCoverageMetadata,
     *,
     minimum_seconds: int,
     label: str,
 ) -> None:
-    available_seconds = window.end_timestamp - window.start_timestamp
+    if window.first_timestamp is None or window.last_timestamp is None:
+        raise StateConflictError(f"{label} is missing timestamp coverage")
+    available_seconds = window.last_timestamp - window.first_timestamp
     if available_seconds < minimum_seconds:
         raise StateConflictError(
             f"{label} is insufficient for compiled workflow: "

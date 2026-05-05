@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..corpus.metadata import AcquireRunRecord, DatasetManifest, DatasetWindowMetadata
+from ..corpus.metadata import (
+    AcquireRunRecord,
+    DatasetManifest,
+    SplitCoverageMetadata,
+    SplitRequestMetadata,
+)
 from .catalog import CatalogDatasetRecord
 from .corpus import list_acquire_runs, load_dataset_manifest
 
@@ -58,17 +63,19 @@ def dataset_sections(
         (
             "request",
             [
-                ("history", window_string(manifest.request.history)),
-                ("evaluation", window_string(manifest.request.evaluation)),
+                ("history", request_string(manifest.splits.history.request)),
+                ("evaluation", request_string(manifest.splits.evaluation.request)),
             ],
         ),
         (
             "coverage",
             [
-                ("history", window_string(manifest.coverage.history)),
-                ("evaluation", window_string(manifest.coverage.evaluation)),
-                ("history rows", str(manifest.validation.history.rows)),
-                ("evaluation rows", str(manifest.validation.evaluation.rows)),
+                ("history", coverage_string(manifest.splits.history.coverage)),
+                ("evaluation", coverage_string(manifest.splits.evaluation.coverage)),
+                ("history rows", str(manifest.splits.history.validation.rows)),
+                ("evaluation rows", str(manifest.splits.evaluation.validation.rows)),
+                ("history outcome", manifest.splits.history.materialization.outcome),
+                ("evaluation outcome", manifest.splits.evaluation.materialization.outcome),
             ],
         ),
     ]
@@ -85,8 +92,12 @@ def dataset_sections(
     return sections
 
 
-def window_string(window: DatasetWindowMetadata) -> str:
+def request_string(window: SplitRequestMetadata) -> str:
     return f"{window.start_timestamp} -> {window.end_timestamp}"
+
+
+def coverage_string(window: SplitCoverageMetadata) -> str:
+    return f"{window.first_timestamp} -> {window.last_timestamp}"
 
 
 def acquire_run_string(run: AcquireRunRecord) -> str:

@@ -11,7 +11,8 @@ from spice.acquisition import (
     BlockRange,
     TimestampRange,
 )
-from spice.config import AcquireConfig, WorkflowTask
+from spice.config import AcquireConfig, WorkflowTask, coerce_features_config
+from spice.config.groups import load_named_group_payload
 from spice.core.reporting import Reporter
 from spice.storage.catalog.index import list_dataset_records
 from spice.storage.corpus import list_acquire_runs, load_dataset_manifest
@@ -146,7 +147,7 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
     summary = load_dataset_manifest(roots.corpus.state_db_path)
     runs = list_acquire_runs(roots.corpus.state_db_path)
     assert roots.corpus.state_db_path.is_file()
-    assert summary.validation.evaluation.rows == evaluation_plan.expected_rows
+    assert summary.splits.evaluation.validation.rows == evaluation_plan.expected_rows
     assert summary.dataset.id == roots.corpus.dataset_id
     assert summary.dataset.name == config.dataset.name
     assert summary.chain.name == config.chain.name
@@ -314,3 +315,50 @@ def test_acquire_dry_run_emits_compact_output(
     rendered = output.getvalue()
     assert "acquire dry_run" in rendered
     assert not roots.corpus.state_db_path.exists()
+
+
+def test_acquire_maps_priority_fee_source_requirement_to_rpc_enrichment(
+    tmp_path,
+    monkeypatch,
+    load_workflow_config,
+    acquire_override,
+) -> None:
+    base_config = _load_test_acquire_config(
+        load_workflow_config,
+        tmp_path,
+        override=acquire_override(),
+    )
+    config = base_config.model_copy(
+        update={
+            "features": coerce_features_config(
+                load_named_group_payload("core_fee_dynamics_with_priority_fee", "features")
+            ),
+            "acquisition": base_config.acquisition.model_copy(update={"dry_run": True}),
+        }
+    )
+    include_flags: list[bool] = []
+
+    class FakeAcquireClient:
+        def __init__(self, rpc_endpoint, chain, *, include_priority_fees=False) -> None:
+            del rpc_endpoint, chain
+            include_flags.append(include_priority_fees)
+
+        async def close(self) -> None:
+            return None
+
+        async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:
+            del sample_size
+            return 12.0
+
+        async def plan_window(self, window: TimestampRange) -> BlockPullPlan:
+            return _plan_for_window(
+                window,
+                start_block=100,
+                chunk_size=config.acquisition.chunk_size,
+            )
+
+    monkeypatch.setattr("spice.workflows.acquire.BlockRpcClient", FakeAcquireClient)
+
+    run_acquire(config)
+
+    assert include_flags == [True]

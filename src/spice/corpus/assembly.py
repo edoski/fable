@@ -139,12 +139,14 @@ async def assemble_corpus(
     manifest = build_dataset_manifest(
         config=config,
         dataset_id=roots.corpus.dataset_id,
-        history_request_start_timestamp=history_plan.window.start,
-        history_request_end_timestamp=history_plan.window.end,
-        evaluation_request_start_timestamp=evaluation_plan.window.start,
-        evaluation_request_end_timestamp=evaluation_plan.window.end,
+        history_plan=history_plan,
+        evaluation_plan=evaluation_plan,
         history_validation=fulfillment.history_result.validation,
         evaluation_validation=fulfillment.evaluation_result.validation,
+        history_outcome=fulfillment.history_result.outcome.value,
+        evaluation_outcome=fulfillment.evaluation_result.outcome.value,
+        history_file_count=fulfillment.history_result.file_count,
+        evaluation_file_count=fulfillment.evaluation_result.file_count,
     )
     acquire_run = build_acquire_run_record(
         config=config,

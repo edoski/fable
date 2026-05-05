@@ -14,14 +14,15 @@ from spice.corpus.metadata import (
     BlockRangeMetadata,
     ChainMetadata,
     CompactValidationReport,
+    CorpusSplitManifest,
+    CorpusSplitManifests,
     DatasetAcquisitionRuntimeMetadata,
-    DatasetCoverageMetadata,
     DatasetIdentity,
     DatasetManifest,
-    DatasetRequestMetadata,
-    DatasetValidationMetadata,
-    DatasetWindowMetadata,
     ProviderMetadata,
+    SplitCoverageMetadata,
+    SplitMaterializationMetadata,
+    SplitRequestMetadata,
     TimestampRangeMetadata,
 )
 from spice.storage.corpus_codecs import (
@@ -43,8 +44,8 @@ def _validation_report() -> CompactValidationReport:
 
 
 def _dataset_manifest() -> DatasetManifest:
-    history = DatasetWindowMetadata(start_timestamp=1_000, end_timestamp=1_132)
-    evaluation = DatasetWindowMetadata(start_timestamp=1_144, end_timestamp=1_276)
+    history = _split_manifest("history", start_timestamp=1_000, end_timestamp=1_132)
+    evaluation = _split_manifest("evaluation", start_timestamp=1_144, end_timestamp=1_276)
     return DatasetManifest(
         dataset=DatasetIdentity(id="cor_test", name="icdcs_2026"),
         chain=ChainMetadata(
@@ -55,12 +56,33 @@ def _dataset_manifest() -> DatasetManifest:
                 nominal_block_time_seconds=12.0,
             ),
         ),
-        request=DatasetRequestMetadata(history=history, evaluation=evaluation),
-        coverage=DatasetCoverageMetadata(history=history, evaluation=evaluation),
-        validation=DatasetValidationMetadata(
-            history=_validation_report(),
-            evaluation=_validation_report(),
+        splits=CorpusSplitManifests(history=history, evaluation=evaluation),
+    )
+
+
+def _split_manifest(
+    kind: str,
+    *,
+    start_timestamp: int,
+    end_timestamp: int,
+) -> CorpusSplitManifest:
+    return CorpusSplitManifest(
+        kind=kind,
+        request=SplitRequestMetadata(
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            start_block=100,
+            end_block=112,
         ),
+        coverage=SplitCoverageMetadata(
+            first_timestamp=start_timestamp,
+            last_timestamp=end_timestamp,
+            first_block=100,
+            last_block=111,
+            rows=12,
+        ),
+        validation=_validation_report(),
+        materialization=SplitMaterializationMetadata(outcome="created", file_count=1),
     )
 
 
@@ -112,7 +134,12 @@ def test_dataset_manifest_payload_rejects_extra_and_loose_scalars() -> None:
         dataset_manifest_from_payload(payload)
 
     payload = dataset_manifest_payload(_dataset_manifest())
-    history = cast(dict[str, object], cast(dict[str, object], payload["request"])["history"])
+    history = cast(
+        dict[str, object],
+        cast(dict[str, object], cast(dict[str, object], payload["splits"])["history"])[
+            "request"
+        ],
+    )
     history["start_timestamp"] = "1000"
 
     with pytest.raises(StateLayoutError, match="Invalid dataset manifest payload"):
@@ -121,9 +148,10 @@ def test_dataset_manifest_payload_rejects_extra_and_loose_scalars() -> None:
 
 def test_dataset_manifest_payload_rejects_non_string_validation_status() -> None:
     payload = dataset_manifest_payload(_dataset_manifest())
-    validation = cast(dict[str, object], payload["validation"])
-    history = cast(dict[str, object], validation["history"])
-    history["status"] = True
+    splits = cast(dict[str, object], payload["splits"])
+    history = cast(dict[str, object], splits["history"])
+    validation = cast(dict[str, object], history["validation"])
+    validation["status"] = True
 
     with pytest.raises(StateLayoutError, match="Invalid dataset manifest payload"):
         dataset_manifest_from_payload(payload)

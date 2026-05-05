@@ -41,7 +41,9 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
     block_client = BlockRpcClient(
         config.rpc_endpoint,
         config.chain,
-        include_priority_fees=source_requirements.include_priority_fees,
+        include_priority_fees=(
+            "priority_fee_percentiles" in source_requirements.optional_enrichments
+        ),
     )
     try:
         result = await assemble_corpus(

@@ -60,6 +60,42 @@ Corpus Assembly has one public Interface: `assemble_corpus()`. It returns a dry-
 
 History refill is bounded. Assembly first requests an estimated history window from planning, asks planning to count valid capability samples, and expands the window up to a small internal cap if observed block cadence under-requested usable rows.
 
+## Source Requirements
+
+Corpus planning derives source requirements from feature and problem contracts before any provider client is created. Requirements are generic:
+
+| Field | Meaning |
+| --- | --- |
+| `required_columns` | Canonical source columns needed by corpus, features, and temporal contracts. |
+| `optional_enrichments` | Named acquisition enrichments that a concrete adapter may support. |
+| `temporal_unit` | Unit represented by source rows, currently `block`. |
+| `ordering_key` | Monotonic row key, currently `block_number`. |
+| `partition_key` | Optional source partition, currently `chain_id`. |
+
+Priority-fee features add the `priority_fee_percentiles` enrichment and require priority-fee source columns. The RPC adapter maps that enrichment to `eth_feeHistory`; other future adapters can satisfy the same requirement differently.
+
+## Split Manifest
+
+Corpus state stores split-level provenance:
+
+```text
+DatasetManifest
+  dataset
+  chain
+  splits.history
+    request
+    coverage
+    validation
+    materialization
+  splits.evaluation
+    request
+    coverage
+    validation
+    materialization
+```
+
+Request records the intended timestamp and block ranges. Coverage records the observed first/last timestamp, first/last block, and row count. Validation records compact validation status and issues. Materialization records whether the split was created, reused, rebuilt, or extended and how many files back it.
+
 ## Validation
 
 Validation answers two questions:

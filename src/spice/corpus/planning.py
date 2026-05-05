@@ -16,6 +16,7 @@ from .validation import BlockDatasetValidationReport
 HISTORY_WINDOW_CUSHION_RATIO = 0.10
 HISTORY_REFILL_CUSHION_RATIO = 0.10
 HISTORY_REFILL_ATTEMPT_LIMIT = 3
+CORE_CORPUS_SOURCE_COLUMNS = frozenset({"block_number", "timestamp", "chain_id"})
 PRIORITY_FEE_SOURCE_COLUMNS = frozenset(
     {
         "priority_fee_p10",
@@ -52,7 +53,11 @@ class CorpusHistoryRefillPlan:
 
 @dataclass(frozen=True, slots=True)
 class CorpusAcquisitionSourceRequirements:
-    include_priority_fees: bool
+    required_columns: frozenset[str]
+    optional_enrichments: frozenset[str]
+    temporal_unit: str
+    ordering_key: str
+    partition_key: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,12 +72,16 @@ class CorpusCapabilityPlanningContext:
 
     @property
     def source_requirements(self) -> CorpusAcquisitionSourceRequirements:
+        required_columns = frozenset(self.feature_contract.required_source_columns)
+        optional_enrichments: set[str] = set()
+        if PRIORITY_FEE_SOURCE_COLUMNS.intersection(required_columns):
+            optional_enrichments.add("priority_fee_percentiles")
         return CorpusAcquisitionSourceRequirements(
-            include_priority_fees=bool(
-                PRIORITY_FEE_SOURCE_COLUMNS.intersection(
-                    self.feature_contract.required_source_columns
-                )
-            )
+            required_columns=CORE_CORPUS_SOURCE_COLUMNS | required_columns,
+            optional_enrichments=frozenset(optional_enrichments),
+            temporal_unit="block",
+            ordering_key="block_number",
+            partition_key="chain_id",
         )
 
     async def initial_plan(self, block_source: BlockSource) -> InitialCorpusCapabilityPlan:

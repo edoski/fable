@@ -12,6 +12,8 @@ Training quality begins with data provenance. Raw acquisition must keep enough m
 
 Acquisition does not define ML targets, train models, score predictions, write parquet datasets, or publish corpus roots. It schedules block-source pulls and emits ordered canonical rows to a caller-provided sink. Corpus Assembly decides how fetched rows become a corpus root.
 
+Corpus planning owns source requirements. Acquisition adapters receive those requirements only after the workflow maps them to adapter settings. For the RPC adapter, the generic `priority_fee_percentiles` enrichment enables priority-fee history fetching; the acquisition package still emits canonical rows and does not know why a feature set needed them.
+
 ## Invariants
 
 Raw block rows must be canonical before persistence. Provider-specific transport details stay in provider-specific modules. Storage commit mechanics stay behind Corpus Assembly and storage lifecycle primitives.

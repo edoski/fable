@@ -123,8 +123,10 @@ def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_
                 nominal_block_time_seconds=12.0,
             ),
         ),
-        coverage=SimpleNamespace(
-            evaluation=SimpleNamespace(start_timestamp=1000, end_timestamp=2000)
+        splits=SimpleNamespace(
+            evaluation=SimpleNamespace(
+                coverage=SimpleNamespace(first_timestamp=1000, last_timestamp=2000)
+            )
         ),
     )
 

@@ -62,7 +62,7 @@ Hashes make storage paths stable for identical experiment identities.
 
 ## Corpus State
 
-Corpus state stores one dataset manifest plus acquire-run history. The manifest records requested windows, covered windows, validation reports, dataset id, dataset name, chain name, and chain id.
+Corpus state stores one dataset manifest plus acquire-run history. The manifest records dataset id, dataset name, chain name, chain id, and split-level history/evaluation provenance. Each split records the requested timestamp/block range, observed coverage, validation report, materialization outcome, and backing file count.
 
 Acquire-run rows store provider identity, endpoint fingerprint, sizing facts, acquisition config snapshot, and RPC controller counters.
 

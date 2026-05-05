@@ -145,8 +145,26 @@ def test_capability_planning_derives_priority_fee_source_requirements(
         _planning_spec(priority_config)
     )
 
-    assert baseline_context.source_requirements.include_priority_fees is False
-    assert priority_context.source_requirements.include_priority_fees is True
+    assert baseline_context.source_requirements.required_columns >= {
+        "block_number",
+        "timestamp",
+        "chain_id",
+    }
+    assert "priority_fee_percentiles" not in (
+        baseline_context.source_requirements.optional_enrichments
+    )
+    assert "priority_fee_percentiles" in (
+        priority_context.source_requirements.optional_enrichments
+    )
+    assert priority_context.source_requirements.required_columns >= {
+        "priority_fee_p10",
+        "priority_fee_p50",
+        "priority_fee_p90",
+        "priority_fee_spread",
+    }
+    assert priority_context.source_requirements.temporal_unit == "block"
+    assert priority_context.source_requirements.ordering_key == "block_number"
+    assert priority_context.source_requirements.partition_key == "chain_id"
 
 
 def test_capability_planning_builds_refill_decision(

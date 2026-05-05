@@ -16,13 +16,17 @@ from spice.config import (
 )
 from spice.config.groups import load_named_group_payload
 from spice.corpus.metadata import (
+    BlockRangeMetadata,
     ChainMetadata,
-    DatasetCoverageMetadata,
+    CompactValidationReport,
+    CorpusSplitManifest,
+    CorpusSplitManifests,
     DatasetIdentity,
     DatasetManifest,
-    DatasetRequestMetadata,
-    DatasetValidationMetadata,
-    DatasetWindowMetadata,
+    SplitCoverageMetadata,
+    SplitMaterializationMetadata,
+    SplitRequestMetadata,
+    TimestampRangeMetadata,
 )
 from spice.storage.identity import (
     study_definition_identity_from_manifest,
@@ -87,13 +91,33 @@ def _train_config(
 
 
 def _corpus_manifest(config: TuneConfig) -> DatasetManifest:
-    window = DatasetWindowMetadata(start_timestamp=1, end_timestamp=2)
+    split = CorpusSplitManifest(
+        kind="history",
+        request=SplitRequestMetadata(
+            start_timestamp=1,
+            end_timestamp=2,
+            start_block=1,
+            end_block=2,
+        ),
+        coverage=SplitCoverageMetadata(
+            first_timestamp=1,
+            last_timestamp=2,
+            first_block=1,
+            last_block=1,
+            rows=1,
+        ),
+        validation=CompactValidationReport(
+            status="clean",
+            rows=1,
+            block_range=BlockRangeMetadata(first=1, last=1),
+            timestamp_range=TimestampRangeMetadata(first=1, last=2),
+        ),
+        materialization=SplitMaterializationMetadata(outcome="reused", file_count=1),
+    )
     return DatasetManifest(
         dataset=DatasetIdentity(id=TEST_DATASET_ID, name=config.dataset.name),
         chain=ChainMetadata(name=config.chain.name, runtime=config.chain.runtime),
-        request=DatasetRequestMetadata(history=window, evaluation=window),
-        coverage=DatasetCoverageMetadata(history=window, evaluation=window),
-        validation=DatasetValidationMetadata(history=None, evaluation=None),
+        splits=CorpusSplitManifests(history=split, evaluation=split),
     )
 
 

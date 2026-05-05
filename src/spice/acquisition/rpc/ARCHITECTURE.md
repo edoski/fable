@@ -32,6 +32,8 @@ block numbers
     v
 batched JSON-RPC calls
     |
+    +-- optional eth_feeHistory batches for priority_fee_percentiles
+    |
     v
 provider responses
     |
@@ -43,6 +45,8 @@ CanonicalBlockRow
 ```
 
 The boundary is canonicalization. Once a row is canonical, downstream code should not care whether it came from PublicNode, another RPC endpoint, or a future Adapter.
+
+The acquire workflow maps corpus source requirements onto RPC client settings. Core block columns come from `eth_getBlockByNumber`. When source requirements include the `priority_fee_percentiles` enrichment, the RPC client also requests `eth_feeHistory` and fills priority-fee percentile columns in canonical rows.
 
 ## Failure Policy
 
