@@ -173,7 +173,7 @@ Corpus-owned policy facts derived from feature/problem capability planning that 
 _Avoid_: workflow feature-source switch, provider policy
 
 **Corpus Split Materialization**:
-Corpus module that fulfills Split Intents through a materialization session, reusing, extending, rebuilding, and validating canonical history/evaluation block datasets. It owns internal materialization policy, staged/committed fact collection, target matching, pull execution, parquet IO, and validation. Extension reuses whole clean parquet chunks and rewrites only missing or edge ranges.
+Corpus module that fulfills Split Intents through executable materialization plans for staged reuse, committed reuse, extension, full materialization, and invalid staged rejection. It owns staged/committed fact collection, target matching, pull execution, parquet IO, and validation. Extension reuses whole clean parquet chunks and rewrites only missing or edge ranges.
 _Avoid_: parquet helper, acquisition pull
 
 **Split Intent**:

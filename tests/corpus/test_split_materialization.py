@@ -367,6 +367,7 @@ def test_evaluation_split_materialization_extends_overlap(tmp_path) -> None:
     )
 
     assert result.outcome is CorpusSplitOutcome.EXTENDED
+    assert source.partial_ranges == [(104, 105)]
     assert source.requests == [(104, 105)]
     assert sorted(path.name for path in result.path.glob("*.parquet")) == [
         "ethereum__blocks__101_to_101.parquet",

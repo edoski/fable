@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from shutil import copy2
+from typing import NoReturn, assert_never
 
 import polars as pl
 
@@ -28,11 +29,16 @@ from ..validation import (
     validate_exact_window_frame,
 )
 from ._policy import (
+    CorpusSplitOutcome,
+    ExtendEvaluationCommittedSplitPlan,
+    ExtendHistoryCommittedSplitPlan,
+    MaterializeFullSplitPlan,
+    RejectInvalidStagedSplitPlan,
+    ReuseCommittedSplitPlan,
+    ReuseStagedSplitPlan,
     SplitDatasetCandidate,
     SplitDatasetFacts,
-    SplitMaterializationAction,
-    SplitMaterializationDecision,
-    SplitMaterializationOutcome,
+    SplitMaterializationPlan,
     SplitPullRange,
     SplitTarget,
     plan_evaluation_split_materialization,
@@ -52,13 +58,6 @@ class ExistingDatasetState:
     path: Path
     validation: BlockDatasetValidationReport
     file_count: int
-
-
-class CorpusSplitOutcome(StrEnum):
-    CREATED = "created"
-    REUSED = "reused"
-    EXTENDED = "extended"
-    REBUILT = "rebuilt"
 
 
 class CorpusSplitKind(StrEnum):
@@ -207,7 +206,7 @@ def load_existing_dataset(
 
 
 def reused_result(
-    existing: ExistingDatasetState,
+    existing: SplitDatasetCandidate,
     *,
     validation: BlockDatasetValidationReport | None = None,
 ) -> DatasetBuildResult:
@@ -221,7 +220,7 @@ def reused_result(
 
 
 def staged_result(
-    existing: ExistingDatasetState,
+    existing: SplitDatasetCandidate,
     *,
     outcome: CorpusSplitOutcome,
     validation: BlockDatasetValidationReport | None = None,
@@ -246,11 +245,8 @@ def split_candidate(existing: ExistingDatasetState | None) -> SplitDatasetCandid
             first_block_number=existing.validation.first_block_number,
             last_block_number=existing.validation.last_block_number,
         ),
+        file_count=existing.file_count,
     )
-
-
-def split_outcome(outcome: SplitMaterializationOutcome) -> CorpusSplitOutcome:
-    return CorpusSplitOutcome(outcome.value)
 
 
 def materialize_dataset(
@@ -549,7 +545,7 @@ def pull_range_plan(
     return block_source.plan_block_range(pull_range.block_range, window=window)
 
 
-async def pull_decision_range_to_dir(
+async def pull_plan_range_to_dir(
     *,
     block_source: BlockSource,
     pull_range: SplitPullRange,
@@ -584,17 +580,12 @@ def reusable_range_matches_target_window(
     return min(timestamps) >= window.start and max(timestamps) < window.end
 
 
-def reject_invalid_staged(
-    decision: SplitMaterializationDecision,
-    staged: ExistingDatasetState,
-) -> None:
-    if decision.error_message is None:
-        raise RuntimeError("Cannot resume invalid staged split dataset")
-    raise RuntimeError(f"{decision.error_message}: {staged.validation}")
+def reject_invalid_staged(plan: RejectInvalidStagedSplitPlan) -> NoReturn:
+    raise RuntimeError(f"{plan.error_message}: {plan.dataset.validation}")
 
 
 @dataclass(frozen=True, slots=True)
-class _SplitDecisionExecution:
+class _SplitPlanExecution:
     kind: CorpusSplitKind
     plan: BlockPullPlan
     working_dir: Path
@@ -605,125 +596,47 @@ class _SplitDecisionExecution:
     validate_result: ValidationCallback
 
 
-def _require_staged_dataset(
-    kind: CorpusSplitKind,
-    staged: ExistingDatasetState | None,
-) -> ExistingDatasetState:
-    if staged is None:
-        raise RuntimeError(f"{kind.value} staged reuse decision requires staged dataset")
-    return staged
-
-
-def _require_existing_dataset(
-    kind: CorpusSplitKind,
-    existing: ExistingDatasetState | None,
+async def _execute_split_materialization_plan(
+    plan: SplitMaterializationPlan,
     *,
-    label: str,
-) -> ExistingDatasetState:
-    if existing is None:
-        raise RuntimeError(f"{kind.value} {label} decision requires existing dataset")
-    return existing
-
-
-def _require_decision_target_validation(
-    kind: CorpusSplitKind,
-    decision: SplitMaterializationDecision,
-    *,
-    label: str,
-) -> BlockDatasetValidationReport:
-    if decision.target_validation is None:
-        raise RuntimeError(f"{kind.value} {label} decision requires target validation")
-    return decision.target_validation
-
-
-async def _execute_split_materialization_decision(
-    decision: SplitMaterializationDecision,
-    *,
-    existing: ExistingDatasetState | None,
-    staged: ExistingDatasetState | None,
-    execution: _SplitDecisionExecution,
+    execution: _SplitPlanExecution,
 ) -> DatasetBuildResult:
-    kind = execution.kind
-    if decision.action is SplitMaterializationAction.REJECT_INVALID_STAGED:
-        if staged is None:
-            raise RuntimeError(f"Cannot resume invalid staged {kind.value} dataset")
-        reject_invalid_staged(decision, staged)
+    if isinstance(plan, RejectInvalidStagedSplitPlan):
+        reject_invalid_staged(plan)
 
-    if decision.action is SplitMaterializationAction.REUSE_STAGED:
-        staged_dataset = _require_staged_dataset(kind, staged)
-        target_validation = _require_decision_target_validation(
-            kind,
-            decision,
-            label="staged reuse",
-        )
-        execution.emit(decision.status_message)
+    if isinstance(plan, ReuseStagedSplitPlan):
+        execution.emit(plan.status_message)
         return staged_result(
-            staged_dataset,
-            validation=target_validation,
-            outcome=split_outcome(decision.outcome),
+            plan.dataset,
+            validation=plan.validation,
+            outcome=plan.outcome,
         )
 
-    if decision.action is SplitMaterializationAction.REUSE_COMMITTED:
-        existing_dataset = _require_existing_dataset(
-            kind,
-            existing,
-            label="committed reuse",
-        )
-        target_validation = _require_decision_target_validation(
-            kind,
-            decision,
-            label="committed reuse",
-        )
-        execution.emit(decision.status_message)
-        return reused_result(existing_dataset, validation=target_validation)
+    if isinstance(plan, ReuseCommittedSplitPlan):
+        execution.emit(plan.status_message)
+        return reused_result(plan.dataset, validation=plan.validation)
 
-    if decision.action is SplitMaterializationAction.EXTEND_COMMITTED:
-        return await _extend_committed_split(decision, existing=existing, execution=execution)
+    if isinstance(plan, ExtendHistoryCommittedSplitPlan):
+        return await _extend_history_committed_split(plan, execution=execution)
 
-    if decision.action is SplitMaterializationAction.MATERIALIZE_FULL:
-        return await _materialize_full_split(decision, execution=execution)
+    if isinstance(plan, ExtendEvaluationCommittedSplitPlan):
+        return await _extend_evaluation_committed_split(plan, execution=execution)
 
-    raise RuntimeError(f"Unsupported split materialization action: {decision.action}")
+    if isinstance(plan, MaterializeFullSplitPlan):
+        return await _materialize_full_split(plan, execution=execution)
 
-
-async def _extend_committed_split(
-    decision: SplitMaterializationDecision,
-    *,
-    existing: ExistingDatasetState | None,
-    execution: _SplitDecisionExecution,
-) -> DatasetBuildResult:
-    if execution.kind is CorpusSplitKind.HISTORY:
-        return await _extend_history_committed_split(
-            decision,
-            existing=existing,
-            execution=execution,
-        )
-    if execution.kind is CorpusSplitKind.EVALUATION:
-        return await _extend_evaluation_committed_split(
-            decision,
-            existing=existing,
-            execution=execution,
-        )
-    raise RuntimeError(f"Unsupported corpus split kind: {execution.kind}")
+    assert_never(plan)
 
 
 async def _extend_history_committed_split(
-    decision: SplitMaterializationDecision,
+    plan: ExtendHistoryCommittedSplitPlan,
     *,
-    existing: ExistingDatasetState | None,
-    execution: _SplitDecisionExecution,
+    execution: _SplitPlanExecution,
 ) -> DatasetBuildResult:
-    existing_dataset = _require_existing_dataset(
-        execution.kind,
-        existing,
-        label="extension",
-    )
-    if len(decision.pull_ranges) != 1:
-        raise RuntimeError("history extension decision requires one prefix pull range")
-    execution.emit(decision.status_message)
-    prefix_dir = await pull_decision_range_to_dir(
+    execution.emit(plan.status_message)
+    prefix_dir = await pull_plan_range_to_dir(
         block_source=execution.block_source,
-        pull_range=decision.pull_ranges[0],
+        pull_range=plan.prefix,
         window=execution.plan.window,
         working_dir=execution.working_dir,
         materialization=execution.materialization,
@@ -734,32 +647,24 @@ async def _extend_history_committed_split(
         materialization=execution.materialization,
         working_dir=execution.working_dir,
         validate_result=execution.validate_result,
-        source_dirs=(prefix_dir, existing_dataset.path),
-        outcome=split_outcome(decision.outcome),
+        source_dirs=(prefix_dir, plan.existing.path),
+        outcome=CorpusSplitOutcome.EXTENDED,
     )
 
 
 async def _extend_evaluation_committed_split(
-    decision: SplitMaterializationDecision,
+    plan: ExtendEvaluationCommittedSplitPlan,
     *,
-    existing: ExistingDatasetState | None,
-    execution: _SplitDecisionExecution,
+    execution: _SplitPlanExecution,
 ) -> DatasetBuildResult:
-    existing_dataset = _require_existing_dataset(
-        execution.kind,
-        existing,
-        label="extension",
-    )
-    if decision.reusable_range is None:
-        raise RuntimeError("evaluation extension decision requires reusable range")
     source_dirs: list[Path] = []
     source_files, frames = reusable_block_files_and_edges(
-        existing_dataset.path,
-        block_range=decision.reusable_range,
+        plan.existing.path,
+        block_range=plan.reusable_range,
     )
-    for pull_range in decision.pull_ranges:
+    for pull_range in plan.pull_ranges:
         source_dirs.append(
-            await pull_decision_range_to_dir(
+            await pull_plan_range_to_dir(
                 block_source=execution.block_source,
                 pull_range=pull_range,
                 window=execution.plan.window,
@@ -768,7 +673,7 @@ async def _extend_evaluation_committed_split(
                 controller=execution.controller,
             )
         )
-    execution.emit(decision.status_message)
+    execution.emit(plan.status_message)
     return materialize_dataset_from_sources(
         mode=execution.kind.value,
         materialization=execution.materialization,
@@ -777,16 +682,16 @@ async def _extend_evaluation_committed_split(
         source_dirs=source_dirs,
         source_files=source_files,
         frames=frames,
-        outcome=split_outcome(decision.outcome),
+        outcome=CorpusSplitOutcome.EXTENDED,
     )
 
 
 async def _materialize_full_split(
-    decision: SplitMaterializationDecision,
+    plan: MaterializeFullSplitPlan,
     *,
-    execution: _SplitDecisionExecution,
+    execution: _SplitPlanExecution,
 ) -> DatasetBuildResult:
-    execution.emit(decision.status_message)
+    execution.emit(plan.status_message)
     frame = await pull_plan_to_frame(
         block_source=execution.block_source,
         plan=execution.plan,
@@ -804,7 +709,7 @@ async def _materialize_full_split(
         working_dir=execution.working_dir,
         validate_result=execution.validate_result,
         frames=(frame,),
-        outcome=split_outcome(decision.outcome),
+        outcome=plan.outcome,
     )
 
 
@@ -832,7 +737,7 @@ async def _ensure_history_split(
     def validate_result(validation: BlockDatasetValidationReport, _: Path) -> None:
         validate_history_result(validation, history_plan=history_plan)
 
-    decision = plan_history_split_materialization(
+    materialization_plan = plan_history_split_materialization(
         SplitTarget(
             kind=intent.kind.value,
             block_range=history_plan.block_range,
@@ -843,11 +748,9 @@ async def _ensure_history_split(
         validate_target=validate_result,
     )
 
-    return await _execute_split_materialization_decision(
-        decision,
-        existing=existing,
-        staged=staged,
-        execution=_SplitDecisionExecution(
+    return await _execute_split_materialization_plan(
+        materialization_plan,
+        execution=_SplitPlanExecution(
             kind=intent.kind,
             plan=history_plan,
             working_dir=working_dir,
@@ -889,7 +792,7 @@ async def _ensure_evaluation_split(
             expected_chain_id=materialization.expected_chain_id,
         )
 
-    decision = plan_evaluation_split_materialization(
+    materialization_plan = plan_evaluation_split_materialization(
         SplitTarget(
             kind=intent.kind.value,
             block_range=evaluation_plan.block_range,
@@ -901,11 +804,9 @@ async def _ensure_evaluation_split(
         reusable_range_matches_target_window=reusable_range_matches_target_window,
     )
 
-    return await _execute_split_materialization_decision(
-        decision,
-        existing=existing,
-        staged=staged,
-        execution=_SplitDecisionExecution(
+    return await _execute_split_materialization_plan(
+        materialization_plan,
+        execution=_SplitPlanExecution(
             kind=intent.kind,
             plan=evaluation_plan,
             working_dir=working_dir,
