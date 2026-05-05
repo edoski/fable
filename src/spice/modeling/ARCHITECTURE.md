@@ -104,6 +104,7 @@ modeling/
   batch_plan.py           training/inference batch planning
   _runtime_probe.py       private host-warmup and measured-budget helpers
   forward_runtime.py      forward-only warmup, memory measurement, and execution
+  runtime_planning.py     device, backend, seed, precision, and model preparation plans
   training_runtime.py     training warmup, budget planning, and prediction state fitting
   training_runner.py      fit and split metric execution
   training_run.py         neutral training run result envelope
@@ -111,7 +112,6 @@ modeling/
   _fit_policy.py          private best-state and early-stop policy
   objective_runtime.py    objective contract and metric production during training
   inference.py            model prediction over prepared stores
-  scoring_runtime.py      evaluation scoring runtime planning
   scoring.py              model inference -> evaluator bridge
   artifacts.py            artifact loading/validation helpers
   artifact_inference.py   artifact validation -> inference scoring context

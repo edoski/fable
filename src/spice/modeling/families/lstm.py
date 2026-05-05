@@ -7,7 +7,6 @@ from typing import Literal
 from pydantic import Field, field_validator, model_validator
 
 from ...prediction import PredictionOutputSpec
-from .._runtime import require_cuda_device
 from ..models import LSTMBaseline, TemporalModel
 from .base import ModelConfig, ModelTuningSpaceConfig, TunableFieldSpec, TunedModelParams
 from .registry import ModelSpec
@@ -74,23 +73,11 @@ def _build_model(
     return LSTMBaseline(n_features, output_spec, config)
 
 
-def _resolve_training_precision(device) -> str:
-    require_cuda_device(device)
-    return "32-true"
-
-
-def _resolve_compile_enabled(device) -> bool:
-    require_cuda_device(device)
-    return False
-
-
 MODEL_SPEC = ModelSpec(
     model_config_type=LstmModelConfig,
     tuning_space_type=LstmTuningSpaceModelConfig,
     tuned_params_type=LstmTunedModelParams,
     build_model=_build_model,
-    resolve_training_precision=_resolve_training_precision,
-    resolve_compile_enabled=_resolve_compile_enabled,
     tunable_fields=(
         TunableFieldSpec("input_projection_dim", int),
         TunableFieldSpec("hidden_size", int),

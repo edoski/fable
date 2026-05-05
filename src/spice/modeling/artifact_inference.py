@@ -20,8 +20,8 @@ from .dataset_builders import (
     InclusiveEvaluationWindow,
     PreparedInferenceDataset,
 )
+from .runtime_planning import build_cuda_modeling_runtime_plan
 from .scoring import ModelScoringInput
-from .scoring_runtime import build_evaluation_scoring_runtime_plan
 
 
 @dataclass(slots=True)
@@ -106,7 +106,7 @@ def prepare_artifact_inference_context(
             temporal_capability=manifest.temporal_capability,
         ),
     )
-    runtime_plan = build_evaluation_scoring_runtime_plan(
+    runtime_plan = build_cuda_modeling_runtime_plan(
         model_config=loaded_artifact.manifest.model,
         batch_size=config.batch_size,
         deterministic=manifest.training.deterministic,

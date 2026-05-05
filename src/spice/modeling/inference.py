@@ -11,13 +11,14 @@ from ..prediction import (
 from ..prediction.decoding import DecodedPredictionResult, decode_context_from_batch
 from ..temporal.execution_policy import CompiledExecutionPolicyContract
 from ..temporal.problem_store import CompiledProblemStore, IntVector
-from ._runtime import (
-    configure_torch_backends,
-)
 from .forward_runtime import run_planned_model_input_forward
 from .models import TemporalModel
 from .representations import CompiledRepresentationContract
-from .scoring_runtime import EvaluationScoringRuntimePlan
+from .runtime_planning import (
+    ModelingRuntimePlan,
+    modeling_backend_scope,
+    prepare_model_for_runtime,
+)
 
 
 def predict_with_model(
@@ -28,12 +29,12 @@ def predict_with_model(
     execution_policy: CompiledExecutionPolicyContract,
     store: CompiledProblemStore,
     sample_indices: IntVector,
-    runtime_plan: EvaluationScoringRuntimePlan,
+    runtime_plan: ModelingRuntimePlan,
 ) -> DecodedPredictionResult:
     if sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
 
-    model.to(runtime_plan.resolved_device)
+    runtime_model = prepare_model_for_runtime(model, runtime_plan)
     predictions = prediction_contract.allocate_decoded_result(int(sample_indices.shape[0]))
 
     def _decode_batch(batch, outputs) -> None:
@@ -44,12 +45,9 @@ def predict_with_model(
             decode_context_from_batch(batch),
         )
 
-    with configure_torch_backends(
-        resolved_device=runtime_plan.resolved_device,
-        deterministic=runtime_plan.deterministic,
-    ):
+    with modeling_backend_scope(runtime_plan):
         run_planned_model_input_forward(
-            model,
+            runtime_model,
             store=store,
             sample_indices=sample_indices,
             representation_contract=representation_contract,

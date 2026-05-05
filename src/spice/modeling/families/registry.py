@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Any, Generic, TypeVar, cast
 
 import optuna
-import torch
 
 from ...core.specs import (
     coerce_spec_config,
@@ -37,8 +36,6 @@ class ModelSpec(Generic[ModelConfigT, ModelTuningSpaceT, ModelTunedParamsT]):
     tuning_space_type: type[ModelTuningSpaceT]
     tuned_params_type: type[ModelTunedParamsT]
     build_model: Callable[[int, PredictionOutputSpec, ModelConfigT], TemporalModel]
-    resolve_training_precision: Callable[[torch.device], str]
-    resolve_compile_enabled: Callable[[torch.device], bool]
     tunable_fields: tuple[TunableFieldSpec, ...] = ()
     derive_tuned_values: DeriveTunedValues | None = None
     validate_tuning_space: Callable[[ModelConfigT, ModelTuningSpaceT], None] | None = None
@@ -88,22 +85,6 @@ def build_model(
         label="model config",
     )
     return spec.build_model(n_features, output_spec, concrete_config)
-
-
-def resolve_model_training_precision(
-    *,
-    device: torch.device,
-    model_config: ModelConfig[str],
-) -> str:
-    return model_spec(model_config.id).resolve_training_precision(device)
-
-
-def resolve_model_compile_enabled(
-    *,
-    device: torch.device,
-    model_config: ModelConfig[str],
-) -> bool:
-    return model_spec(model_config.id).resolve_compile_enabled(device)
 
 
 def apply_model_tuned_parameters(

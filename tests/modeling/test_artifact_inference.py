@@ -13,7 +13,7 @@ from spice.core.errors import ConfigResolutionError
 from spice.evaluation import coerce_evaluator_config
 from spice.modeling.artifact_inference import prepare_artifact_inference_context
 from spice.modeling.representations import RepresentationRuntimeContext
-from spice.modeling.scoring_runtime import EvaluationScoringRuntimePlan
+from spice.modeling.runtime_planning import ModelingRuntimePlan
 from spice.storage.workflow_roots import CorpusRootHandle, EvaluateWorkflowRoots
 from spice.temporal import TemporalCapability
 from spice.temporal.compilers.observed_time_window import ObservedTimeWindowRuntimeMetadata
@@ -166,9 +166,9 @@ def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_
         lambda path: calls.append(f"load_blocks:{path.name}") or object(),
     )
     monkeypatch.setattr(
-        "spice.modeling.artifact_inference.build_evaluation_scoring_runtime_plan",
+        "spice.modeling.artifact_inference.build_cuda_modeling_runtime_plan",
         lambda **kwargs: calls.append(f"build_runtime:{kwargs['batch_size']}")
-        or EvaluationScoringRuntimePlan(
+        or ModelingRuntimePlan(
             resolved_device=torch.device("cpu"),
             precision="fp32",
             representation_runtime_context=RepresentationRuntimeContext(

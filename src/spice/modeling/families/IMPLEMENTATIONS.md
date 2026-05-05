@@ -65,7 +65,7 @@ An LSTM is a recurrent neural network designed for sequences. Classic recurrent 
 
 For block-fee data, this means the model can learn patterns such as "recent gas pressure has been rising for several rows" or "the fee spike happened earlier in the context and is decaying."
 
-The implementation is CUDA-oriented and does not use compile-time graph capture.
+The family implementation only defines architecture and tuning fields; runtime placement and compile policy belong to modeling runtime planning.
 
 Tunable fields: `input_projection_dim`, `hidden_size`, `num_layers`, `head_hidden_dim`, and `dropout`.
 
@@ -87,7 +87,7 @@ Important constraints:
 | `d_model` divisible by `nhead` | Multi-head attention splits hidden dimensions evenly. |
 | Padding mask supplied | Attention must ignore padded rows. |
 
-Large CUDA runs can use model compilation when the family enables it. Current registered families resolve training precision to `32-true`; no family currently opts into bf16 or fp16 mixed precision.
+Runtime planning currently runs this family with `32-true` precision and no compile-time graph capture.
 
 Tunable fields: `d_model`, `nhead`, `transformer_layers`, `feedforward_multiplier`, `head_hidden_dim`, and `dropout`. `feedforward_multiplier` is sampled but not stored directly; the family derives tuned `feedforward_dim` as `d_model * feedforward_multiplier`.
 

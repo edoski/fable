@@ -10,10 +10,9 @@ import torch
 
 from spice.config.models import TrainingConfig
 from spice.metrics import MetricSet
-from spice.modeling._runtime import CudaModelingRuntime
 from spice.modeling.objective_runtime import CompiledObjectiveRuntime
 from spice.modeling.representations import RepresentationRuntimeContext
-from spice.modeling.scoring_runtime import EvaluationScoringRuntimePlan
+from spice.modeling.runtime_planning import ModelingRuntimePlan
 from spice.modeling.training_runner import (
     TrainingCallbacks,
     TrainingFitSpec,
@@ -21,7 +20,7 @@ from spice.modeling.training_runner import (
     evaluate_training_metrics,
     run_training_fit,
 )
-from spice.modeling.training_runtime import TrainingRuntimePlan
+from spice.modeling.training_runtime import PreparedTrainingRuntime, TrainingRuntimePlan
 from spice.objectives import CompiledObjectiveContract
 
 
@@ -65,44 +64,39 @@ def _objective_runtime(evaluate_metrics_fn=None) -> CompiledObjectiveRuntime:
 
 
 def _patch_training_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
-    runtime = CudaModelingRuntime(
+    runtime_context = RepresentationRuntimeContext(
+        batch_size=1,
+        available_host_memory_bytes=1024,
+    )
+    runtime_plan = ModelingRuntimePlan(
         resolved_device=torch.device("cpu"),
-        representation_runtime_context=RepresentationRuntimeContext(
-            batch_size=1,
-            available_host_memory_bytes=1024,
-        ),
+        precision="fp32",
+        representation_runtime_context=runtime_context,
+        deterministic=None,
+        seed=0,
     )
-    monkeypatch.setattr(
-        "spice.modeling.training_runner.build_cuda_modeling_runtime",
-        lambda **_: runtime,
-    )
-    monkeypatch.setattr(
-        "spice.modeling.training_runner.resolve_model_training_precision",
-        lambda **_: "fp32",
-    )
-    monkeypatch.setattr(
-        "spice.modeling.training_runner.resolve_model_compile_enabled",
-        lambda **_: False,
-    )
-    monkeypatch.setattr(
-        "spice.modeling.training_runner.configure_torch_backends",
-        lambda **_: nullcontext(),
-    )
-    monkeypatch.setattr(
-        "spice.modeling.training_runner.plan_training_runtime",
-        lambda *_, base_runtime_context, **__: TrainingRuntimePlan(
-            runtime_context=base_runtime_context,
-            train_batch_plan=SimpleNamespace(source=[0]),
-            validation_batch_plan=SimpleNamespace(source=[0]),
-            evaluation_scoring_runtime_plan=EvaluationScoringRuntimePlan(
-                resolved_device=torch.device("cpu"),
-                precision="fp32",
-                representation_runtime_context=base_runtime_context,
-                deterministic=None,
-                seed=0,
+
+    def fake_prepare_training_runtime(model, **_kwargs):
+        return PreparedTrainingRuntime(
+            runtime_plan=runtime_plan,
+            fit_model=model,
+            optimizer=cast(torch.optim.Optimizer, SimpleNamespace()),
+            batch_plan=TrainingRuntimePlan(
+                runtime_context=runtime_context,
+                train_batch_plan=cast(Any, SimpleNamespace(source=[0])),
+                validation_batch_plan=cast(Any, SimpleNamespace(source=[0])),
+                evaluation_runtime_plan=runtime_plan,
+                prediction_training_state=None,
             ),
-            prediction_training_state=None,
-        ),
+        )
+
+    monkeypatch.setattr(
+        "spice.modeling.training_runner.prepare_training_runtime",
+        fake_prepare_training_runtime,
+    )
+    monkeypatch.setattr(
+        "spice.modeling.training_runner.modeling_backend_scope",
+        lambda _plan: nullcontext(),
     )
 
 
@@ -176,25 +170,22 @@ def test_training_fit_restores_best_state_and_calls_early_stop_callback(
 def test_evaluate_training_metrics_uses_batch_plan_and_prediction_training_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime = CudaModelingRuntime(
+    runtime_context = RepresentationRuntimeContext(
+        batch_size=1,
+        available_host_memory_bytes=1024,
+    )
+    runtime_plan = ModelingRuntimePlan(
         resolved_device=torch.device("cpu"),
-        representation_runtime_context=RepresentationRuntimeContext(
-            batch_size=1,
-            available_host_memory_bytes=1024,
-        ),
+        precision="fp32",
+        representation_runtime_context=runtime_context,
+        deterministic=True,
+        seed=1,
     )
     monkeypatch.setattr(
-        "spice.modeling.training_runner.build_cuda_modeling_runtime",
-        lambda **_: runtime,
+        "spice.modeling.training_runner.build_cuda_modeling_runtime_plan",
+        lambda **_: runtime_plan,
     )
-    monkeypatch.setattr(
-        "spice.modeling.training_runner.resolve_model_training_precision",
-        lambda **_: "fp32",
-    )
-    monkeypatch.setattr(
-        "spice.modeling.training_runner.configure_torch_backends",
-        lambda **_: nullcontext(),
-    )
+    monkeypatch.setattr("spice.modeling.training_runner.modeling_backend_scope", nullcontext)
 
     seen_training_states: list[object | None] = []
 
@@ -242,7 +233,7 @@ def test_evaluate_training_metrics_uses_batch_plan_and_prediction_training_state
         )
     )
 
-    assert forward_calls[0]["base_runtime_context"] is runtime.representation_runtime_context
+    assert forward_calls[0]["base_runtime_context"] is runtime_context
     assert forward_calls[0]["seed"] == 1
     assert seen_training_states == [prediction_state]
     assert metrics.require("score") == 2.5

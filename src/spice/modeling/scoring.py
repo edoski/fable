@@ -11,7 +11,7 @@ from ..temporal.problem_store import CompiledProblemStore, IntVector
 from .inference import predict_with_model
 from .models import TemporalModel
 from .representations import CompiledRepresentationContract
-from .scoring_runtime import EvaluationScoringRuntimePlan
+from .runtime_planning import ModelingRuntimePlan
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,7 +22,7 @@ class ModelScoringInput:
     execution_policy: CompiledExecutionPolicyContract
     store: CompiledProblemStore
     sample_indices: IntVector
-    runtime_plan: EvaluationScoringRuntimePlan
+    runtime_plan: ModelingRuntimePlan
 
 
 def score_evaluation(

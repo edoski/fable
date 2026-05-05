@@ -43,6 +43,6 @@ Config-facing model-family coercion normalizes invalid payload envelopes to `Con
 
 ## Tuning Adapter
 
-Family registration is the tuning adapter. It owns the typed model config, tuning-space config, tuned-parameter config, model factory, tuning validation hook, tunable field specs, compile policy, and precision policy.
+Family registration is the tuning adapter. It owns the typed model config, tuning-space config, tuned-parameter config, model factory, tuning validation hook, and tunable field specs.
 
 Generic tuning code samples declared categorical fields and applies tuned params by validated config copy through this boundary. Family modules keep architecture rules that are not generic, such as Transformer attention constraints and `feedforward_multiplier` derivation.

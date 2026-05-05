@@ -53,9 +53,9 @@ Batch Plan binds representation batches with prediction targets, orders samples 
 
 ## Training Loop
 
-Training is CUDA-only. It sets seeds, configures deterministic behavior when requested, plans runtime memory, and chooses device-resident batch storage when possible. `_runtime.py` owns coarse CUDA budget discovery and shared budget arithmetic.
+Training is CUDA-only. `runtime_planning.py` builds the executable runtime plan: seed setup, CUDA runtime context, backend determinism, precision, and model placement/compilation. `_runtime.py` owns coarse CUDA budget discovery and shared budget arithmetic.
 
-`training_runtime.plan_training_runtime()` uses the private runtime probe helper for the shared host-warmup and measured-budget mechanics, then performs the gradient-bearing warmup body: unshuffled host Batch Plan, temporary AdamW, one probe step, model-state restore, and cache cleanup. Restore and cleanup run even if the probe fails. The returned prediction training state is semantic-immutable and reused for train, validation, returned training results, and split metrics. The plan also carries the model-bound evaluation scoring runtime used by evaluation objectives.
+`training_runtime.prepare_training_runtime()` prepares the model, optimizer, and batch plan from that runtime plan. `plan_training_runtime()` uses the private runtime probe helper for the shared host-warmup and measured-budget mechanics, then performs the gradient-bearing warmup body: unshuffled host Batch Plan, temporary AdamW, one probe step, model-state restore, and cache cleanup. Restore and cleanup run even if the probe fails. The returned prediction training state is semantic-immutable and reused for train, validation, returned training results, and split metrics. The plan also carries the model-bound runtime plan used by evaluation objectives.
 
 `_epoch_execution` owns the mechanics inside a train or validation epoch. `_fit_policy` owns finite-metric behavior, objective history, strict `min_delta`, best-state tracking, progress payloads, and patience stopping. `training_runner.run_training_fit()` calls callbacks, keeps the best state in memory, restores it before returning, and assembles the public result.
 
@@ -70,7 +70,7 @@ for epoch:
     apply early stopping
 ```
 
-Optimizer is AdamW. Registered model families resolve training precision to `32-true`, and the runtime only supports that precision. The best in-memory state is restored before final artifact persistence.
+Optimizer is AdamW. The runtime plan resolves precision to `32-true`, and the runtime only supports that precision. The best in-memory state is restored before final artifact persistence.
 
 ## Beginner Theory: Loss, Backpropagation, And Optimization
 

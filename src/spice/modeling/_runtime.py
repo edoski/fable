@@ -26,7 +26,6 @@ except ImportError:  # pragma: no cover - fallback path is covered below
 
 IntVector = NDArray[np.int64]
 _CUDA_DEVICE_RESIDENT_BUDGET_FRACTION = 0.5
-_TORCHINDUCTOR_MIN_CUDA_SMS_FOR_AUTO_COMPILE = 68
 ForwardBatchT = TypeVar("ForwardBatchT", bound="ForwardBatch")
 
 
@@ -132,15 +131,6 @@ def require_cuda_device(
         )
     if torch.version.hip is not None:
         raise SpiceOperatorError("Modeling runtime requires NVIDIA CUDA. ROCm/HIP is unsupported.")
-
-
-def device_supports_auto_compile(device: torch.device) -> bool:
-    require_cuda_device(device)
-    device_index = torch.cuda.current_device() if device.index is None else device.index
-    properties = torch.cuda.get_device_properties(device_index)
-    # Mirror TorchInductor's "big GPU" threshold so auto mode skips the path
-    # that immediately warns and falls back on smaller CUDA parts.
-    return properties.multi_processor_count >= _TORCHINDUCTOR_MIN_CUDA_SMS_FOR_AUTO_COMPILE
 
 
 def build_representation_runtime_context(

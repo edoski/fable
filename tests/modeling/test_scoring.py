@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -8,8 +9,8 @@ import torch
 from spice.evaluation import EvaluationRun, EvaluationSummary
 from spice.metrics import MetricSet
 from spice.modeling.representations import RepresentationRuntimeContext
+from spice.modeling.runtime_planning import ModelingRuntimePlan
 from spice.modeling.scoring import ModelScoringInput, score_evaluation
-from spice.modeling.scoring_runtime import EvaluationScoringRuntimePlan
 
 
 def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> None:
@@ -21,7 +22,7 @@ def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> 
         runs=[EvaluationRun(n_events=1, metrics={"profit": 1.0}, metadata={})],
     )
     calls: list[str] = []
-    runtime_plan = EvaluationScoringRuntimePlan(
+    runtime_plan = ModelingRuntimePlan(
         resolved_device=torch.device("cpu"),
         precision="fp32",
         representation_runtime_context=RepresentationRuntimeContext(
@@ -52,15 +53,15 @@ def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> 
 
     result = score_evaluation(
         model_input=ModelScoringInput(
-            model=SimpleNamespace(),
-            prediction_contract=SimpleNamespace(decoded_result_id="offsets"),
-            representation_contract=SimpleNamespace(),
-            execution_policy=SimpleNamespace(name="policy"),
-            store=SimpleNamespace(),
+            model=cast(Any, SimpleNamespace()),
+            prediction_contract=cast(Any, SimpleNamespace(decoded_result_id="offsets")),
+            representation_contract=cast(Any, SimpleNamespace()),
+            execution_policy=cast(Any, SimpleNamespace(name="policy")),
+            store=cast(Any, SimpleNamespace()),
             sample_indices=np.array([2, 4], dtype=np.int64),
             runtime_plan=runtime_plan,
         ),
-        evaluator_contract=FakeEvaluator(),
+        evaluator_contract=cast(Any, FakeEvaluator()),
     )
 
     assert result is summary

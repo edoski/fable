@@ -1,24 +1,21 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 import torch
 
 from spice.core.errors import SpiceOperatorError
 from spice.modeling._runtime import (
+    CudaModelingRuntime,
     build_representation_runtime_context,
     compute_device_resident_budget,
     default_device_resident_safety_margin,
     ensure_cuda_runtime_ready,
     resolve_coarse_device_storage_budget,
 )
-from spice.modeling.families.lstm import LstmModelConfig
-from spice.modeling.families.registry import (
-    resolve_model_compile_enabled,
-    resolve_model_training_precision,
-)
-from spice.modeling.families.transformer import TransformerModelConfig
-from spice.modeling.families.transformer_lstm import TransformerLstmModelConfig
 from spice.modeling.representations import DeviceStorageBudget
+from spice.modeling.runtime_planning import build_cuda_modeling_runtime_plan
 
 
 def test_ensure_cuda_runtime_ready_raises_clear_error_for_broken_cuda_runtime(
@@ -97,98 +94,32 @@ def test_representation_runtime_context_wraps_coarse_device_storage_budget(
     assert context.device_storage_budget == DeviceStorageBudget.coarse(123)
 
 
-def test_transformer_disables_auto_compile_on_cuda() -> None:
-    enabled = resolve_model_compile_enabled(
-        device=torch.device("cuda"),
-        model_config=TransformerModelConfig(
-            dropout=0.1,
-            d_model=16,
-            nhead=4,
-            transformer_layers=2,
-            feedforward_dim=32,
-            head_hidden_dim=8,
+def test_cuda_modeling_runtime_plan_owns_precision_and_backend_facts(monkeypatch) -> None:
+    runtime_context = build_representation_runtime_context(
+        device=torch.device("cpu"),
+        batch_size=8,
+    )
+    monkeypatch.setattr(
+        "spice.modeling.runtime_planning.build_cuda_modeling_runtime",
+        lambda **_: CudaModelingRuntime(
+            resolved_device=torch.device("cpu"),
+            representation_runtime_context=runtime_context,
         ),
     )
 
-    assert enabled is False
-
-
-def test_recurrent_families_disable_auto_compile_on_cuda() -> None:
-    lstm_enabled = resolve_model_compile_enabled(
-        device=torch.device("cuda"),
-        model_config=LstmModelConfig(
-            input_projection_dim=8,
-            hidden_size=16,
-            num_layers=2,
-            dropout=0.1,
-            head_hidden_dim=8,
-        ),
-    )
-    transformer_lstm_enabled = resolve_model_compile_enabled(
-        device=torch.device("cuda"),
-        model_config=TransformerLstmModelConfig(
-            hidden_size=16,
-            num_layers=2,
-            dropout=0.1,
-            d_model=16,
-            nhead=4,
-            transformer_layers=2,
-            feedforward_dim=32,
-            head_hidden_dim=8,
-        ),
+    plan = build_cuda_modeling_runtime_plan(
+        model_config=cast(Any, object()),
+        batch_size=8,
+        deterministic=True,
+        seed=17,
     )
 
-    assert lstm_enabled is False
-    assert transformer_lstm_enabled is False
-
-
-def test_recurrent_families_default_to_fp32_on_cuda() -> None:
-    assert (
-        resolve_model_training_precision(
-            device=torch.device("cuda"),
-            model_config=LstmModelConfig(
-                input_projection_dim=8,
-                hidden_size=16,
-                num_layers=2,
-                dropout=0.1,
-                head_hidden_dim=8,
-            ),
-        )
-        == "32-true"
-    )
-    assert (
-        resolve_model_training_precision(
-            device=torch.device("cuda"),
-            model_config=TransformerLstmModelConfig(
-                hidden_size=16,
-                num_layers=2,
-                dropout=0.1,
-                d_model=16,
-                nhead=4,
-                transformer_layers=2,
-                feedforward_dim=32,
-                head_hidden_dim=8,
-            ),
-        )
-        == "32-true"
-    )
-
-
-def test_transformer_defaults_to_fp32_on_cuda() -> None:
-    assert (
-        resolve_model_training_precision(
-            device=torch.device("cuda"),
-            model_config=TransformerModelConfig(
-                dropout=0.1,
-                d_model=16,
-                nhead=4,
-                transformer_layers=2,
-                feedforward_dim=32,
-                head_hidden_dim=8,
-            ),
-        )
-        == "32-true"
-    )
+    assert plan.resolved_device == torch.device("cpu")
+    assert plan.precision == "32-true"
+    assert plan.representation_runtime_context is runtime_context
+    assert plan.deterministic is True
+    assert plan.seed == 17
+    assert plan.compile_enabled is False
 
 
 def test_default_device_resident_safety_margin_uses_five_percent_floor() -> None:

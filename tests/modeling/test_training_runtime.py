@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -8,7 +9,7 @@ import torch
 
 from spice.config.models import TrainingConfig
 from spice.modeling.representations import DeviceStorageBudget, RepresentationRuntimeContext
-from spice.modeling.scoring_runtime import EvaluationScoringRuntimePlan
+from spice.modeling.runtime_planning import ModelingRuntimePlan
 from spice.modeling.training_runtime import plan_training_runtime
 
 
@@ -95,11 +96,11 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
     )
 
     plan = plan_training_runtime(
-        model,
-        prediction_contract=prediction_contract,
-        execution_policy=SimpleNamespace(),
-        representation_contract=SimpleNamespace(),
-        store=SimpleNamespace(),
+        cast(Any, model),
+        prediction_contract=cast(Any, prediction_contract),
+        execution_policy=cast(Any, SimpleNamespace()),
+        representation_contract=cast(Any, SimpleNamespace()),
+        store=cast(Any, SimpleNamespace()),
         train_sample_indices=np.array([0], dtype=np.int64),
         validation_sample_indices=np.array([1], dtype=np.int64),
         base_runtime_context=runtime_context,
@@ -118,7 +119,7 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
     assert len(fit_state_calls) == 1
     assert plan.prediction_training_state is prediction_state
     assert plan.runtime_context.device_storage_budget == DeviceStorageBudget.measured(900)
-    assert plan.evaluation_scoring_runtime_plan == EvaluationScoringRuntimePlan(
+    assert plan.evaluation_runtime_plan == ModelingRuntimePlan(
         resolved_device=torch.device("cpu"),
         precision="32-true",
         representation_runtime_context=plan.runtime_context,
@@ -173,11 +174,11 @@ def test_plan_training_runtime_restores_model_and_clears_cache_after_probe_failu
 
     with pytest.raises(RuntimeError, match="probe failed"):
         plan_training_runtime(
-            model,
-            prediction_contract=prediction_contract,
-            execution_policy=SimpleNamespace(),
-            representation_contract=SimpleNamespace(),
-            store=SimpleNamespace(),
+            cast(Any, model),
+            prediction_contract=cast(Any, prediction_contract),
+            execution_policy=cast(Any, SimpleNamespace()),
+            representation_contract=cast(Any, SimpleNamespace()),
+            store=cast(Any, SimpleNamespace()),
             train_sample_indices=np.array([0], dtype=np.int64),
             validation_sample_indices=np.array([1], dtype=np.int64),
             base_runtime_context=runtime_context,
