@@ -58,7 +58,7 @@ Completed targeted HPO chains:
 
 The HPO values are tuning/validation objective values. The tuned eval values are held-out `paper_replay_2h` results at `36s`.
 
-Avalanche Transformer-LSTM durable run references: tune job `57549`, train job `57550`, eval job `57551`; tune best trial `17`; tune best value `0.0236`; tune best params `training.learning_rate=0.0001`, `training.weight_decay=0.05`, `model.hidden_size=128`, `model.d_model=256`, `model.dropout=0.1`; train artifact `/scratch.hpc/edoardo.galli3/spice/outputs/artifacts/avalanche/art_b994d827efd0878aa4d8`; train selected epoch `13`; train objective `0.0219`; evaluation id `paper_replay_2h-36s-124a240ff5442623`; eval events `17867`; final eval `profit_over_baseline=0.0133`.
+Avalanche Transformer-LSTM durable run references: tune job `57549`, train job `57550`, eval job `57551`; tune best trial `17`; tune best value `0.0236`; tune best params `training.learning_rate=0.0001`, `training.weight_decay=0.05`, `model.hidden_size=128`, `model.d_model=256`, `model.dropout=0.1`; train artifact `/scratch.hpc/edoardo.galli3/spice/outputs/artifacts/avalanche/art_b994d827efd0878aa4d8`; train selected epoch `13`; train objective `0.0219`; evaluation storage id `paper_replay_2h-36s-124a240ff5442623`; eval events `17867`; final eval `profit_over_baseline=0.0133`.
 
 ### Last Verified Results
 

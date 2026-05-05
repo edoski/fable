@@ -113,7 +113,7 @@ Immutable normalized JSON-ready evaluator config persisted with artifact evaluat
 _Avoid_: live evaluator config, evaluation workflow snapshot
 
 **Benchmark Result Record**:
-One summary-level benchmark observation from a collected evaluate result, including benchmark coordinates, submission facts, artifact/evaluation identity, and aggregate metrics.
+One summary-level benchmark observation from a collected evaluate result, including benchmark coordinates, submission facts, artifact id, evaluation storage id, evaluator id, and aggregate metrics.
 _Avoid_: raw replay dump, CSV row
 
 **Benchmark Result Index**:
@@ -286,7 +286,7 @@ _Avoid_: execution backend
 - A **Temporal Replay Runner** is shared by replay evaluator Adapters after prediction decoding and before **Temporal Accounting**.
 - **Temporal Accounting** is shared by evaluator Adapters after they select temporal decision events.
 - **Workflow Command Selection** builds typed **Workflow Selections** from operator options before config resolution.
-- A **Benchmark Collection Resolver** consumes exact artifact/evaluation ids, the pulled artifact root, and the submitted execution record to produce a collected benchmark evaluation.
+- A **Benchmark Collection Resolver** consumes exact artifact id, evaluation storage id, evaluator id, the pulled artifact root, and the submitted execution record to produce a collected benchmark evaluation.
 - An **Execution Session** is opened for one explicit execution target and used by submission, following, remote transfer, and benchmark collection.
 
 ## Example Dialogue
