@@ -6,7 +6,10 @@ from dataclasses import dataclass
 
 from ..config.models import AcquireConfig, EvaluateConfig, TrainConfig, TuneConfig
 from ..corpus.metadata import DatasetManifest
-from ..modeling.artifact_inference import ArtifactInferenceContext
+from ..modeling.artifact_inference import (
+    ArtifactInferenceContext,
+    prepare_artifact_inference_context,
+)
 from ..modeling.pipeline import TrainingSpec
 from ..storage.workflow_root_materialization import (
     materialize_acquire_roots,
@@ -20,7 +23,7 @@ from ..storage.workflow_roots import (
     TrainWorkflowRoots,
     TuneWorkflowRoots,
 )
-from . import _active_config, _inference_preparation, _training_preflight
+from . import _active_config, _training_preflight
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +46,6 @@ class PreparedTuneWorkflow:
     config: TuneConfig
     roots: TuneWorkflowRoots
     corpus_manifest: DatasetManifest
-    coverage_spec: TrainingSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +82,6 @@ def prepare_tune(config: TuneConfig) -> PreparedTuneWorkflow:
         config=config,
         roots=roots,
         corpus_manifest=preflight.corpus_manifest,
-        coverage_spec=preflight.coverage_spec,
     )
 
 
@@ -89,5 +90,9 @@ def prepare_evaluate(config: EvaluateConfig) -> PreparedEvaluateWorkflow:
     return PreparedEvaluateWorkflow(
         config=config,
         roots=roots,
-        inference_context=_inference_preparation.prepare_inference_context(config, roots),
+        inference_context=prepare_artifact_inference_context(
+            config,
+            corpus=roots.corpus,
+            artifact=roots.artifact,
+        ),
     )

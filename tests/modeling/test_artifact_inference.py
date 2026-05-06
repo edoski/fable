@@ -309,7 +309,7 @@ def test_artifact_inference_context_rejects_delay_beyond_artifact_capability(
         )
 
 
-def test_artifact_inference_context_validates_coverage_before_inference_preparation(
+def test_artifact_inference_context_validates_coverage_before_dataset_preparation(
     tmp_path,
     monkeypatch,
     load_workflow_config,

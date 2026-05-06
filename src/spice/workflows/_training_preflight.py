@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..config.models import TrainConfig, TuneConfig
+from ..config.models import TrainConfig, TuneConfig, TunedParameterSet, TunedProblemParams
 from ..corpus.coverage import training_coverage_requirement, validate_corpus_coverage
 from ..corpus.metadata import DatasetManifest
-from ..modeling.pipeline import TrainingSpec, build_artifact_training_spec
-from ..modeling.tuning_execution import build_tuning_coverage_spec
+from ..modeling.pipeline import (
+    TrainingSpec,
+    build_artifact_training_spec,
+    build_trial_training_spec,
+)
+from ..modeling.tuning import apply_tuned_parameters
 from ..storage.workflow_roots import TrainWorkflowRoots, TuneWorkflowRoots
 
 
@@ -21,7 +25,6 @@ class TrainPreflight:
 @dataclass(frozen=True, slots=True)
 class TunePreflight:
     corpus_manifest: DatasetManifest
-    coverage_spec: TrainingSpec
 
 
 def prepare_train_preflight(
@@ -49,7 +52,7 @@ def prepare_tune_preflight(
     roots: TuneWorkflowRoots,
 ) -> TunePreflight:
     corpus_manifest = roots.corpus.load_manifest()
-    coverage_spec = build_tuning_coverage_spec(
+    coverage_spec = _build_tuning_coverage_spec(
         config,
         roots=roots,
         corpus_manifest=corpus_manifest,
@@ -60,4 +63,35 @@ def prepare_tune_preflight(
         feature_contract=coverage_spec.feature_contract,
         requirement=training_coverage_requirement(coverage_spec.problem_contract),
     )
-    return TunePreflight(corpus_manifest=corpus_manifest, coverage_spec=coverage_spec)
+    return TunePreflight(corpus_manifest=corpus_manifest)
+
+
+def _build_tuning_coverage_spec(
+    config: TuneConfig,
+    *,
+    roots: TuneWorkflowRoots,
+    corpus_manifest: DatasetManifest,
+) -> TrainingSpec:
+    if (
+        config.tuning_space.problem is None
+        or config.tuning_space.problem.lookback_seconds is None
+    ):
+        return build_trial_training_spec(
+            config,
+            corpus=roots.corpus,
+            study=roots.study,
+            corpus_manifest=corpus_manifest,
+        )
+    return build_trial_training_spec(
+        apply_tuned_parameters(
+            config,
+            TunedParameterSet(
+                problem=TunedProblemParams(
+                    lookback_seconds=max(config.tuning_space.problem.lookback_seconds)
+                )
+            ),
+        ),
+        corpus=roots.corpus,
+        study=roots.study,
+        corpus_manifest=corpus_manifest,
+    )

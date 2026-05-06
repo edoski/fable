@@ -212,14 +212,18 @@ def test_tune_preparation_uses_resolved_corpus_manifest(
     )
     captured: dict[str, object] = {}
 
-    def fake_coverage_spec(active_config, *, corpus_manifest, **_kwargs):
+    def fake_build_tuning_coverage_spec(active_config, *, corpus_manifest, **_kwargs):
         captured["chain"] = active_config.chain.name
         captured["manifest_chain"] = corpus_manifest.chain.name
         return SimpleNamespace(problem_contract=object(), feature_contract=object())
 
     monkeypatch.setattr(preparation, "materialize_tune_roots", lambda _config: roots)
     monkeypatch.setattr(CorpusRootHandle, "load_manifest", lambda _self: corpus_manifest)
-    monkeypatch.setattr(_training_preflight, "build_tuning_coverage_spec", fake_coverage_spec)
+    monkeypatch.setattr(
+        _training_preflight,
+        "_build_tuning_coverage_spec",
+        fake_build_tuning_coverage_spec,
+    )
     monkeypatch.setattr(
         _training_preflight,
         "training_coverage_requirement",

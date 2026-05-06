@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import optuna
 from optuna.trial import FrozenTrial, TrialState
 
-from ..config.models import TuneConfig, TunedParameterSet, TunedProblemParams
+from ..config.models import TuneConfig, TunedParameterSet
 from ..core.errors import StateConflictError
 from ..corpus.metadata import DatasetManifest
 from ..storage.study_manifest import (
@@ -32,7 +32,7 @@ from ..storage.study_models import (
 )
 from ..storage.study_optuna import load_or_create_materialized_study
 from .persisted_training import run_persisted_training
-from .pipeline import TrainingSpec, build_trial_training_spec
+from .pipeline import build_trial_training_spec
 from .tuned_config import sample_tuned_parameters
 from .tuning import apply_tuned_parameters
 
@@ -70,37 +70,6 @@ class TuningExecutionCallbacks:
     on_study_start: Callable[[int], None] | None = None
     on_trial_complete: Callable[[TuningTrialProgress], None] | None = None
     on_best_improved: Callable[[TuningBestProgress], None] | None = None
-
-
-def build_tuning_coverage_spec(
-    config: TuneConfig,
-    *,
-    roots: TuneWorkflowRoots,
-    corpus_manifest: DatasetManifest,
-) -> TrainingSpec:
-    if (
-        config.tuning_space.problem is None
-        or config.tuning_space.problem.lookback_seconds is None
-    ):
-        return build_trial_training_spec(
-            config,
-            corpus=roots.corpus,
-            study=roots.study,
-            corpus_manifest=corpus_manifest,
-        )
-    return build_trial_training_spec(
-        apply_tuned_parameters(
-            config,
-            TunedParameterSet(
-                problem=TunedProblemParams(
-                    lookback_seconds=max(config.tuning_space.problem.lookback_seconds)
-                )
-            ),
-        ),
-        corpus=roots.corpus,
-        study=roots.study,
-        corpus_manifest=corpus_manifest,
-    )
 
 
 def open_tuning_execution(

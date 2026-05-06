@@ -74,7 +74,7 @@ def _load_test_evaluate_config(
     )
 
 
-def test_evaluate_workflow_delegates_artifact_inference_preparation(
+def test_evaluate_workflow_uses_prepared_artifact_inference_context(
     tmp_path,
     monkeypatch,
     load_workflow_config,
@@ -286,7 +286,6 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
         lambda _config: SimpleNamespace(
             roots=roots,
             corpus_manifest=SimpleNamespace(),
-            coverage_spec=SimpleNamespace(),
         ),
     )
     monkeypatch.setattr(
