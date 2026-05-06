@@ -13,7 +13,7 @@ from ..storage.artifact import (
     load_artifact_manifest,
     load_training_summary,
 )
-from ..storage.catalog import CatalogArtifactRecord
+from ..storage.catalog.records import CatalogArtifactRecord
 from .planning import BenchmarkPlanEntry
 from .runs import BenchmarkSubmissionRecord
 

@@ -44,7 +44,6 @@ def _roots(config: EvaluateConfig) -> EvaluateWorkflowRoots:
         artifact_id=config.artifact_id,
     )
     return evaluate_roots(
-        config.storage.root,
         corpus=corpus,
         artifact=artifact,
     )

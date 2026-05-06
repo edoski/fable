@@ -23,10 +23,8 @@ from spice.storage.workflow_root_materialization import (
 )
 from spice.storage.workflow_roots import (
     BaselineTrainWorkflowRoots,
+    CorpusRootHandle,
     TunedTrainWorkflowRoots,
-    artifact_root_from_record,
-    corpus_root_from_record,
-    study_root_from_record,
 )
 
 
@@ -222,7 +220,16 @@ def test_evaluate_consumer_roots_resolve_dataset_and_artifact_independently(
 
 def test_corpus_root_handle_loads_manifest(tmp_path, monkeypatch) -> None:
     dataset = _dataset_record(tmp_path, dataset_id="cor_existing")
-    root = corpus_root_from_record(tmp_path, dataset)
+    root = CorpusRootHandle(
+        storage_root=tmp_path,
+        dataset_id=dataset.dataset_id,
+        dataset_name=dataset.dataset_name,
+        chain_name=dataset.chain_name,
+        root_path=dataset.root_path,
+        state_db_path=dataset.state_db_path,
+        history_dir=dataset.root_path / "history",
+        evaluation_dir=dataset.root_path / "evaluation",
+    )
     manifest = object()
     calls: list[object] = []
 
@@ -233,24 +240,6 @@ def test_corpus_root_handle_loads_manifest(tmp_path, monkeypatch) -> None:
 
     assert root.load_manifest() is manifest
     assert calls == [dataset.state_db_path]
-
-
-def test_study_root_from_record_preserves_catalog_paths(tmp_path) -> None:
-    study = _study_record(tmp_path, dataset_id="cor_existing")
-    root = study_root_from_record(tmp_path, study)
-
-    assert root.study_id == study.study_id
-    assert root.root_path == study.root_path
-    assert root.state_db_path == study.state_db_path
-
-
-def test_artifact_root_from_record_preserves_catalog_paths(tmp_path) -> None:
-    artifact = _artifact_record(tmp_path, dataset_id="cor_existing")
-    root = artifact_root_from_record(tmp_path, artifact)
-
-    assert root.artifact_id == artifact.artifact_id
-    assert root.root_path == artifact.root_path
-    assert root.state_db_path == artifact.state_db_path
 
 
 def test_benchmark_root_storage_adapter_resolves_external_study_dataset(

@@ -7,7 +7,7 @@ import pytest
 
 from spice.core.errors import StateLayoutError
 from spice.storage.artifact import load_artifact_manifest
-from spice.storage.catalog import CatalogArtifactRecord, CatalogDatasetRecord
+from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.catalog.index import (
     list_artifact_records,
     list_dataset_records,

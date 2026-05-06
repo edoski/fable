@@ -18,13 +18,13 @@ workflow preparation
 workflow runner
         |
         +--> contracts and services
-        +--> one storage effect
+        +--> explicit storage-owned effect boundaries
         +--> reporter messages
 ```
 
 Workflows receive typed configs. They do not resolve remote target defaults. They do not branch on concrete evaluator or prediction implementation ids.
 
-`preparation.py` is the generic preflight seam. It calls Storage Root Materialization for root handles, then keeps tuned active config, training/tuning coverage preflight, and inference context preparation in focused workflow-owned modules. Runner modules then report progress, call owner packages, and perform one explicit storage effect.
+`preparation.py` is the generic preflight seam. It calls Storage Root Materialization for root handles, then keeps tuned active config, training/tuning coverage preflight, and inference context preparation in focused workflow-owned modules. Runner modules then report progress, call owner packages, and cross explicit storage-owned effect boundaries.
 
 ## Acquire
 
@@ -56,7 +56,7 @@ Train uses complete-root staging because it produces a full artifact root. The w
 TuneConfig
   -> prepare tune roots, manifest, and coverage spec
   -> delegate study opening and trial execution to modeling.tuning_execution
-  -> storage records study-root mutation/reindex effects
+  -> storage records study-root open/reindex and trial mutation/reindex effects
 ```
 
 Tune mutates study state rather than staging an entire root for each trial.

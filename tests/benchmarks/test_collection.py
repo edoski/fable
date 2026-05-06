@@ -31,7 +31,7 @@ from spice.config.models import ArtifactVariant
 from spice.core.errors import SelectorResolutionError, SpiceOperatorError
 from spice.evaluation.registry import coerce_evaluator_config
 from spice.execution.transfer_transaction import TransferredArtifactRoot
-from spice.storage.catalog import CatalogArtifactRecord
+from spice.storage.catalog.records import CatalogArtifactRecord
 
 
 def _evaluate_config(tmp_path: Path) -> EvaluateConfig:

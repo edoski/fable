@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..core.rendering import mapping_fields, metric_string
-from .catalog import CatalogStudyRecord
+from .catalog.records import CatalogStudyRecord
 from .study_models import StudySummary, StudyTrialRecord
 from .study_optuna import list_trial_records, load_study_summary
 

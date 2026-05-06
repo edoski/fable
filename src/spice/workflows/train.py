@@ -8,8 +8,7 @@ from ..core.reporting import Reporter
 from ..modeling.persisted_training import run_persisted_training
 from ..modeling.summary import training_result_fields
 from ..modeling.training_runner import TrainingEpochProgress
-from ..storage.engine import ARTIFACT_ROOT_KIND
-from ..storage.transactions import FullRootTransaction
+from ..storage.transactions import artifact_full_root_transaction
 from ..storage.workflow_roots import (
     TrainWorkflowRoots,
     TunedTrainWorkflowRoots,
@@ -65,13 +64,7 @@ def run(config: TrainConfig, *, reporter: Reporter | None = None) -> None:
     active_reporter.header("train", _workflow_facts(prepared.active_config, roots))
     artifact_dir = roots.artifact.root_path
     history_block_path = roots.corpus.history_dir
-    transaction = FullRootTransaction(
-        storage_root=roots.artifact.storage_root,
-        destination_root=artifact_dir,
-        expected_root_kind=ARTIFACT_ROOT_KIND,
-        purpose="staging",
-        prune_stop_at=artifact_dir.parent.parent,
-    )
+    transaction = artifact_full_root_transaction(roots.artifact, purpose="staging")
     committed = transaction.commit(
         lambda staged_root: run_persisted_training(
             history_block_path,

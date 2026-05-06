@@ -103,7 +103,7 @@ writer receives staged root
 
 Partial commits promote selected paths inside an existing root. Existing-root mutation effects validate the expected root kind and reindex after successful mutation; tune uses this for study state. Evaluation state is recorded through `storage.artifact.record_evaluation_state()` and intentionally does not reindex because artifact catalog rows derive from the manifest, not evaluation summaries.
 
-`workflow_roots.py` exposes root handles and root-handle factories. `workflow_root_materialization.py` derives produced roots and resolves consumed roots; Workflow Preparation consumes those handles for preflight. Storage Transactions own promotion, selected-path commit, and reindex boundaries.
+`workflow_roots.py` exposes root handle models. `workflow_root_materialization.py` is the only storage module that maps selectors, catalog records, and Producer Root Identity into workflow-facing handles; Workflow Preparation consumes those handles for preflight. Storage Transactions own handle-shaped promotion, selected-path commit, mutation, and reindex boundaries.
 
 ## Transfer Support
 

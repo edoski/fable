@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from spice.core.errors import StateLayoutError
-from spice.storage.catalog import CatalogArtifactRecord
+from spice.storage.catalog.records import CatalogArtifactRecord
 from spice.storage.catalog.index import list_artifact_records, upsert_catalog_record
 from spice.storage.engine import RootKind, ensure_state_db, state_db_path
 from spice.storage.lifecycle import delete_catalog_artifact_root

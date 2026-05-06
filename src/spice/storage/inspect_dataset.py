@@ -11,7 +11,7 @@ from ..corpus.metadata import (
     SplitCoverageMetadata,
     SplitRequestMetadata,
 )
-from .catalog import CatalogDatasetRecord
+from .catalog.records import CatalogDatasetRecord
 from .corpus import list_acquire_runs, load_dataset_manifest
 
 

@@ -12,9 +12,8 @@ from ..modeling.tuning_execution import (
     open_tuning_execution,
     run_tuning_execution,
 )
-from ..storage.engine import STUDY_ROOT_KIND
 from ..storage.study_render import study_result_fields
-from ..storage.transactions import record_mutated_root
+from ..storage.transactions import record_study_root_mutation
 from ..storage.workflow_roots import TuneWorkflowRoots
 from .preparation import prepare_tune
 
@@ -70,16 +69,12 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
         roots=roots,
         corpus_manifest=corpus_manifest,
     )
-    record_mutated_root(
-        roots.study.storage_root,
-        root_path=roots.study.root_path,
-        expected_root_kind=STUDY_ROOT_KIND,
+    record_study_root_mutation(
+        roots.study,
         mutation=lambda: None,
     )
-    summary_commit = record_mutated_root(
-        roots.study.storage_root,
-        root_path=roots.study.root_path,
-        expected_root_kind=STUDY_ROOT_KIND,
+    summary_commit = record_study_root_mutation(
+        roots.study,
         mutation=lambda: run_tuning_execution(
             opened,
             config=config,

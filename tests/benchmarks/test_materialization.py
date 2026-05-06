@@ -8,7 +8,7 @@ import yaml
 from spice.benchmarks.planning import plan_benchmark
 from spice.config import EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from spice.core.errors import ConfigResolutionError
-from spice.storage.catalog import CatalogStudyRecord
+from spice.storage.catalog.records import CatalogStudyRecord
 from spice.storage.catalog.index import upsert_catalog_record
 from spice.storage.engine import state_db_path
 from spice.storage.root_identity import produced_artifact_id, produced_study_id

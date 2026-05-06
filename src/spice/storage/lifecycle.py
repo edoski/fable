@@ -14,7 +14,6 @@ from ..core.files import (
     remove_path,
     replace_path_atomic,
 )
-from .catalog import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
 from .catalog.index import (
     ReindexedCatalogRoot,
     list_artifacts_for_dataset,
@@ -25,6 +24,7 @@ from .catalog.index import (
     resolve_dataset_record,
     resolve_study_record,
 )
+from .catalog.records import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
 from .catalog.registry import catalog_record_root_kind, catalog_root_parent_path
 from .catalog.store import delete_catalog_record
 from .engine import RootKind, detect_root_kind, require_root_kind, state_db_path

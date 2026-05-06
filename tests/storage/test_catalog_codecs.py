@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from spice.core.errors import SpiceOperatorError
-from spice.storage.catalog import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
+from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
 from spice.storage.catalog.codecs import (
     decode_remote_catalog_record,
     encode_remote_catalog_record,

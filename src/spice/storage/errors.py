@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..core.errors import SpiceOperatorError
-from .catalog import CatalogArtifactRecord, CatalogStudyRecord
+from .catalog.records import CatalogArtifactRecord, CatalogStudyRecord
 
 
 class DeleteBlockedError(SpiceOperatorError):

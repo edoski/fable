@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Protocol
 
 from ..core.errors import SpiceOperatorError
-from ..storage.catalog import CatalogArtifactRecord, CatalogDatasetRecord
+from ..storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 from ..storage.catalog.codecs import decode_remote_catalog_record
 from ..storage.catalog.index import ReindexedCatalogRoot, resolve_dataset_record
 from ..storage.catalog.materialization import catalog_record_root_path

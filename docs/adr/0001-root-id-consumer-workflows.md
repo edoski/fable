@@ -36,8 +36,8 @@ Existing-root workflow consumers resolve ids into typed root handles before orch
 
 - `storage.workflow_root_materialization` applies exact Storage Selectors for existing roots.
 - `storage.workflow_root_materialization` derives produced-root ids and produced root handles.
-- `workflow_roots.py` carries workflow-facing root handles and root-handle factories.
-- `storage.transactions` carries workflow-facing root mutation boundaries.
+- `workflow_roots.py` carries workflow-facing root handle models.
+- `storage.transactions` carries workflow-facing, handle-shaped root mutation boundaries.
 - `acquire` receives its produced corpus root from storage root materialization.
 - Baseline `train` resolves `dataset_id`, then derives the artifact root.
 - Tuned `train` resolves `study_id`, uses the study's dataset id to resolve the corpus, then derives the artifact root.

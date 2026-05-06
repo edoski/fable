@@ -5,12 +5,14 @@ from pathlib import Path
 
 import pytest
 
+from spice.config.models import ArtifactVariant
 from spice.core.errors import StateConflictError, StateLayoutError
-from spice.storage.catalog import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.catalog.index import ReindexedCatalogRoot
+from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.engine import (
     ARTIFACT_ROOT_KIND,
     DATASET_ROOT_KIND,
+    STUDY_ROOT_KIND,
     RootKind,
     ensure_state_db,
     state_db_path,
@@ -21,7 +23,14 @@ from spice.storage.lifecycle import (
     promote_root_stage,
 )
 from spice.storage.schema import ARTIFACT_TABLES
-from spice.storage.transactions import FullRootTransaction, PartialRootTransaction
+from spice.storage.transactions import (
+    FullRootTransaction,
+    PartialRootTransaction,
+    RootMutation,
+    artifact_full_root_transaction,
+    record_study_root_mutation,
+)
+from spice.storage.workflow_roots import ArtifactRootHandle, StudyRootHandle
 
 
 def test_partial_root_transaction_promotes_selected_paths_and_reindexes(
@@ -96,6 +105,31 @@ def test_full_root_transaction_delegates_stage_policy(tmp_path: Path, monkeypatc
             "prune_stop_at": destination.parent.parent,
         }
     ]
+
+
+def test_artifact_full_root_transaction_derives_storage_policy_from_handle(
+    tmp_path: Path,
+) -> None:
+    storage_root = tmp_path / "outputs"
+    root_path = storage_root / "artifacts" / "ethereum" / "artifact-1"
+    artifact = ArtifactRootHandle(
+        storage_root=storage_root,
+        artifact_id="artifact-1",
+        dataset_id="dataset-1",
+        dataset_name="dataset",
+        chain_name="ethereum",
+        root_path=root_path,
+        state_db_path=root_path / ".spice" / "state.sqlite",
+        variant=ArtifactVariant.BASELINE,
+    )
+
+    transaction = artifact_full_root_transaction(artifact, purpose="training")
+
+    assert transaction.storage_root == storage_root
+    assert transaction.destination_root == root_path
+    assert transaction.expected_root_kind is ARTIFACT_ROOT_KIND
+    assert transaction.prune_stop_at == storage_root / "artifacts"
+    assert transaction.purpose == "training"
 
 
 def test_full_root_transaction_commit_promotes_after_writer_success(
@@ -218,6 +252,46 @@ def test_record_mutated_root_reindexes_after_successful_mutation(
     assert mutation.result == "result"
     assert mutation.reindexed == "reindexed"
     assert calls == ["mutate", "reindex:True:True"]
+
+
+def test_record_study_root_mutation_derives_storage_policy_from_handle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    storage_root = tmp_path / "outputs"
+    root_path = storage_root / "studies" / "ethereum" / "study-1"
+    study = StudyRootHandle(
+        storage_root=storage_root,
+        study_id="study-1",
+        study_name="study",
+        dataset_id="dataset-1",
+        dataset_name="dataset",
+        chain_name="ethereum",
+        root_path=root_path,
+        state_db_path=root_path / ".spice" / "state.sqlite",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_record_mutated_root(storage_root_arg, *, root_path, expected_root_kind, mutation):
+        seen.update(
+            {
+                "storage_root": storage_root_arg,
+                "root_path": root_path,
+                "expected_root_kind": expected_root_kind,
+            }
+        )
+        return RootMutation(result=mutation(), reindexed="reindexed")
+
+    monkeypatch.setattr("spice.storage.transactions.record_mutated_root", fake_record_mutated_root)
+
+    committed = record_study_root_mutation(study, mutation=lambda: "result")
+
+    assert committed.result == "result"
+    assert seen == {
+        "storage_root": storage_root,
+        "root_path": root_path,
+        "expected_root_kind": STUDY_ROOT_KIND,
+    }
 
 
 def test_record_mutated_root_does_not_reindex_after_mutation_failure(

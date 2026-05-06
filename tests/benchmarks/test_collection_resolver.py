@@ -21,7 +21,7 @@ from spice.config import EvaluateConfig, StorageSpec, WorkflowTask
 from spice.config.groups import load_named_group_payload
 from spice.core.errors import SpiceOperatorError
 from spice.evaluation.registry import coerce_evaluator_config
-from spice.storage.catalog import CatalogArtifactRecord
+from spice.storage.catalog.records import CatalogArtifactRecord
 
 
 def _evaluate_config(tmp_path: Path) -> EvaluateConfig:

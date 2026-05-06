@@ -6,7 +6,7 @@ from typer.testing import CliRunner
 
 from spice.cli.app import app
 from spice.execution.transfer_transaction import TransferredArtifactRoot
-from spice.storage.catalog import CatalogArtifactRecord, CatalogDatasetRecord
+from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 
 runner = CliRunner()
 

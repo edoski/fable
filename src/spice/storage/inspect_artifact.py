@@ -15,7 +15,7 @@ from .artifact import (
     load_artifact_manifest,
     load_training_summary,
 )
-from .catalog import CatalogArtifactRecord
+from .catalog.records import CatalogArtifactRecord
 
 
 @dataclass(frozen=True, slots=True)

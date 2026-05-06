@@ -10,8 +10,9 @@ from typing import Generic, TypeVar
 
 from ..core.files import replace_paths_atomic
 from .catalog.index import ReindexedCatalogRoot, reindex_catalog_root
-from .engine import RootKind, require_root_kind, state_db_path
+from .engine import ARTIFACT_ROOT_KIND, STUDY_ROOT_KIND, RootKind, require_root_kind, state_db_path
 from .lifecycle import RootStage, staged_root, validate_root_destination_path
+from .workflow_roots import ArtifactRootHandle, StudyRootHandle
 
 EffectT = TypeVar("EffectT")
 
@@ -106,3 +107,32 @@ def record_mutated_root(
         expected_root_kind=expected_root_kind,
     )
     return RootMutation(result=result, reindexed=reindexed)
+
+
+def artifact_full_root_transaction(
+    artifact: ArtifactRootHandle,
+    *,
+    replace: bool = True,
+    purpose: str = "staging",
+) -> FullRootTransaction:
+    return FullRootTransaction(
+        storage_root=artifact.storage_root,
+        destination_root=artifact.root_path,
+        expected_root_kind=ARTIFACT_ROOT_KIND,
+        replace=replace,
+        purpose=purpose,
+        prune_stop_at=artifact.root_path.parent.parent,
+    )
+
+
+def record_study_root_mutation(
+    study: StudyRootHandle,
+    *,
+    mutation: Callable[[], EffectT],
+) -> RootMutation[EffectT]:
+    return record_mutated_root(
+        study.storage_root,
+        root_path=study.root_path,
+        expected_root_kind=STUDY_ROOT_KIND,
+        mutation=mutation,
+    )

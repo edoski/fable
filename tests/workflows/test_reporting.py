@@ -132,7 +132,7 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
         corpus=corpus,
         artifact_id=config.artifact_id,
     )
-    roots = evaluate_roots(tmp_path / "outputs", corpus=corpus, artifact=artifact)
+    roots = evaluate_roots(corpus=corpus, artifact=artifact)
 
     def fake_prepare_evaluate(active_config):
         calls.append(f"prepare:{active_config.delay_seconds}:{artifact.root_path.name}")
@@ -228,10 +228,13 @@ def test_train_workflow_emits_compact_epoch_output(
     )
     monkeypatch.setattr(train_workflow, "run_persisted_training", fake_run_persisted_training)
 
-    def fake_commit(_self, writer):
-        return SimpleNamespace(result=writer(tmp_path / "stage"))
-
-    monkeypatch.setattr(train_workflow.FullRootTransaction, "commit", fake_commit)
+    monkeypatch.setattr(
+        train_workflow,
+        "artifact_full_root_transaction",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            commit=lambda writer: SimpleNamespace(result=writer(tmp_path / "stage"))
+        ),
+    )
     monkeypatch.setattr(
         train_workflow,
         "training_result_fields",
@@ -325,7 +328,7 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
     monkeypatch.setattr(tune_workflow, "run_tuning_execution", fake_run_tuning_execution)
     monkeypatch.setattr(
         tune_workflow,
-        "record_mutated_root",
+        "record_study_root_mutation",
         lambda *_args, mutation, **_kwargs: SimpleNamespace(result=mutation()),
     )
     monkeypatch.setattr(
