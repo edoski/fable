@@ -7,7 +7,7 @@
 ## Mental Model
 
 ```text
-surface YAML + workflow selection
+surface YAML + produce-root workflow selection
           |
           v
 workflow-shaped surface refs
@@ -19,7 +19,15 @@ named YAML groups loaded from conf/
 owner coercers rebuild concrete nested configs
           |
           v
-AcquireConfig / TrainConfig / TuneConfig / EvaluateConfig
+AcquireConfig / TrainConfig / TuneConfig
+
+root-id evaluate selection
+          |
+          v
+named evaluator/runtime controls
+          |
+          v
+EvaluateConfig
 ```
 
 Configuration has two jobs:
@@ -35,7 +43,7 @@ The config package should not train models, evaluate predictions, acquire blocks
 
 ## Workflow Selection
 
-A workflow selection is unresolved workflow intent. CLI commands build selections from user-facing choices, and benchmark materialization may build them internally while producing durable plan entries. Resolution applies the selection to a surface, then loads named config groups and owner coercers to produce a workflow config.
+A workflow selection is unresolved workflow intent. CLI commands build selections from user-facing choices, and benchmark materialization may build them internally while producing durable plan entries. Produce-root workflows apply the selection to a surface, then load named config groups and owner coercers to produce a workflow config. Evaluate fresh resolution uses exact root ids plus evaluator/runtime controls instead of composing a surface.
 
 Selections usually refer to problem specs by name. Benchmark problem grids may supply an inline `ProblemSpec`; this still uses the same resolution path, and the resolved workflow config stores the full executable problem.
 
@@ -67,7 +75,7 @@ A Concrete Owner Config is the concrete local-spec config selected by an owner i
 
 ## Surface Resolution
 
-Surface resolution is the fresh path from Workflow Selection to Workflow Config. It applies the selection to the Surface, loads named config groups from the resulting workflow-shaped refs, calls owner coercers, and instantiates `AcquireConfig`, `TrainConfig`, `TuneConfig`, or `EvaluateConfig` from already typed pieces.
+Surface resolution is the fresh path from produce-root Workflow Selection to Workflow Config. It applies the selection to the Surface, loads named config groups from the resulting workflow-shaped refs, calls owner coercers, and instantiates `AcquireConfig`, `TrainConfig`, or `TuneConfig` from already typed pieces. Evaluate fresh resolution instantiates `EvaluateConfig` from a Root Consumer Selection plus evaluator/runtime controls.
 
 Surface resolution does not hydrate raw resolved snapshots. Resolved snapshots are already past selection and surface ownership.
 

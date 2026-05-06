@@ -102,7 +102,7 @@ evaluation objective
   -> optimize evaluator metric
 ```
 
-For train and tune, an evaluation objective must name the same benchmark as the selected evaluation config. Evaluate workflow can run a diagnostic evaluator directly; the artifact still validates against the training semantics stored in its manifest.
+For train and tune, an evaluation objective must declare an `evaluator_id`, and the selected evaluation config id must match it. Evaluate workflow can run a diagnostic evaluator directly; the artifact still validates against the training semantics stored in its manifest.
 
 Runtime evaluator contracts carry typed evaluator configs. Persisted evaluation summaries carry immutable Evaluation Config Snapshots, and artifact storage codecs serialize and hydrate those snapshots at the persisted-state boundary.
 

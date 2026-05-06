@@ -46,8 +46,8 @@ Execution policies own action availability. `strict_deadline_miss` currently pre
 Prediction metrics are computed on validation/test batches during model training. Evaluation metrics are separate and run through evaluator contracts after decoding.
 
 ```text
-prediction metrics: train/validation loss, accuracy, profit-like diagnostics
-evaluation metrics: replay or rollout economics over decoded offsets
+prediction metrics: train/validation loss, offset accuracy, macro F1, log-fee regression diagnostics
+evaluation metrics: temporal replay economics over decoded offsets
 ```
 
 The `min_block_fee_multitask` training state stores semantic CPU tensors for class weights and fee normalization. Runtime loss calls may resolve cached device/dtype views, but those cached views must not change the semantic tensors. This lets Training Runtime Plan fit the state once and reuse it across probe, train, validation, returned result metadata, and split metrics.

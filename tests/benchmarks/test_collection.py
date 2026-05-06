@@ -149,7 +149,7 @@ def _loaded_summary(config):
             model=SimpleNamespace(id="lstm"),
             problem_id="current_row_nominal",
             prediction_id="icdcs_2026",
-            objective=SimpleNamespace(id="profit_poisson_replay"),
+            objective=SimpleNamespace(id="evaluation"),
             variant=ArtifactVariant.BASELINE,
             study_id=None,
             study=None,

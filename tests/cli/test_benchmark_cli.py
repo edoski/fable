@@ -101,7 +101,7 @@ def _benchmark_record() -> BenchmarkResultRecord:
         model_id="lstm",
         problem_id="current_row_nominal",
         prediction_id="icdcs_2026",
-        objective_id="profit_poisson_replay",
+        objective_id="evaluation",
         evaluator_id="poisson_replay",
         delay_seconds=36,
         variant="baseline",

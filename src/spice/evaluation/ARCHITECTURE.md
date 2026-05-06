@@ -59,7 +59,7 @@ decoded result id
         EvaluationSummary
 ```
 
-Evaluators never call models or prediction heads. The modeling scoring service performs inference and passes decoded results to evaluator contracts.
+Evaluators never call models or prediction heads. The `modeling.scoring` bridge performs inference and passes decoded results to evaluator contracts.
 
 ## Decoded Result Boundary
 

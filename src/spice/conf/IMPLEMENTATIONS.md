@@ -73,4 +73,4 @@ Benchmarks: `priority_fee_ablation`, `unsafe_core_fee_dynamics_ablation`, `safe_
 
 ## Invariants
 
-Config ids name concrete specs. Surface fields point at existing specs. Objective benchmark ids must match training/tuning evaluation configs. Estimated-block runnable paths are archived, not available as current configs.
+Config ids name concrete specs. Surface fields point at existing specs. Evaluation objectives declare `evaluator_id`, and train/tune selected evaluation config ids must match it. Estimated-block runnable paths are archived, not available as current configs.

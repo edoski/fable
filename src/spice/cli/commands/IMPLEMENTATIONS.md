@@ -13,7 +13,7 @@ terminal command
 
 The CLI should be ergonomic. Lower layers should stay explicit and typed.
 
-Workflow commands keep explicit Typer signatures, collect sparse option values, then call config-owned workflow command resolution before local acquire or remote submission.
+Workflow commands keep explicit Typer signatures, construct typed Workflow Selection models, then call `resolve_workflow_config()` before local acquire or remote submission.
 
 Command apps use the operator-error adapter at registration time. Domain functions raise `SpiceOperatorError`; CLI converts it to Click/Typer rendering without leaking Click into core.
 

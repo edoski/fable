@@ -6,11 +6,11 @@
 
 ## Theory
 
-Command modules should translate user language into sparse option values for the owning package boundary. They should not reimplement package internals. This keeps command behavior predictable and makes the Python APIs useful outside the terminal.
+Command modules should translate user language into typed selections or storage selectors for the owning package boundary. They should not reimplement package internals. This keeps command behavior predictable and makes the Python APIs useful outside the terminal.
 
 ## Invariants
 
-Workflow commands pass sparse option values to config-owned command resolution once. Storage commands map options into storage selectors and render Storage Operator Outcomes. Transfer commands use storage selectors over existing catalog records. Config commands use config group APIs. Command modules may format output, but persistence, match policy, and ML behavior remain elsewhere.
+Workflow commands construct typed Workflow Selection models and call `resolve_workflow_config()` once. Storage commands map options into storage selectors and render Storage Operator Outcomes. Transfer commands use storage selectors over existing catalog records. Config commands use config group APIs. Command modules may format output, but persistence, match policy, and ML behavior remain elsewhere.
 
 Remote workflow commands and transfer commands share the same remote-target option. The default target is provided by the CLI layer, then passed downstream explicitly.
 
