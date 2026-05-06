@@ -15,13 +15,17 @@ from web3.exceptions import Web3RPCError
 from ...acquisition.errors import (
     OversizedAcquisitionRequestError,
     TransientAcquisitionError,
+    UnsupportedAcquisitionSourceError,
 )
 from ...acquisition.types import BlockPullPlan, BlockRange, TimestampRange
 from ...config.models import ChainSpec, ResolvedRpcEndpointConfig
 from ...corpus.contract import CanonicalBlockRow, RpcBlock, build_canonical_block_row
+from ...corpus.metadata import CorpusAcquisitionSourceRequirements
 from .transport import build_async_web3
 
 FEE_HISTORY_REWARD_PERCENTILES = (10.0, 50.0, 90.0)
+PRIORITY_FEE_PERCENTILES_ENRICHMENT = "priority_fee_percentiles"
+SUPPORTED_RPC_ENRICHMENTS = frozenset({PRIORITY_FEE_PERCENTILES_ENRICHMENT})
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,11 +45,22 @@ class _FeeHistoryRow:
 class BlockRpcClient:
     rpc_endpoint: ResolvedRpcEndpointConfig
     chain: ChainSpec
-    include_priority_fees: bool = False
+    source_requirements: CorpusAcquisitionSourceRequirements
+    _include_priority_fee_percentiles: bool = field(init=False, repr=False)
     _web3: AsyncWeb3 = field(init=False, repr=False)
     _fee_history_unsupported: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        unsupported = self.source_requirements.optional_enrichments - SUPPORTED_RPC_ENRICHMENTS
+        if unsupported:
+            raise UnsupportedAcquisitionSourceError(
+                "RPC acquisition adapter does not support source enrichment(s): "
+                + ", ".join(sorted(unsupported))
+            )
+        self._include_priority_fee_percentiles = (
+            PRIORITY_FEE_PERCENTILES_ENRICHMENT
+            in self.source_requirements.optional_enrichments
+        )
         self._web3 = build_async_web3(self.rpc_endpoint, self.chain)
 
     async def close(self) -> None:
@@ -135,7 +150,7 @@ class BlockRpcClient:
             self._validate_range_blocks(blocks, start=start, end=end)
             fee_history_rows = (
                 await self._fee_history_rows(start, end)
-                if self.include_priority_fees
+                if self._include_priority_fee_percentiles
                 else self._null_fee_history_rows(end - start)
             )
             return [
@@ -196,7 +211,7 @@ class BlockRpcClient:
         if block_count <= 0:
             return []
         if self._fee_history_unsupported:
-            return self._null_fee_history_rows(block_count)
+            raise self._unsupported_fee_history_error()
         try:
             response = await self._web3.eth.fee_history(
                 block_count,
@@ -206,10 +221,12 @@ class BlockRpcClient:
         except Web3RPCError as exc:
             if self._is_unsupported_fee_history_error(exc):
                 self._fee_history_unsupported = True
-                return self._null_fee_history_rows(block_count)
+                raise self._unsupported_fee_history_error() from exc
             raise
         if not isinstance(response, Mapping):
-            raise TypeError(f"Unsupported eth_feeHistory payload type: {type(response)!r}")
+            raise self._unsupported_fee_history_error(
+                f"unsupported eth_feeHistory payload type: {type(response)!r}"
+            )
         raw_response = {str(key): value for key, value in response.items()}
         oldest_block = self._quantity_int(raw_response.get("oldestBlock"))
         if oldest_block != start:
@@ -218,28 +235,51 @@ class BlockRpcClient:
             )
         rewards = raw_response.get("reward")
         if not isinstance(rewards, list | tuple):
-            raise TypeError("eth_feeHistory reward must be a sequence")
+            raise self._unsupported_fee_history_error("eth_feeHistory reward must be a sequence")
         if len(rewards) != block_count:
-            raise ValueError(
-                f"eth_feeHistory reward length mismatch: expected {block_count}, got {len(rewards)}"
+            raise self._unsupported_fee_history_error(
+                "eth_feeHistory reward length mismatch: "
+                f"expected {block_count}, got {len(rewards)}"
             )
         rows: list[_FeeHistoryRow] = []
         for index, reward_row in enumerate(rewards):
             if not isinstance(reward_row, list | tuple):
-                raise TypeError(f"eth_feeHistory reward row {index} must be a sequence")
+                raise self._unsupported_fee_history_error(
+                    f"eth_feeHistory reward row {index} must be a sequence"
+                )
             if len(reward_row) != len(FEE_HISTORY_REWARD_PERCENTILES):
-                raise ValueError(
+                raise self._unsupported_fee_history_error(
                     f"eth_feeHistory reward row {index} length mismatch: "
                     f"expected {len(FEE_HISTORY_REWARD_PERCENTILES)}, got {len(reward_row)}"
                 )
+            try:
+                p10 = self._quantity_int(reward_row[0])
+                p50 = self._quantity_int(reward_row[1])
+                p90 = self._quantity_int(reward_row[2])
+            except Exception as exc:
+                raise self._unsupported_fee_history_error(
+                    f"eth_feeHistory reward row {index} contains unparsable values"
+                ) from exc
             rows.append(
                 _FeeHistoryRow(
-                    priority_fee_p10=self._quantity_int(reward_row[0]),
-                    priority_fee_p50=self._quantity_int(reward_row[1]),
-                    priority_fee_p90=self._quantity_int(reward_row[2]),
+                    priority_fee_p10=p10,
+                    priority_fee_p50=p50,
+                    priority_fee_p90=p90,
                 )
             )
         return rows
+
+    @staticmethod
+    def _unsupported_fee_history_error(
+        detail: str | None = None,
+    ) -> UnsupportedAcquisitionSourceError:
+        message = (
+            "RPC provider cannot produce eth_feeHistory required by "
+            f"{PRIORITY_FEE_PERCENTILES_ENRICHMENT}"
+        )
+        if detail is not None:
+            message = f"{message}: {detail}"
+        return UnsupportedAcquisitionSourceError(message)
 
     @staticmethod
     def _null_fee_history_rows(block_count: int) -> list[_FeeHistoryRow]:

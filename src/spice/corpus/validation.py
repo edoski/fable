@@ -62,11 +62,23 @@ def _finalize_validation_status(report: BlockDatasetValidationReport) -> None:
     report.status = "error" if report.errors else "clean"
 
 
-def _coerce_validation_frame(frame: pl.DataFrame) -> pl.DataFrame:
-    missing = [column for column in VALIDATION_COLUMNS if column not in frame.columns]
+def _coerce_validation_frame(
+    frame: pl.DataFrame,
+    *,
+    required_columns: frozenset[str],
+) -> pl.DataFrame:
+    expected_columns = tuple(dict.fromkeys((*VALIDATION_COLUMNS, *sorted(required_columns))))
+    missing = [column for column in expected_columns if column not in frame.columns]
     if missing:
         raise ValueError(
             "Block dataset is missing required validation columns: " + ", ".join(missing)
+        )
+    null_required = [
+        column for column in sorted(required_columns) if frame[column].null_count() > 0
+    ]
+    if null_required:
+        raise ValueError(
+            "Block dataset has null required source columns: " + ", ".join(null_required)
         )
     return frame.select(
         [
@@ -171,12 +183,14 @@ def validate_contiguous_block_frame(
     *,
     dataset_path: Path,
     expected_chain_id: int,
+    required_columns: frozenset[str] = frozenset(),
 ) -> BlockDatasetValidationReport:
     report = BlockDatasetValidationReport(dataset_path=dataset_path)
     return _validate_block_frame(
         frame,
         report=report,
         expected_chain_id=expected_chain_id,
+        required_columns=required_columns,
     )
 
 
@@ -187,6 +201,7 @@ def validate_exact_window_frame(
     expected_chain_id: int,
     expected_start_timestamp: int,
     expected_end_timestamp: int,
+    required_columns: frozenset[str] = frozenset(),
 ) -> BlockDatasetValidationReport:
     report = BlockDatasetValidationReport(
         dataset_path=dataset_path,
@@ -199,6 +214,7 @@ def validate_exact_window_frame(
         expected_chain_id=expected_chain_id,
         expected_start_timestamp=expected_start_timestamp,
         expected_end_timestamp=expected_end_timestamp,
+        required_columns=required_columns,
     )
 
 
@@ -209,9 +225,13 @@ def _validate_block_frame(
     expected_chain_id: int,
     expected_start_timestamp: int | None = None,
     expected_end_timestamp: int | None = None,
+    required_columns: frozenset[str] = frozenset(),
 ) -> BlockDatasetValidationReport:
     try:
-        validation_frame = _coerce_validation_frame(frame)
+        validation_frame = _coerce_validation_frame(
+            frame,
+            required_columns=required_columns,
+        )
         summary = _summarize_validation_frame(validation_frame)
     except Exception as exc:
         report.errors.append(str(exc))

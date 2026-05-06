@@ -44,6 +44,7 @@ def materialize_dataset(
     validation = validate_block_dataset(
         dataset_dir,
         expected_chain_id=materialization.expected_chain_id,
+        required_columns=materialization.required_columns,
     )
     validate_result(validation, dataset_dir)
     return DatasetBuildResult(
@@ -85,6 +86,7 @@ def materialize_dataset_from_sources(
     validation = validate_block_dataset(
         dataset_dir,
         expected_chain_id=materialization.expected_chain_id,
+        required_columns=materialization.required_columns,
     )
     validate_result(validation, dataset_dir)
     return DatasetBuildResult(

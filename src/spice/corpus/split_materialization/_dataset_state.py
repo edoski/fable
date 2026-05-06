@@ -18,6 +18,7 @@ def validate_block_dataset(
     path: Path,
     *,
     expected_chain_id: int,
+    required_columns: frozenset[str] = frozenset(),
 ) -> BlockDatasetValidationReport:
     try:
         frame = load_block_frame(path)
@@ -27,6 +28,7 @@ def validate_block_dataset(
         frame,
         dataset_path=path,
         expected_chain_id=expected_chain_id,
+        required_columns=required_columns,
     )
 
 
@@ -34,6 +36,7 @@ def load_existing_dataset(
     path: Path,
     *,
     expected_chain_id: int,
+    required_columns: frozenset[str] = frozenset(),
 ) -> ExistingDatasetState | None:
     if not has_block_files(path):
         return None
@@ -55,6 +58,7 @@ def load_existing_dataset(
             frame,
             dataset_path=path,
             expected_chain_id=expected_chain_id,
+            required_columns=required_columns,
         ),
         file_count=len(iter_block_files(path)),
     )

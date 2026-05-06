@@ -69,11 +69,16 @@ def _planning_spec(config: AcquireConfig) -> CorpusCapabilityPlanningSpec:
     )
 
 
-def _split_materialization_spec(config: AcquireConfig) -> CorpusSplitMaterializationSpec:
+def _split_materialization_spec(
+    config: AcquireConfig,
+    *,
+    required_columns: frozenset[str],
+) -> CorpusSplitMaterializationSpec:
     return CorpusSplitMaterializationSpec(
         chain_name=config.chain.name,
         expected_chain_id=config.chain.runtime.chain_id,
         chunk_size=config.acquisition.chunk_size,
+        required_columns=required_columns,
     )
 
 
@@ -93,7 +98,10 @@ async def assemble_corpus(
     roots = request.roots
     emit = status or _noop_status
     planning_context = build_corpus_capability_planning_context(_planning_spec(config))
-    materialization = _split_materialization_spec(config)
+    materialization = _split_materialization_spec(
+        config,
+        required_columns=planning_context.source_requirements.required_columns,
+    )
     initial_plan = await planning_context.initial_plan(block_source)
     history_plan = initial_plan.history_plan
     evaluation_plan = initial_plan.evaluation_plan

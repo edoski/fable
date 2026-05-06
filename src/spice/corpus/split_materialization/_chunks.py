@@ -35,6 +35,7 @@ class ParquetBlockPullSink:
             self.output_dir,
             plan=plan,
             expected_chain_id=self.materialization.expected_chain_id,
+            required_columns=self.materialization.required_columns,
         )
 
     def write_rows(self, rows: list[CanonicalBlockRow]) -> None:
@@ -91,6 +92,7 @@ def completed_prefix_end(
     *,
     plan: BlockPullPlan,
     expected_chain_id: int,
+    required_columns: frozenset[str],
 ) -> int:
     if not output_dir.exists():
         return plan.block_range.start
@@ -111,6 +113,7 @@ def completed_prefix_end(
         frame,
         dataset_path=output_dir,
         expected_chain_id=expected_chain_id,
+        required_columns=required_columns,
     )
     if validation.status != "clean":
         raise RuntimeError(f"Cannot resume from invalid partial block dataset: {validation}")

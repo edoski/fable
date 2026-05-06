@@ -55,7 +55,7 @@ Loads scan recursively, skip hidden paths, combine chunks, and sort by `block_nu
 
 ## Corpus Assembly
 
-Corpus acquisition has two public Interfaces: `acquisition_source_requirements()` for configuring the acquisition Adapter, and `assemble_corpus()` for dry-run planning or committed corpus publication. Corpus Capability Planning owns history sizing and refill decisions. Corpus Acquisition Stage owns staging roots, split sequencing, dataset provenance publication, state DB staging, selected-path commit, cleanup, and preserve-on-failure behavior. Corpus Split Materialization owns history/evaluation dataset reuse, extension, rebuild, validation, and parquet IO. Its internal policy assesses staged and committed split candidates against the active Split Intent, then returns an executable plan for staged reuse, committed reuse, extension, full materialization, or invalid staged rejection. Private implementation modules keep effects local: candidate state loading, parquet chunk IO, source reuse/copying, acquisition pulls, target invariants, and executable plan execution. When extending a split, plan execution computes missing pull ranges and reusable overlap, copies whole reusable parquet chunks, and rewrites only edge or newly pulled ranges.
+Corpus acquisition has two public Interfaces: `acquisition_source_requirements()` for configuring the acquisition Adapter, and `assemble_corpus()` for dry-run planning or committed corpus publication. Corpus Capability Planning owns history sizing and refill decisions. Corpus Acquisition Stage owns staging roots, split sequencing, dataset provenance publication, state DB staging, selected-path commit, cleanup, and preserve-on-failure behavior. Corpus Split Materialization owns history/evaluation dataset reuse, extension, rebuild, validation, and parquet IO. Its internal policy assesses staged and committed split candidates against the active Split Intent and active required source columns, then returns an executable plan for staged reuse, committed reuse, extension, full materialization, or invalid staged rejection. Private implementation modules keep effects local: candidate state loading, parquet chunk IO, source reuse/copying, acquisition pulls, target invariants, and executable plan execution. When extending a split, plan execution computes missing pull ranges and reusable overlap, copies whole reusable parquet chunks, and rewrites only edge or newly pulled ranges.
 
 | Materialization outcome | Behavior |
 | --- | --- |
@@ -65,6 +65,8 @@ Corpus acquisition has two public Interfaces: `acquisition_source_requirements()
 | Extension | Pull missing prefix/suffix ranges and reuse overlapping clean parquet chunks or trimmed edge frames. |
 | Full materialization | Create when no committed split exists; rebuild when committed data exists but cannot satisfy the target. |
 | Completed-prefix resume | Pull sinks resume only from a clean contiguous partial dataset starting at the plan start. |
+
+All reuse and resume decisions validate active `required_columns`. A clean block range with null priority-fee columns is not clean for a corpus whose feature contract requires priority-fee source facts.
 
 History refill is bounded. Assembly first requests an estimated history window from planning, asks planning to count valid capability samples, and expands the window up to a small internal cap if observed block cadence under-requested usable rows.
 

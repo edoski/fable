@@ -17,6 +17,7 @@ class CorpusSplitMaterializationSpec:
     chain_name: str
     expected_chain_id: int
     chunk_size: int
+    required_columns: frozenset[str]
 
 
 @dataclass(slots=True)

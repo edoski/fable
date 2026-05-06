@@ -56,3 +56,23 @@ def test_validate_exact_window_frame_reports_out_of_range_rows() -> None:
     assert report.below_start_count == 1
     assert report.above_end_count == 1
     assert any("out-of-range timestamps" in error for error in report.errors)
+
+
+def test_validate_contiguous_block_frame_requires_source_facts() -> None:
+    rows = make_block_rows(
+        3,
+        start_block=300,
+        start_timestamp=3_000,
+        chain_id=1,
+    )
+    rows[1]["priority_fee_p50"] = None
+
+    report = validate_contiguous_block_frame(
+        pl.DataFrame(rows),
+        dataset_path=Path("/tmp/history"),
+        expected_chain_id=1,
+        required_columns=frozenset({"priority_fee_p50"}),
+    )
+
+    assert report.status == "error"
+    assert any("null required source columns: priority_fee_p50" in error for error in report.errors)

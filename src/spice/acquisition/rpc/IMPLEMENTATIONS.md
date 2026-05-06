@@ -27,7 +27,9 @@ Main operations:
 | Estimate recent interval | Sample recent blocks to estimate seconds per block. |
 | Fetch block batch | Use Web3 batch requests, then canonicalize rows. |
 
-`eth_feeHistory` is only requested when corpus source requirements include the feature-owned `priority_fee_percentiles` enrichment. Gas utilization is derived from canonical block fields, so no-priority datasets do not need fee-history RPC calls.
+`BlockRpcClient` receives generic corpus source requirements at construction. It rejects unknown enrichments before acquisition starts and maps `priority_fee_percentiles` to `eth_feeHistory`. Gas utilization is derived from canonical block fields, so no-priority datasets do not need fee-history RPC calls.
+
+When priority-fee percentiles are required, missing `eth_feeHistory` support or malformed reward rows are fatal. The client must not publish null priority-fee columns for a corpus whose active feature contract declared those columns as required source facts.
 
 Binary search is needed because block timestamps are monotonic enough for range lookup, but the chain does not expose "block at timestamp" as a native RPC call.
 
@@ -90,6 +92,7 @@ The refill exists because nominal block timing can underestimate how much real h
 | Row-count mismatch | RPC returned incomplete or unexpected payloads. |
 | Scheduler stall | No request can make progress. |
 | Unsupported payload shape | RPC block response cannot become canonical row. |
+| Unsupported source enrichment | Provider cannot produce a required optional source fact such as `priority_fee_percentiles`. |
 
 ## Extension Pattern
 

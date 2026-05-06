@@ -40,6 +40,7 @@ def validate_evaluation_result(
     evaluation_dir: Path,
     evaluation_plan: BlockPullPlan,
     expected_chain_id: int,
+    required_columns: frozenset[str],
 ) -> None:
     exact_validation = validate_exact_window_frame(
         load_block_frame(evaluation_dir),
@@ -47,6 +48,7 @@ def validate_evaluation_result(
         expected_chain_id=expected_chain_id,
         expected_start_timestamp=evaluation_plan.window.start,
         expected_end_timestamp=evaluation_plan.window.end,
+        required_columns=required_columns,
     )
     if exact_validation.status != "clean":
         raise ValueError(f"Canonical evaluation dataset validation failed: {exact_validation}")

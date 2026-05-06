@@ -47,17 +47,20 @@ def _write_block_dataset_dir(
     chain_id: int = 1,
     chunk_size: int = 2,
     chain_name: str = "ethereum",
+    null_columns: frozenset[str] = frozenset(),
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+    rows = make_block_rows(
+        row_count,
+        start_block=start_block,
+        start_timestamp=start_timestamp,
+        chain_id=chain_id,
+    )
+    for row in rows:
+        for column in null_columns:
+            row[column] = None
     frame = canonicalize_block_frame(
-        pl.DataFrame(
-            make_block_rows(
-                row_count,
-                start_block=start_block,
-                start_timestamp=start_timestamp,
-                chain_id=chain_id,
-            )
-        )
+        pl.DataFrame(rows)
     )
     for start in range(0, frame.height, chunk_size):
         chunk = frame.slice(start, min(chunk_size, frame.height - start))
@@ -80,6 +83,29 @@ def _materialization() -> CorpusSplitMaterializationSpec:
         chain_name="ethereum",
         expected_chain_id=1,
         chunk_size=2,
+        required_columns=frozenset(
+            {"block_number", "timestamp", "chain_id", "base_fee_per_gas"}
+        ),
+    )
+
+
+def _priority_fee_materialization() -> CorpusSplitMaterializationSpec:
+    return CorpusSplitMaterializationSpec(
+        chain_name="ethereum",
+        expected_chain_id=1,
+        chunk_size=2,
+        required_columns=frozenset(
+            {
+                "block_number",
+                "timestamp",
+                "chain_id",
+                "base_fee_per_gas",
+                "priority_fee_p10",
+                "priority_fee_p50",
+                "priority_fee_p90",
+                "priority_fee_spread",
+            }
+        ),
     )
 
 
@@ -124,9 +150,13 @@ class _RangeSource:
         return None
 
 
-def _session(source: _RangeSource) -> CorpusSplitMaterializationSession:
+def _session(
+    source: _RangeSource,
+    *,
+    materialization: CorpusSplitMaterializationSpec | None = None,
+) -> CorpusSplitMaterializationSession:
     return CorpusSplitMaterializationSession(
-        materialization=_materialization(),
+        materialization=_materialization() if materialization is None else materialization,
         block_source=source,
         controller=_controller(),
     )
@@ -230,6 +260,38 @@ def test_history_split_materialization_rejects_invalid_staged_dataset(tmp_path) 
     with pytest.raises(RuntimeError, match="Cannot resume invalid staged history dataset"):
         asyncio.run(
             _session(source).fulfill(
+                CorpusSplitIntent(
+                    kind=CorpusSplitKind.HISTORY,
+                    output_dir=tmp_path / "history",
+                    working_dir=tmp_path / "work",
+                    plan=plan,
+                )
+            )
+        )
+
+    assert source.requests == []
+    assert not (tmp_path / "history").exists()
+
+
+def test_history_split_materialization_rejects_staged_missing_required_priority_facts(
+    tmp_path,
+) -> None:
+    _write_block_dataset_dir(
+        tmp_path / "work" / "history",
+        start_block=100,
+        row_count=4,
+        start_timestamp=1_000,
+        null_columns=frozenset({"priority_fee_p50"}),
+    )
+    source = _RangeSource()
+    plan = _plan_for_window(
+        TimestampRange(start=1_000, end=1_048),
+        start_block=100
+    )
+
+    with pytest.raises(RuntimeError, match="null required source columns: priority_fee_p50"):
+        asyncio.run(
+            _session(source, materialization=_priority_fee_materialization()).fulfill(
                 CorpusSplitIntent(
                     kind=CorpusSplitKind.HISTORY,
                     output_dir=tmp_path / "history",
@@ -475,3 +537,35 @@ def test_evaluation_split_materialization_rebuilds_stale_exact_range(tmp_path) -
     assert result.outcome is CorpusSplitOutcome.REBUILT
     assert source.requests == [(100, 102), (102, 104)]
     assert load_block_frame(result.path)["timestamp"].to_list() == [1_000, 1_012, 1_024, 1_036]
+
+
+def test_evaluation_split_materialization_rebuilds_committed_missing_required_priority_facts(
+    tmp_path,
+) -> None:
+    _write_block_dataset_dir(
+        tmp_path / "evaluation",
+        start_block=100,
+        row_count=4,
+        start_timestamp=1_000,
+        null_columns=frozenset({"priority_fee_p10", "priority_fee_spread"}),
+    )
+    source = _RangeSource()
+    plan = _plan_for_window(
+        TimestampRange(start=1_000, end=1_048),
+        start_block=100
+    )
+
+    result = asyncio.run(
+        _session(source, materialization=_priority_fee_materialization()).fulfill(
+            CorpusSplitIntent(
+                kind=CorpusSplitKind.EVALUATION,
+                output_dir=tmp_path / "evaluation",
+                working_dir=tmp_path / "work",
+                plan=plan,
+            )
+        )
+    )
+
+    assert result.outcome is CorpusSplitOutcome.REBUILT
+    assert source.requests == [(100, 102), (102, 104)]
+    assert load_block_frame(result.path)["priority_fee_spread"].null_count() == 0

@@ -83,9 +83,9 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
     history_windows: list[TimestampRange] = []
 
     class FakeAcquireClient:
-        def __init__(self, rpc_endpoint, chain, *, include_priority_fees=False) -> None:
+        def __init__(self, rpc_endpoint, chain, source_requirements) -> None:
             del rpc_endpoint
-            assert include_priority_fees is False
+            assert "priority_fee_percentiles" not in source_requirements.optional_enrichments
             self.chain = chain
             self._planned_windows: list[BlockPullPlan] = []
 
@@ -207,9 +207,9 @@ def test_acquire_failure_preserves_staging_and_rerun_resumes(
     fail_history_tail = True
 
     class FakeAcquireClient:
-        def __init__(self, rpc_endpoint, chain, *, include_priority_fees=False) -> None:
+        def __init__(self, rpc_endpoint, chain, source_requirements) -> None:
             del rpc_endpoint
-            assert include_priority_fees is False
+            assert "priority_fee_percentiles" not in source_requirements.optional_enrichments
             self.chain = chain
 
         async def close(self) -> None:
@@ -285,8 +285,8 @@ def test_acquire_dry_run_emits_compact_output(
     reporter = Reporter(stream=output)
 
     class FakeAcquireClient:
-        def __init__(self, rpc_endpoint, chain, *, include_priority_fees=False) -> None:
-            del rpc_endpoint, chain, include_priority_fees
+        def __init__(self, rpc_endpoint, chain, source_requirements) -> None:
+            del rpc_endpoint, chain, source_requirements
 
         async def close(self) -> None:
             return None
@@ -311,7 +311,7 @@ def test_acquire_dry_run_emits_compact_output(
     assert not roots.corpus.state_db_path.exists()
 
 
-def test_acquire_maps_priority_fee_source_requirement_to_rpc_enrichment(
+def test_acquire_passes_priority_fee_source_requirement_to_rpc_adapter(
     tmp_path,
     monkeypatch,
     load_workflow_config,
@@ -330,12 +330,12 @@ def test_acquire_maps_priority_fee_source_requirement_to_rpc_enrichment(
             "acquisition": base_config.acquisition.model_copy(update={"dry_run": True}),
         }
     )
-    include_flags: list[bool] = []
+    required_enrichments: list[frozenset[str]] = []
 
     class FakeAcquireClient:
-        def __init__(self, rpc_endpoint, chain, *, include_priority_fees=False) -> None:
+        def __init__(self, rpc_endpoint, chain, source_requirements) -> None:
             del rpc_endpoint, chain
-            include_flags.append(include_priority_fees)
+            required_enrichments.append(source_requirements.optional_enrichments)
 
         async def close(self) -> None:
             return None
@@ -355,4 +355,4 @@ def test_acquire_maps_priority_fee_source_requirement_to_rpc_enrichment(
 
     run_acquire(config)
 
-    assert include_flags == [True]
+    assert required_enrichments == [frozenset({"priority_fee_percentiles"})]

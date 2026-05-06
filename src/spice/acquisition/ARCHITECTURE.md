@@ -12,7 +12,7 @@ Training quality begins with data provenance. Raw acquisition must keep enough m
 
 Acquisition does not define ML targets, train models, score predictions, write parquet datasets, or publish corpus roots. It schedules block-source pulls and emits ordered canonical rows to a caller-provided sink. Corpus Assembly decides how fetched rows become a corpus root.
 
-Corpus planning owns source requirements. Acquisition adapters receive those requirements only after the workflow maps them to adapter settings. For the RPC adapter, the generic `priority_fee_percentiles` enrichment enables priority-fee history fetching; the acquisition package still emits canonical rows and does not know why a feature set needed them.
+Corpus planning owns source requirements. Acquisition adapters receive those requirements at construction and decide whether they can materially produce the requested source facts. For the RPC adapter, the generic `priority_fee_percentiles` enrichment maps to `eth_feeHistory`; unsupported enrichments fail before acquisition starts. The acquisition package still emits canonical rows and does not know why a feature set needed them.
 
 ## Invariants
 
@@ -29,6 +29,9 @@ AcquireConfig
     |
     v
 provider/chain endpoint
+    |
+    v
+adapter requirement binding
     |
     v
 block range plans

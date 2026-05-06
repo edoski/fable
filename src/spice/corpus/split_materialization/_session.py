@@ -72,10 +72,12 @@ async def _ensure_history_split(
     existing = load_existing_dataset(
         intent.output_dir,
         expected_chain_id=materialization.expected_chain_id,
+        required_columns=materialization.required_columns,
     )
     staged = load_existing_dataset(
         intent.working_dir / "history",
         expected_chain_id=materialization.expected_chain_id,
+        required_columns=materialization.required_columns,
     )
 
     def validate_result(validation: BlockDatasetValidationReport, _: Path) -> None:
@@ -120,10 +122,12 @@ async def _ensure_evaluation_split(
     existing = load_existing_dataset(
         intent.output_dir,
         expected_chain_id=materialization.expected_chain_id,
+        required_columns=materialization.required_columns,
     )
     staged = load_existing_dataset(
         intent.working_dir / "evaluation",
         expected_chain_id=materialization.expected_chain_id,
+        required_columns=materialization.required_columns,
     )
 
     def validate_result(validation: BlockDatasetValidationReport, dataset_dir: Path) -> None:
@@ -132,6 +136,7 @@ async def _ensure_evaluation_split(
             evaluation_dir=dataset_dir,
             evaluation_plan=evaluation_plan,
             expected_chain_id=materialization.expected_chain_id,
+            required_columns=materialization.required_columns,
         )
 
     materialization_plan = plan_evaluation_split_materialization(
