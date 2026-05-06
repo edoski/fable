@@ -55,7 +55,7 @@ Batch Plan binds representation batches with prediction targets, orders samples 
 
 Training is CUDA-only. `runtime_planning.py` builds the executable runtime plan: seed setup, CUDA runtime context, backend determinism, precision, and model placement/compilation. `_runtime.py` owns coarse CUDA budget discovery and shared budget arithmetic.
 
-`training_runtime.prepare_training_runtime()` prepares the model, optimizer, and batch plan from that runtime plan. `plan_training_runtime()` uses the private runtime probe helper for the shared host-warmup and measured-budget mechanics, then performs the gradient-bearing warmup body: unshuffled host Batch Plan, temporary AdamW, one probe step, model-state restore, and cache cleanup. Restore and cleanup run even if the probe fails. The returned prediction training state is semantic-immutable and reused for train, validation, returned training results, and split metrics. The plan also carries the model-bound runtime plan used by evaluation objectives.
+`training_runtime.prepare_training_runtime()` prepares the model, optimizer, and batch plan from that runtime plan. `plan_training_runtime()` consumes the whole `ModelingRuntimePlan`, uses the private runtime probe helper for the shared host-warmup and measured-budget mechanics, then performs the gradient-bearing warmup body: unshuffled host Batch Plan, temporary AdamW, one probe step, model-state restore, and cache cleanup. Restore and cleanup run even if the probe fails. The returned prediction training state is semantic-immutable and reused for train, validation, returned training results, and split metrics. The plan also carries the model-bound runtime plan used by evaluation objectives.
 
 `_epoch_execution` owns the mechanics inside a train or validation epoch. `_fit_policy` owns finite-metric behavior, objective history, strict `min_delta`, best-state tracking, progress payloads, and patience stopping. `training_runner.run_training_fit()` calls callbacks, keeps the best state in memory, restores it before returning, and assembles the public result.
 
@@ -106,7 +106,7 @@ sample_indices
 
 `DecodedOffsets` is the current candidate-offset decoded result ABI consumed by evaluators.
 
-Forward-only inference and split-metric passes use `forward_runtime`: host warmup Batch Plan with disabled device-storage budget, private measured-budget wrapper around a one-batch forward probe, final Batch Plan with the measured budget, then model forward execution. Normal forward measurement does not clear CUDA cache; cache clearing is limited to Batch Plan OOM fallback and destructive training-probe cleanup.
+Forward-only inference and split-metric passes use `forward_runtime`: callers pass one `ModelingRuntimePlan`, then runtime performs a host warmup Batch Plan with disabled device-storage budget, private measured-budget wrapper around a one-batch forward probe, final Batch Plan with the measured budget, then model forward execution. Normal forward measurement does not clear CUDA cache; cache clearing is limited to Batch Plan OOM fallback and destructive training-probe cleanup.
 
 ## Scoring Service
 
@@ -118,7 +118,7 @@ validate evaluator accepts prediction contract
   -> evaluator.run(store, execution_policy, decoded_offsets)
 ```
 
-This keeps evaluation scoring independent from training-loop details while making device, precision, runtime context, determinism, and seed explicit.
+This keeps evaluation scoring independent from training-loop details while making device, precision, runtime context, determinism, seed, and compile policy explicit through `EvaluationScoringRuntimePlan`.
 
 ## Artifact Persistence
 

@@ -46,7 +46,7 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
         f"samples={prepared.sample_count}"
     )
     evaluation = score_evaluation(
-        model_input=inference_context.scoring_input,
+        scoring_plan=inference_context.scoring_plan,
         evaluator_contract=inference_context.evaluator_contract,
     )
     runtime_summary = build_evaluation_runtime_summary(

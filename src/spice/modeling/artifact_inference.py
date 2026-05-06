@@ -21,7 +21,7 @@ from .dataset_builders import (
     PreparedInferenceDataset,
 )
 from .runtime_planning import build_cuda_modeling_runtime_plan
-from .scoring import ModelScoringInput
+from .scoring import EvaluationScoringRuntimePlan
 
 
 @dataclass(slots=True)
@@ -30,7 +30,7 @@ class ArtifactInferenceContext:
     prepared: PreparedInferenceDataset
     delay_seconds: int
     evaluator_contract: CompiledEvaluatorContract
-    scoring_input: ModelScoringInput
+    scoring_plan: EvaluationScoringRuntimePlan
 
 
 def prepare_artifact_inference_context(
@@ -112,7 +112,7 @@ def prepare_artifact_inference_context(
         deterministic=manifest.training.deterministic,
         seed=manifest.training.seed,
     )
-    scoring_input = ModelScoringInput(
+    scoring_plan = EvaluationScoringRuntimePlan(
         model=loaded_artifact.model,
         prediction_contract=prediction_contract,
         representation_contract=loaded_artifact.representation_contract,
@@ -126,7 +126,7 @@ def prepare_artifact_inference_context(
         prepared=prepared,
         delay_seconds=delay_seconds,
         evaluator_contract=evaluator_contract,
-        scoring_input=scoring_input,
+        scoring_plan=scoring_plan,
     )
 
 

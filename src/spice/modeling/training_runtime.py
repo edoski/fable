@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 import torch
@@ -63,10 +63,8 @@ def plan_training_runtime(
     store: CompiledProblemStore,
     train_sample_indices: IntVector,
     validation_sample_indices: IntVector,
-    base_runtime_context: RepresentationRuntimeContext,
-    resolved_device: torch.device,
+    runtime_plan: ModelingRuntimePlan,
     training_config: TrainingConfig,
-    precision: str,
 ) -> TrainingRuntimePlan:
     train_temporal_facts = execution_policy.prepare_temporal_facts(
         store,
@@ -81,7 +79,7 @@ def plan_training_runtime(
         temporal_facts=train_temporal_facts,
     )
     planned_runtime_context = measured_runtime_context(
-        base_runtime_context,
+        runtime_plan.representation_runtime_context,
         build_warmup_plan=lambda runtime_context: build_prediction_batch_plan(
             store,
             temporal_facts=train_temporal_facts,
@@ -89,7 +87,7 @@ def plan_training_runtime(
             prediction_contract=prediction_contract,
             execution_policy=execution_policy,
             runtime_context=runtime_context,
-            resolved_device=resolved_device,
+            resolved_device=runtime_plan.resolved_device,
             seed=training_config.seed,
             shuffle=False,
         ),
@@ -98,9 +96,9 @@ def plan_training_runtime(
             warmup_plan=warmup_plan,
             prediction_contract=prediction_contract,
             prediction_training_state=prediction_training_state,
-            resolved_device=resolved_device,
+            resolved_device=runtime_plan.resolved_device,
             training_config=training_config,
-            precision=precision,
+            precision=runtime_plan.precision,
         ),
     )
     train_batch_plan = build_prediction_batch_plan(
@@ -110,7 +108,7 @@ def plan_training_runtime(
         prediction_contract=prediction_contract,
         execution_policy=execution_policy,
         runtime_context=planned_runtime_context,
-        resolved_device=resolved_device,
+        resolved_device=runtime_plan.resolved_device,
         seed=training_config.seed,
         shuffle=True,
     )
@@ -121,7 +119,7 @@ def plan_training_runtime(
         prediction_contract=prediction_contract,
         execution_policy=execution_policy,
         runtime_context=planned_runtime_context,
-        resolved_device=resolved_device,
+        resolved_device=runtime_plan.resolved_device,
         seed=training_config.seed,
         shuffle=False,
     )
@@ -129,12 +127,9 @@ def plan_training_runtime(
         runtime_context=planned_runtime_context,
         train_batch_plan=train_batch_plan,
         validation_batch_plan=validation_batch_plan,
-        evaluation_runtime_plan=ModelingRuntimePlan(
-            resolved_device=resolved_device,
-            precision=precision,
+        evaluation_runtime_plan=replace(
+            runtime_plan,
             representation_runtime_context=planned_runtime_context,
-            deterministic=training_config.deterministic,
-            seed=training_config.seed,
         ),
         prediction_training_state=prediction_training_state,
     )
@@ -166,10 +161,8 @@ def prepare_training_runtime(
             store=store,
             train_sample_indices=train_sample_indices,
             validation_sample_indices=validation_sample_indices,
-            base_runtime_context=runtime_plan.representation_runtime_context,
-            resolved_device=runtime_plan.resolved_device,
+            runtime_plan=runtime_plan,
             training_config=training_config,
-            precision=runtime_plan.precision,
         )
     optimizer = torch.optim.AdamW(
         fit_model.parameters(),

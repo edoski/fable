@@ -10,7 +10,7 @@ from spice.evaluation import EvaluationRun, EvaluationSummary
 from spice.metrics import MetricSet
 from spice.modeling.representations import RepresentationRuntimeContext
 from spice.modeling.runtime_planning import ModelingRuntimePlan
-from spice.modeling.scoring import ModelScoringInput, score_evaluation
+from spice.modeling.scoring import EvaluationScoringRuntimePlan, score_evaluation
 
 
 def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> None:
@@ -24,7 +24,7 @@ def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> 
     calls: list[str] = []
     runtime_plan = ModelingRuntimePlan(
         resolved_device=torch.device("cpu"),
-        precision="fp32",
+        precision="32-true",
         representation_runtime_context=RepresentationRuntimeContext(
             batch_size=8,
             available_host_memory_bytes=1024,
@@ -52,7 +52,7 @@ def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> 
     monkeypatch.setattr("spice.modeling.scoring.predict_with_model", fake_predict_with_model)
 
     result = score_evaluation(
-        model_input=ModelScoringInput(
+        scoring_plan=EvaluationScoringRuntimePlan(
             model=cast(Any, SimpleNamespace()),
             prediction_contract=cast(Any, SimpleNamespace(decoded_result_id="offsets")),
             representation_contract=cast(Any, SimpleNamespace()),

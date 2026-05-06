@@ -204,17 +204,9 @@ _Avoid_: batch source
 Fit execution module that owns runtime setup, epoch execution, objective tracking, best-state selection, and split metric evaluation.
 _Avoid_: training loop helper
 
-**Forward Runtime Plan**:
-Modeling module that owns forward-only host warmup, CUDA memory measurement, final batch planning, and model forward execution.
-_Avoid_: ad hoc inference probe
-
-**Training Runtime Plan**:
-Modeling module that owns the destructive gradient-bearing training probe, restores model state, and returns the reusable prediction training state plus planned runtime context.
-_Avoid_: warmup side effect
-
-**Evaluation Scoring Runtime Plan**:
-Modeling plan for model-bound evaluator scoring. It carries resolved device, precision, representation runtime context, backend determinism, and seed into inference scoring.
-_Avoid_: scoring batch size, inference setup
+**Modeling Runtime Plan**:
+Modeling-owned executable runtime fact set for model-bound training, inference, and evaluator scoring. It carries device, precision, representation runtime context, backend determinism, seed, and compile policy; runtime modules use it for host warmup, CUDA memory measurement, final batch planning, model preparation, forward execution, and destructive training-probe restoration.
+_Avoid_: ad hoc inference probe, scoring batch size, warmup side effect
 
 **Training Fit Policy**:
 Training Runner internal policy for finite metrics, history append order, objective improvement, best-state tracking, progress payloads, and early-stop decisions.
@@ -282,8 +274,8 @@ _Avoid_: execution backend
 - An **Action Space** is derived by an execution policy from a problem store and selected temporal samples.
 - A **Training Runner** consumes prepared training data and produces fitted model state plus runtime training metrics.
 - A **Batch Plan** is built by the **Training Runner** and inference paths after runtime memory budget is known, carrying the prepared **Action Space** into inputs, targets, and decode.
-- A **Forward Runtime Plan** builds the warmup and final **Batch Plans** for inference and split-metric forward passes.
-- A **Training Runtime Plan** gives the **Training Runner** final train/validation **Batch Plans**, a measured runtime context, one reusable prediction training state, and an **Evaluation Scoring Runtime Plan** for objective evaluator scoring.
+- A **Modeling Runtime Plan** drives training, inference, split-metric forward passes, and model-bound evaluator scoring without callers passing device, precision, seed, or runtime context fragments.
+- A **Training Runtime Plan** gives the **Training Runner** final train/validation **Batch Plans**, a measured runtime context, one reusable prediction training state, and a **Modeling Runtime Plan** for objective evaluator scoring.
 - A **Training Fit Policy** is internal to the **Training Runner** and does not change model math or callback ownership.
 - A **Decoded Result ABI** is produced by a prediction contract and accepted by evaluator contracts by decoded-result id.
 - An **Objective Runtime** turns validation metrics or model-bound evaluator scoring into objective metrics for the **Training Runner**.

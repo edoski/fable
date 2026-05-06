@@ -9,7 +9,7 @@ from spice.core.errors import ConfigResolutionError
 from spice.evaluation import EvaluationSummary
 from spice.metrics import MetricDescriptor, MetricSet
 from spice.modeling.objective_runtime import ObjectiveMetricContext, compile_objective_runtime
-from spice.modeling.scoring import ModelScoringInput
+from spice.modeling.scoring import EvaluationScoringRuntimePlan
 from spice.objectives import ObjectiveConfig, ObjectiveDirection
 
 
@@ -63,10 +63,10 @@ def test_evaluation_objective_runtime_scores_with_same_runtime_facts(
         total_events=1,
         runs=[],
     )
-    seen_contexts: list[tuple[ModelScoringInput, object]] = []
+    seen_contexts: list[tuple[EvaluationScoringRuntimePlan, object]] = []
 
-    def fake_score_evaluation(*, model_input, evaluator_contract):
-        seen_contexts.append((model_input, evaluator_contract))
+    def fake_score_evaluation(*, scoring_plan, evaluator_contract):
+        seen_contexts.append((scoring_plan, evaluator_contract))
         return summary
 
     monkeypatch.setattr(
@@ -101,14 +101,14 @@ def test_evaluation_objective_runtime_scores_with_same_runtime_facts(
     assert runtime.contract.evaluator_id == "poisson_replay_2h"
     assert result == summary.metrics
     assert len(seen_contexts) == 1
-    model_input, seen_evaluator_contract = seen_contexts[0]
-    assert model_input.model is context.model
-    assert model_input.prediction_contract is context.prediction_contract
-    assert model_input.representation_contract is context.representation_contract
-    assert model_input.execution_policy is context.execution_policy
-    assert model_input.store is context.store
-    assert model_input.sample_indices is context.sample_indices
-    assert model_input.runtime_plan is context.runtime_plan
+    scoring_plan, seen_evaluator_contract = seen_contexts[0]
+    assert scoring_plan.model is context.model
+    assert scoring_plan.prediction_contract is context.prediction_contract
+    assert scoring_plan.representation_contract is context.representation_contract
+    assert scoring_plan.execution_policy is context.execution_policy
+    assert scoring_plan.store is context.store
+    assert scoring_plan.sample_indices is context.sample_indices
+    assert scoring_plan.runtime_plan is context.runtime_plan
     assert seen_evaluator_contract is evaluator_contract
 
 

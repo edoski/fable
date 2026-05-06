@@ -70,7 +70,7 @@ def _patch_training_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     runtime_plan = ModelingRuntimePlan(
         resolved_device=torch.device("cpu"),
-        precision="fp32",
+        precision="32-true",
         representation_runtime_context=runtime_context,
         deterministic=None,
         seed=0,
@@ -220,7 +220,7 @@ def test_evaluate_training_metrics_uses_batch_plan_and_prediction_training_state
     )
     runtime_plan = ModelingRuntimePlan(
         resolved_device=torch.device("cpu"),
-        precision="fp32",
+        precision="32-true",
         representation_runtime_context=runtime_context,
         deterministic=True,
         seed=1,
@@ -277,7 +277,6 @@ def test_evaluate_training_metrics_uses_batch_plan_and_prediction_training_state
         )
     )
 
-    assert forward_calls[0]["base_runtime_context"] is runtime_context
-    assert forward_calls[0]["seed"] == 1
+    assert forward_calls[0]["runtime_plan"] is runtime_plan
     assert seen_training_states == [prediction_state]
     assert metrics.require("score") == 2.5

@@ -17,7 +17,7 @@ from ..temporal.problem_store import CompiledProblemStore, IntVector
 from .models import TemporalModel
 from .representations import CompiledRepresentationContract
 from .runtime_planning import ModelingRuntimePlan
-from .scoring import ModelScoringInput, score_evaluation
+from .scoring import EvaluationScoringRuntimePlan, score_evaluation
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +93,7 @@ def compile_objective_runtime(
         if context is None:
             raise ValueError("evaluation objective runtime requires objective metric context")
         return score_evaluation(
-            model_input=ModelScoringInput(
+            scoring_plan=EvaluationScoringRuntimePlan(
                 model=context.model,
                 prediction_contract=context.prediction_contract,
                 representation_contract=context.representation_contract,

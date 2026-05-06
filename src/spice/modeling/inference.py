@@ -52,10 +52,7 @@ def predict_with_model(
             sample_indices=sample_indices,
             representation_contract=representation_contract,
             execution_policy=execution_policy,
-            base_runtime_context=runtime_plan.representation_runtime_context,
-            resolved_device=runtime_plan.resolved_device,
-            precision=runtime_plan.precision,
-            seed=runtime_plan.seed,
+            runtime_plan=runtime_plan,
             on_outputs=_decode_batch,
         )
     return predictions

@@ -49,13 +49,13 @@ Artifact Inference Context
   +--> call Temporal Dataset Preparation Interface
   |
   v
-ModelScoringInput
+EvaluationScoringRuntimePlan
   +--> prepared store
   +--> representation/prediction/execution/evaluation contracts
   +--> scoring runtime plan
   |
   v
-score_evaluation(model_input, evaluator_contract)
+score_evaluation(scoring_plan, evaluator_contract)
   |
   +--> evaluator checks accepted decoded-result id
   +--> predict_with_model()
@@ -73,7 +73,7 @@ Persisted training writes model files and artifact state into the directory supp
 
 Tuning Execution is centralized in `modeling.tuning_execution`. It opens compatible study state, validates resume counts, runs Optuna trials in temporary artifact directories, records trial metadata, and returns storage-owned study summaries. Workflows resolve roots, validate coverage, attach reporter callbacks, and delegate study reindex effects to storage.
 
-During training, `Objective Runtime` owns objective metric production. Validation objectives return validation metrics directly. Evaluation objectives receive an `ObjectiveMetricContext`, construct `ModelScoringInput`, and call the generic model-to-evaluator scoring bridge; the training loop no longer builds evaluator scoring details inline.
+During training, `Objective Runtime` owns objective metric production. Validation objectives return validation metrics directly. Evaluation objectives receive an `ObjectiveMetricContext`, construct an `EvaluationScoringRuntimePlan`, and call the generic model-to-evaluator scoring bridge; the training loop no longer builds evaluator scoring details inline.
 
 ## Dataset Builders
 
@@ -135,4 +135,4 @@ modeling/
 
 Add a model family for a new neural architecture. Add a dataset builder for a new tensorization strategy. Add scoring behavior only when it is generic model-to-evaluator bridging; evaluator-specific scoring belongs in `evaluation`.
 
-Runtime planning is intentionally split from fit policy. A `RepresentationRuntimeContext` carries a `DeviceStorageBudget`, which names whether CUDA-resident batch storage is disabled, coarse, or measured. Forward scoring and training both perform a host warmup before final batch planning, but training owns the destructive gradient-bearing probe and model-state restoration. Batch planning consumes the budget and caller-prepared temporal facts or Action Space; it does not prepare policy facts, measure CUDA memory, or revalidate selected-sample alignment. `training_runner.py` remains the public fit interface and keeps callback, best-state, and result assembly ownership.
+Runtime planning is intentionally split from fit policy. `ModelingRuntimePlan` is the unit callers pass into training, inference, split-metric forward passes, and model-bound evaluator scoring; callers do not pass device, precision, seed, or runtime-context fragments around the seam. A `RepresentationRuntimeContext` carries a `DeviceStorageBudget`, which names whether CUDA-resident batch storage is disabled, coarse, or measured. Forward scoring and training both perform a host warmup before final batch planning, but training owns the destructive gradient-bearing probe and model-state restoration. Batch planning consumes the budget and caller-prepared temporal facts or Action Space; it does not prepare policy facts, measure CUDA memory, or revalidate selected-sample alignment. `training_runner.py` remains the public fit interface and keeps callback, best-state, and result assembly ownership.

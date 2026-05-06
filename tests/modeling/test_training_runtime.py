@@ -29,6 +29,17 @@ def _training_config() -> TrainingConfig:
     )
 
 
+def _runtime_plan(runtime_context: RepresentationRuntimeContext) -> ModelingRuntimePlan:
+    return ModelingRuntimePlan(
+        resolved_device=torch.device("cpu"),
+        precision="32-true",
+        representation_runtime_context=runtime_context,
+        deterministic=True,
+        seed=7,
+        compile_enabled=True,
+    )
+
+
 def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
     monkeypatch,
 ) -> None:
@@ -115,10 +126,8 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
         store=cast(Any, SimpleNamespace()),
         train_sample_indices=np.array([0], dtype=np.int64),
         validation_sample_indices=np.array([1], dtype=np.int64),
-        base_runtime_context=runtime_context,
-        resolved_device=torch.device("cpu"),
+        runtime_plan=_runtime_plan(runtime_context),
         training_config=_training_config(),
-        precision="32-true",
     )
 
     assert calls == [
@@ -154,6 +163,7 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
         representation_runtime_context=plan.runtime_context,
         deterministic=True,
         seed=7,
+        compile_enabled=True,
     )
     assert torch.equal(model.weight.detach(), original_weight)
     assert empty_cache_calls == [True]
@@ -206,17 +216,15 @@ def test_plan_training_runtime_restores_model_and_clears_cache_after_probe_failu
 
     with pytest.raises(RuntimeError, match="probe failed"):
         plan_training_runtime(
-                cast(Any, model),
-                prediction_contract=cast(Any, prediction_contract),
-                execution_policy=cast(Any, execution_policy),
+            cast(Any, model),
+            prediction_contract=cast(Any, prediction_contract),
+            execution_policy=cast(Any, execution_policy),
             representation_contract=cast(Any, SimpleNamespace()),
             store=cast(Any, SimpleNamespace()),
             train_sample_indices=np.array([0], dtype=np.int64),
             validation_sample_indices=np.array([1], dtype=np.int64),
-            base_runtime_context=runtime_context,
-            resolved_device=torch.device("cpu"),
+            runtime_plan=_runtime_plan(runtime_context),
             training_config=_training_config(),
-            precision="32-true",
         )
 
     assert torch.equal(model.weight.detach(), original_weight)

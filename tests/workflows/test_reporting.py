@@ -112,7 +112,7 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
         loaded_artifact=SimpleNamespace(manifest=object()),
         prepared=prepared,
         evaluator_contract=evaluator_contract,
-        scoring_input=object(),
+        scoring_plan=object(),
         delay_seconds=36,
     )
     evaluation = EvaluationSummary(
@@ -138,10 +138,10 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
         calls.append(f"prepare:{active_config.delay_seconds}:{artifact.root_path.name}")
         return SimpleNamespace(roots=roots, inference_context=context)
 
-    def fake_score(*, model_input, evaluator_contract):
+    def fake_score(*, scoring_plan, evaluator_contract):
         calls.append(
             "score:"
-            f"{model_input is context.scoring_input}:"
+            f"{scoring_plan is context.scoring_plan}:"
             f"{evaluator_contract is context.evaluator_contract}"
         )
         return evaluation

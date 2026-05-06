@@ -21,6 +21,7 @@ from .batch_plan import (
 )
 from .models import ModelOutputs, TemporalModel
 from .representations import CompiledRepresentationContract, RepresentationRuntimeContext
+from .runtime_planning import ModelingRuntimePlan
 
 ForwardBatchT = TypeVar("ForwardBatchT", ModelInputBatch, PredictionBatch)
 
@@ -34,27 +35,25 @@ def _run_planned_forward(
     model: TemporalModel,
     *,
     build_plan: Callable[[RepresentationRuntimeContext], BatchPlan[ForwardBatchT]],
-    base_runtime_context: RepresentationRuntimeContext,
-    resolved_device: torch.device,
-    precision: str,
+    runtime_plan: ModelingRuntimePlan,
     on_outputs: Callable[[ForwardBatchT, ModelOutputs], None],
 ) -> None:
     planned_runtime_context = measured_runtime_context(
-        base_runtime_context,
+        runtime_plan.representation_runtime_context,
         build_warmup_plan=build_plan,
         measure_warmup_budget=lambda warmup_plan: _measure_forward_batch_budget(
             model,
             loader=warmup_plan.source,
-            resolved_device=resolved_device,
-            precision=precision,
+            resolved_device=runtime_plan.resolved_device,
+            precision=runtime_plan.precision,
         ),
     )
     batch_plan = build_plan(planned_runtime_context)
     run_model_forward_pass(
         model,
         loader=batch_plan.source,
-        resolved_device=resolved_device,
-        precision=precision,
+        resolved_device=runtime_plan.resolved_device,
+        precision=runtime_plan.precision,
         on_outputs=on_outputs,
     )
 
@@ -87,10 +86,7 @@ def run_planned_model_input_forward(
     sample_indices: IntVector,
     representation_contract: CompiledRepresentationContract,
     execution_policy: CompiledExecutionPolicyContract,
-    base_runtime_context: RepresentationRuntimeContext,
-    resolved_device: torch.device,
-    precision: str,
-    seed: int,
+    runtime_plan: ModelingRuntimePlan,
     on_outputs: Callable[[ModelInputBatch, ModelOutputs], None],
 ) -> None:
     _require_non_empty_samples(sample_indices)
@@ -103,16 +99,14 @@ def run_planned_model_input_forward(
             representation_contract=representation_contract,
             execution_policy=execution_policy,
             runtime_context=runtime_context,
-            resolved_device=resolved_device,
-            seed=seed,
+            resolved_device=runtime_plan.resolved_device,
+            seed=runtime_plan.seed,
         )
 
     _run_planned_forward(
         model,
         build_plan=_build_plan,
-        base_runtime_context=base_runtime_context,
-        resolved_device=resolved_device,
-        precision=precision,
+        runtime_plan=runtime_plan,
         on_outputs=on_outputs,
     )
 
@@ -125,10 +119,7 @@ def run_planned_prediction_forward(
     representation_contract: CompiledRepresentationContract,
     prediction_contract: CompiledPredictionContract,
     execution_policy: CompiledExecutionPolicyContract,
-    base_runtime_context: RepresentationRuntimeContext,
-    resolved_device: torch.device,
-    precision: str,
-    seed: int,
+    runtime_plan: ModelingRuntimePlan,
     on_outputs: Callable[[PredictionBatch, ModelOutputs], None],
 ) -> None:
     _require_non_empty_samples(sample_indices)
@@ -142,16 +133,14 @@ def run_planned_prediction_forward(
             prediction_contract=prediction_contract,
             execution_policy=execution_policy,
             runtime_context=runtime_context,
-            resolved_device=resolved_device,
-            seed=seed,
+            resolved_device=runtime_plan.resolved_device,
+            seed=runtime_plan.seed,
             shuffle=False,
         )
 
     _run_planned_forward(
         model,
         build_plan=_build_plan,
-        base_runtime_context=base_runtime_context,
-        resolved_device=resolved_device,
-        precision=precision,
+        runtime_plan=runtime_plan,
         on_outputs=on_outputs,
     )
