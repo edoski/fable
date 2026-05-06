@@ -29,6 +29,20 @@ class ModelingRuntimePlan:
     compile_enabled: bool = False
 
 
+def with_representation_runtime_context(
+    plan: ModelingRuntimePlan,
+    runtime_context: RepresentationRuntimeContext,
+) -> ModelingRuntimePlan:
+    return ModelingRuntimePlan(
+        resolved_device=plan.resolved_device,
+        precision=plan.precision,
+        representation_runtime_context=runtime_context,
+        deterministic=plan.deterministic,
+        seed=plan.seed,
+        compile_enabled=plan.compile_enabled,
+    )
+
+
 def build_cuda_modeling_runtime_plan(
     *,
     model_config: ModelConfig[str],

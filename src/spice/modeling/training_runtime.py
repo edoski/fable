@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import cast
 
 import torch
@@ -13,11 +13,11 @@ from ..prediction.contracts import PredictionBatch
 from ..temporal.execution_policy import CompiledExecutionPolicyContract
 from ..temporal.problem_store import CompiledProblemStore, IntVector
 from ._epoch_execution import execute_training_batch
-from ._runtime_probe import measure_device_resident_budget, measured_runtime_context
+from ._runtime_probe import build_measured_modeling_runtime_plan, measure_device_resident_budget
 from .batch_plan import BatchPlan, build_prediction_batch_plan
 from .families.base import ModelConfig
 from .models import TemporalModel
-from .representations import CompiledRepresentationContract, RepresentationRuntimeContext
+from .representations import CompiledRepresentationContract
 from .runtime_planning import (
     ModelingRuntimePlan,
     build_training_modeling_runtime_plan,
@@ -28,16 +28,14 @@ from .runtime_planning import (
 
 @dataclass(frozen=True, slots=True)
 class TrainingRuntimePlan:
-    runtime_context: RepresentationRuntimeContext
+    runtime_plan: ModelingRuntimePlan
     train_batch_plan: BatchPlan[PredictionBatch]
     validation_batch_plan: BatchPlan[PredictionBatch]
-    evaluation_runtime_plan: ModelingRuntimePlan
     prediction_training_state: object | None
 
 
 @dataclass(frozen=True, slots=True)
 class PreparedTrainingRuntime:
-    runtime_plan: ModelingRuntimePlan
     fit_model: TemporalModel
     optimizer: torch.optim.Optimizer
     batch_plan: TrainingRuntimePlan
@@ -48,10 +46,7 @@ def _unwrap_compiled_model(model: TemporalModel) -> TemporalModel:
 
 
 def _clone_cpu_state(model: TemporalModel) -> dict[str, torch.Tensor]:
-    return {
-        key: value.detach().cpu().clone()
-        for key, value in model.state_dict().items()
-    }
+    return {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
 
 
 def plan_training_runtime(
@@ -78,29 +73,32 @@ def plan_training_runtime(
         store,
         temporal_facts=train_temporal_facts,
     )
-    planned_runtime_context = measured_runtime_context(
-        runtime_plan.representation_runtime_context,
-        build_warmup_plan=lambda runtime_context: build_prediction_batch_plan(
+    planned_runtime_plan = build_measured_modeling_runtime_plan(
+        runtime_plan,
+        build_warmup_plan=lambda warmup_runtime_plan: build_prediction_batch_plan(
             store,
             temporal_facts=train_temporal_facts,
             representation_contract=representation_contract,
             prediction_contract=prediction_contract,
             execution_policy=execution_policy,
-            runtime_context=runtime_context,
-            resolved_device=runtime_plan.resolved_device,
-            seed=training_config.seed,
+            runtime_context=warmup_runtime_plan.representation_runtime_context,
+            resolved_device=warmup_runtime_plan.resolved_device,
+            seed=warmup_runtime_plan.seed,
             shuffle=False,
         ),
-        measure_warmup_budget=lambda warmup_plan: _measure_training_batch_budget(
-            model,
-            warmup_plan=warmup_plan,
-            prediction_contract=prediction_contract,
-            prediction_training_state=prediction_training_state,
-            resolved_device=runtime_plan.resolved_device,
-            training_config=training_config,
-            precision=runtime_plan.precision,
+        measure_warmup_budget=lambda warmup_plan, warmup_runtime_plan: (
+            _measure_training_batch_budget(
+                model,
+                warmup_plan=warmup_plan,
+                prediction_contract=prediction_contract,
+                prediction_training_state=prediction_training_state,
+                resolved_device=warmup_runtime_plan.resolved_device,
+                training_config=training_config,
+                precision=warmup_runtime_plan.precision,
+            )
         ),
     )
+    planned_runtime_context = planned_runtime_plan.representation_runtime_context
     train_batch_plan = build_prediction_batch_plan(
         store,
         temporal_facts=train_temporal_facts,
@@ -108,8 +106,8 @@ def plan_training_runtime(
         prediction_contract=prediction_contract,
         execution_policy=execution_policy,
         runtime_context=planned_runtime_context,
-        resolved_device=runtime_plan.resolved_device,
-        seed=training_config.seed,
+        resolved_device=planned_runtime_plan.resolved_device,
+        seed=planned_runtime_plan.seed,
         shuffle=True,
     )
     validation_batch_plan = build_prediction_batch_plan(
@@ -119,18 +117,14 @@ def plan_training_runtime(
         prediction_contract=prediction_contract,
         execution_policy=execution_policy,
         runtime_context=planned_runtime_context,
-        resolved_device=runtime_plan.resolved_device,
-        seed=training_config.seed,
+        resolved_device=planned_runtime_plan.resolved_device,
+        seed=planned_runtime_plan.seed,
         shuffle=False,
     )
     return TrainingRuntimePlan(
-        runtime_context=planned_runtime_context,
+        runtime_plan=planned_runtime_plan,
         train_batch_plan=train_batch_plan,
         validation_batch_plan=validation_batch_plan,
-        evaluation_runtime_plan=replace(
-            runtime_plan,
-            representation_runtime_context=planned_runtime_context,
-        ),
         prediction_training_state=prediction_training_state,
     )
 
@@ -170,7 +164,6 @@ def prepare_training_runtime(
         weight_decay=training_config.weight_decay,
     )
     return PreparedTrainingRuntime(
-        runtime_plan=runtime_plan,
         fit_model=fit_model,
         optimizer=optimizer,
         batch_plan=batch_plan,

@@ -12,7 +12,7 @@ from ..prediction.contracts import ModelInputBatch, PredictionBatch
 from ..temporal.execution_policy import CompiledExecutionPolicyContract
 from ..temporal.problem_store import CompiledProblemStore, IntVector
 from ._runtime import ForwardBatch, precision_context, run_model_forward_pass
-from ._runtime_probe import measure_device_resident_budget, measured_runtime_context
+from ._runtime_probe import build_measured_modeling_runtime_plan, measure_device_resident_budget
 from .batch_plan import (
     BatchPlan,
     BatchSource,
@@ -20,7 +20,7 @@ from .batch_plan import (
     build_prediction_batch_plan,
 )
 from .models import ModelOutputs, TemporalModel
-from .representations import CompiledRepresentationContract, RepresentationRuntimeContext
+from .representations import CompiledRepresentationContract
 from .runtime_planning import ModelingRuntimePlan
 
 ForwardBatchT = TypeVar("ForwardBatchT", ModelInputBatch, PredictionBatch)
@@ -34,26 +34,28 @@ def _require_non_empty_samples(sample_indices: IntVector) -> None:
 def _run_planned_forward(
     model: TemporalModel,
     *,
-    build_plan: Callable[[RepresentationRuntimeContext], BatchPlan[ForwardBatchT]],
+    build_plan: Callable[[ModelingRuntimePlan], BatchPlan[ForwardBatchT]],
     runtime_plan: ModelingRuntimePlan,
     on_outputs: Callable[[ForwardBatchT, ModelOutputs], None],
 ) -> None:
-    planned_runtime_context = measured_runtime_context(
-        runtime_plan.representation_runtime_context,
+    planned_runtime_plan = build_measured_modeling_runtime_plan(
+        runtime_plan,
         build_warmup_plan=build_plan,
-        measure_warmup_budget=lambda warmup_plan: _measure_forward_batch_budget(
-            model,
-            loader=warmup_plan.source,
-            resolved_device=runtime_plan.resolved_device,
-            precision=runtime_plan.precision,
+        measure_warmup_budget=lambda warmup_plan, warmup_runtime_plan: (
+            _measure_forward_batch_budget(
+                model,
+                loader=warmup_plan.source,
+                resolved_device=warmup_runtime_plan.resolved_device,
+                precision=warmup_runtime_plan.precision,
+            )
         ),
     )
-    batch_plan = build_plan(planned_runtime_context)
+    batch_plan = build_plan(planned_runtime_plan)
     run_model_forward_pass(
         model,
         loader=batch_plan.source,
-        resolved_device=runtime_plan.resolved_device,
-        precision=runtime_plan.precision,
+        resolved_device=planned_runtime_plan.resolved_device,
+        precision=planned_runtime_plan.precision,
         on_outputs=on_outputs,
     )
 
@@ -92,15 +94,15 @@ def run_planned_model_input_forward(
     _require_non_empty_samples(sample_indices)
     action_space = execution_policy.prepare_action_space(store, sample_indices)
 
-    def _build_plan(runtime_context: RepresentationRuntimeContext) -> BatchPlan[ModelInputBatch]:
+    def _build_plan(plan: ModelingRuntimePlan) -> BatchPlan[ModelInputBatch]:
         return build_model_input_batch_plan(
             store,
             action_space=action_space,
             representation_contract=representation_contract,
             execution_policy=execution_policy,
-            runtime_context=runtime_context,
-            resolved_device=runtime_plan.resolved_device,
-            seed=runtime_plan.seed,
+            runtime_context=plan.representation_runtime_context,
+            resolved_device=plan.resolved_device,
+            seed=plan.seed,
         )
 
     _run_planned_forward(
@@ -125,16 +127,16 @@ def run_planned_prediction_forward(
     _require_non_empty_samples(sample_indices)
     temporal_facts = execution_policy.prepare_temporal_facts(store, sample_indices)
 
-    def _build_plan(runtime_context: RepresentationRuntimeContext) -> BatchPlan[PredictionBatch]:
+    def _build_plan(plan: ModelingRuntimePlan) -> BatchPlan[PredictionBatch]:
         return build_prediction_batch_plan(
             store,
             temporal_facts=temporal_facts,
             representation_contract=representation_contract,
             prediction_contract=prediction_contract,
             execution_policy=execution_policy,
-            runtime_context=runtime_context,
-            resolved_device=runtime_plan.resolved_device,
-            seed=runtime_plan.seed,
+            runtime_context=plan.representation_runtime_context,
+            resolved_device=plan.resolved_device,
+            seed=plan.seed,
             shuffle=False,
         )
 

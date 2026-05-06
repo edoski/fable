@@ -110,7 +110,7 @@ def run_training_fit(
     )
     fit_model = prepared_runtime.fit_model
     training_runtime_plan = prepared_runtime.batch_plan
-    runtime_plan = prepared_runtime.runtime_plan
+    runtime_plan = training_runtime_plan.runtime_plan
     prediction_training_state = training_runtime_plan.prediction_training_state
     optimizer = prepared_runtime.optimizer
     objective_context = ObjectiveMetricContext(
@@ -120,7 +120,7 @@ def run_training_fit(
         execution_policy=spec.execution_policy,
         store=spec.store,
         sample_indices=spec.validation_sample_indices,
-        runtime_plan=training_runtime_plan.evaluation_runtime_plan,
+        runtime_plan=runtime_plan,
     )
     with modeling_backend_scope(runtime_plan):
         for epoch in range(1, spec.training_config.max_epochs + 1):

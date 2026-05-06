@@ -78,14 +78,12 @@ def _patch_training_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def fake_prepare_training_runtime(model, **_kwargs):
         return PreparedTrainingRuntime(
-            runtime_plan=runtime_plan,
             fit_model=model,
             optimizer=cast(torch.optim.Optimizer, SimpleNamespace()),
             batch_plan=TrainingRuntimePlan(
-                runtime_context=runtime_context,
+                runtime_plan=runtime_plan,
                 train_batch_plan=cast(Any, SimpleNamespace(source=[0])),
                 validation_batch_plan=cast(Any, SimpleNamespace(source=[0])),
-                evaluation_runtime_plan=runtime_plan,
                 prediction_training_state=None,
             ),
         )
@@ -146,9 +144,7 @@ def test_training_fit_restores_best_state_and_calls_early_stop_callback(
             training_config=_training_config(max_epochs=2, patience=1),
         ),
         callbacks=TrainingCallbacks(
-            on_early_stop=lambda epoch, best_epoch: early_stop_calls.append(
-                (epoch, best_epoch)
-            ),
+            on_early_stop=lambda epoch, best_epoch: early_stop_calls.append((epoch, best_epoch)),
         ),
     )
 
