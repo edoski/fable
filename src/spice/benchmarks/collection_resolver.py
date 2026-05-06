@@ -51,32 +51,31 @@ def benchmark_collection_selection(
         raise SpiceOperatorError(f"benchmark submission {entry.run_id} is not evaluate")
     if not isinstance(entry.config, EvaluateConfig):
         raise SpiceOperatorError(f"benchmark run {entry.run_id} is not an evaluate config")
-    ledger_artifact_id = entry.root_ledger.consumed_artifact_id()
-    if ledger_artifact_id is None:
+    facts = entry.root_facts
+    if facts.consumed_artifact_id is None:
         raise SpiceOperatorError(
-            f"benchmark run {entry.run_id} root ledger is missing consumed artifact"
+            f"benchmark run {entry.run_id} root facts are missing consumed artifact"
         )
-    if ledger_artifact_id != entry.config.artifact_id:
+    if facts.consumed_artifact_id != entry.config.artifact_id:
         raise SpiceOperatorError(
-            f"benchmark run {entry.run_id} root ledger artifact mismatch: "
-            f"{ledger_artifact_id} != {entry.config.artifact_id}"
+            f"benchmark run {entry.run_id} root facts artifact mismatch: "
+            f"{facts.consumed_artifact_id} != {entry.config.artifact_id}"
         )
-    ledger_dataset_id = entry.root_ledger.consumed_dataset_id()
-    if ledger_dataset_id is None:
+    if facts.consumed_dataset_id is None:
         raise SpiceOperatorError(
-            f"benchmark run {entry.run_id} root ledger is missing consumed dataset"
+            f"benchmark run {entry.run_id} root facts are missing consumed dataset"
         )
-    if ledger_dataset_id != entry.config.dataset_id:
+    if facts.consumed_dataset_id != entry.config.dataset_id:
         raise SpiceOperatorError(
-            f"benchmark run {entry.run_id} root ledger dataset mismatch: "
-            f"{ledger_dataset_id} != {entry.config.dataset_id}"
+            f"benchmark run {entry.run_id} root facts dataset mismatch: "
+            f"{facts.consumed_dataset_id} != {entry.config.dataset_id}"
         )
     return BenchmarkCollectionSelection(
         run_id=entry.run_id,
         storage_root=entry.config.storage.root,
-        artifact_id=entry.config.artifact_id,
-        evaluation_dataset_id=entry.config.dataset_id,
-        artifact_source_dataset_id=entry.root_ledger.artifact_source_dataset_id(),
+        artifact_id=facts.consumed_artifact_id,
+        evaluation_dataset_id=facts.consumed_dataset_id,
+        artifact_source_dataset_id=facts.artifact_source_dataset_id,
         evaluator_id=entry.config.evaluation.id,
         configured_delay_seconds=entry.config.delay_seconds,
         execution_ref=submission.execution_ref,

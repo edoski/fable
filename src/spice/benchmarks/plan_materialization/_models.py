@@ -13,7 +13,6 @@ from pydantic import Field
 from ...config.models import ArtifactVariant, WorkflowTask
 from ...config.workflow_snapshots import ResolvedWorkflowConfig
 from ...core.config_model import ConfigModel
-from ...core.errors import ConfigResolutionError
 
 BenchmarkRootRole = Literal["consumed", "produced", "source"]
 BenchmarkRootKind = Literal["dataset", "study", "artifact"]
@@ -61,37 +60,18 @@ class BenchmarkRootLedgerEntry(ConfigModel):
 class BenchmarkRootLedger(ConfigModel):
     entries: tuple[BenchmarkRootLedgerEntry, ...] = ()
 
-    def root_id(
-        self,
-        *,
-        role: BenchmarkRootRole,
-        root_kind: BenchmarkRootKind,
-    ) -> str | None:
-        matches = [
-            entry.root_id
-            for entry in self.entries
-            if entry.role == role and entry.root_kind == root_kind
-        ]
-        if len(matches) > 1:
-            raise ConfigResolutionError(
-                f"benchmark root ledger has multiple {role} {root_kind} roots"
-            )
-        return matches[0] if matches else None
 
-    def consumed_dataset_id(self) -> str | None:
-        return self.root_id(role="consumed", root_kind="dataset")
-
-    def consumed_artifact_id(self) -> str | None:
-        return self.root_id(role="consumed", root_kind="artifact")
-
-    def produced_study_id(self) -> str | None:
-        return self.root_id(role="produced", root_kind="study")
-
-    def produced_artifact_id(self) -> str | None:
-        return self.root_id(role="produced", root_kind="artifact")
-
-    def artifact_source_dataset_id(self) -> str | None:
-        return self.root_id(role="source", root_kind="dataset")
+class BenchmarkRootFacts(ConfigModel):
+    consumed_dataset_id: str | None = None
+    consumed_study_id: str | None = None
+    consumed_study_dataset_id: str | None = None
+    consumed_artifact_id: str | None = None
+    consumed_artifact_dataset_id: str | None = None
+    produced_study_id: str | None = None
+    produced_study_dataset_id: str | None = None
+    produced_artifact_id: str | None = None
+    produced_artifact_dataset_id: str | None = None
+    artifact_source_dataset_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,5 +83,6 @@ class BenchmarkPlanEntry:
     dependencies: BenchmarkDependencyLedger
     dimension_labels: dict[str, str]
     selection: BenchmarkSelectionLedger
+    root_facts: BenchmarkRootFacts
     root_ledger: BenchmarkRootLedger
     config: ResolvedWorkflowConfig

@@ -5,6 +5,7 @@
 from ._models import (
     BenchmarkDependencyLedger,
     BenchmarkPlanEntry,
+    BenchmarkRootFacts,
     BenchmarkRootKind,
     BenchmarkRootLedger,
     BenchmarkRootLedgerEntry,
@@ -15,6 +16,7 @@ from ._planner import materialize_benchmark_plan
 
 __all__ = [
     "BenchmarkDependencyLedger",
+    "BenchmarkRootFacts",
     "BenchmarkRootLedgerEntry",
     "BenchmarkPlanEntry",
     "BenchmarkRootKind",

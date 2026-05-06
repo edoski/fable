@@ -17,6 +17,7 @@ from ...core.errors import ConfigResolutionError
 from ._models import (
     BenchmarkDependencyLedger,
     BenchmarkRootKind,
+    BenchmarkRootFacts,
     BenchmarkRootLedger,
     BenchmarkRootLedgerEntry,
 )
@@ -34,6 +35,12 @@ class PreparedBenchmarkRootSelection:
     selection: WorkflowSelection
     artifact_from_run_id: str | None
     artifact_source_dataset_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class FinalizedBenchmarkRoots:
+    facts: BenchmarkRootFacts
+    ledger: BenchmarkRootLedger
 
 
 @dataclass(slots=True)
@@ -149,14 +156,14 @@ class BenchmarkRootLedgerBuilder:
             artifact_source_dataset_id=None,
         )
 
-    def finalize_ledger(
+    def finalize_roots(
         self,
         *,
         run_id: str,
         workflow: WorkflowTask,
         config: ResolvedWorkflowConfig,
         prepared: PreparedBenchmarkRootSelection,
-    ) -> BenchmarkRootLedger:
+    ) -> FinalizedBenchmarkRoots:
         consumed = self.storage.consumed_roots(config)
         train_dataset_id = (
             self._train_dataset_id(config) if isinstance(config, TrainConfig) else None
@@ -171,6 +178,26 @@ class BenchmarkRootLedgerBuilder:
             self._artifact_dataset_id(config, consumed.artifact_id, prepared)
             if consumed.artifact_id is not None
             else None
+        )
+        produced_study_dataset_id = (
+            consumed.dataset_id if produced.study_id is not None else None
+        )
+        produced_artifact_dataset_id = (
+            consumed.dataset_id or train_dataset_id
+            if produced.artifact_id is not None
+            else None
+        )
+        facts = BenchmarkRootFacts(
+            consumed_dataset_id=consumed.dataset_id,
+            consumed_study_id=consumed.study_id,
+            consumed_study_dataset_id=consumed_study_dataset_id,
+            consumed_artifact_id=consumed.artifact_id,
+            consumed_artifact_dataset_id=consumed_artifact_dataset_id,
+            produced_study_id=produced.study_id,
+            produced_study_dataset_id=produced_study_dataset_id,
+            produced_artifact_id=produced.artifact_id,
+            produced_artifact_dataset_id=produced_artifact_dataset_id,
+            artifact_source_dataset_id=prepared.artifact_source_dataset_id,
         )
         entries: list[BenchmarkRootLedgerEntry] = []
         if consumed.dataset_id is not None:
@@ -218,7 +245,7 @@ class BenchmarkRootLedgerBuilder:
                     root_kind="study",
                     root_id=produced.study_id,
                     study_id=produced.study_id,
-                    dataset_id=consumed.dataset_id,
+                    dataset_id=produced_study_dataset_id,
                 )
             )
         if produced.artifact_id is not None:
@@ -230,7 +257,7 @@ class BenchmarkRootLedgerBuilder:
                     root_kind="artifact",
                     root_id=produced.artifact_id,
                     artifact_id=produced.artifact_id,
-                    dataset_id=consumed.dataset_id or train_dataset_id,
+                    dataset_id=produced_artifact_dataset_id,
                 )
             )
         if prepared.artifact_source_dataset_id is not None:
@@ -245,7 +272,10 @@ class BenchmarkRootLedgerBuilder:
                     source_run_id=prepared.artifact_from_run_id,
                 )
             )
-        return BenchmarkRootLedger(entries=tuple(entries))
+        return FinalizedBenchmarkRoots(
+            facts=facts,
+            ledger=BenchmarkRootLedger(entries=tuple(entries)),
+        )
 
     def record_ledger(self, ledger: BenchmarkRootLedger) -> None:
         self.produced_roots.record_ledger(ledger)

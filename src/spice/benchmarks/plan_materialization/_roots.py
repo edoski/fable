@@ -17,6 +17,7 @@ from ._dependencies import (
 )
 from ._models import (
     BenchmarkDependencyLedger,
+    BenchmarkRootFacts,
     BenchmarkRootLedger,
 )
 from ._root_ledger import BenchmarkRootLedgerBuilder
@@ -27,6 +28,7 @@ class BenchmarkPlanLedgers:
     dependencies: BenchmarkDependencyLedger
     selection: WorkflowSelection
     config: ResolvedWorkflowConfig
+    root_facts: BenchmarkRootFacts
     root_ledger: BenchmarkRootLedger
 
 
@@ -66,16 +68,18 @@ class BenchmarkPlanLedgerMaterializer:
             dependencies,
         )
         config = resolve_config(seed.workflow, prepared_roots.selection)
-        root_ledger = self.root_ledger_builder.finalize_ledger(
+        finalized_roots = self.root_ledger_builder.finalize_roots(
             run_id=run_id,
             workflow=seed.workflow,
             config=config,
             prepared=prepared_roots,
         )
+        root_ledger = finalized_roots.ledger
         self.root_ledger_builder.record_ledger(root_ledger)
         return BenchmarkPlanLedgers(
             dependencies=dependencies,
             selection=prepared_roots.selection,
             config=config,
+            root_facts=finalized_roots.facts,
             root_ledger=root_ledger,
         )

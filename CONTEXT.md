@@ -85,11 +85,15 @@ Benchmark-owned durable scheduling facts for a Benchmark Plan Entry: matched loc
 _Avoid_: depends-on tuple, submission helper state
 
 **Benchmark Root Ledger**:
-Benchmark-owned durable root facts for a Benchmark Plan Entry, recording typed consumed, produced, and source root entries separately from benchmark selection coordinates.
+Benchmark-owned durable audit entries for a Benchmark Plan Entry, recording typed consumed, produced, and source root entries separately from benchmark selection coordinates.
 _Avoid_: injected selection ids, materialization state dict
 
+**Benchmark Root Facts**:
+Benchmark-owned scalar root facts on a Benchmark Plan Entry for caller-facing consumed, produced, and source root ids.
+_Avoid_: root ledger helper methods, config echo
+
 **Benchmark Plan Materialization**:
-Benchmark module that turns Benchmark Specs, Cases, and Steps into Benchmark Plan Entries by expanding dimensions, matching dependencies, applying dependency-derived root selections, resolving Workflow Config snapshots, asking storage for root facts or catalog fallback, and emitting the Benchmark Root Ledger.
+Benchmark module that turns Benchmark Specs, Cases, and Steps into Benchmark Plan Entries by expanding dimensions, matching dependencies, applying dependency-derived root selections, resolving Workflow Config snapshots, asking storage for root facts or catalog fallback, and emitting Benchmark Root Facts plus the Benchmark Root Ledger.
 _Avoid_: benchmark compilation helper, id patching
 
 **Benchmark Run**:

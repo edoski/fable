@@ -109,11 +109,22 @@ def build_benchmark_result_record(
 ) -> BenchmarkResultRecord:
     manifest = evaluation.manifest
     runtime = evaluation.runtime
-    evaluation_dataset_id = entry.root_ledger.consumed_dataset_id()
-    if evaluation_dataset_id is None:
-        raise SpiceOperatorError(
-            f"benchmark run {entry.run_id} root ledger is missing consumed dataset"
-        )
+    facts = entry.root_facts
+    artifact_id = _required_root_fact(
+        facts.consumed_artifact_id,
+        run_id=entry.run_id,
+        label="consumed artifact",
+    )
+    artifact_dataset_id = _required_root_fact(
+        facts.consumed_artifact_dataset_id,
+        run_id=entry.run_id,
+        label="consumed artifact dataset",
+    )
+    evaluation_dataset_id = _required_root_fact(
+        facts.consumed_dataset_id,
+        run_id=entry.run_id,
+        label="consumed dataset",
+    )
     metrics: list[MetricValueRecord] = []
     if training is not None:
         metrics.extend(
@@ -149,9 +160,9 @@ def build_benchmark_result_record(
         evaluation_log_path=None if provenance is None else provenance.log_path,
         evaluation_workflow_task=None if provenance is None else provenance.workflow_task,
         evaluation_target=None if provenance is None else provenance.target,
-        artifact_id=manifest.artifact_id,
+        artifact_id=artifact_id,
         evaluation_storage_id=evaluation.evaluation_storage_id,
-        artifact_dataset_id=manifest.dataset_id,
+        artifact_dataset_id=artifact_dataset_id,
         artifact_dataset_name=manifest.dataset_name,
         evaluation_dataset_id=evaluation_dataset_id,
         chain_name=manifest.chain_name,
@@ -176,3 +187,9 @@ def build_benchmark_result_record(
             for metric_id, summary in runtime.window_metrics.items()
         ),
     )
+
+
+def _required_root_fact(value: str | None, *, run_id: str, label: str) -> str:
+    if value is None:
+        raise SpiceOperatorError(f"benchmark run {run_id} root facts are missing {label}")
+    return value

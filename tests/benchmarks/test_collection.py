@@ -10,6 +10,7 @@ from spice.benchmarks.collection import collect_benchmark_run
 from spice.benchmarks.plan_materialization import (
     BenchmarkDependencyLedger,
     BenchmarkPlanEntry,
+    BenchmarkRootFacts,
     BenchmarkRootLedger,
     BenchmarkRootLedgerEntry,
     BenchmarkSelectionLedger,
@@ -60,6 +61,10 @@ def _write_evaluate_run(run_dir: Path, config) -> None:
         selection=BenchmarkSelectionLedger(
             evaluation=config.evaluation.id,
             delay_seconds=config.delay_seconds,
+        ),
+        root_facts=_evaluate_root_facts(
+            artifact_id=config.artifact_id,
+            dataset_id=config.dataset_id,
         ),
         root_ledger=_evaluate_root_ledger(
             "case.evaluate",
@@ -130,6 +135,20 @@ def _evaluate_root_ledger(
     )
 
 
+def _evaluate_root_facts(
+    *,
+    artifact_id: str,
+    dataset_id: str,
+    artifact_source_dataset_id: str | None = None,
+) -> BenchmarkRootFacts:
+    return BenchmarkRootFacts(
+        consumed_dataset_id=dataset_id,
+        consumed_artifact_id=artifact_id,
+        consumed_artifact_dataset_id=artifact_source_dataset_id or dataset_id,
+        artifact_source_dataset_id=artifact_source_dataset_id,
+    )
+
+
 def _loaded_summary(config):
     return SimpleNamespace(
         evaluation_storage_id="poisson_replay_2h-36s-storage",
@@ -197,6 +216,10 @@ def test_benchmark_plan_jsonl_round_trips_plan_entry(tmp_path: Path) -> None:
             surface="current_row_fee_dynamics",
             evaluation=config.evaluation.id,
         ),
+        root_facts=_evaluate_root_facts(
+            artifact_id=config.artifact_id,
+            dataset_id=config.dataset_id,
+        ),
         root_ledger=_evaluate_root_ledger(
             "case.evaluate",
             artifact_id=config.artifact_id,
@@ -216,6 +239,7 @@ def test_benchmark_plan_jsonl_round_trips_plan_entry(tmp_path: Path) -> None:
     assert restored.dimension_labels == {"features": "core"}
     assert restored.dependencies.artifact_from_run_id == "case.train"
     assert restored.selection == entry.selection
+    assert restored.root_facts == entry.root_facts
     assert restored.root_ledger == entry.root_ledger
     assert restored.config.model_dump(mode="json") == config.model_dump(mode="json")
 
@@ -379,6 +403,10 @@ def test_benchmark_collect_pulls_same_artifact_once_for_multiple_evaluations(
         ),
         dimension_labels={},
         selection=BenchmarkSelectionLedger(),
+        root_facts=_evaluate_root_facts(
+            artifact_id=config.artifact_id,
+            dataset_id=config.dataset_id,
+        ),
         root_ledger=_evaluate_root_ledger(
             "case.evaluate_a",
             artifact_id=config.artifact_id,

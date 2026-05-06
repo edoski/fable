@@ -61,14 +61,14 @@ def test_plan_materialization_injects_study_id_for_tuned_train_dependency(
     assert isinstance(train.config, TrainConfig)
     assert train.config.study_id == produced_study_id(tune.config)
     assert train.config.dataset_id is None
-    assert train.root_ledger.root_id(role="consumed", root_kind="study") == (train.config.study_id)
+    assert train.root_facts.consumed_study_id == train.config.study_id
     consumed_study = next(
         entry
         for entry in train.root_ledger.entries
         if entry.role == "consumed" and entry.root_kind == "study"
     )
     assert consumed_study.dataset_id == ETH_DATASET_ID
-    assert tune.root_ledger.produced_study_id() == produced_study_id(tune.config)
+    assert tune.root_facts.produced_study_id == produced_study_id(tune.config)
     assert train.selection.study == "case_study"
 
 
@@ -136,15 +136,15 @@ def test_plan_materialization_injects_artifact_and_dataset_for_artifact_from(
     assert isinstance(train.config, TrainConfig)
     assert isinstance(evaluate.config, EvaluateConfig)
     assert evaluate.dependencies.artifact_from_run_id == train.run_id
-    assert train.root_ledger.produced_artifact_id() == evaluate.config.artifact_id
+    assert train.root_facts.produced_artifact_id == evaluate.config.artifact_id
     assert evaluate.config.dataset_id == ETH_DATASET_ID
     assert evaluate.config.artifact_id == produced_artifact_id(
         train.config,
         dataset_id=ETH_DATASET_ID,
     )
-    assert evaluate.root_ledger.consumed_dataset_id() == ETH_DATASET_ID
-    assert evaluate.root_ledger.consumed_artifact_id() == evaluate.config.artifact_id
-    assert evaluate.root_ledger.artifact_source_dataset_id() == ETH_DATASET_ID
+    assert evaluate.root_facts.consumed_dataset_id == ETH_DATASET_ID
+    assert evaluate.root_facts.consumed_artifact_id == evaluate.config.artifact_id
+    assert evaluate.root_facts.artifact_source_dataset_id == ETH_DATASET_ID
 
 
 def test_plan_materialization_preserves_explicit_evaluate_dataset_id_with_artifact_from(
@@ -199,9 +199,9 @@ def test_plan_materialization_preserves_explicit_evaluate_dataset_id_with_artifa
         if entry.role == "consumed" and entry.root_kind == "artifact"
     )
     assert consumed_artifact.dataset_id == ETH_DATASET_ID
-    assert evaluate.root_ledger.consumed_dataset_id() == evaluate_dataset_id
-    assert evaluate.root_ledger.consumed_artifact_id() == evaluate.config.artifact_id
-    assert evaluate.root_ledger.artifact_source_dataset_id() == ETH_DATASET_ID
+    assert evaluate.root_facts.consumed_dataset_id == evaluate_dataset_id
+    assert evaluate.root_facts.consumed_artifact_id == evaluate.config.artifact_id
+    assert evaluate.root_facts.artifact_source_dataset_id == ETH_DATASET_ID
 
 
 def test_plan_materialization_uses_catalog_dataset_for_explicit_tuned_study(
@@ -336,7 +336,8 @@ def test_plan_materialization_records_explicit_artifact_source_dataset_from_cata
     )
 
     assert isinstance(evaluate.config, EvaluateConfig)
-    assert evaluate.root_ledger.consumed_dataset_id() == evaluate_dataset_id
+    assert evaluate.root_facts.consumed_dataset_id == evaluate_dataset_id
+    assert evaluate.root_facts.consumed_artifact_dataset_id == ETH_DATASET_ID
     assert consumed_artifact.dataset_id == ETH_DATASET_ID
 
 
@@ -377,5 +378,5 @@ def test_plan_materialization_preserves_selection_ledger_context(
     assert isinstance(evaluate.config, EvaluateConfig)
     assert evaluate.selection.surface == "current_row_fee_dynamics"
     assert evaluate.selection.objective == "validation_total_loss"
-    assert evaluate.root_ledger.consumed_dataset_id() == ETH_DATASET_ID
-    assert evaluate.root_ledger.consumed_artifact_id() == evaluate.config.artifact_id
+    assert evaluate.root_facts.consumed_dataset_id == ETH_DATASET_ID
+    assert evaluate.root_facts.consumed_artifact_id == evaluate.config.artifact_id

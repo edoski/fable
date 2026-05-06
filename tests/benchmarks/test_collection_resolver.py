@@ -12,6 +12,7 @@ from spice.benchmarks.collection_resolver import (
 from spice.benchmarks.plan_materialization import (
     BenchmarkDependencyLedger,
     BenchmarkPlanEntry,
+    BenchmarkRootFacts,
     BenchmarkRootLedger,
     BenchmarkRootLedgerEntry,
     BenchmarkSelectionLedger,
@@ -85,6 +86,12 @@ def _entry(
                 source_run_id="case.train",
             )
         )
+    root_facts = BenchmarkRootFacts(
+        consumed_dataset_id=config.dataset_id,
+        consumed_artifact_id=config.artifact_id,
+        consumed_artifact_dataset_id=artifact_source_dataset_id or config.dataset_id,
+        artifact_source_dataset_id=artifact_source_dataset_id,
+    )
     return BenchmarkPlanEntry(
         run_id="case.evaluate",
         case_id="case",
@@ -100,6 +107,7 @@ def _entry(
             evaluation=config.evaluation.id,
             delay_seconds=config.delay_seconds,
         ),
+        root_facts=root_facts,
         root_ledger=BenchmarkRootLedger(entries=tuple(root_entries)),
         config=config,
     )
@@ -327,21 +335,9 @@ def test_collection_selection_rejects_run_id_mismatch(tmp_path: Path) -> None:
         )
 
 
-def test_collection_selection_rejects_root_ledger_mismatch(tmp_path: Path) -> None:
+def test_collection_selection_rejects_root_facts_mismatch(tmp_path: Path) -> None:
     config = _evaluate_config(tmp_path)
     entry = _entry(config)
-    bad_ledger = BenchmarkRootLedger(
-        entries=(
-            BenchmarkRootLedgerEntry(
-                run_id="case.evaluate",
-                workflow=WorkflowTask.EVALUATE,
-                role="consumed",
-                root_kind="artifact",
-                root_id="other-artifact",
-                artifact_id="other-artifact",
-            ),
-        )
-    )
 
     with pytest.raises(SpiceOperatorError, match="artifact mismatch"):
         benchmark_collection_selection(
@@ -353,14 +349,17 @@ def test_collection_selection_rejects_root_ledger_mismatch(tmp_path: Path) -> No
                 dependencies=entry.dependencies,
                 dimension_labels=entry.dimension_labels,
                 selection=entry.selection,
-                root_ledger=bad_ledger,
+                root_facts=entry.root_facts.model_copy(
+                    update={"consumed_artifact_id": "other-artifact"}
+                ),
+                root_ledger=entry.root_ledger,
                 config=entry.config,
             ),
             _submission(),
         )
 
 
-def test_collection_selection_rejects_missing_root_ledger_entries(tmp_path: Path) -> None:
+def test_collection_selection_rejects_missing_root_facts(tmp_path: Path) -> None:
     config = _evaluate_config(tmp_path)
     entry = _entry(config)
 
@@ -374,7 +373,8 @@ def test_collection_selection_rejects_missing_root_ledger_entries(tmp_path: Path
                 dependencies=entry.dependencies,
                 dimension_labels=entry.dimension_labels,
                 selection=entry.selection,
-                root_ledger=BenchmarkRootLedger(),
+                root_facts=BenchmarkRootFacts(),
+                root_ledger=entry.root_ledger,
                 config=entry.config,
             ),
             _submission(),

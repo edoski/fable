@@ -98,6 +98,7 @@ def _materialize_benchmark_case(case: BenchmarkCase) -> list[BenchmarkPlanEntry]
                     source_row=seed.row,
                     workflow_selection=ledgers.selection,
                 ),
+                root_facts=ledgers.root_facts,
                 root_ledger=ledgers.root_ledger,
                 config=ledgers.config,
             )

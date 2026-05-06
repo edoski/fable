@@ -20,6 +20,7 @@ from ..core.errors import SpiceOperatorError
 from .plan_materialization import (
     BenchmarkDependencyLedger,
     BenchmarkPlanEntry,
+    BenchmarkRootFacts,
     BenchmarkRootLedger,
     BenchmarkSelectionLedger,
 )
@@ -78,6 +79,7 @@ def plan_entry_json_dict(entry: BenchmarkPlanEntry) -> dict[str, object]:
         },
         "dimension_labels": dict(entry.dimension_labels),
         "selection": entry.selection.model_dump(mode="json", exclude_none=True),
+        "root_facts": entry.root_facts.model_dump(mode="json", exclude_none=True),
         "root_ledger": entry.root_ledger.model_dump(mode="json", exclude_none=True),
         "config": workflow_config_snapshot_payload(entry.config),
     }
@@ -111,6 +113,14 @@ def load_plan_jsonl(run_dir: Path) -> list[BenchmarkPlanEntry]:
                     BenchmarkSelectionLedger,
                     mapping_payload(payload.get("selection", {}), label="selection"),
                     label="selection",
+                ),
+                root_facts=_plan_model_payload(
+                    BenchmarkRootFacts,
+                    mapping_payload(
+                        required_payload(payload, "root_facts"),
+                        label="root_facts",
+                    ),
+                    label="root_facts",
                 ),
                 root_ledger=_plan_model_payload(
                     BenchmarkRootLedger,
