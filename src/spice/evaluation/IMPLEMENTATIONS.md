@@ -39,7 +39,7 @@ fee = exp(log_base_fee)
 
 Ratios are computed on real fee values, not log values. The Temporal Replay Runner validates decoded replay inputs and asks evaluator Adapters for selected events; Temporal Accounting is shared after that selection.
 
-Temporal replay has a private typed result ABI between Temporal Accounting and the Temporal Replay Runner. It carries run metrics, event metric sums, window summaries, and metadata as replay concepts. The runner validates metadata as strings, integers, or floats only, then converts the replay result to generic `EvaluationSummary` at the evaluator boundary.
+Temporal replay has a private typed result ABI between Temporal Accounting and the Temporal Replay Runner. It carries run metrics, event metric sums, window summaries, and metadata as replay concepts. Aggregate ratio metrics are event-weighted across all replay events; `window_metrics` summarize per-run ratio means without event weighting. The runner validates metadata as strings, integers, or floats only, then converts the replay result to generic `EvaluationSummary` at the evaluator boundary.
 
 ## Temporal Accounting
 
@@ -72,7 +72,7 @@ arrivals
   -> Temporal Accounting
 ```
 
-Duplicate selected samples can occur when several arrivals map to the same sample. They count as repeated events.
+Duplicate selected samples can occur when several arrivals map to the same sample. They count as repeated events and contribute independently to event-weighted aggregate metrics.
 
 ## Full Temporal Replay
 

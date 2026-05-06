@@ -35,13 +35,28 @@ def _store() -> CompiledProblemStore:
     )
 
 
+def _overflow_store() -> CompiledProblemStore:
+    return CompiledProblemStore(
+        feature_matrix=np.zeros((10, 1), dtype=np.float32),
+        log_base_fees=np.log(
+            np.array([100, 90, 80, 60, 55, 70, 50, 45, 40, 35], dtype=np.float32)
+        ).astype(np.float32, copy=False),
+        timestamps=(np.arange(10, dtype=np.int64) * 12).astype(np.int64, copy=False),
+        anchor_rows=np.array([1, 4], dtype=np.int64),
+        context_start_rows=np.array([0, 3], dtype=np.int64),
+        candidate_start_rows=np.array([2, 5], dtype=np.int64),
+        candidate_end_rows=np.array([3, 7], dtype=np.int64),
+        max_candidate_slots=3,
+    )
+
+
 def _execution_policy():
     return compile_execution_policy_contract(
         coerce_execution_policy_config({"id": "strict_deadline_miss"})
     )
 
 
-def test_selected_temporal_decisions_return_typed_replay_run_result() -> None:
+def test_selected_temporal_decisions_compute_exact_event_metrics() -> None:
     run = summarize_selected_temporal_decisions(
         _store(),
         _execution_policy(),
@@ -54,9 +69,36 @@ def test_selected_temporal_decisions_return_typed_replay_run_result() -> None:
     assert isinstance(run, TemporalReplayRunResult)
     assert run.n_events == 2
     assert isinstance(run.metrics, TemporalReplayMetrics)
-    assert run.metrics.realized_fee_sum > 0.0
-    assert run.metrics.baseline_fee_sum > 0.0
+    assert run.metrics.profit_over_baseline == pytest.approx(1.0 / 14.0, rel=1e-5)
+    assert run.metrics.cost_over_optimum == pytest.approx(1.0 / 16.0, rel=1e-5)
+    assert run.metrics.baseline_cost_over_optimum == pytest.approx(7.0 / 48.0, rel=1e-5)
+    assert run.metrics.exact_optimum_hit_rate == pytest.approx(0.5)
+    assert run.metrics.realized_fee_sum == pytest.approx(150.0)
+    assert run.metrics.baseline_fee_sum == pytest.approx(160.0)
+    assert run.metrics.optimum_fee_sum == pytest.approx(140.0)
+    assert run.event_metric_sums.profit_over_baseline == pytest.approx(1.0 / 7.0, rel=1e-5)
     assert run.metadata == {"mode": "unit", "overflow_count": 0}
+
+
+def test_selected_temporal_decisions_count_policy_overflow() -> None:
+    run = summarize_selected_temporal_decisions(
+        _overflow_store(),
+        _execution_policy(),
+        DecodedOffsets(torch.tensor([2, 1], dtype=torch.int64)),
+        np.array([0, 1], dtype=np.int64),
+        np.array([0, 1], dtype=np.int64),
+        metadata={"mode": "overflow"},
+    )
+
+    assert run.n_events == 2
+    assert run.metrics.profit_over_baseline == pytest.approx(15.0 / 56.0, rel=1e-5)
+    assert run.metrics.cost_over_optimum == pytest.approx(-1.0 / 8.0, rel=1e-5)
+    assert run.metrics.baseline_cost_over_optimum == pytest.approx(0.2, rel=1e-5)
+    assert run.metrics.exact_optimum_hit_rate == pytest.approx(0.5)
+    assert run.metrics.realized_fee_sum == pytest.approx(110.0)
+    assert run.metrics.baseline_fee_sum == pytest.approx(150.0)
+    assert run.metrics.optimum_fee_sum == pytest.approx(130.0)
+    assert run.metadata == {"mode": "overflow", "overflow_count": 1}
 
 
 def test_temporal_accounting_summary_returns_event_weighted_replay_result() -> None:
@@ -93,9 +135,7 @@ def test_temporal_accounting_summary_returns_event_weighted_replay_result() -> N
     assert result.metrics.baseline_cost_over_optimum == pytest.approx(1.5 / 4)
     assert result.metrics.exact_optimum_hit_rate == pytest.approx(2.0 / 4)
     assert result.metrics.realized_fee_sum == 40.0
-    assert result.window_metrics["profit_over_baseline"].mean == pytest.approx(
-        np.mean([0.2, 0.1])
-    )
+    assert result.window_metrics["profit_over_baseline"].mean == pytest.approx(np.mean([0.2, 0.1]))
 
 
 def _run_result(
