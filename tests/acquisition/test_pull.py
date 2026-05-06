@@ -17,8 +17,15 @@ def _plan(start: int, end: int) -> BlockPullPlan:
     return BlockPullPlan(
         window=TimestampRange(start=1_000, end=2_000),
         block_range=BlockRange(start=start, end=end),
-        expected_rows=end - start,
     )
+
+
+def test_block_pull_plan_rejects_empty_block_range() -> None:
+    with pytest.raises(ValueError, match="at least one block"):
+        BlockPullPlan(
+            window=TimestampRange(start=1_000, end=2_000),
+            block_range=BlockRange(start=100, end=100),
+        )
 
 
 class _FakeBlockSource:

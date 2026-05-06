@@ -36,17 +36,16 @@ def _plan_for_window(
     *,
     start_block: int,
     block_interval_seconds: int = 12,
-    expected_rows: int | None = None,
+    row_count: int | None = None,
 ) -> BlockPullPlan:
-    row_count = (
-        expected_rows
-        if expected_rows is not None
+    resolved_row_count = (
+        row_count
+        if row_count is not None
         else max(1, math.ceil((window.end - window.start) / block_interval_seconds))
     )
     return BlockPullPlan(
         window=window,
-        block_range=BlockRange(start=start_block, end=start_block + row_count),
-        expected_rows=row_count,
+        block_range=BlockRange(start=start_block, end=start_block + resolved_row_count),
     )
 
 
@@ -77,8 +76,7 @@ class _PlanningSource:
     ) -> BlockPullPlan:
         return BlockPullPlan(
             window=window,
-            block_range=block_range,
-            expected_rows=block_range.count,
+            block_range=block_range
         )
 
     async def get_block_rows(self, start: int, end: int):
@@ -113,8 +111,8 @@ def test_assemble_corpus_dry_run_returns_plan_without_writes(
     )
 
     assert result.mode == "dry_run"
-    assert result.history_plan.expected_rows > 0
-    assert result.evaluation_plan.expected_rows > 0
+    assert result.history_plan.block_range.count > 0
+    assert result.evaluation_plan.block_range.count > 0
     assert result.manifest is None
     assert roots.corpus.state_db_path.exists() is False
 
@@ -189,8 +187,7 @@ def _exercise_short_history_refill(
             start=config.evaluation_window_start_timestamp,
             end=config.evaluation_window_end_timestamp,
         ),
-        start_block=10_000,
-        expected_rows=32,
+        start_block=10_000
     )
     history_plans = [
         _plan_for_window(
@@ -198,32 +195,28 @@ def _exercise_short_history_refill(
                 start=config.history_window_end_timestamp - 50 * 12,
                 end=config.history_window_end_timestamp,
             ),
-            start_block=1_000,
-            expected_rows=50,
+            start_block=1_000
         ),
         _plan_for_window(
             TimestampRange(
                 start=config.history_window_end_timestamp - 100 * 12,
                 end=config.history_window_end_timestamp,
             ),
-            start_block=950,
-            expected_rows=100,
+            start_block=950
         ),
         _plan_for_window(
             TimestampRange(
                 start=config.history_window_end_timestamp - 150 * 12,
                 end=config.history_window_end_timestamp,
             ),
-            start_block=900,
-            expected_rows=150,
+            start_block=900
         ),
         _plan_for_window(
             TimestampRange(
                 start=config.history_window_end_timestamp - 200 * 12,
                 end=config.history_window_end_timestamp,
             ),
-            start_block=850,
-            expected_rows=200,
+            start_block=850
         ),
     ]
     partial_ranges: list[tuple[int, int]] = []
@@ -253,8 +246,7 @@ def _exercise_short_history_refill(
             history_windows.append(window)
             return BlockPullPlan(
                 window=window,
-                block_range=template.block_range,
-                expected_rows=template.expected_rows,
+                block_range=template.block_range
             )
 
         def plan_block_range(
@@ -266,8 +258,7 @@ def _exercise_short_history_refill(
             partial_ranges.append((block_range.start, block_range.end))
             return BlockPullPlan(
                 window=window,
-                block_range=block_range,
-                expected_rows=block_range.count,
+                block_range=block_range
             )
 
         async def get_block_rows(self, start: int, end: int):

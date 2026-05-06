@@ -50,8 +50,7 @@ def _plan_for_window(window: TimestampRange, *, start_block: int) -> BlockPullPl
     row_count = max(1, math.ceil((window.end - window.start) / 12))
     return BlockPullPlan(
         window=window,
-        block_range=BlockRange(start=start_block, end=start_block + row_count),
-        expected_rows=row_count,
+        block_range=BlockRange(start=start_block, end=start_block + row_count)
     )
 
 
@@ -82,8 +81,7 @@ class _PlanningSource:
     ) -> BlockPullPlan:
         return BlockPullPlan(
             window=window,
-            block_range=block_range,
-            expected_rows=block_range.count,
+            block_range=block_range
         )
 
     async def get_block_rows(self, start: int, end: int):

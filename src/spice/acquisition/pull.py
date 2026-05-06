@@ -175,8 +175,6 @@ async def pull_block_range(
     controller: AcquisitionPullController,
     sink: BlockPullSink,
 ) -> BlockPullPlan:
-    if plan.expected_rows == 0:
-        raise ValueError(f"No blocks found inside requested block range: {plan.block_range}")
     pending_requests: list[_BatchRequest] = []
     in_flight: dict[asyncio.Task[list[CanonicalBlockRow]], _BatchRequest] = {}
     completed_results: dict[int, _CompletedBatch] = {}

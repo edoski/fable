@@ -25,17 +25,16 @@ def _plan_for_window(
     *,
     start_block: int,
     block_interval_seconds: int = 12,
-    expected_rows: int | None = None,
+    row_count: int | None = None,
 ) -> BlockPullPlan:
-    row_count = (
-        expected_rows
-        if expected_rows is not None
+    resolved_row_count = (
+        row_count
+        if row_count is not None
         else max(1, math.ceil((window.end - window.start) / block_interval_seconds))
     )
     return BlockPullPlan(
         window=window,
-        block_range=BlockRange(start=start_block, end=start_block + row_count),
-        expected_rows=row_count,
+        block_range=BlockRange(start=start_block, end=start_block + resolved_row_count),
     )
 
 
@@ -111,8 +110,7 @@ class _RangeSource:
         self.partial_ranges.append((block_range.start, block_range.end))
         return BlockPullPlan(
             window=window,
-            block_range=block_range,
-            expected_rows=block_range.count,
+            block_range=block_range
         )
 
     async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:
@@ -138,8 +136,7 @@ def test_history_split_materialization_creates_dataset(tmp_path) -> None:
     source = _RangeSource()
     plan = _plan_for_window(
         TimestampRange(start=1_000, end=1_120),
-        start_block=100,
-        expected_rows=10,
+        start_block=100
     )
 
     result = asyncio.run(
@@ -168,8 +165,7 @@ def test_history_split_materialization_reuses_matching_staged_dataset(tmp_path) 
     source = _RangeSource()
     plan = _plan_for_window(
         TimestampRange(start=1_000, end=1_048),
-        start_block=100,
-        expected_rows=4,
+        start_block=100
     )
 
     result = asyncio.run(
@@ -198,8 +194,7 @@ def test_history_split_materialization_ignores_stale_clean_staged_dataset(tmp_pa
     source = _RangeSource()
     plan = _plan_for_window(
         TimestampRange(start=1_000, end=1_048),
-        start_block=100,
-        expected_rows=4,
+        start_block=100
     )
 
     result = asyncio.run(
@@ -229,8 +224,7 @@ def test_history_split_materialization_rejects_invalid_staged_dataset(tmp_path) 
     source = _RangeSource()
     plan = _plan_for_window(
         TimestampRange(start=1_000, end=1_048),
-        start_block=100,
-        expected_rows=4,
+        start_block=100
     )
 
     with pytest.raises(RuntimeError, match="Cannot resume invalid staged history dataset"):
@@ -259,8 +253,7 @@ def test_history_split_materialization_reuses_committed_superset(tmp_path) -> No
     source = _RangeSource()
     plan = BlockPullPlan(
         window=TimestampRange(start=1_000, end=1_120),
-        block_range=BlockRange(start=95, end=100),
-        expected_rows=5,
+        block_range=BlockRange(start=95, end=100)
     )
 
     result = asyncio.run(
@@ -290,8 +283,7 @@ def test_history_split_materialization_extends_committed_prefix(tmp_path) -> Non
     source = _RangeSource()
     plan = _plan_for_window(
         TimestampRange(start=1_000, end=1_048),
-        start_block=100,
-        expected_rows=4,
+        start_block=100
     )
 
     result = asyncio.run(
@@ -321,8 +313,7 @@ def test_evaluation_split_materialization_reuses_exact_committed_dataset(tmp_pat
     source = _RangeSource()
     plan = _plan_for_window(
         TimestampRange(start=1_000, end=1_048),
-        start_block=100,
-        expected_rows=4,
+        start_block=100
     )
 
     result = asyncio.run(
@@ -351,8 +342,7 @@ def test_evaluation_split_materialization_extends_overlap(tmp_path) -> None:
     source = _RangeSource()
     plan = BlockPullPlan(
         window=TimestampRange(start=1_012, end=1_060),
-        block_range=BlockRange(start=101, end=105),
-        expected_rows=4,
+        block_range=BlockRange(start=101, end=105)
     )
 
     result = asyncio.run(
@@ -387,8 +377,7 @@ def test_evaluation_split_materialization_extends_prefix_and_suffix(tmp_path) ->
     source = _RangeSource()
     plan = BlockPullPlan(
         window=TimestampRange(start=976, end=1_072),
-        block_range=BlockRange(start=98, end=106),
-        expected_rows=8,
+        block_range=BlockRange(start=98, end=106)
     )
 
     result = asyncio.run(
@@ -435,8 +424,7 @@ def test_evaluation_split_materialization_rebuilds_overlap_outside_window(
     source = _RangeSource()
     plan = BlockPullPlan(
         window=TimestampRange(start=1_012, end=1_060),
-        block_range=BlockRange(start=101, end=105),
-        expected_rows=4,
+        block_range=BlockRange(start=101, end=105)
     )
 
     result = asyncio.run(
@@ -470,8 +458,7 @@ def test_evaluation_split_materialization_rebuilds_stale_exact_range(tmp_path) -
     source = _RangeSource()
     plan = _plan_for_window(
         TimestampRange(start=1_000, end=1_048),
-        start_block=100,
-        expected_rows=4,
+        start_block=100
     )
 
     result = asyncio.run(

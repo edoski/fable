@@ -47,17 +47,16 @@ def _plan_for_window(
     start_block: int,
     chunk_size: int,
     block_interval_seconds: int = 12,
-    expected_rows: int | None = None,
+    row_count: int | None = None,
 ) -> BlockPullPlan:
-    row_count = (
-        expected_rows
-        if expected_rows is not None
+    resolved_row_count = (
+        row_count
+        if row_count is not None
         else max(1, math.ceil((window.end - window.start) / block_interval_seconds))
     )
     return BlockPullPlan(
         window=window,
-        block_range=BlockRange(start=start_block, end=start_block + row_count),
-        expected_rows=row_count,
+        block_range=BlockRange(start=start_block, end=start_block + resolved_row_count),
     )
 
 
@@ -79,7 +78,6 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
             end=config.evaluation_window_end_timestamp,
         ),
         start_block=10_000,
-        expected_rows=32,
         chunk_size=config.acquisition.chunk_size,
     )
     history_windows: list[TimestampRange] = []
@@ -120,7 +118,6 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
             plan = BlockPullPlan(
                 window,
                 block_range=block_range,
-                expected_rows=block_range.count,
             )
             self._planned_windows.append(plan)
             return plan
@@ -147,7 +144,7 @@ def test_acquire_workflow_writes_canonical_corpus_and_metadata(
     summary = load_dataset_manifest(roots.corpus.state_db_path)
     runs = list_acquire_runs(roots.corpus.state_db_path)
     assert roots.corpus.state_db_path.is_file()
-    assert summary.splits.evaluation.validation.rows == evaluation_plan.expected_rows
+    assert summary.splits.evaluation.validation.rows == evaluation_plan.block_range.count
     assert summary.dataset.id == roots.corpus.dataset_id
     assert summary.dataset.name == config.dataset.name
     assert summary.chain.name == config.chain.name
@@ -196,7 +193,6 @@ def test_acquire_failure_preserves_staging_and_rerun_resumes(
             end=config.evaluation_window_end_timestamp,
         ),
         start_block=10_000,
-        expected_rows=4,
         chunk_size=config.acquisition.chunk_size,
     )
     history_plan = _plan_for_window(
@@ -205,7 +201,6 @@ def test_acquire_failure_preserves_staging_and_rerun_resumes(
             end=config.history_window_end_timestamp,
         ),
         start_block=100,
-        expected_rows=400,
         chunk_size=config.acquisition.chunk_size,
     )
     requested_ranges: list[tuple[int, int]] = []
@@ -235,8 +230,7 @@ def test_acquire_failure_preserves_staging_and_rerun_resumes(
         ) -> BlockPullPlan:
             return BlockPullPlan(
                 window=window,
-                block_range=block_range,
-                expected_rows=block_range.count,
+                block_range=block_range
             )
 
         async def get_block_rows(self, start: int, end: int):

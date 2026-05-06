@@ -36,7 +36,10 @@ class BlockRange:
 class BlockPullPlan:
     window: TimestampRange
     block_range: BlockRange
-    expected_rows: int
+
+    def __post_init__(self) -> None:
+        if self.block_range.count == 0:
+            raise ValueError("block pull plan must contain at least one block")
 
 
 @dataclass(frozen=True, slots=True)

@@ -99,11 +99,9 @@ class BlockRpcClient:
         *,
         window: TimestampRange,
     ) -> BlockPullPlan:
-        expected_rows = block_range.count
         return BlockPullPlan(
             window=window,
             block_range=block_range,
-            expected_rows=expected_rows,
         )
 
     async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:

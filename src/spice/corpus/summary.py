@@ -17,8 +17,8 @@ def acquire_dry_run_fields(
     del config
     return [
         ("history_window", f"{history_window_seconds}s"),
-        ("history_blocks", str(history_plan.expected_rows)),
-        ("evaluation_blocks", str(evaluation_plan.expected_rows)),
+        ("history_blocks", str(history_plan.block_range.count)),
+        ("evaluation_blocks", str(evaluation_plan.block_range.count)),
     ]
 
 
