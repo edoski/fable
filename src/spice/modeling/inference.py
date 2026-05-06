@@ -9,8 +9,8 @@ from ..prediction import (
     CompiledPredictionContract,
 )
 from ..prediction.decoding import DecodedPredictionResult, decode_context_from_batch
-from ..temporal.execution_policy import CompiledExecutionPolicyContract
-from ..temporal.problem_store import CompiledProblemStore, IntVector
+from ..temporal.execution_policy import CompiledExecutionPolicyContract, PreparedActionSpace
+from ..temporal.problem_store import CompiledProblemStore
 from .forward_runtime import run_planned_model_input_forward
 from .models import TemporalModel
 from .representations import CompiledRepresentationContract
@@ -28,14 +28,16 @@ def predict_with_model(
     representation_contract: CompiledRepresentationContract,
     execution_policy: CompiledExecutionPolicyContract,
     store: CompiledProblemStore,
-    sample_indices: IntVector,
+    action_space: PreparedActionSpace,
     runtime_plan: ModelingRuntimePlan,
 ) -> DecodedPredictionResult:
-    if sample_indices.size == 0:
+    if action_space.sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
 
     runtime_model = prepare_model_for_runtime(model, runtime_plan)
-    predictions = prediction_contract.allocate_decoded_result(int(sample_indices.shape[0]))
+    predictions = prediction_contract.allocate_decoded_result(
+        int(action_space.sample_indices.shape[0])
+    )
 
     def _decode_batch(batch, outputs) -> None:
         _validate_finite_outputs(outputs)
@@ -49,7 +51,7 @@ def predict_with_model(
         run_planned_model_input_forward(
             runtime_model,
             store=store,
-            sample_indices=sample_indices,
+            action_space=action_space,
             representation_contract=representation_contract,
             execution_policy=execution_policy,
             runtime_plan=runtime_plan,

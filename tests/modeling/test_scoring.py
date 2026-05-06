@@ -11,6 +11,7 @@ from spice.metrics import MetricSet
 from spice.modeling.representations import RepresentationRuntimeContext
 from spice.modeling.runtime_planning import ModelingRuntimePlan
 from spice.modeling.scoring import EvaluationScoringRuntimePlan, score_evaluation
+from spice.temporal.execution_policy import PreparedActionSpace
 
 
 def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> None:
@@ -44,9 +45,13 @@ def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> 
         def validate_prediction_contract(self, prediction_contract) -> None:
             calls.append(f"validate:{prediction_contract.decoded_result_id}")
 
-        def run(self, store, execution_policy, decoded_result, *, sample_indices):
+        def run(self, store, execution_policy, decoded_result, *, action_space):
             del store, execution_policy
-            calls.append(f"run:{decoded_result.decoded_result_id}:{sample_indices.tolist()}")
+            calls.append(
+                "run:"
+                f"{decoded_result.decoded_result_id}:"
+                f"{action_space.sample_indices.tolist()}"
+            )
             return summary
 
     monkeypatch.setattr("spice.modeling.scoring.predict_with_model", fake_predict_with_model)
@@ -58,7 +63,11 @@ def test_score_evaluation_validates_predicts_and_runs_evaluator(monkeypatch) -> 
             representation_contract=cast(Any, SimpleNamespace()),
             execution_policy=cast(Any, SimpleNamespace(name="policy")),
             store=cast(Any, SimpleNamespace()),
-            sample_indices=np.array([2, 4], dtype=np.int64),
+            action_space=PreparedActionSpace(
+                sample_indices=np.array([2, 4], dtype=np.int64),
+                max_candidate_slots=1,
+                action_mask=np.ones((2, 1), dtype=np.bool_),
+            ),
             runtime_plan=runtime_plan,
         ),
         evaluator_contract=cast(Any, FakeEvaluator()),

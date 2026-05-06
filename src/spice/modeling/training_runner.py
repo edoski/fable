@@ -6,18 +6,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
-import numpy as np
 import torch
-from numpy.typing import NDArray
 
 from ..config.models import TrainingConfig
 from ..metrics import MetricSet
 from ..prediction import CompiledPredictionContract
 from ..prediction.contracts import PredictionBatch
-from ..temporal.execution_policy import CompiledExecutionPolicyContract
-from ..temporal.problem_store import CompiledProblemStore
 from ._epoch_execution import run_epoch
 from ._fit_policy import CompletedEpoch, TrainingEpochProgress, TrainingFitPolicy
+from .dataset_builders import PreparedTrainingDataset, PreparedTrainingSampleSelection
 from .families.base import ModelConfig
 from .forward_runtime import run_planned_prediction_forward
 from .models import TemporalModel
@@ -30,8 +27,6 @@ from .runtime_planning import (
 )
 from .scoring import EvaluationScoringRuntimePlan
 from .training_runtime import prepare_training_runtime
-
-IntVector = NDArray[np.int64]
 
 
 @dataclass(slots=True)
@@ -61,11 +56,8 @@ class TrainingFitSpec:
     model_config: ModelConfig
     prediction_contract: CompiledPredictionContract
     objective_runtime: CompiledObjectiveRuntime
-    execution_policy: CompiledExecutionPolicyContract
     representation_contract: CompiledRepresentationContract
-    store: CompiledProblemStore
-    train_sample_indices: IntVector
-    validation_sample_indices: IntVector
+    prepared: PreparedTrainingDataset
     training_config: TrainingConfig
 
 
@@ -74,10 +66,9 @@ class TrainingMetricEvaluationSpec:
     model: torch.nn.Module
     model_config: ModelConfig
     prediction_contract: CompiledPredictionContract
-    execution_policy: CompiledExecutionPolicyContract
     representation_contract: CompiledRepresentationContract
-    store: CompiledProblemStore
-    sample_indices: IntVector
+    prepared: PreparedTrainingDataset
+    samples: PreparedTrainingSampleSelection
     prediction_training_state: object | None
     training_config: TrainingConfig
 
@@ -88,7 +79,10 @@ def run_training_fit(
     callbacks: TrainingCallbacks | None = None,
 ) -> TrainingResult:
     active_callbacks = callbacks or TrainingCallbacks()
-    if spec.train_sample_indices.size == 0 or spec.validation_sample_indices.size == 0:
+    if (
+        spec.prepared.samples.train.sample_indices.size == 0
+        or spec.prepared.samples.validation.sample_indices.size == 0
+    ):
         raise ValueError("Train and validation sample selections must both be non-empty")
 
     policy = TrainingFitPolicy.create(
@@ -102,11 +96,11 @@ def run_training_fit(
         spec.model,
         model_config=spec.model_config,
         prediction_contract=spec.prediction_contract,
-        execution_policy=spec.execution_policy,
+        execution_policy=spec.prepared.execution_policy,
         representation_contract=spec.representation_contract,
-        store=spec.store,
-        train_sample_indices=spec.train_sample_indices,
-        validation_sample_indices=spec.validation_sample_indices,
+        store=spec.prepared.store,
+        train_samples=spec.prepared.samples.train,
+        validation_samples=spec.prepared.samples.validation,
         training_config=spec.training_config,
     )
     fit_model = prepared_runtime.fit_model
@@ -118,9 +112,9 @@ def run_training_fit(
         model=fit_model,
         prediction_contract=spec.prediction_contract,
         representation_contract=spec.representation_contract,
-        execution_policy=spec.execution_policy,
-        store=spec.store,
-        sample_indices=spec.validation_sample_indices,
+        execution_policy=spec.prepared.execution_policy,
+        store=spec.prepared.store,
+        action_space=spec.prepared.samples.validation.action_space,
         runtime_plan=runtime_plan,
     )
     with modeling_backend_scope(runtime_plan):
@@ -222,7 +216,7 @@ def run_training_fit(
 
 
 def evaluate_training_metrics(spec: TrainingMetricEvaluationSpec) -> MetricSet:
-    if spec.sample_indices.size == 0:
+    if spec.samples.sample_indices.size == 0:
         raise ValueError("sample_indices must be non-empty")
     runtime_plan = build_cuda_modeling_runtime_plan(
         model_config=spec.model_config,
@@ -244,11 +238,11 @@ def evaluate_training_metrics(spec: TrainingMetricEvaluationSpec) -> MetricSet:
     with modeling_backend_scope(runtime_plan):
         run_planned_prediction_forward(
             fit_model,
-            store=spec.store,
-            sample_indices=spec.sample_indices,
+            store=spec.prepared.store,
+            temporal_facts=spec.samples.temporal_facts,
             representation_contract=spec.representation_contract,
             prediction_contract=spec.prediction_contract,
-            execution_policy=spec.execution_policy,
+            execution_policy=spec.prepared.execution_policy,
             runtime_plan=runtime_plan,
             on_outputs=_accumulate,
         )

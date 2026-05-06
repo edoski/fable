@@ -12,10 +12,12 @@ canonical rows
   -> problem contract
   -> compiled problem store
   -> dataset builder
-  -> train/validation/test sample indices
+  -> prepared train/validation/test sample roles
 ```
 
 The builder must preserve temporal ordering. Random train/test splitting would leak future data into training.
+
+Training preparation ends by binding each split to `PreparedTemporalFacts`. Inference preparation ends by binding selected evaluation samples to a `PreparedActionSpace`. Raw split indices stay builder-local; callers receive prepared selections that already encode selected-sample alignment, action masks, and target facts.
 
 ## `fixed_sequence_temporal`
 
@@ -60,6 +62,7 @@ The builder fits input normalization on training windows only. The scaler is per
 train indices
   -> scaler fit
   -> transform all splits with same scaler
+  -> prepare split temporal facts on scaled store
 ```
 
 ## Inference Dataset Construction

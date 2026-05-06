@@ -119,9 +119,10 @@ def _prepare_supervised_targets(
 def _realize_selections(
     store: CompiledProblemStore,
     decoded_offsets: DecodedOffsetBatch,
-    sample_indices: IntVector,
+    action_space: PreparedActionSpace,
     selected_positions: IntVector,
 ) -> RealizedSelectionBatch:
+    sample_indices = action_space.sample_indices
     if len(decoded_offsets) != int(sample_indices.shape[0]):
         raise ValueError("decoded_offsets must align with sample_indices")
     if selected_positions.size == 0:

@@ -53,7 +53,7 @@ decoded result id
     +--> evaluator contract checks accepted decoded-result id
              |
              v
-        evaluator.run(store, execution_policy, decoded_result, sample_indices)
+        evaluator.run(store, execution_policy, decoded_result, action_space)
              |
              v
         EvaluationSummary
@@ -63,7 +63,7 @@ Evaluators never call models or prediction heads. The `modeling.scoring` bridge 
 
 ## Decoded Result Boundary
 
-The evaluator accepts the generic `DecodedPredictionResult` from `prediction.decoding` at the evaluator entrypoint because that is the evaluator ABI. Replay then narrows to `DecodedOffsets` from `prediction.decoded_offsets` once:
+The evaluator accepts the generic `DecodedPredictionResult` and a prepared Action Space at the evaluator entrypoint because that is the evaluator ABI. Replay then narrows to `DecodedOffsets` from `prediction.decoded_offsets` once:
 
 ```text
 Temporal Replay Runner
@@ -75,7 +75,7 @@ Temporal Replay Runner
 
 ## Temporal Accounting
 
-Temporal replay evaluator Adapters choose event positions from a runner-built replay sample view. The **Temporal Replay Runner** owns decoded-result validation, replay sample positions/timestamps/count, selected-position validation, strict scalar metadata validation, and the accounting loop. Temporal Accounting computes realized, baseline, optimum, and event-mean economic metrics for those positions.
+Temporal replay evaluator Adapters choose event positions from a runner-built replay sample view. The **Temporal Replay Runner** owns decoded-result validation, replay sample positions/timestamps/count derived from the prepared Action Space, selected-position validation, strict scalar metadata validation, and the accounting loop. Temporal Accounting computes realized, baseline, optimum, and event-mean economic metrics for those positions.
 
 ```text
 selected sample positions

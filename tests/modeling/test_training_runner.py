@@ -23,6 +23,7 @@ from spice.modeling.training_runner import (
 )
 from spice.modeling.training_runtime import PreparedTrainingRuntime, TrainingRuntimePlan
 from spice.objectives import CompiledObjectiveContract
+from spice.temporal.execution_policy import PreparedActionSpace
 
 
 class _TinyModel(torch.nn.Module):
@@ -99,6 +100,32 @@ def _patch_training_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _sample_role(indices: list[int]):
+    sample_indices = np.array(indices, dtype=np.int64)
+    action_space = PreparedActionSpace(
+        sample_indices=sample_indices,
+        max_candidate_slots=1,
+        action_mask=np.ones((sample_indices.shape[0], 1), dtype=np.bool_),
+    )
+    return SimpleNamespace(
+        sample_indices=sample_indices,
+        action_space=action_space,
+        temporal_facts=SimpleNamespace(action_space=action_space),
+    )
+
+
+def _prepared(*, train: list[int] | None = None, validation: list[int] | None = None):
+    return SimpleNamespace(
+        execution_policy=SimpleNamespace(),
+        store=SimpleNamespace(),
+        samples=SimpleNamespace(
+            train=_sample_role([0] if train is None else train),
+            validation=_sample_role([1] if validation is None else validation),
+            test=_sample_role([2]),
+        ),
+    )
+
+
 def _fit_spec(
     tmp_path,
     *,
@@ -112,10 +139,7 @@ def _fit_spec(
         prediction_contract=cast(Any, SimpleNamespace(fit_training_state=lambda *_, **__: None)),
         representation_contract=cast(Any, SimpleNamespace()),
         objective_runtime=objective_runtime or _objective_runtime(),
-        execution_policy=cast(Any, SimpleNamespace()),
-        store=cast(Any, SimpleNamespace()),
-        train_sample_indices=np.array([0], dtype=np.int64),
-        validation_sample_indices=np.array([0], dtype=np.int64),
+        prepared=cast(Any, _prepared(train=[0], validation=[0])),
         training_config=training_config,
     )
 
@@ -177,8 +201,7 @@ def test_training_fit_delegates_scoring_plan_to_objective_runtime(
     model = _TinyModel()
     prediction_contract = cast(Any, SimpleNamespace(fit_training_state=lambda *_, **__: None))
     representation_contract = cast(Any, SimpleNamespace())
-    execution_policy = cast(Any, SimpleNamespace())
-    store = cast(Any, SimpleNamespace())
+    prepared = _prepared(train=[0], validation=[1])
 
     result = run_training_fit(
         TrainingFitSpec(
@@ -187,10 +210,7 @@ def test_training_fit_delegates_scoring_plan_to_objective_runtime(
             prediction_contract=prediction_contract,
             representation_contract=representation_contract,
             objective_runtime=_objective_runtime(evaluate_metrics),
-            execution_policy=execution_policy,
-            store=store,
-            train_sample_indices=np.array([0], dtype=np.int64),
-            validation_sample_indices=np.array([1], dtype=np.int64),
+            prepared=cast(Any, prepared),
             training_config=_training_config(max_epochs=1),
         )
     )
@@ -202,10 +222,13 @@ def test_training_fit_delegates_scoring_plan_to_objective_runtime(
     assert scoring_plan.model is model
     assert scoring_plan.prediction_contract is prediction_contract
     assert scoring_plan.representation_contract is representation_contract
-    assert scoring_plan.execution_policy is execution_policy
-    assert scoring_plan.store is store
+    assert scoring_plan.execution_policy is prepared.execution_policy
+    assert scoring_plan.store is prepared.store
     assert scoring_plan.runtime_plan is not None
-    np.testing.assert_array_equal(scoring_plan.sample_indices, np.array([1], dtype=np.int64))
+    np.testing.assert_array_equal(
+        scoring_plan.action_space.sample_indices,
+        np.array([1], dtype=np.int64),
+    )
 
 
 def test_evaluate_training_metrics_uses_batch_plan_and_prediction_training_state(
@@ -265,10 +288,9 @@ def test_evaluate_training_metrics_uses_batch_plan_and_prediction_training_state
             model=_TinyModel(),
             model_config=cast(Any, SimpleNamespace()),
             prediction_contract=cast(Any, prediction_contract),
-            execution_policy=cast(Any, SimpleNamespace()),
             representation_contract=cast(Any, SimpleNamespace()),
-            store=cast(Any, SimpleNamespace()),
-            sample_indices=np.array([0], dtype=np.int64),
+            prepared=cast(Any, _prepared()),
+            samples=cast(Any, _sample_role([0])),
             prediction_training_state=prediction_state,
             training_config=_training_config(),
         )

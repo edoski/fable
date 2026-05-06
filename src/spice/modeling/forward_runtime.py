@@ -9,7 +9,11 @@ import torch
 
 from ..prediction import CompiledPredictionContract
 from ..prediction.contracts import ModelInputBatch, PredictionBatch
-from ..temporal.execution_policy import CompiledExecutionPolicyContract
+from ..temporal.execution_policy import (
+    CompiledExecutionPolicyContract,
+    PreparedActionSpace,
+    PreparedTemporalFacts,
+)
 from ..temporal.problem_store import CompiledProblemStore, IntVector
 from ._runtime import ForwardBatch, precision_context, run_model_forward_pass
 from ._runtime_probe import build_measured_modeling_runtime_plan, measure_device_resident_budget
@@ -85,14 +89,13 @@ def run_planned_model_input_forward(
     model: TemporalModel,
     *,
     store: CompiledProblemStore,
-    sample_indices: IntVector,
+    action_space: PreparedActionSpace,
     representation_contract: CompiledRepresentationContract,
     execution_policy: CompiledExecutionPolicyContract,
     runtime_plan: ModelingRuntimePlan,
     on_outputs: Callable[[ModelInputBatch, ModelOutputs], None],
 ) -> None:
-    _require_non_empty_samples(sample_indices)
-    action_space = execution_policy.prepare_action_space(store, sample_indices)
+    _require_non_empty_samples(action_space.sample_indices)
 
     def _build_plan(plan: ModelingRuntimePlan) -> BatchPlan[ModelInputBatch]:
         return build_model_input_batch_plan(
@@ -117,15 +120,14 @@ def run_planned_prediction_forward(
     model: TemporalModel,
     *,
     store: CompiledProblemStore,
-    sample_indices: IntVector,
+    temporal_facts: PreparedTemporalFacts,
     representation_contract: CompiledRepresentationContract,
     prediction_contract: CompiledPredictionContract,
     execution_policy: CompiledExecutionPolicyContract,
     runtime_plan: ModelingRuntimePlan,
     on_outputs: Callable[[PredictionBatch, ModelOutputs], None],
 ) -> None:
-    _require_non_empty_samples(sample_indices)
-    temporal_facts = execution_policy.prepare_temporal_facts(store, sample_indices)
+    _require_non_empty_samples(temporal_facts.action_space.sample_indices)
 
     def _build_plan(plan: ModelingRuntimePlan) -> BatchPlan[PredictionBatch]:
         return build_prediction_batch_plan(

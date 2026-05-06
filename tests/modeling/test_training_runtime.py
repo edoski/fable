@@ -3,11 +3,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
-import numpy as np
 import pytest
 import torch
 
 from spice.config.models import TrainingConfig
+from spice.modeling.dataset_builders import PreparedTrainingSampleSelection
 from spice.modeling.representations import DeviceStorageBudget, RepresentationRuntimeContext
 from spice.modeling.runtime_planning import ModelingRuntimePlan
 from spice.modeling.training_runtime import plan_training_runtime
@@ -55,13 +55,7 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
     prediction_state = object()
     train_facts = object()
     validation_facts = object()
-    temporal_fact_calls = []
-    execution_policy = SimpleNamespace(
-        prepare_temporal_facts=lambda _store, sample_indices: (
-            temporal_fact_calls.append(sample_indices.tolist())
-            or (train_facts if sample_indices.tolist() == [0] else validation_facts)
-        )
-    )
+    execution_policy = SimpleNamespace()
 
     def fake_build_prediction_batch_plan(
         *_args, temporal_facts, runtime_context, seed, shuffle, **_kwargs
@@ -126,8 +120,11 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
         execution_policy=cast(Any, execution_policy),
         representation_contract=cast(Any, SimpleNamespace()),
         store=cast(Any, SimpleNamespace()),
-        train_sample_indices=np.array([0], dtype=np.int64),
-        validation_sample_indices=np.array([1], dtype=np.int64),
+        train_samples=PreparedTrainingSampleSelection("train", cast(Any, train_facts)),
+        validation_samples=PreparedTrainingSampleSelection(
+            "validation",
+            cast(Any, validation_facts),
+        ),
         runtime_plan=_runtime_plan(runtime_context),
         training_config=_training_config(),
     )
@@ -159,7 +156,6 @@ def test_plan_training_runtime_uses_unshuffled_host_warmup_and_reuses_state(
     assert optimizers[0].weight_decay == 0.03
     assert len(fit_state_calls) == 1
     assert fit_state_calls[0][1]["temporal_facts"] is train_facts
-    assert temporal_fact_calls == [[0], [1]]
     assert plan.prediction_training_state is prediction_state
     assert plan.runtime_plan == ModelingRuntimePlan(
         resolved_device=torch.device("cpu"),
@@ -187,9 +183,7 @@ def test_plan_training_runtime_restores_model_and_clears_cache_after_probe_failu
         device_storage_budget=DeviceStorageBudget.coarse(999),
     )
     empty_cache_calls = []
-    execution_policy = SimpleNamespace(
-        prepare_temporal_facts=lambda _store, sample_indices: object()
-    )
+    execution_policy = SimpleNamespace()
 
     monkeypatch.setattr(
         "spice.modeling.training_runtime.build_prediction_batch_plan",
@@ -225,8 +219,14 @@ def test_plan_training_runtime_restores_model_and_clears_cache_after_probe_failu
             execution_policy=cast(Any, execution_policy),
             representation_contract=cast(Any, SimpleNamespace()),
             store=cast(Any, SimpleNamespace()),
-            train_sample_indices=np.array([0], dtype=np.int64),
-            validation_sample_indices=np.array([1], dtype=np.int64),
+            train_samples=PreparedTrainingSampleSelection(
+                "train",
+                cast(Any, object()),
+            ),
+            validation_samples=PreparedTrainingSampleSelection(
+                "validation",
+                cast(Any, object()),
+            ),
             runtime_plan=_runtime_plan(runtime_context),
             training_config=_training_config(),
         )

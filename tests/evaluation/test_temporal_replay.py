@@ -48,6 +48,10 @@ def _execution_policy():
     )
 
 
+def _action_space(store: CompiledProblemStore, sample_indices: np.ndarray):
+    return _execution_policy().prepare_action_space(store, sample_indices)
+
+
 def test_poisson_arrival_selection_uses_latest_prior_sample() -> None:
     selected = _select_sample_positions_for_arrivals(
         np.array([10, 20, 30], dtype=np.int64),
@@ -70,7 +74,7 @@ def test_poisson_adapter_returns_positions_in_original_sample_order() -> None:
         )
     )
 
-    samples = temporal_replay_sample_view(store, sample_indices)
+    samples = temporal_replay_sample_view(store, _action_space(store, sample_indices))
     selections = adapter.selections(samples)
 
     assert selections
@@ -121,10 +125,10 @@ class _CapturingReplayAdapter:
 def test_temporal_replay_runner_builds_adapter_sample_view() -> None:
     adapter = _CapturingReplayAdapter()
     run_temporal_replay(
-        _store(),
+        store := _store(),
         _execution_policy(),
         DecodedOffsets(torch.tensor([0, 1, 0], dtype=torch.int64)),
-        np.array([3, 1, 2], dtype=np.int64),
+        _action_space(store, np.array([3, 1, 2], dtype=np.int64)),
         adapter=adapter,
     )
 
@@ -136,10 +140,10 @@ def test_temporal_replay_runner_builds_adapter_sample_view() -> None:
 
 def test_temporal_replay_runner_composes_adapter_runs() -> None:
     summary = run_temporal_replay(
-        _store(),
+        store := _store(),
         _execution_policy(),
         DecodedOffsets(torch.tensor([0, 1], dtype=torch.int64)),
-        np.array([0, 1], dtype=np.int64),
+        _action_space(store, np.array([0, 1], dtype=np.int64)),
         adapter=_FakeReplayAdapter(
             (
                 TemporalReplaySelection(
@@ -162,10 +166,10 @@ def test_temporal_replay_runner_composes_adapter_runs() -> None:
 def test_temporal_replay_runner_owns_no_run_error() -> None:
     with pytest.raises(SpiceOperatorError, match="fake adapter"):
         run_temporal_replay(
-            _store(),
+            store := _store(),
             _execution_policy(),
             DecodedOffsets(torch.tensor([0, 1], dtype=torch.int64)),
-            np.array([0, 1], dtype=np.int64),
+            _action_space(store, np.array([0, 1], dtype=np.int64)),
             adapter=_FakeReplayAdapter(()),
             no_runs_error=SpiceOperatorError("fake adapter produced no runs"),
         )
@@ -186,10 +190,10 @@ def test_temporal_replay_runner_validates_selected_positions(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         run_temporal_replay(
-            _store(),
+            store := _store(),
             _execution_policy(),
             DecodedOffsets(torch.tensor([0, 1], dtype=torch.int64)),
-            np.array([0, 1], dtype=np.int64),
+            _action_space(store, np.array([0, 1], dtype=np.int64)),
             adapter=_FakeReplayAdapter(
                 (
                     TemporalReplaySelection(
@@ -204,10 +208,10 @@ def test_temporal_replay_runner_validates_selected_positions(
 def test_temporal_replay_runner_validates_decoded_sample_alignment() -> None:
     with pytest.raises(ValueError, match="decoded_offsets"):
         run_temporal_replay(
-            _store(),
+            store := _store(),
             _execution_policy(),
             DecodedOffsets(torch.tensor([0], dtype=torch.int64)),
-            np.array([0, 1], dtype=np.int64),
+            _action_space(store, np.array([0, 1], dtype=np.int64)),
             adapter=_FakeReplayAdapter(()),
         )
 
@@ -215,10 +219,10 @@ def test_temporal_replay_runner_validates_decoded_sample_alignment() -> None:
 def test_temporal_replay_runner_validates_non_empty_sample_indices() -> None:
     with pytest.raises(ValueError, match="sample_indices"):
         run_temporal_replay(
-            _store(),
+            store := _store(),
             _execution_policy(),
             DecodedOffsets(torch.tensor([], dtype=torch.int64)),
-            np.array([], dtype=np.int64),
+            _action_space(store, np.array([], dtype=np.int64)),
             adapter=_FakeReplayAdapter(()),
         )
 
@@ -226,10 +230,10 @@ def test_temporal_replay_runner_validates_non_empty_sample_indices() -> None:
 def test_temporal_replay_runner_validates_metadata_scalars() -> None:
     with pytest.raises(ValueError, match="metadata values"):
         run_temporal_replay(
-            _store(),
+            store := _store(),
             _execution_policy(),
             DecodedOffsets(torch.tensor([0, 1], dtype=torch.int64)),
-            np.array([0, 1], dtype=np.int64),
+            _action_space(store, np.array([0, 1], dtype=np.int64)),
             adapter=_FakeReplayAdapter(
                 (
                     TemporalReplaySelection(

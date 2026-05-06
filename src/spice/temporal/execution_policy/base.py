@@ -119,7 +119,7 @@ PrepareActionSpaceFn = Callable[
     PreparedActionSpace,
 ]
 RealizeSelectionsFn = Callable[
-    [CompiledProblemStore, DecodedOffsetBatch, IntVector, IntVector],
+    [CompiledProblemStore, DecodedOffsetBatch, PreparedActionSpace, IntVector],
     RealizedSelectionBatch,
 ]
 
@@ -177,13 +177,13 @@ class CompiledExecutionPolicyContract:
         self,
         store: CompiledProblemStore,
         decoded_offsets: DecodedOffsetBatch,
-        sample_indices: IntVector,
+        action_space: PreparedActionSpace,
         selected_positions: IntVector,
     ) -> RealizedSelectionBatch:
         return self.realize_selections_fn(
             store,
             decoded_offsets,
-            sample_indices,
+            action_space,
             selected_positions,
         )
 

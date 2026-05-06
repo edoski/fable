@@ -17,6 +17,7 @@ from spice.modeling.runtime_planning import ModelingRuntimePlan
 from spice.storage.workflow_roots import CorpusRootHandle, EvaluateWorkflowRoots
 from spice.temporal import TemporalCapability
 from spice.temporal.compilers.observed_time_window import ObservedTimeWindowRuntimeMetadata
+from spice.temporal.execution_policy import PreparedActionSpace
 from tests.root_handle_helpers import artifact_handle, corpus_handle, evaluate_roots
 
 
@@ -104,13 +105,21 @@ def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_
         ),
         metric_descriptors=(),
     )
+    action_space = PreparedActionSpace(
+        sample_indices=np.array([0, 1], dtype=np.int64),
+        max_candidate_slots=4,
+        action_mask=np.ones((2, 4), dtype=np.bool_),
+    )
     prepared = SimpleNamespace(
         n_history_rows=10,
         n_evaluation_rows=5,
         sample_count=2,
         execution_policy=object(),
         store=object(),
-        sample_indices=np.array([0, 1], dtype=np.int64),
+        samples=SimpleNamespace(
+            action_space=action_space,
+            sample_indices=action_space.sample_indices,
+        ),
     )
     corpus_manifest = SimpleNamespace(
         chain=SimpleNamespace(
@@ -217,7 +226,7 @@ def test_artifact_inference_context_prepares_scoring_inputs(
     assert context.evaluator_contract is evaluator_contract
     assert context.scoring_plan.model is loaded_artifact.model
     assert context.scoring_plan.prediction_contract is prediction_contract
-    assert context.scoring_plan.sample_indices.tolist() == [0, 1]
+    assert context.scoring_plan.action_space.sample_indices.tolist() == [0, 1]
     assert context.scoring_plan.runtime_plan.representation_runtime_context.batch_size == (
         config.batch_size
     )
@@ -240,13 +249,21 @@ def test_artifact_inference_passes_observed_evaluation_coverage(
         del context
         captured["evaluation_first_timestamp"] = facts.evaluation_coverage.first_timestamp
         captured["evaluation_last_timestamp"] = facts.evaluation_coverage.last_timestamp
+        action_space = PreparedActionSpace(
+            sample_indices=np.array([0], dtype=np.int64),
+            max_candidate_slots=1,
+            action_mask=np.ones((1, 1), dtype=np.bool_),
+        )
         return SimpleNamespace(
             n_history_rows=10,
             n_evaluation_rows=5,
             sample_count=1,
             execution_policy=object(),
             store=object(),
-            sample_indices=np.array([0], dtype=np.int64),
+            samples=SimpleNamespace(
+                action_space=action_space,
+                sample_indices=action_space.sample_indices,
+            ),
         )
 
     loaded_artifact = _install_artifact_context_fakes(monkeypatch, config)[1]

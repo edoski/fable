@@ -67,6 +67,10 @@ def _execution_policy():
     )
 
 
+def _action_space(store: CompiledProblemStore, sample_indices: np.ndarray):
+    return _execution_policy().prepare_action_space(store, sample_indices)
+
+
 def test_evaluator_config_supports_explicit_temporal_replay_specs() -> None:
     config = coerce_evaluator_config(_poisson_config())
     contract = compile_evaluator_contract(config)
@@ -104,7 +108,7 @@ def test_metric_descriptors_and_evaluator_contract_validate_primary_metric() -> 
         _store: object,
         _execution_policy: object,
         _decoded_result: object,
-        _sample_indices: object,
+        _action_space: object,
     ) -> EvaluationSummary:
         return EvaluationSummary(
             metrics=MetricSet(values={"profit": 0.0}),
@@ -135,7 +139,7 @@ def test_evaluator_rejects_incompatible_decoded_result_semantics() -> None:
             store,
             _execution_policy(),
             _OtherDecodedResult(),
-            np.arange(store.n_samples, dtype=np.int64),
+            _action_space(store, np.arange(store.n_samples, dtype=np.int64)),
         )
 
 
@@ -145,7 +149,12 @@ def test_poisson_replay_reports_event_summary_metadata() -> None:
     offsets = DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64))
     evaluator = compile_evaluator_contract(coerce_evaluator_config(_poisson_config()))
 
-    summary = evaluator.run(store, _execution_policy(), offsets, sample_indices)
+    summary = evaluator.run(
+        store,
+        _execution_policy(),
+        offsets,
+        _action_space(store, sample_indices),
+    )
 
     assert summary.total_events == sum(run.n_events for run in summary.runs)
     assert summary.total_events > 0
@@ -166,7 +175,12 @@ def test_full_temporal_replay_scores_every_supplied_sample_once() -> None:
     offsets = DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64))
     evaluator = compile_evaluator_contract(coerce_evaluator_config(_full_config()))
 
-    summary = evaluator.run(store, _execution_policy(), offsets, sample_indices)
+    summary = evaluator.run(
+        store,
+        _execution_policy(),
+        offsets,
+        _action_space(store, sample_indices),
+    )
 
     assert summary.total_events == store.n_samples
     assert summary.runs[0].n_events == store.n_samples
@@ -189,13 +203,13 @@ def test_poisson_replay_handles_non_chronological_sample_indices() -> None:
         store,
         _execution_policy(),
         DecodedOffsets(forward_offsets),
-        forward_indices,
+        _action_space(store, forward_indices),
     )
     reversed_summary = evaluator.run(
         store,
         _execution_policy(),
         reversed_offsets,
-        reversed_indices,
+        _action_space(store, reversed_indices),
     )
 
     assert reversed_summary.metrics.values == pytest.approx(summary.metrics.values)
@@ -219,7 +233,7 @@ def test_poisson_replay_rejects_window_larger_than_sample_coverage() -> None:
             store,
             _execution_policy(),
             DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64)),
-            sample_indices,
+            _action_space(store, sample_indices),
         )
 
 
@@ -241,5 +255,5 @@ def test_poisson_replay_rejects_all_empty_arrival_repetitions() -> None:
             store,
             _execution_policy(),
             DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64)),
-            sample_indices,
+            _action_space(store, sample_indices),
         )

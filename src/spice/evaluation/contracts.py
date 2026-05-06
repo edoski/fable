@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 
 from ..metrics import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..prediction.decoding import DecodedPredictionResult
-from ..temporal.execution_policy import CompiledExecutionPolicyContract
+from ..temporal.execution_policy import CompiledExecutionPolicyContract, PreparedActionSpace
 from ..temporal.problem_store import CompiledProblemStore
 from .config import EvaluatorConfig
 
@@ -42,7 +42,7 @@ RunEvaluatorFn = Callable[
         CompiledProblemStore,
         CompiledExecutionPolicyContract,
         DecodedPredictionResult,
-        IntVector,
+        PreparedActionSpace,
     ],
     EvaluationSummary,
 ]
@@ -83,7 +83,7 @@ class CompiledEvaluatorContract:
         store: CompiledProblemStore,
         execution_policy: CompiledExecutionPolicyContract,
         decoded_result: DecodedPredictionResult,
-        sample_indices: IntVector,
+        action_space: PreparedActionSpace,
     ) -> EvaluationSummary:
         if decoded_result.decoded_result_id != self.accepted_decoded_result_id:
             raise TypeError(
@@ -94,7 +94,7 @@ class CompiledEvaluatorContract:
             store,
             execution_policy,
             decoded_result,
-            sample_indices,
+            action_space,
         )
 
     def validate_prediction_contract(

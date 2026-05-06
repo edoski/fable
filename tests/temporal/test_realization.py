@@ -18,6 +18,10 @@ def _execution_policy():
     )
 
 
+def _action_space(store: CompiledProblemStore, sample_indices: np.ndarray):
+    return _execution_policy().prepare_action_space(store, sample_indices)
+
+
 def _store() -> CompiledProblemStore:
     return CompiledProblemStore(
         feature_matrix=np.zeros((8, 1), dtype=np.float32),
@@ -42,7 +46,7 @@ def test_strict_deadline_miss_rejects_negative_decoded_offsets() -> None:
         _execution_policy().realize_selections(
             store,
             DecodedOffsets(torch.tensor([-1, 0], dtype=torch.int64)),
-            np.arange(store.n_samples, dtype=np.int64),
+            _action_space(store, np.arange(store.n_samples, dtype=np.int64)),
             np.array([0], dtype=np.int64),
         )
 
@@ -54,7 +58,7 @@ def test_strict_deadline_miss_rejects_offsets_outside_action_width() -> None:
         _execution_policy().realize_selections(
             store,
             DecodedOffsets(torch.tensor([3, 0], dtype=torch.int64)),
-            np.arange(store.n_samples, dtype=np.int64),
+            _action_space(store, np.arange(store.n_samples, dtype=np.int64)),
             np.array([0], dtype=np.int64),
         )
 
@@ -65,7 +69,7 @@ def test_fixed_ex_ante_overflow_realizes_first_post_window_row() -> None:
     realized = _execution_policy().realize_selections(
         store,
         DecodedOffsets(torch.tensor([2, 2], dtype=torch.int64)),
-        np.arange(store.n_samples, dtype=np.int64),
+        _action_space(store, np.arange(store.n_samples, dtype=np.int64)),
         np.arange(store.n_samples, dtype=np.int64),
     )
 
@@ -133,7 +137,7 @@ def test_evaluation_optimum_uses_best_reachable_fixed_slot() -> None:
     realized = _execution_policy().realize_selections(
         store,
         DecodedOffsets(torch.tensor([1], dtype=torch.int64)),
-        np.array([0], dtype=np.int64),
+        _action_space(store, np.array([0], dtype=np.int64)),
         np.array([0], dtype=np.int64),
     )
 

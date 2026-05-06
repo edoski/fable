@@ -121,9 +121,12 @@ def test_fixed_context_dataset_builder_prepares_seq_len_without_builder_owned_cl
     assert prepared.temporal_capability.action_width == prepared.store.max_candidate_slots
     assert prepared.sample_count == config.problem.sample_count
     assert prepared.store.n_samples > prepared.sample_count
-    assert prepared.split_indices.train.size > 0
-    assert prepared.split_indices.validation.size > 0
-    assert prepared.split_indices.test.size > 0
+    assert prepared.samples.train.sample_indices.size > 0
+    assert prepared.samples.validation.sample_indices.size > 0
+    assert prepared.samples.test.sample_indices.size > 0
+    assert prepared.samples.train.action_space.sample_indices.shape == (
+        prepared.samples.train.temporal_facts.supervised_targets.optimum_offsets.shape
+    )
 
 
 def test_fixed_sequence_length_calibration_uses_train_sample_rows_only(
@@ -250,11 +253,14 @@ def test_fixed_sequence_inference_prep_reconstructs_artifact_runtime_state(
         ),
     )
 
-    sample_timestamps = prepared.store.sample_timestamps(prepared.sample_indices)
+    sample_timestamps = prepared.store.sample_timestamps(prepared.samples.sample_indices)
     assert prepared.n_history_rows == len(history_rows)
     assert prepared.n_evaluation_rows == len(evaluation_rows)
     assert prepared.sample_count > 0
     assert prepared.store.max_candidate_slots == trained.temporal_capability.action_width
+    assert prepared.samples.action_space.max_candidate_slots == (
+        trained.temporal_capability.action_width
+    )
     assert int(sample_timestamps.min()) >= evaluation_start
     assert int(sample_timestamps.max()) <= evaluation_end
     assert evaluation_end in sample_timestamps

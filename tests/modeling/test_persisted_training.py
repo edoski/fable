@@ -10,15 +10,30 @@ from spice.metrics import MetricSet
 from spice.modeling.persisted_training import run_persisted_training
 from spice.modeling.training_run import TrainingRunResult
 from spice.modeling.training_runner import TrainingResult
+from spice.temporal.execution_policy import PreparedActionSpace
+
+
+def _sample_role(indices: list[int]):
+    sample_indices = np.array(indices, dtype=np.int64)
+    action_space = PreparedActionSpace(
+        sample_indices=sample_indices,
+        max_candidate_slots=1,
+        action_mask=np.ones((sample_indices.shape[0], 1), dtype=np.bool_),
+    )
+    return SimpleNamespace(
+        sample_indices=sample_indices,
+        action_space=action_space,
+        temporal_facts=SimpleNamespace(action_space=action_space),
+    )
 
 
 def _training_run(*, model: object) -> TrainingRunResult:
     prepared = SimpleNamespace(
         execution_policy=SimpleNamespace(),
         store=SimpleNamespace(),
-        split_indices=SimpleNamespace(
-            validation=np.array([0], dtype=np.int64),
-            test=np.array([1], dtype=np.int64),
+        samples=SimpleNamespace(
+            validation=_sample_role([0]),
+            test=_sample_role([1]),
         ),
     )
     return TrainingRunResult(

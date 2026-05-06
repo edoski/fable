@@ -11,10 +11,11 @@ from ..config.models import TrainingConfig
 from ..prediction import CompiledPredictionContract
 from ..prediction.contracts import PredictionBatch
 from ..temporal.execution_policy import CompiledExecutionPolicyContract
-from ..temporal.problem_store import CompiledProblemStore, IntVector
+from ..temporal.problem_store import CompiledProblemStore
 from ._epoch_execution import execute_training_batch
 from ._runtime_probe import build_measured_modeling_runtime_plan, measure_device_resident_budget
 from .batch_plan import BatchPlan, build_prediction_batch_plan
+from .dataset_builders import PreparedTrainingSampleSelection
 from .families.base import ModelConfig
 from .models import TemporalModel
 from .representations import CompiledRepresentationContract
@@ -56,28 +57,20 @@ def plan_training_runtime(
     execution_policy: CompiledExecutionPolicyContract,
     representation_contract: CompiledRepresentationContract,
     store: CompiledProblemStore,
-    train_sample_indices: IntVector,
-    validation_sample_indices: IntVector,
+    train_samples: PreparedTrainingSampleSelection,
+    validation_samples: PreparedTrainingSampleSelection,
     runtime_plan: ModelingRuntimePlan,
     training_config: TrainingConfig,
 ) -> TrainingRuntimePlan:
-    train_temporal_facts = execution_policy.prepare_temporal_facts(
-        store,
-        train_sample_indices,
-    )
-    validation_temporal_facts = execution_policy.prepare_temporal_facts(
-        store,
-        validation_sample_indices,
-    )
     prediction_training_state = prediction_contract.fit_training_state(
         store,
-        temporal_facts=train_temporal_facts,
+        temporal_facts=train_samples.temporal_facts,
     )
     planned_runtime_plan = build_measured_modeling_runtime_plan(
         runtime_plan,
         build_warmup_plan=lambda warmup_runtime_plan: build_prediction_batch_plan(
             store,
-            temporal_facts=train_temporal_facts,
+            temporal_facts=train_samples.temporal_facts,
             representation_contract=representation_contract,
             prediction_contract=prediction_contract,
             execution_policy=execution_policy,
@@ -101,7 +94,7 @@ def plan_training_runtime(
     planned_runtime_context = planned_runtime_plan.representation_runtime_context
     train_batch_plan = build_prediction_batch_plan(
         store,
-        temporal_facts=train_temporal_facts,
+        temporal_facts=train_samples.temporal_facts,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
         execution_policy=execution_policy,
@@ -112,7 +105,7 @@ def plan_training_runtime(
     )
     validation_batch_plan = build_prediction_batch_plan(
         store,
-        temporal_facts=validation_temporal_facts,
+        temporal_facts=validation_samples.temporal_facts,
         representation_contract=representation_contract,
         prediction_contract=prediction_contract,
         execution_policy=execution_policy,
@@ -137,8 +130,8 @@ def prepare_training_runtime(
     execution_policy: CompiledExecutionPolicyContract,
     representation_contract: CompiledRepresentationContract,
     store: CompiledProblemStore,
-    train_sample_indices: IntVector,
-    validation_sample_indices: IntVector,
+    train_samples: PreparedTrainingSampleSelection,
+    validation_samples: PreparedTrainingSampleSelection,
     training_config: TrainingConfig,
 ) -> PreparedTrainingRuntime:
     runtime_plan = build_training_modeling_runtime_plan(
@@ -153,8 +146,8 @@ def prepare_training_runtime(
             execution_policy=execution_policy,
             representation_contract=representation_contract,
             store=store,
-            train_sample_indices=train_sample_indices,
-            validation_sample_indices=validation_sample_indices,
+            train_samples=train_samples,
+            validation_samples=validation_samples,
             runtime_plan=runtime_plan,
             training_config=training_config,
         )

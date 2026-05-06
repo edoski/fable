@@ -5,16 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import NDArray
 
 from ..prediction.decoded_offsets import DecodedOffsets
-from ..temporal.execution_policy import CompiledExecutionPolicyContract
+from ..temporal.execution_policy import CompiledExecutionPolicyContract, PreparedActionSpace
 from ..temporal.problem_store import CompiledProblemStore
 from ._temporal_replay_metric_catalog import (
     TEMPORAL_REPLAY_EVENT_MEAN_METRIC_IDS,
     TEMPORAL_REPLAY_EVENT_MEAN_METRICS,
     TEMPORAL_REPLAY_WINDOW_METRICS,
 )
-from .contracts import IntVector
 from .temporal_replay_results import (
     TemporalReplayEventMetricSums,
     TemporalReplayMetrics,
@@ -22,6 +22,8 @@ from .temporal_replay_results import (
     TemporalReplayRunResult,
     TemporalReplayWindowMetric,
 )
+
+IntVector = NDArray[np.int64]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +39,7 @@ def summarize_selected_temporal_decisions(
     store: CompiledProblemStore,
     execution_policy: CompiledExecutionPolicyContract,
     decoded_offsets: DecodedOffsets,
-    sample_indices: IntVector,
+    action_space: PreparedActionSpace,
     selected_positions: IntVector,
     *,
     metadata: dict[str, str | int | float],
@@ -45,7 +47,7 @@ def summarize_selected_temporal_decisions(
     realized = execution_policy.realize_selections(
         store,
         decoded_offsets,
-        sample_indices,
+        action_space,
         selected_positions,
     )
     realized_logs = store.log_base_fees[realized.realized_rows]

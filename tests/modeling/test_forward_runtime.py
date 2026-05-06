@@ -13,6 +13,7 @@ from spice.modeling.forward_runtime import (
 )
 from spice.modeling.representations import DeviceStorageBudget, RepresentationRuntimeContext
 from spice.modeling.runtime_planning import ModelingRuntimePlan
+from spice.temporal.execution_policy import PreparedActionSpace
 
 
 def _runtime_plan() -> ModelingRuntimePlan:
@@ -29,11 +30,16 @@ def _runtime_plan() -> ModelingRuntimePlan:
 
 
 def test_planned_forward_rejects_empty_sample_indices() -> None:
+    empty_action_space = PreparedActionSpace(
+        sample_indices=np.array([], dtype=np.int64),
+        max_candidate_slots=1,
+        action_mask=np.zeros((0, 1), dtype=np.bool_),
+    )
     with pytest.raises(ValueError, match="sample_indices must be non-empty"):
         run_planned_model_input_forward(
             object(),
             store=object(),
-            sample_indices=np.array([], dtype=np.int64),
+            action_space=empty_action_space,
             representation_contract=object(),
             execution_policy=object(),
             runtime_plan=_runtime_plan(),
@@ -44,7 +50,7 @@ def test_planned_forward_rejects_empty_sample_indices() -> None:
         run_planned_prediction_forward(
             object(),
             store=object(),
-            sample_indices=np.array([], dtype=np.int64),
+            temporal_facts=SimpleNamespace(action_space=empty_action_space),
             representation_contract=object(),
             prediction_contract=object(),
             execution_policy=object(),
@@ -78,16 +84,15 @@ def test_model_input_forward_builds_host_warmup_then_measured_final_plan(
     monkeypatch,
 ) -> None:
     model = _ProbeModel()
-    action_space = object()
+    action_space = PreparedActionSpace(
+        sample_indices=np.array([0], dtype=np.int64),
+        max_candidate_slots=1,
+        action_mask=np.ones((1, 1), dtype=np.bool_),
+    )
     plan_calls: list[dict[str, object]] = []
     measure_calls: list[torch.device] = []
     final_calls: list[dict[str, object]] = []
-    execution_policy = SimpleNamespace(
-        prepare_action_space=lambda _store, sample_indices: (
-            np.testing.assert_array_equal(sample_indices, np.array([0], dtype=np.int64))
-            or action_space
-        )
-    )
+    execution_policy = SimpleNamespace()
 
     def fake_build_model_input_batch_plan(
         _store,
@@ -145,7 +150,7 @@ def test_model_input_forward_builds_host_warmup_then_measured_final_plan(
     run_planned_model_input_forward(
         cast(Any, model),
         store=object(),
-        sample_indices=np.array([0], dtype=np.int64),
+        action_space=action_space,
         representation_contract=object(),
         execution_policy=cast(Any, execution_policy),
         runtime_plan=_runtime_plan(),
@@ -172,14 +177,15 @@ def test_model_input_forward_builds_host_warmup_then_measured_final_plan(
 def test_prediction_forward_reuses_temporal_facts_and_keeps_unshuffled_plans(
     monkeypatch,
 ) -> None:
-    temporal_facts = object()
-    fact_calls: list[list[int]] = []
-    plan_calls: list[dict[str, object]] = []
-    execution_policy = SimpleNamespace(
-        prepare_temporal_facts=lambda _store, sample_indices: (
-            fact_calls.append(sample_indices.tolist()) or temporal_facts
+    temporal_facts = SimpleNamespace(
+        action_space=PreparedActionSpace(
+            sample_indices=np.array([2, 3], dtype=np.int64),
+            max_candidate_slots=1,
+            action_mask=np.ones((2, 1), dtype=np.bool_),
         )
     )
+    plan_calls: list[dict[str, object]] = []
+    execution_policy = SimpleNamespace()
 
     def fake_build_prediction_batch_plan(
         _store,
@@ -216,7 +222,7 @@ def test_prediction_forward_reuses_temporal_facts_and_keeps_unshuffled_plans(
     run_planned_prediction_forward(
         cast(Any, _ProbeModel()),
         store=object(),
-        sample_indices=np.array([2, 3], dtype=np.int64),
+        temporal_facts=temporal_facts,
         representation_contract=object(),
         prediction_contract=object(),
         execution_policy=cast(Any, execution_policy),
@@ -224,7 +230,6 @@ def test_prediction_forward_reuses_temporal_facts_and_keeps_unshuffled_plans(
         on_outputs=lambda _batch, _outputs: None,
     )
 
-    assert fact_calls == [[2, 3]]
     assert plan_calls == [
         {
             "temporal_facts": temporal_facts,

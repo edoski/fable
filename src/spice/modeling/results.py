@@ -265,9 +265,9 @@ def build_training_runtime_summary(
         n_rows_available=prepared.n_rows_available,
         n_rows_used=prepared.n_rows_used,
         split_sizes=SplitSizes(
-            train_samples=int(prepared.split_indices.train.shape[0]),
-            validation_samples=int(prepared.split_indices.validation.shape[0]),
-            test_samples=int(prepared.split_indices.test.shape[0]),
+            train_samples=int(prepared.samples.train.sample_indices.shape[0]),
+            validation_samples=int(prepared.samples.validation.sample_indices.shape[0]),
+            test_samples=int(prepared.samples.test.sample_indices.shape[0]),
         ),
         best_epoch=result.training_result.best_epoch,
         best_objective_metric_id=result.training_result.objective_metric_id,

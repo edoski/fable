@@ -22,9 +22,12 @@ from .preparation import (
     CompiledInferenceDatasetPreparationRequest,
     DatasetSplitIndices,
     PreparedInferenceDataset,
+    PreparedInferenceSampleSelection,
     PreparedTrainingDataset,
+    PreparedTrainingSampleRoles,
     TrainingDatasetPreparationContext,
     TrainingDatasetPreparationFacts,
+    training_sample_selection,
 )
 
 
@@ -187,14 +190,32 @@ def prepare_training_dataset(
         train_sample_indices=split_indices.train,
     )
     scaled_store = _scale_store(store, scaler=scaler)
+    execution_policy = context.problem_contract.execution_policy
+    samples = PreparedTrainingSampleRoles(
+        train=training_sample_selection(
+            "train",
+            execution_policy.prepare_temporal_facts(scaled_store, split_indices.train),
+        ),
+        validation=training_sample_selection(
+            "validation",
+            execution_policy.prepare_temporal_facts(
+                scaled_store,
+                split_indices.validation,
+            ),
+        ),
+        test=training_sample_selection(
+            "test",
+            execution_policy.prepare_temporal_facts(scaled_store, split_indices.test),
+        ),
+    )
     used_start, used_end = store.selected_row_span(selected_sample_indices)
     return PreparedTrainingDataset(
         n_rows_available=sorted_blocks.height,
         n_rows_used=used_end - used_start,
         sample_count=int(selected_sample_indices.shape[0]),
-        execution_policy=context.problem_contract.execution_policy,
+        execution_policy=execution_policy,
         store=scaled_store,
-        split_indices=split_indices,
+        samples=samples,
         scaler=scaler,
         builder_runtime_metadata=fixed_sequence_temporal_runtime_metadata(
             sequence_length=int(seq_len),
@@ -245,10 +266,15 @@ def prepare_inference_dataset(
     return PreparedInferenceDataset(
         n_history_rows=history_blocks.height,
         n_evaluation_rows=evaluation_blocks.height,
-        sample_count=int(sample_indices.shape[0]),
         execution_policy=spec.problem_contract.execution_policy,
         store=scaled_store,
-        sample_indices=sample_indices,
+        samples=PreparedInferenceSampleSelection(
+            role="inference",
+            action_space=spec.problem_contract.execution_policy.prepare_action_space(
+                scaled_store,
+                sample_indices,
+            ),
+        ),
     )
 
 

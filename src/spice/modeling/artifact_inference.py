@@ -119,7 +119,7 @@ def prepare_artifact_inference_context(
         representation_contract=loaded_artifact.representation_contract,
         execution_policy=prepared.execution_policy,
         store=prepared.store,
-        sample_indices=prepared.sample_indices,
+        action_space=prepared.samples.action_space,
         runtime_plan=runtime_plan,
     )
     return ArtifactInferenceContext(

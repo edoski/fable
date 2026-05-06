@@ -89,7 +89,7 @@ def test_evaluation_objective_runtime_scores_with_same_runtime_facts(
         representation_contract=cast(Any, SimpleNamespace(name="representation")),
         execution_policy=cast(Any, SimpleNamespace(name="policy")),
         store=cast(Any, SimpleNamespace(name="store")),
-        sample_indices=cast(Any, SimpleNamespace(name="samples")),
+        action_space=cast(Any, SimpleNamespace(name="action_space")),
         runtime_plan=cast(Any, SimpleNamespace(name="runtime_plan")),
     )
 

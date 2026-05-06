@@ -194,11 +194,8 @@ def run_training(
             model_config=spec.model,
             prediction_contract=spec.prediction_contract,
             objective_runtime=spec.objective_runtime,
-            execution_policy=prepared.execution_policy,
             representation_contract=spec.representation_contract,
-            store=prepared.store,
-            train_sample_indices=prepared.split_indices.train,
-            validation_sample_indices=prepared.split_indices.validation,
+            prepared=prepared,
             training_config=spec.training,
         ),
         callbacks=TrainingCallbacks(

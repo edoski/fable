@@ -13,7 +13,7 @@ decoded offset
   -> realized fee
 ```
 
-The policy also provides action masks plus baseline and optimum rows used by training targets and evaluation metrics. `CompiledExecutionPolicyContract.prepare_action_space()` validates that the prepared Action Space matches the requested samples, store action width, and mask shape before modeling or prediction consumes it. `prepare_temporal_facts()` prepares the Action Space and supervised execution targets once for a sample set, so prediction training state and target tensors share the same policy facts.
+The policy also provides action masks plus baseline and optimum rows used by training targets and evaluation metrics. `CompiledExecutionPolicyContract.prepare_action_space()` validates that the prepared Action Space matches the requested samples, store action width, and mask shape before modeling, prediction, or evaluation consumes it. `prepare_temporal_facts()` prepares the Action Space and supervised execution targets once for a sample set, so prediction training state and target tensors share the same policy facts.
 
 ## `strict_deadline_miss`
 
