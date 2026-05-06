@@ -19,6 +19,12 @@ from spice.storage.workflow_roots import (
     BaselineTrainWorkflowRoots,
     CorpusRootHandle,
     TunedTrainWorkflowRoots,
+    artifact_root_handle_from_record,
+    corpus_root_handle_from_record,
+    produced_artifact_root_handle,
+    produced_corpus_root_handle,
+    produced_study_root_handle,
+    study_root_handle_from_record,
 )
 from tests.catalog_helpers import artifact_record, dataset_record, study_record
 
@@ -90,6 +96,49 @@ def test_acquire_producer_roots_use_produced_corpus_identity(
     assert roots.corpus.dataset_id == produced_corpus_id(config)
     assert roots.corpus.dataset_name == config.dataset.name
     assert roots.corpus.chain_name == config.chain.name
+
+
+def test_root_handle_constructors_own_catalog_and_producer_shapes(tmp_path) -> None:
+    storage_root = tmp_path / "outputs"
+    dataset = _dataset_record(tmp_path, dataset_id="cor_existing", chain_name="polygon")
+    study = _study_record(tmp_path, dataset_id=dataset.dataset_id, chain_name="polygon")
+    artifact = _artifact_record(
+        tmp_path,
+        artifact_id="art_existing",
+        dataset_id=dataset.dataset_id,
+        chain_name="polygon",
+    )
+
+    corpus = corpus_root_handle_from_record(storage_root, dataset)
+    study_handle = study_root_handle_from_record(storage_root, study)
+    artifact_handle = artifact_root_handle_from_record(storage_root, artifact)
+    produced_corpus = produced_corpus_root_handle(
+        storage_root,
+        chain_name="polygon",
+        dataset_id="cor_new",
+        dataset_name="new_dataset",
+    )
+    produced_study = produced_study_root_handle(
+        storage_root,
+        corpus=produced_corpus,
+        study_id="std_new",
+        study_name="new_study",
+    )
+    produced_artifact = produced_artifact_root_handle(
+        storage_root,
+        corpus=produced_corpus,
+        artifact_id="art_new",
+        variant=ArtifactVariant.TUNED,
+        study=produced_study,
+    )
+
+    assert corpus.state_db_path == dataset.state_db_path
+    assert corpus.history_dir == dataset.root_path / "history"
+    assert study_handle.dataset_id == dataset.dataset_id
+    assert artifact_handle.variant is ArtifactVariant.BASELINE
+    assert produced_corpus.root_path == storage_root / "corpora" / "polygon" / "cor_new"
+    assert produced_study.dataset_name == "new_dataset"
+    assert produced_artifact.study_id == "std_new"
 
 
 def test_tune_consumer_roots_resolve_dataset_and_produced_study(
