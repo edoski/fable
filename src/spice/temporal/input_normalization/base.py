@@ -16,7 +16,8 @@ from ...core.specs import (
 )
 from ...core.validation import validate_path_segment
 from ...semantics import InputNormalizationSemantics
-from ..scaling import FloatMatrix, IntVector, ScalerStats
+from ..problem_store import CompiledProblemStore
+from .scaling import IntVector, ScalerStats
 
 
 class InputNormalizationConfig(ConfigModel):
@@ -31,10 +32,8 @@ class InputNormalizationConfig(ConfigModel):
 class FitScalerFn(Protocol):
     def __call__(
         self,
-        feature_matrix: FloatMatrix,
+        store: CompiledProblemStore,
         *,
-        context_start_rows: IntVector,
-        anchor_rows: IntVector,
         sample_indices: IntVector,
     ) -> ScalerStats: ...
 
@@ -52,18 +51,14 @@ class CompiledInputNormalizationContract:
 
     def fit_scaler(
         self,
-        feature_matrix: FloatMatrix,
+        store: CompiledProblemStore,
         *,
-        context_start_rows: IntVector,
-        anchor_rows: IntVector,
         sample_indices: IntVector,
     ) -> ScalerStats:
         return self.fit_scaler_fn(
-            feature_matrix,
-            context_start_rows=context_start_rows,
-            anchor_rows=anchor_rows,
+            store,
             sample_indices=sample_indices,
-    )
+        )
 
 
 @dataclass(frozen=True, slots=True)

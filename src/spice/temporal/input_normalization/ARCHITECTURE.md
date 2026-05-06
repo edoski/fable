@@ -2,9 +2,7 @@
 
 ## Purpose
 
-`temporal.input_normalization` owns scaler fitting policies for temporal problem stores. It decides how normalization statistics are learned from training data.
-
-Applying a scaler to a feature matrix is generic and lives in temporal scaling helpers. The input-normalization contract owns fitting, not matrix transformation.
+`temporal.input_normalization` owns scaler fitting and application policies for temporal problem stores. It decides how normalization statistics are learned from training data and how fitted scaler facts transform feature matrices.
 
 ## Flow
 
@@ -18,13 +16,13 @@ coerce_input_normalization_config()
 compile_input_normalization_contract()
         |
         v
-fit_scaler(feature_matrix, context_start_rows, anchor_rows, train_sample_indices)
+fit_scaler(problem_store, train_sample_indices)
         |
         v
 ScalerStats
         |
         v
-transform_feature_matrix(feature_matrix, scaler)
+transform_problem_store_features(problem_store, scaler)
 ```
 
 The same saved `ScalerStats` is used later during inference/evaluation so that evaluation data is transformed with training-time statistics.
@@ -47,4 +45,4 @@ Different policies can choose different fitting windows or weights. Dataset buil
 
 ## Extension Points
 
-Add a normalization policy when the fitting rule changes. Keep scaler application generic so builders can apply any fitted scaler uniformly.
+Add a normalization policy when the fitting rule changes. Keep scaler application in this package so builders can apply any fitted scaler uniformly without knowing scaler internals.

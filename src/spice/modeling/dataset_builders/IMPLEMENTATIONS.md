@@ -46,7 +46,7 @@ raw_length = round(lookback_seconds / median_dt)
 sequence_length = clip(raw_length, min_sequence_length, max_sequence_length)
 ```
 
-The calibration span is derived from selected training samples, not the raw corpus tail. Builder runtime metadata stores sequence length and median delta. Compiler runtime metadata travels through the artifact Temporal Capability. Inference requires both values and reuses the trained sequence length.
+The calibration span is derived from selected training samples, not the raw corpus tail. Fixed-context filtering, final tail selection, chronological splitting, and inference timestamp-window sample filtering are fixed-sequence preparation policy. Builder runtime metadata stores sequence length and median delta. Compiler runtime metadata travels through the artifact Temporal Capability. Inference requires both values and reuses the trained sequence length.
 
 ## Comparison
 

@@ -29,7 +29,7 @@ from ..modeling.families.base import ModelConfig
 from ..objectives import ObjectiveConfig
 from ..semantics import ArtifactSemantics
 from ..temporal.capability import TemporalCapability
-from ..temporal.scaling import ScalerStats
+from ..temporal.input_normalization import ScalerStats
 from .training_run import TrainingRunResult
 
 JsonScalar: TypeAlias = str | int | float | bool | None

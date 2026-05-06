@@ -15,12 +15,11 @@ if TYPE_CHECKING:
         PreparedActionSpace,
         PreparedTemporalFacts,
     )
-    from ...temporal.input_normalization import CompiledInputNormalizationContract
+    from ...temporal.input_normalization import CompiledInputNormalizationContract, ScalerStats
     from ...temporal.problem_store import (
         CompiledProblemStore,
         IntVector,
     )
-    from ...temporal.scaling import ScalerStats
     from .base import BuilderRuntimeMetadata
 
 

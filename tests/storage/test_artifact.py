@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -91,10 +92,22 @@ def test_artifact_manifest_codec_round_trips() -> None:
     assert ARTIFACT_MANIFEST_CODEC.decode(ARTIFACT_MANIFEST_CODEC.encode(manifest)) == manifest
 
 
+def test_artifact_manifest_codec_rejects_malformed_temporal_capability() -> None:
+    payload = ARTIFACT_MANIFEST_CODEC.encode(_manifest())
+    temporal_capability = dict(
+        cast(dict[str, object], payload["temporal_capability"])
+    )
+    temporal_capability["action_width"] = True
+    payload["temporal_capability"] = temporal_capability
+
+    with pytest.raises(StateLayoutError, match="action_width"):
+        ARTIFACT_MANIFEST_CODEC.decode(payload)
+
+
 def test_artifact_manifest_codec_rejects_temporal_capability_projection_drift() -> None:
     payload = ARTIFACT_MANIFEST_CODEC.encode(_manifest())
-    semantics = dict(payload["semantics"])
-    temporal_projection = dict(semantics["temporal_capability"])
+    semantics = dict(cast(dict[str, object], payload["semantics"]))
+    temporal_projection = dict(cast(dict[str, object], semantics["temporal_capability"]))
     temporal_projection["max_delay_seconds"] = 12
     semantics["temporal_capability"] = temporal_projection
     payload["semantics"] = semantics

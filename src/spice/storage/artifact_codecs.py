@@ -21,11 +21,12 @@ from ..modeling.dataset_builders import (
 )
 from ..modeling.families.registry import coerce_model_config
 from ..objectives import coerce_objective_config
-from ..temporal.capability import (
-    temporal_capability_from_payload,
-    temporal_capability_payload,
+from ..temporal.capability import TemporalCapability
+from ..temporal.compilers import (
+    problem_runtime_metadata_from_compiler_payload,
+    problem_runtime_metadata_payload,
 )
-from ..temporal.scaling import ScalerStats
+from ..temporal.input_normalization import ScalerStats
 from .payloads import (
     PayloadCodec,
     PayloadModel,
@@ -86,6 +87,39 @@ def _metric_descriptor_from_payload(payload: MetricDescriptorPayload) -> MetricD
     return payload.to_descriptor()
 
 
+class TemporalCapabilityPayload(PayloadModel):
+    compiler_id: str
+    max_delay_seconds: int
+    action_width: int
+    compiler_runtime_metadata: dict[str, object]
+
+    @classmethod
+    def from_capability(
+        cls,
+        capability: TemporalCapability,
+    ) -> TemporalCapabilityPayload:
+        return cls(
+            compiler_id=capability.compiler_id,
+            max_delay_seconds=capability.max_delay_seconds,
+            action_width=capability.action_width,
+            compiler_runtime_metadata=problem_runtime_metadata_payload(
+                capability.compiler_id,
+                capability.compiler_runtime_metadata,
+            ),
+        )
+
+    def to_capability(self) -> TemporalCapability:
+        return TemporalCapability(
+            compiler_id=self.compiler_id,
+            max_delay_seconds=self.max_delay_seconds,
+            action_width=self.action_width,
+            compiler_runtime_metadata=problem_runtime_metadata_from_compiler_payload(
+                self.compiler_id,
+                self.compiler_runtime_metadata,
+            ),
+        )
+
+
 class ArtifactManifestPayload(PayloadModel):
     artifact_id: str
     dataset_builder: dict[str, object]
@@ -133,7 +167,9 @@ class ArtifactManifestPayload(PayloadModel):
             training=manifest.training.model_dump(mode="json"),
             scaler=manifest.scaler.model_dump(mode="json", exclude_none=True),
             builder_runtime_metadata=manifest.builder_runtime_metadata.model_dump(mode="json"),
-            temporal_capability=temporal_capability_payload(manifest.temporal_capability),
+            temporal_capability=TemporalCapabilityPayload.from_capability(
+                manifest.temporal_capability
+            ).model_dump(mode="json"),
             semantics=ARTIFACT_SEMANTICS_CODEC.encode(manifest.semantics),
         )
 
@@ -141,12 +177,13 @@ class ArtifactManifestPayload(PayloadModel):
         from ..modeling.results import TrainingArtifactManifest
 
         dataset_builder = coerce_dataset_builder_config(self.dataset_builder)
-        temporal_capability = temporal_capability_from_payload(
+        temporal_capability = TemporalCapabilityPayload.model_validate(
             mapping_payload(
                 self.temporal_capability,
                 label="artifact_manifest.temporal_capability",
-            )
-        )
+            ),
+            strict=True,
+        ).to_capability()
         semantics = ARTIFACT_SEMANTICS_CODEC.decode(self.semantics)
         if semantics.temporal_capability != temporal_capability.semantics:
             raise ValueError(

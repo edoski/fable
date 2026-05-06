@@ -3,8 +3,6 @@
 from .capability import (
     TemporalCapability,
     TemporalCapabilitySemantics,
-    temporal_capability_from_payload,
-    temporal_capability_payload,
 )
 from .execution_policy import (
     CompiledExecutionPolicyContract,
@@ -28,6 +26,4 @@ __all__ = [
     "RealizedSelectionBatch",
     "coerce_execution_policy_config",
     "compile_execution_policy_contract",
-    "temporal_capability_from_payload",
-    "temporal_capability_payload",
 ]

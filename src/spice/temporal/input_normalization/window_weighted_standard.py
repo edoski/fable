@@ -2,8 +2,8 @@
 
 from pydantic import field_validator
 
-from ..scaling import fit_window_weighted_standard_scaler
 from .base import CompiledInputNormalizationContract, InputNormalizationConfig
+from .scaling import fit_window_weighted_standard_scaler
 
 
 class WindowWeightedStandardConfig(InputNormalizationConfig):

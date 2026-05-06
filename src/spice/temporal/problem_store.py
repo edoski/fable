@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
@@ -113,70 +113,6 @@ class CompiledProblemStore:
     def n_samples(self) -> int:
         return int(self.anchor_rows.shape[0])
 
-    def tail_sample_indices(self, *, sample_count: int) -> IntVector:
-        if sample_count <= 0:
-            raise ValueError("sample_count must be positive")
-        if self.n_samples < sample_count:
-            raise ValueError(
-                "History dataset is too short for the requested sample count; "
-                f"need at least {sample_count} valid anchors, got {self.n_samples}"
-            )
-        return np.arange(self.n_samples - sample_count, self.n_samples, dtype=np.int64)
-
-    def with_fixed_context_length(
-        self,
-        *,
-        context_length: int,
-        history_seconds: int,
-        warmup_rows: int,
-    ) -> CompiledProblemStore:
-        if context_length <= 0:
-            raise ValueError("context_length must be positive")
-        context_start_rows = self.anchor_rows - context_length + 1
-        valid_anchor_mask = context_start_rows >= 0
-        valid_anchor_mask &= context_start_rows >= warmup_rows
-        if history_seconds > 0:
-            valid_anchor_mask &= (
-                self.timestamps[np.maximum(context_start_rows, 0)] - self.timestamps[0]
-            ) >= history_seconds
-        anchor_rows = self.anchor_rows[valid_anchor_mask].astype(np.int64, copy=False)
-        if anchor_rows.size == 0:
-            raise ValueError("fixed context length produced no supervised samples")
-        return replace(
-            self,
-            anchor_rows=anchor_rows,
-            context_start_rows=context_start_rows[valid_anchor_mask].astype(
-                np.int64,
-                copy=False,
-            ),
-            candidate_start_rows=self.candidate_start_rows[valid_anchor_mask].astype(
-                np.int64,
-                copy=False,
-            ),
-            candidate_end_rows=self.candidate_end_rows[valid_anchor_mask].astype(
-                np.int64,
-                copy=False,
-            ),
-        )
-
-    def sample_indices_by_timestamp_window(
-        self,
-        *,
-        start_timestamp_inclusive: int,
-        end_timestamp_exclusive: int,
-    ) -> IntVector:
-        if end_timestamp_exclusive <= start_timestamp_inclusive:
-            raise ValueError(
-                "sample timestamp window end_timestamp_exclusive must be greater "
-                "than start_timestamp_inclusive"
-            )
-        sample_timestamps = self.sample_timestamps(np.arange(self.n_samples, dtype=np.int64))
-        mask = (
-            (sample_timestamps >= start_timestamp_inclusive)
-            & (sample_timestamps < end_timestamp_exclusive)
-        )
-        return np.flatnonzero(mask).astype(np.int64, copy=False)
-
     def sample_timestamps(self, sample_indices: IntVector) -> IntVector:
         resolved_indices = self._validated_sample_indices(sample_indices)
         return self.timestamps[self.anchor_rows[resolved_indices]].astype(
@@ -237,6 +173,18 @@ class CompiledProblemStore:
         start = int(self.context_start_rows[resolved_sample_indices].min())
         end = int(self.candidate_end_rows[resolved_sample_indices].max())
         return start, end
+
+    def context_row_multiplicities(self, sample_indices: IntVector) -> IntVector:
+        resolved_indices = self._validated_sample_indices(
+            sample_indices,
+            require_nonempty=True,
+        )
+        counts = np.zeros(self.n_rows + 1, dtype=np.int64)
+        starts = self.context_start_rows[resolved_indices]
+        ends = self.anchor_rows[resolved_indices] + 1
+        np.add.at(counts, starts, 1)
+        np.add.at(counts, ends, -1)
+        return np.cumsum(counts[:-1], dtype=np.int64)
 
     def _validated_sample_indices(
         self,

@@ -32,7 +32,7 @@ transform validation/test/evaluation rows with that same scaler
 
 ## Shared Scaler Behavior
 
-Both current normalizers produce a feature scaler with:
+Both current normalizers produce a feature scaler and share the same transform helpers in `temporal.input_normalization.scaling`:
 
 | Field | Meaning |
 | --- | --- |
@@ -80,7 +80,7 @@ Current YAML training default selects `row_standard`.
 train sample indices
   -> find covered context rows
   -> fit scaler
-  -> transform feature_matrix
+  -> transform problem-store feature_matrix
   -> build model batches
 ```
 

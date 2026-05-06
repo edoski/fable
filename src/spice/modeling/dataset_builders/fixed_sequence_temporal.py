@@ -9,8 +9,8 @@ import polars as pl
 
 from ...core.errors import ConfigResolutionError
 from ...temporal.contracts import TemporalCapabilityStore
+from ...temporal.input_normalization import transform_problem_store_features
 from ...temporal.problem_store import CompiledProblemStore
-from ...temporal.scaling import transform_feature_matrix
 from .base import (
     CompiledDatasetBuilderContract,
     FixedSequenceTemporalBuilderRuntimeMetadata,
@@ -92,11 +92,76 @@ def _train_scaler(
     train_sample_indices: np.ndarray,
 ):
     return context.input_normalization_contract.fit_scaler(
-        store.feature_matrix,
-        context_start_rows=store.context_start_rows,
-        anchor_rows=store.anchor_rows,
+        store,
         sample_indices=train_sample_indices.astype(np.int64, copy=False),
     )
+
+
+def _latest_sample_indices(store: CompiledProblemStore, *, sample_count: int) -> np.ndarray:
+    if sample_count <= 0:
+        raise ValueError("sample_count must be positive")
+    if store.n_samples < sample_count:
+        raise ValueError(
+            "History dataset is too short for the requested sample count; "
+            f"need at least {sample_count} valid anchors, got {store.n_samples}"
+        )
+    return np.arange(store.n_samples - sample_count, store.n_samples, dtype=np.int64)
+
+
+def _store_with_fixed_context(
+    store: CompiledProblemStore,
+    *,
+    context_length: int,
+    history_seconds: int,
+    warmup_rows: int,
+) -> CompiledProblemStore:
+    if context_length <= 0:
+        raise ValueError("context_length must be positive")
+    context_start_rows = store.anchor_rows - context_length + 1
+    valid_anchor_mask = context_start_rows >= 0
+    valid_anchor_mask &= context_start_rows >= warmup_rows
+    if history_seconds > 0:
+        valid_anchor_mask &= (
+            store.timestamps[np.maximum(context_start_rows, 0)] - store.timestamps[0]
+        ) >= history_seconds
+    anchor_rows = store.anchor_rows[valid_anchor_mask].astype(np.int64, copy=False)
+    if anchor_rows.size == 0:
+        raise ValueError("fixed context length produced no supervised samples")
+    return replace(
+        store,
+        anchor_rows=anchor_rows,
+        context_start_rows=context_start_rows[valid_anchor_mask].astype(
+            np.int64,
+            copy=False,
+        ),
+        candidate_start_rows=store.candidate_start_rows[valid_anchor_mask].astype(
+            np.int64,
+            copy=False,
+        ),
+        candidate_end_rows=store.candidate_end_rows[valid_anchor_mask].astype(
+            np.int64,
+            copy=False,
+        ),
+    )
+
+
+def _sample_indices_in_timestamp_window(
+    store: CompiledProblemStore,
+    *,
+    start_timestamp_inclusive: int,
+    end_timestamp_exclusive: int,
+) -> np.ndarray:
+    if end_timestamp_exclusive <= start_timestamp_inclusive:
+        raise ValueError(
+            "sample timestamp window end_timestamp_exclusive must be greater "
+            "than start_timestamp_inclusive"
+        )
+    sample_timestamps = store.sample_timestamps(np.arange(store.n_samples, dtype=np.int64))
+    mask = (
+        (sample_timestamps >= start_timestamp_inclusive)
+        & (sample_timestamps < end_timestamp_exclusive)
+    )
+    return np.flatnonzero(mask).astype(np.int64, copy=False)
 
 
 def _split_store_indices(
@@ -136,10 +201,7 @@ def _scale_store(
     *,
     scaler,
 ) -> CompiledProblemStore:
-    return replace(
-        store,
-        feature_matrix=transform_feature_matrix(store.feature_matrix, scaler),
-    )
+    return transform_problem_store_features(store, scaler)
 
 
 def prepare_training_dataset(
@@ -157,7 +219,8 @@ def prepare_training_dataset(
         )
     capability_store = _build_selected_store(sorted_blocks, context=context)
     store_raw = capability_store.store
-    raw_selected_sample_indices = store_raw.tail_sample_indices(
+    raw_selected_sample_indices = _latest_sample_indices(
+        store_raw,
         sample_count=sample_count,
     )
     raw_split_indices = _split_store_indices(
@@ -172,12 +235,14 @@ def prepare_training_dataset(
     )
     history_seconds = context.problem_contract.feature_prerequisites.history_seconds
     warmup_rows = context.problem_contract.feature_prerequisites.warmup_rows
-    store = store_raw.with_fixed_context_length(
+    store = _store_with_fixed_context(
+        store_raw,
         context_length=seq_len,
         history_seconds=history_seconds,
         warmup_rows=warmup_rows,
     )
-    selected_sample_indices = store.tail_sample_indices(
+    selected_sample_indices = _latest_sample_indices(
+        store,
         sample_count=sample_count,
     )
     split_indices = _split_store_indices(
@@ -244,12 +309,14 @@ def prepare_inference_dataset(
         spec.delay_seconds,
         capability=spec.temporal_capability,
     )
-    store = store.with_fixed_context_length(
+    store = _store_with_fixed_context(
+        store,
         context_length=runtime_metadata.sequence_length,
         history_seconds=spec.problem_contract.feature_prerequisites.history_seconds,
         warmup_rows=spec.problem_contract.feature_prerequisites.warmup_rows,
     )
-    sample_indices = store.sample_indices_by_timestamp_window(
+    sample_indices = _sample_indices_in_timestamp_window(
+        store,
         start_timestamp_inclusive=(
             spec.sample_timestamp_window.start_timestamp_inclusive
         ),
@@ -259,10 +326,7 @@ def prepare_inference_dataset(
     )
     if sample_indices.size == 0:
         raise ValueError("Evaluation dataset produced no valid inference examples")
-    scaled_store = replace(
-        store,
-        feature_matrix=transform_feature_matrix(store.feature_matrix, spec.scaler),
-    )
+    scaled_store = _scale_store(store, scaler=spec.scaler)
     return PreparedInferenceDataset(
         n_history_rows=history_blocks.height,
         n_evaluation_rows=evaluation_blocks.height,

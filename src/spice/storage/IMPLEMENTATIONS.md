@@ -82,6 +82,8 @@ artifact manifest
 
 Training state stores one summary and ordered epoch rows. Evaluation state stores multiple summaries keyed by an evaluation storage id derived from evaluator config, delay, and execution provenance when present.
 
+Artifact manifest codecs serialize the persisted Temporal Capability envelope, including compiler runtime metadata payloads. Temporal owns the runtime capability value and compiler metadata dispatch; storage owns the artifact manifest payload shape.
+
 ## Study State
 
 Study state stores a SPICE study manifest and Optuna's RDB tables in the same SQLite file. The study manifest validates that resumed tuning belongs to the same study definition. Trial attributes store sampled params and best epoch. `storage.study_optuna` owns the RDB adapter and study read APIs; `modeling.tuning_execution` owns opening execution, running trials, and writing per-trial execution metadata.

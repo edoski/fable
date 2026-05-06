@@ -29,7 +29,7 @@ from spice.semantics import (
 from spice.temporal import TemporalCapability
 from spice.temporal.compilers.observed_time_window import ObservedTimeWindowRuntimeMetadata
 from spice.temporal.contracts import compile_problem_contract
-from spice.temporal.scaling import ScalerStats
+from spice.temporal.input_normalization import ScalerStats
 
 
 def _prediction_config():

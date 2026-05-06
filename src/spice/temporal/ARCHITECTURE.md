@@ -34,7 +34,7 @@ max_candidate_slots
 ```
 
 Prediction and evaluation consume this generic shape instead of compiler-specific details.
-Problem stores own generic row geometry. Construction validates row-aligned feature, fee, and timestamp arrays; monotonic timestamps; aligned sample row arrays; positive action width; context rows inside each anchor; and non-empty candidate windows whose exclusive end stays inside the store. Store sample views also reject negative or out-of-range sample indices instead of relying on NumPy wrapping.
+Problem stores own generic row geometry. Construction validates row-aligned feature, fee, and timestamp arrays; monotonic timestamps; aligned sample row arrays; positive action width; context rows inside each anchor; and non-empty candidate windows whose exclusive end stays inside the store. Store sample views also reject negative or out-of-range sample indices instead of relying on NumPy wrapping. Dataset-builder selection policy, fixed-context filtering, and inference timestamp-window sample filtering live in dataset preparation, not in the generic store.
 
 Problem stores do not own action availability. `max_candidate_slots` is the action width, not a guarantee that every physical candidate window has that many rows. Action validity belongs to the execution policy because overflow and deadline behavior are policy semantics.
 
@@ -56,7 +56,7 @@ CompiledProblemContract
 
 Compilers publish feature prerequisites and runtime metadata codecs. Dataset builders and workflows call compiler contracts; they should not inspect concrete compiler classes.
 
-Training compiles the maximum supported delay into a capability store and a **Temporal Capability**. The capability is the artifact-facing value that carries compiler runtime metadata, maximum delay, and action width into inference. Evaluation defaults and delay checks use the artifact Temporal Capability as authority; `ProblemSemantics.max_delay_seconds` remains authored problem provenance. Evaluation compiles a concrete delay store from the capability; it does not rediscover action width from the evaluation corpus.
+Training compiles the maximum supported delay into a capability store and a **Temporal Capability**. The capability is the artifact-facing runtime value that carries compiler runtime metadata, maximum delay, and action width into inference. Evaluation defaults and delay checks use the artifact Temporal Capability as authority; `ProblemSemantics.max_delay_seconds` remains authored problem provenance. Evaluation compiles a concrete delay store from the capability; it does not rediscover action width from the evaluation corpus. Storage artifact codecs own the persisted Temporal Capability envelope.
 
 ## Execution Policy
 

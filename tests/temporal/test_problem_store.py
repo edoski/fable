@@ -70,35 +70,13 @@ def test_candidate_windows_include_generic_reachable_geometry() -> None:
     np.testing.assert_array_equal(windows.reachable_end_rows, [4, 6, 8])
 
 
-def test_sample_timestamp_filtering_uses_anchor_timestamps() -> None:
+def test_sample_timestamps_use_anchor_rows() -> None:
     store = _store()
 
-    selected = store.sample_indices_by_timestamp_window(
-        start_timestamp_inclusive=40,
-        end_timestamp_exclusive=70,
+    np.testing.assert_array_equal(
+        store.sample_timestamps(np.array([1, 2], dtype=np.int64)),
+        [40, 60],
     )
-
-    np.testing.assert_array_equal(selected, [1, 2])
-    np.testing.assert_array_equal(store.sample_timestamps(selected), [40, 60])
-
-
-def test_sample_timestamp_filtering_uses_half_open_window() -> None:
-    store = _store()
-
-    selected = store.sample_indices_by_timestamp_window(
-        start_timestamp_inclusive=20,
-        end_timestamp_exclusive=60,
-    )
-
-    np.testing.assert_array_equal(store.sample_timestamps(selected), [20, 40])
-
-
-def test_sample_timestamp_filtering_rejects_empty_window() -> None:
-    with pytest.raises(ValueError, match="end_timestamp_exclusive"):
-        _store().sample_indices_by_timestamp_window(
-            start_timestamp_inclusive=20,
-            end_timestamp_exclusive=20,
-        )
 
 
 @pytest.mark.parametrize(
@@ -114,18 +92,16 @@ def test_sample_views_reject_invalid_sample_indices(sample_indices) -> None:
         _store().sample_timestamps(sample_indices)
 
 
-def test_fixed_context_filtering_rewrites_store_sample_rows() -> None:
+def test_context_row_multiplicities_count_selected_windows() -> None:
     store = _store()
 
-    fixed = store.with_fixed_context_length(
-        context_length=2,
-        history_seconds=20,
-        warmup_rows=2,
+    np.testing.assert_array_equal(
+        store.context_row_multiplicities(np.array([0, 1], dtype=np.int64)),
+        np.array([1, 1, 2, 1, 1, 0, 0, 0], dtype=np.int64),
     )
 
-    np.testing.assert_array_equal(fixed.anchor_rows, [4, 6])
-    np.testing.assert_array_equal(fixed.context_start_rows, [3, 5])
-    np.testing.assert_array_equal(fixed.candidate_start_rows, [4, 6])
+    with pytest.raises(ValueError, match="sample_indices"):
+        store.context_row_multiplicities(np.array([], dtype=np.int64))
 
 
 def test_context_windows_and_selected_span_use_selected_samples() -> None:

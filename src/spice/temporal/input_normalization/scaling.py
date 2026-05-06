@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from typing import TYPE_CHECKING
+
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
+
+if TYPE_CHECKING:
+    from ..problem_store import CompiledProblemStore
 
 FloatMatrix = NDArray[np.float32]
 IntVector = NDArray[np.int64]
@@ -15,26 +21,6 @@ class ScalerStats(BaseModel):
 
     means: list[float]
     scales: list[float]
-
-
-def window_row_multiplicities(
-    *,
-    context_start_rows: IntVector,
-    anchor_rows: IntVector,
-    sample_indices: IntVector,
-    n_rows: int,
-) -> IntVector:
-    if n_rows <= 0:
-        raise ValueError("n_rows must be positive")
-    if sample_indices.size == 0:
-        raise ValueError("sample_indices must be non-empty")
-
-    counts = np.zeros(n_rows + 1, dtype=np.int64)
-    starts = context_start_rows[sample_indices]
-    ends = anchor_rows[sample_indices] + 1
-    np.add.at(counts, starts, 1)
-    np.add.at(counts, ends, -1)
-    return np.cumsum(counts[:-1], dtype=np.int64)
 
 
 def _scaler_stats(means: NDArray[np.float64], scales: NDArray[np.float64]) -> ScalerStats:
@@ -51,24 +37,17 @@ def _safe_scales(variances: NDArray[np.float64]) -> NDArray[np.float64]:
 
 
 def fit_window_weighted_standard_scaler(
-    feature_matrix: FloatMatrix,
+    store: CompiledProblemStore,
     *,
-    context_start_rows: IntVector,
-    anchor_rows: IntVector,
     sample_indices: IntVector,
 ) -> ScalerStats:
-    if feature_matrix.size == 0:
+    if store.feature_matrix.size == 0:
         raise ValueError("feature_matrix must be non-empty")
-    multiplicities = window_row_multiplicities(
-        context_start_rows=context_start_rows,
-        anchor_rows=anchor_rows,
-        sample_indices=sample_indices,
-        n_rows=int(feature_matrix.shape[0]),
-    )
+    multiplicities = store.context_row_multiplicities(sample_indices)
     weights = multiplicities.astype(np.float64, copy=False)
     if float(weights.sum()) <= 0.0:
         raise ValueError("training windows did not cover any feature rows")
-    features = feature_matrix.astype(np.float64, copy=False)
+    features = store.feature_matrix.astype(np.float64, copy=False)
     means = np.average(features, axis=0, weights=weights).astype(np.float64, copy=False)
     centered = features - means
     variances = np.average(centered * centered, axis=0, weights=weights).astype(
@@ -79,24 +58,17 @@ def fit_window_weighted_standard_scaler(
 
 
 def fit_row_standard_scaler(
-    feature_matrix: FloatMatrix,
+    store: CompiledProblemStore,
     *,
-    context_start_rows: IntVector,
-    anchor_rows: IntVector,
     sample_indices: IntVector,
 ) -> ScalerStats:
-    if feature_matrix.size == 0:
+    if store.feature_matrix.size == 0:
         raise ValueError("feature_matrix must be non-empty")
-    multiplicities = window_row_multiplicities(
-        context_start_rows=context_start_rows,
-        anchor_rows=anchor_rows,
-        sample_indices=sample_indices,
-        n_rows=int(feature_matrix.shape[0]),
-    )
+    multiplicities = store.context_row_multiplicities(sample_indices)
     covered_rows = multiplicities > 0
     if not np.any(covered_rows):
         raise ValueError("training windows did not cover any feature rows")
-    covered = feature_matrix[covered_rows].astype(np.float64, copy=False)
+    covered = store.feature_matrix[covered_rows].astype(np.float64, copy=False)
     means = covered.mean(axis=0, dtype=np.float64)
     variances = covered.var(axis=0, ddof=0, dtype=np.float64)
     return _scaler_stats(means, _safe_scales(variances))
@@ -107,3 +79,13 @@ def transform_feature_matrix(feature_matrix: FloatMatrix, scaler: ScalerStats) -
     scales = np.asarray(scaler.scales, dtype=np.float32)
     safe_scales = np.where(scales > 0.0, scales, np.float32(1.0))
     return ((feature_matrix - means) / safe_scales).astype(np.float32, copy=False)
+
+
+def transform_problem_store_features(
+    store: CompiledProblemStore,
+    scaler: ScalerStats,
+) -> CompiledProblemStore:
+    return replace(
+        store,
+        feature_matrix=transform_feature_matrix(store.feature_matrix, scaler),
+    )

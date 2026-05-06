@@ -116,8 +116,12 @@ def test_fixed_context_dataset_builder_prepares_seq_len_without_builder_owned_cl
         prepared.builder_runtime_metadata,
         FixedSequenceTemporalBuilderRuntimeMetadata,
     )
-    assert prepared.builder_runtime_metadata.sequence_length >= 64
-    assert prepared.builder_runtime_metadata.median_dt_seconds > 0.0
+    builder_metadata = cast(
+        FixedSequenceTemporalBuilderRuntimeMetadata,
+        prepared.builder_runtime_metadata,
+    )
+    assert builder_metadata.sequence_length >= 64
+    assert builder_metadata.median_dt_seconds > 0.0
     assert prepared.temporal_capability.action_width == prepared.store.max_candidate_slots
     assert prepared.sample_count == config.problem.sample_count
     assert prepared.store.n_samples > prepared.sample_count
@@ -127,6 +131,8 @@ def test_fixed_context_dataset_builder_prepares_seq_len_without_builder_owned_cl
     assert prepared.samples.train.action_space.sample_indices.shape == (
         prepared.samples.train.temporal_facts.outcome_facts.baseline_rows.shape
     )
+    train_context = prepared.store.context_windows(prepared.samples.train.sample_indices)
+    assert set(train_context.context_lengths.tolist()) == {builder_metadata.sequence_length}
 
 
 def test_fixed_sequence_length_calibration_uses_train_sample_rows_only(
