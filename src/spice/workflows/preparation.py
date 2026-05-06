@@ -8,13 +8,19 @@ from ..config.models import AcquireConfig, EvaluateConfig, TrainConfig, TuneConf
 from ..corpus.metadata import DatasetManifest
 from ..modeling.artifact_inference import ArtifactInferenceContext
 from ..modeling.pipeline import TrainingSpec
+from ..storage.workflow_root_materialization import (
+    materialize_acquire_roots,
+    materialize_evaluate_roots,
+    materialize_train_roots,
+    materialize_tune_roots,
+)
 from ..storage.workflow_roots import (
     AcquireWorkflowRoots,
     EvaluateWorkflowRoots,
     TrainWorkflowRoots,
     TuneWorkflowRoots,
 )
-from . import _active_config, _inference_preparation, _root_preparation, _training_preflight
+from . import _active_config, _inference_preparation, _training_preflight
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,12 +56,12 @@ class PreparedEvaluateWorkflow:
 def prepare_acquire(config: AcquireConfig) -> PreparedAcquireWorkflow:
     return PreparedAcquireWorkflow(
         config=config,
-        roots=_root_preparation.prepare_acquire_roots(config),
+        roots=materialize_acquire_roots(config),
     )
 
 
 def prepare_train(config: TrainConfig) -> PreparedTrainWorkflow:
-    roots = _root_preparation.prepare_train_roots(config)
+    roots = materialize_train_roots(config)
     active_config = _active_config.active_train_config(config, roots)
     preflight = _training_preflight.prepare_train_preflight(active_config, roots)
     return PreparedTrainWorkflow(
@@ -68,7 +74,7 @@ def prepare_train(config: TrainConfig) -> PreparedTrainWorkflow:
 
 
 def prepare_tune(config: TuneConfig) -> PreparedTuneWorkflow:
-    roots = _root_preparation.prepare_tune_roots(config)
+    roots = materialize_tune_roots(config)
     preflight = _training_preflight.prepare_tune_preflight(config, roots)
     return PreparedTuneWorkflow(
         config=config,
@@ -79,7 +85,7 @@ def prepare_tune(config: TuneConfig) -> PreparedTuneWorkflow:
 
 
 def prepare_evaluate(config: EvaluateConfig) -> PreparedEvaluateWorkflow:
-    roots = _root_preparation.prepare_evaluate_roots(config)
+    roots = materialize_evaluate_roots(config)
     return PreparedEvaluateWorkflow(
         config=config,
         roots=roots,
