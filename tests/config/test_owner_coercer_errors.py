@@ -97,7 +97,7 @@ def test_owner_coercers_reject_non_mapping_payloads(
 def test_owner_coercers_preserve_typed_config_identity() -> None:
     problem = coerce_problem_spec(load_named_group_payload("current_row_nominal", "problem"))
     features = coerce_features_config(load_named_group_payload("core_fee_dynamics", "features"))
-    evaluator = coerce_evaluator_config(load_named_group_payload("poisson_replay_2h", "evaluation"))
+    evaluator = coerce_evaluator_config(load_named_group_payload("poisson_replay", "evaluation"))
     objective = coerce_objective_config(
         load_named_group_payload("validation_total_loss", "objective")
     )
@@ -174,7 +174,7 @@ def test_nested_slot_spacing_owner_coercer_preserves_and_redispatches() -> None:
     [
         (
             coerce_evaluator_config,
-            EvaluatorConfig(id="poisson_replay_2h"),
+            EvaluatorConfig(id="poisson_replay"),
             "Field required",
         ),
         (

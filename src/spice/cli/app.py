@@ -64,7 +64,7 @@ app.command(
     epilog=(
         "Example:\n"
         "  spice evaluate --artifact-id art_... "
-        "--dataset-id cor_9a73b1e88edb488afb1e --evaluation poisson_replay_2h"
+        "--dataset-id cor_9a73b1e88edb488afb1e --evaluation poisson_replay"
     ),
 )(evaluate_command)
 

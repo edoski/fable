@@ -28,7 +28,7 @@ class _EvaluatorSpec:
 
 
 _EVALUATOR_SPECS: dict[str, _EvaluatorSpec] = {
-    "poisson_replay_2h": _EvaluatorSpec(
+    "poisson_replay": _EvaluatorSpec(
         config_type=PoissonReplayEvaluatorConfig,
         compile_contract=lambda config: compile_poisson_replay_evaluator_contract(
             require_spec_config(config, PoissonReplayEvaluatorConfig, "evaluation config")

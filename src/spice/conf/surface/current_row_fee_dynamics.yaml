@@ -5,7 +5,7 @@ problem: current_row_nominal
 dataset_builder: fixed_sequence_temporal
 model: lstm
 prediction: icdcs_2026
-objective: profit_poisson_replay_2h
+objective: profit_poisson_replay
 acquisition:
   provider: publicnode
 training:
@@ -15,4 +15,4 @@ tuning:
   id: default
   space: lstm_fixed_context
 evaluation:
-  id: poisson_replay_2h
+  id: poisson_replay

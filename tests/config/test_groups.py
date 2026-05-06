@@ -16,7 +16,7 @@ def test_typed_group_loaders_return_owner_concrete_types() -> None:
     problem = typed.load(typed.PROBLEM, "current_row_nominal")
     model = typed.load(typed.MODEL, "lstm")
     builder = typed.load(typed.DATASET_BUILDER, "fixed_sequence_temporal")
-    evaluator = typed.load(typed.EVALUATION, "poisson_replay_2h")
+    evaluator = typed.load(typed.EVALUATION, "poisson_replay")
     training = typed.load(typed.TRAINING, "default")
 
     assert type(problem.compiler).__name__ == "ObservedTimeWindowCompilerConfig"

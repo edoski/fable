@@ -47,7 +47,7 @@ def test_evaluation_objective_runtime_scores_with_same_runtime_facts(
     monkeypatch,
 ) -> None:
     evaluator_contract = SimpleNamespace(
-        evaluator_id="poisson_replay_2h",
+        evaluator_id="poisson_replay",
         metric_descriptors=(
             MetricDescriptor(
                 id="score",
@@ -76,7 +76,7 @@ def test_evaluation_objective_runtime_scores_with_same_runtime_facts(
     runtime = compile_objective_runtime(
         _objective_config(
             objective_id="evaluation",
-            evaluator_id="poisson_replay_2h",
+            evaluator_id="poisson_replay",
         ),
         evaluator_contract=cast(Any, evaluator_contract),
         prediction_metric_descriptors=(
@@ -98,7 +98,7 @@ def test_evaluation_objective_runtime_scores_with_same_runtime_facts(
         scoring_plan=scoring_plan,
     )
 
-    assert runtime.contract.evaluator_id == "poisson_replay_2h"
+    assert runtime.contract.evaluator_id == "poisson_replay"
     assert result == summary.metrics
     assert len(seen_scoring_calls) == 1
     seen_scoring_plan, seen_evaluator_contract = seen_scoring_calls[0]
@@ -108,7 +108,7 @@ def test_evaluation_objective_runtime_scores_with_same_runtime_facts(
 
 def test_evaluation_objective_runtime_requires_scoring_plan() -> None:
     evaluator_contract = SimpleNamespace(
-        evaluator_id="poisson_replay_2h",
+        evaluator_id="poisson_replay",
         metric_descriptors=(
             MetricDescriptor(
                 id="score",
@@ -121,7 +121,7 @@ def test_evaluation_objective_runtime_requires_scoring_plan() -> None:
     runtime = compile_objective_runtime(
         _objective_config(
             objective_id="evaluation",
-            evaluator_id="poisson_replay_2h",
+            evaluator_id="poisson_replay",
         ),
         evaluator_contract=cast(Any, evaluator_contract),
         prediction_metric_descriptors=(
@@ -146,7 +146,7 @@ def test_validation_objective_runtime_rejects_unknown_prediction_metric() -> Non
 
 def test_evaluation_objective_runtime_rejects_unknown_evaluator_metric() -> None:
     evaluator_contract = SimpleNamespace(
-        evaluator_id="poisson_replay_2h",
+        evaluator_id="poisson_replay",
         metric_descriptors=(MetricDescriptor(id="profit", label="profit", role="primary"),),
     )
 
@@ -154,7 +154,7 @@ def test_evaluation_objective_runtime_rejects_unknown_evaluator_metric() -> None
         compile_objective_runtime(
             _objective_config(
                 objective_id="evaluation",
-                evaluator_id="poisson_replay_2h",
+                evaluator_id="poisson_replay",
             ),
             evaluator_contract=cast(Any, evaluator_contract),
             prediction_metric_descriptors=(
@@ -165,7 +165,7 @@ def test_evaluation_objective_runtime_rejects_unknown_evaluator_metric() -> None
 
 def test_evaluation_objective_runtime_rejects_metric_direction_mismatch() -> None:
     evaluator_contract = SimpleNamespace(
-        evaluator_id="poisson_replay_2h",
+        evaluator_id="poisson_replay",
         metric_descriptors=(
             MetricDescriptor(
                 id="score",
@@ -180,7 +180,7 @@ def test_evaluation_objective_runtime_rejects_metric_direction_mismatch() -> Non
         compile_objective_runtime(
             _objective_config(
                 objective_id="evaluation",
-                evaluator_id="poisson_replay_2h",
+                evaluator_id="poisson_replay",
             ),
             evaluator_contract=cast(Any, evaluator_contract),
             prediction_metric_descriptors=(

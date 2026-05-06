@@ -26,8 +26,8 @@ cases:
       - id: train_poisson_objective
         workflow: train
         set:
-          objective: profit_poisson_replay_2h
-          evaluation: poisson_replay_2h
+          objective: profit_poisson_replay
+          evaluation: poisson_replay
           variant: baseline
       - id: train_full_objective
         workflow: train
@@ -40,7 +40,7 @@ cases:
         after: [train_poisson_objective]
         artifact_from: train_poisson_objective
         set:
-          evaluation: poisson_replay_2h
+          evaluation: poisson_replay
       - id: evaluate_poisson_artifact_with_full
         workflow: evaluate
         after: [train_poisson_objective]
@@ -52,7 +52,7 @@ cases:
         after: [train_full_objective]
         artifact_from: train_full_objective
         set:
-          evaluation: poisson_replay_2h
+          evaluation: poisson_replay
       - id: evaluate_full_artifact_with_full
         workflow: evaluate
         after: [train_full_objective]

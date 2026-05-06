@@ -86,7 +86,7 @@ def test_acquire_cli_resolves_selection_surface(tmp_path, monkeypatch) -> None:
                 "--dataset-id",
                 "cor_9a73b1e88edb488afb1e",
                 "--evaluation",
-                "poisson_replay_2h",
+                "poisson_replay",
                 "--delay-seconds",
                 "12",
             ],
@@ -158,7 +158,7 @@ def test_config_public_commands_only(isolate_conf_root) -> None:
     assert evaluation_result.exit_code == 0, evaluation_result.stdout
     assert evaluation_result.stdout.splitlines() == [
         "full_temporal_replay",
-        "poisson_replay_2h",
+        "poisson_replay",
     ]
 
     builder_result = runner.invoke(app, ["config", "list", "dataset-builder"])

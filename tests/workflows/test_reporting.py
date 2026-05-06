@@ -90,10 +90,10 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
     calls: list[str] = []
     prepared = SimpleNamespace(n_history_rows=10, n_evaluation_rows=5, sample_count=2)
     evaluator_contract = SimpleNamespace(
-        evaluator_id="poisson_replay_2h",
+        evaluator_id="poisson_replay",
         config=coerce_evaluator_config(
             {
-                "id": "poisson_replay_2h",
+                "id": "poisson_replay",
                 "window_seconds": 7200,
                 "arrival_rate_per_second": 0.01,
                 "repetitions": 3,
@@ -156,7 +156,7 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
     monkeypatch.setattr(
         evaluate_workflow,
         "evaluation_result_fields",
-        lambda _summary: [("evaluation", "poisson_replay_2h"), ("events", "2")],
+        lambda _summary: [("evaluation", "poisson_replay"), ("events", "2")],
     )
     evaluate_workflow.run(config, reporter=reporter)
 
@@ -165,7 +165,7 @@ def test_evaluate_workflow_delegates_artifact_inference_preparation(
     rendered = output.getvalue()
     assert "evaluate dataset=test_dataset dataset_id=" in rendered
     assert "prepare history_rows=10 evaluation_rows=5 samples=2" in rendered
-    assert "evaluate complete evaluation=poisson_replay_2h events=2" in rendered
+    assert "evaluate complete evaluation=poisson_replay events=2" in rendered
 
 
 def test_train_workflow_emits_compact_epoch_output(

@@ -41,7 +41,7 @@ def _evaluate_config(tmp_path: Path) -> EvaluateConfig:
         artifact_id="artifact-1",
         dataset_id="dataset-1",
         evaluation=coerce_evaluator_config(
-            load_named_group_payload("poisson_replay_2h", "evaluation")
+            load_named_group_payload("poisson_replay", "evaluation")
         ),
         delay_seconds=36,
     )
@@ -138,7 +138,7 @@ def _evaluate_root_facts(
 
 def _loaded_summary(config):
     return SimpleNamespace(
-        evaluation_storage_id="poisson_replay_2h-36s-storage",
+        evaluation_storage_id="poisson_replay-36s-storage",
         recorded_at=1_700_000_000,
         manifest=SimpleNamespace(
             artifact_id="artifact-1",
@@ -149,7 +149,7 @@ def _loaded_summary(config):
             model=SimpleNamespace(id="lstm"),
             problem_id="current_row_nominal",
             prediction_id="icdcs_2026",
-            objective=SimpleNamespace(id="profit_poisson_replay_2h"),
+            objective=SimpleNamespace(id="profit_poisson_replay"),
             variant=ArtifactVariant.BASELINE,
             study_id=None,
             study=None,

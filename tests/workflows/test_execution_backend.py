@@ -40,7 +40,7 @@ def test_remote_runner_rehydrates_resolved_workflow_snapshots(
         WorkflowTask.EVALUATE: {
             "artifact_id": "art_test",
             "dataset_id": TEST_DATASET_ID,
-            "evaluation": "poisson_replay_2h",
+            "evaluation": "poisson_replay",
         },
     }[task]
     config = resolve_workflow_config(

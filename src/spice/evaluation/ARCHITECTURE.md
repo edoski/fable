@@ -11,7 +11,7 @@ Training metrics answer “did the model optimize its objective?” Evaluation m
 There are two concrete evaluator specs:
 
 ```yaml
-id: poisson_replay_2h
+id: poisson_replay
 window_seconds: 7200
 repetitions: 50
 arrival_rate_per_second: 0.05
@@ -85,7 +85,7 @@ selected sample positions
   -> event-mean metrics and fee sums
 ```
 
-`poisson_replay_2h` owns Poisson windowing, arrival sampling, chronological ordering of the replay sample view, and arrival-to-position selection. `full_temporal_replay` selects every supplied sample position once. Both feed selections to the runner, which validates metadata, handles no-run failures, and uses Temporal Accounting.
+`poisson_replay` owns Poisson windowing, arrival sampling, chronological ordering of the replay sample view, and arrival-to-position selection. `full_temporal_replay` selects every supplied sample position once. Both feed selections to the runner, which validates metadata, handles no-run failures, and uses Temporal Accounting.
 
 Temporal Accounting returns evaluation-private temporal replay result types. A Temporal Replay Metric Catalog owns metric ids, descriptors, event-mean/window aggregation facts, and field mapping. The Temporal Replay Runner attaches those descriptors and converts typed replay results to generic `EvaluationSummary` before the result leaves `evaluation`, so storage, benchmarks, reporting, and modeling keep one public evaluation result ABI.
 

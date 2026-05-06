@@ -15,7 +15,7 @@ problem: current_row_nominal
 dataset_builder: fixed_sequence_temporal
 model: lstm
 prediction: icdcs_2026
-objective: profit_poisson_replay_2h
+objective: profit_poisson_replay
 
 acquisition:
   provider: publicnode
@@ -26,12 +26,12 @@ tuning:
   id: default
   space: lstm_fixed_context
 evaluation:
-  id: poisson_replay_2h
+  id: poisson_replay
 ```
 
 The default runnable surface is `current_row_fee_dynamics`. `evaluation.delay_seconds` is usually omitted; evaluation workflows default it from `problem.max_delay_seconds`. `model`, `features`, `objective`, `evaluation`, `tuning_space`, `delay_seconds`, `study`, `variant`, and `trial_count` may be supplied by benchmark cases or CLI overrides when a surface leaves variation to the **Workflow Selection**.
 
-Available evaluator ids are `poisson_replay_2h` and `full_temporal_replay`. The matching evaluation objectives are `profit_poisson_replay_2h` and `profit_full_temporal_replay`. Train and tune workflows require evaluation objectives to match the selected evaluator and metric direction; evaluate workflows may intentionally use a different diagnostic evaluator for an already-trained artifact.
+Available evaluator ids are `poisson_replay` and `full_temporal_replay`. The matching evaluation objectives are `profit_poisson_replay` and `profit_full_temporal_replay`. Train and tune workflows require evaluation objectives to match the selected evaluator and metric direction; evaluate workflows may intentionally use a different diagnostic evaluator for an already-trained artifact.
 
 ## Workflow Refs
 
@@ -103,15 +103,15 @@ cases:
       - id: train_baseline
         workflow: train
         set:
-          objective: profit_poisson_replay_2h
-          evaluation: poisson_replay_2h
+          objective: profit_poisson_replay
+          evaluation: poisson_replay
           variant: baseline
       - id: evaluate_baseline
         workflow: evaluate
         after: [train_baseline]
         artifact_from: train_baseline
         set:
-          evaluation: poisson_replay_2h
+          evaluation: poisson_replay
 ```
 
 Planning validates every row before printing anything:

@@ -152,8 +152,8 @@ def test_study_id_uses_resolved_identity_but_not_trial_limits(
             ),
         ),
     )
-    evaluation_path = conf_root / "evaluation" / "poisson_replay_2h.yaml"
-    evaluation_payload = load_named_group_payload("poisson_replay_2h", "evaluation")
+    evaluation_path = conf_root / "evaluation" / "poisson_replay.yaml"
+    evaluation_payload = load_named_group_payload("poisson_replay", "evaluation")
     evaluation_payload["seed"] = 3030
     evaluation_path.write_text(
         yaml.safe_dump(evaluation_payload, sort_keys=False),
@@ -184,8 +184,8 @@ def test_artifact_id_uses_training_identity_and_selected_dataset(
         surface="current_row_fee_dynamics",
         objective="validation_total_loss",
     )
-    evaluation_path = conf_root / "evaluation" / "poisson_replay_2h.yaml"
-    evaluation_payload = load_named_group_payload("poisson_replay_2h", "evaluation")
+    evaluation_path = conf_root / "evaluation" / "poisson_replay.yaml"
+    evaluation_payload = load_named_group_payload("poisson_replay", "evaluation")
     evaluation_payload["seed"] = 3030
     evaluation_path.write_text(
         yaml.safe_dump(evaluation_payload, sort_keys=False),

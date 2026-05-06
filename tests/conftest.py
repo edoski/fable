@@ -113,7 +113,7 @@ def model_workflow_override():
                 "input_normalization": {"id": "row_standard"},
             },
             "evaluation": {
-                "id": "poisson_replay_2h",
+                "id": "poisson_replay",
                 "window_seconds": 600,
                 "arrival_rate_per_second": 0.02,
                 "repetitions": 3,
@@ -231,7 +231,7 @@ def load_workflow_config(tmp_path: Path, isolate_conf_root):
                 {
                     "artifact_id": TEST_ARTIFACT_ID,
                     "dataset_id": TEST_DATASET_ID,
-                    "evaluation": "poisson_replay_2h",
+                    "evaluation": "poisson_replay",
                 }
             )
         selection_values.update(

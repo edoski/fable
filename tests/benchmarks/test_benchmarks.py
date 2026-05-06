@@ -63,7 +63,7 @@ def test_benchmark_dimensions_expand_tuned_train_and_artifact_from(
                             "workflow": "tune",
                             "set": {
                                 "objective": "validation_total_loss",
-                                "evaluation": "poisson_replay_2h",
+                                "evaluation": "poisson_replay",
                                 "trial_count": 3,
                             },
                         },
@@ -79,7 +79,7 @@ def test_benchmark_dimensions_expand_tuned_train_and_artifact_from(
                             "after": ["train_tuned"],
                             "artifact_from": "train_tuned",
                             "set": {
-                                "evaluation": "poisson_replay_2h",
+                                "evaluation": "poisson_replay",
                                 "delay_seconds": 36,
                             },
                         },
@@ -184,7 +184,7 @@ def test_evaluator_objective_grid_keeps_cross_evaluation_bindings() -> None:
         "train_poisson_objective",
     )
     assert isinstance(full_poisson.config, EvaluateConfig)
-    assert full_poisson.config.evaluation.id == "poisson_replay_2h"
+    assert full_poisson.config.evaluation.id == "poisson_replay"
     assert full_poisson.dependencies.local_run_ids == (
         "evaluator_objective_grid."
         "data-chain-ethereum__dataset_id-cor_9a73b1e88edb488afb1e."

@@ -55,7 +55,7 @@ Evaluate workflow can run a selected diagnostic evaluator directly; artifact inf
 | Spec | Mode | Metric | Direction |
 | --- | --- | --- | --- |
 | `validation_total_loss` | validation | `total_loss` | minimize |
-| `profit_poisson_replay_2h` | evaluation | `profit_over_baseline` | maximize |
+| `profit_poisson_replay` | evaluation | `profit_over_baseline` | maximize |
 | `profit_full_temporal_replay` | evaluation | `profit_over_baseline` | maximize |
 
 ## Failure Modes

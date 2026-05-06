@@ -93,10 +93,10 @@ def _install_artifact_context_fakes(monkeypatch, config: EvaluateConfig, *, max_
     )
     prediction_contract = SimpleNamespace(decoded_result_id="offsets")
     evaluator_contract = SimpleNamespace(
-        evaluator_id="poisson_replay_2h",
+        evaluator_id="poisson_replay",
         config=coerce_evaluator_config(
             {
-                "id": "poisson_replay_2h",
+                "id": "poisson_replay",
                 "window_seconds": 7200,
                 "arrival_rate_per_second": 0.01,
                 "repetitions": 3,

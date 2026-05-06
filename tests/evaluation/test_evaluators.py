@@ -64,7 +64,7 @@ def _overflow_store() -> CompiledProblemStore:
 
 def _poisson_config() -> dict[str, str | int | float]:
     return {
-        "id": "poisson_replay_2h",
+        "id": "poisson_replay",
         "window_seconds": 7200,
         "arrival_rate_per_second": 0.01,
         "repetitions": 3,
@@ -86,8 +86,8 @@ def test_evaluator_config_supports_explicit_temporal_replay_specs() -> None:
     config = coerce_evaluator_config(_poisson_config())
     contract = compile_evaluator_contract(config)
 
-    assert config.id == "poisson_replay_2h"
-    assert contract.evaluator_id == "poisson_replay_2h"
+    assert config.id == "poisson_replay"
+    assert contract.evaluator_id == "poisson_replay"
     assert contract.config == config
     assert contract.accepted_decoded_result_id == OFFSET_DECODED_RESULT_ID
     assert contract.primary_metric_id == "profit_over_baseline"

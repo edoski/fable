@@ -35,7 +35,7 @@ def _resolved_config(task: WorkflowTask) -> TrainConfig | TuneConfig | EvaluateC
         WorkflowTask.EVALUATE: {
             "artifact_id": "art_test",
             "dataset_id": TEST_DATASET_ID,
-            "evaluation": "poisson_replay_2h",
+            "evaluation": "poisson_replay",
         },
     }[task]
     config = resolve_workflow_config(

@@ -189,7 +189,7 @@ Remote train/tune/evaluate submission:
 ```bash
 spice train --surface current_row_fee_dynamics --dataset-id cor_9a73b1e88edb488afb1e
 spice tune --surface current_row_fee_dynamics --dataset-id cor_9a73b1e88edb488afb1e --trial-count 20
-spice evaluate --artifact-id art_... --dataset-id cor_9a73b1e88edb488afb1e --evaluation poisson_replay_2h
+spice evaluate --artifact-id art_... --dataset-id cor_9a73b1e88edb488afb1e --evaluation poisson_replay
 ```
 
 The CLI owns the default remote target, `disi_l40`. Train, tune, and evaluate submit remotely by default; Python workflow runners remain available for the remote runner and tests.
@@ -225,7 +225,7 @@ spice transfer pull artifact --artifact-id art_...
 | Dataset builders | `fixed_sequence_temporal` |
 | Model families | `lstm`, `transformer`, `transformer_lstm` |
 | Prediction families | `min_block_fee_multitask` |
-| Evaluators | `poisson_replay_2h`, `full_temporal_replay` |
+| Evaluators | `poisson_replay`, `full_temporal_replay` |
 | Remote target | `disi_l40` |
 
 ## Output Layout

@@ -62,7 +62,7 @@ def test_poisson_adapter_returns_positions_in_original_sample_order() -> None:
     sample_indices = np.array([3, 2, 1, 0], dtype=np.int64)
     adapter = PoissonReplayAdapter(
         PoissonReplayEvaluatorConfig(
-            id="poisson_replay_2h",
+            id="poisson_replay",
             window_seconds=180,
             arrival_rate_per_second=0.08,
             repetitions=2,

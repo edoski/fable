@@ -67,7 +67,7 @@ def test_named_spec_identity_is_enforced_on_normal_load_paths(isolate_conf_root)
     aliased_evaluation.write_text(
         yaml.safe_dump(
             {
-                "id": "poisson_replay_2h",
+                "id": "poisson_replay",
                 "window_seconds": 7200,
                 "arrival_rate_per_second": 0.01,
                 "repetitions": 3,
@@ -92,7 +92,7 @@ def test_surface_refs_and_selection_defaults_resolve(
     conf_root = isolate_conf_root()
     child_root = tmp_path / "child_outputs"
     payload = _base_surface(conf_root)
-    payload["objective"] = "profit_poisson_replay_2h"
+    payload["objective"] = "profit_poisson_replay"
     (conf_root / "training" / "child_training.yaml").write_text(
         yaml.safe_dump(
             {
@@ -361,14 +361,14 @@ def test_benchmark_objective_requires_matching_evaluation(
     )
     payload = _base_surface(conf_root)
     payload["objective"] = "mismatch"
-    payload["evaluation"] = {"id": "poisson_replay_2h"}
+    payload["evaluation"] = {"id": "poisson_replay"}
     _write_surface(conf_root, "mismatch", payload)
 
     with pytest.raises(
         ConfigResolutionError,
         match=(
             "objective mismatch requires evaluation "
-            "other_evaluation, got poisson_replay_2h"
+            "other_evaluation, got poisson_replay"
         ),
     ):
         resolve_workflow_config(
@@ -386,13 +386,13 @@ def test_evaluation_objective_requires_selected_evaluation(
 ) -> None:
     conf_root = isolate_conf_root()
     payload = _base_surface(conf_root)
-    payload["objective"] = "profit_poisson_replay_2h"
+    payload["objective"] = "profit_poisson_replay"
     payload["evaluation"] = {"id": None}
     _write_surface(conf_root, "missing_eval", payload)
 
     with pytest.raises(
         ConfigResolutionError,
-        match="objective profit_poisson_replay_2h requires evaluation poisson_replay_2h",
+        match="objective profit_poisson_replay requires evaluation poisson_replay",
     ):
         resolve_workflow_config(
             TrainWorkflowSelection(
@@ -429,7 +429,7 @@ def test_full_temporal_replay_objective_requires_matching_train_evaluation(
         ConfigResolutionError,
         match=(
             "objective profit_full_temporal_replay requires evaluation "
-            "full_temporal_replay, got poisson_replay_2h"
+            "full_temporal_replay, got poisson_replay"
         ),
     ):
         resolve_workflow_config(
@@ -437,7 +437,7 @@ def test_full_temporal_replay_objective_requires_matching_train_evaluation(
                 surface="current_row_fee_dynamics",
                 dataset_id=TEST_DATASET_ID,
                 objective="profit_full_temporal_replay",
-                evaluation="poisson_replay_2h",
+                evaluation="poisson_replay",
                 storage_root=tmp_path / "mismatch_outputs",
             ),
         )
@@ -524,7 +524,7 @@ def test_selection_overrides_allow_problem_features_and_evaluation_selection(
     assert train_config.problem.id == "current_row_recent_median"
     assert train_config.features.id == "core_fee_dynamics"
     assert train_config.evaluation is not None
-    assert train_config.evaluation.id == "poisson_replay_2h"
+    assert train_config.evaluation.id == "poisson_replay"
 
 
 def test_selection_accepts_inline_problem_spec(

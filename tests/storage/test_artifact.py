@@ -110,7 +110,7 @@ def test_evaluation_run_codec_round_trips() -> None:
     run = EvaluationRun(
         n_events=2,
         metrics={"profit_over_baseline": 0.2},
-        metadata={"mode": "poisson_replay_2h"},
+        metadata={"mode": "poisson_replay"},
     )
 
     assert EVALUATION_RUN_CODEC.decode(EVALUATION_RUN_CODEC.encode(run)) == run
@@ -136,7 +136,7 @@ def test_evaluation_run_codec_rejects_bool_metadata() -> None:
 def _evaluation_summary(value: float, *, seed: int = 2026) -> EvaluationRuntimeSummary:
     evaluation_config = coerce_evaluator_config(
         {
-            "id": "poisson_replay_2h",
+            "id": "poisson_replay",
             "window_seconds": 7200,
             "repetitions": 50,
             "arrival_rate_per_second": 0.05,
@@ -145,7 +145,7 @@ def _evaluation_summary(value: float, *, seed: int = 2026) -> EvaluationRuntimeS
     )
     return EvaluationRuntimeSummary(
         delay_seconds=24,
-        evaluator_id="poisson_replay_2h",
+        evaluator_id="poisson_replay",
         evaluation_config=EvaluationConfigSnapshot.from_config(evaluation_config),
         metric_descriptors=(
             MetricDescriptor(
@@ -164,7 +164,7 @@ def _evaluation_summary(value: float, *, seed: int = 2026) -> EvaluationRuntimeS
             EvaluationRun(
                 n_events=2,
                 metrics={"profit_over_baseline": value},
-                metadata={"mode": "poisson_replay_2h"},
+                metadata={"mode": "poisson_replay"},
             ),
         ],
     )
@@ -320,7 +320,7 @@ def test_record_evaluation_state_returns_loaded_summary(tmp_path) -> None:
 def test_evaluation_config_snapshot_freezes_storage_identity() -> None:
     config = coerce_evaluator_config(
         {
-            "id": "poisson_replay_2h",
+            "id": "poisson_replay",
             "window_seconds": 7200,
             "repetitions": 50,
             "arrival_rate_per_second": 0.05,
@@ -340,7 +340,7 @@ def test_evaluation_config_snapshot_freezes_storage_identity() -> None:
     assert _evaluation_storage_id(summary) == evaluation_id
     assert summary.evaluation_config == EvaluationConfigSnapshot.from_payload(
         {
-            "id": "poisson_replay_2h",
+            "id": "poisson_replay",
             "window_seconds": 7200,
             "repetitions": 50,
             "arrival_rate_per_second": 0.05,
@@ -353,7 +353,7 @@ def test_evaluation_config_snapshot_rejects_non_canonical_payload() -> None:
     with pytest.raises(ValueError, match="canonical JSON"):
         EvaluationConfigSnapshot.from_payload(
             {
-                "id": "poisson_replay_2h",
+                "id": "poisson_replay",
                 "window_seconds": "7200",
                 "repetitions": 50,
                 "arrival_rate_per_second": 0.05,

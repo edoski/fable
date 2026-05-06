@@ -121,7 +121,7 @@ def test_plan_materialization_injects_artifact_and_dataset_for_artifact_from(
                             "id": "evaluate",
                             "workflow": "evaluate",
                             "artifact_from": "train",
-                            "set": {"evaluation": "poisson_replay_2h"},
+                            "set": {"evaluation": "poisson_replay"},
                         },
                     ],
                 }
@@ -173,7 +173,7 @@ def test_plan_materialization_preserves_explicit_evaluate_dataset_id_with_artifa
                             "artifact_from": "train",
                             "set": {
                                 "dataset_id": evaluate_dataset_id,
-                                "evaluation": "poisson_replay_2h",
+                                "evaluation": "poisson_replay",
                             },
                         },
                     ],
@@ -248,7 +248,7 @@ def test_plan_materialization_uses_catalog_dataset_for_explicit_tuned_study(
                             "id": "evaluate",
                             "workflow": "evaluate",
                             "artifact_from": "train",
-                            "set": {"evaluation": "poisson_replay_2h"},
+                            "set": {"evaluation": "poisson_replay"},
                         },
                     ],
                 }
@@ -316,7 +316,7 @@ def test_plan_materialization_records_explicit_artifact_source_dataset_from_cata
                             "set": {
                                 "dataset_id": evaluate_dataset_id,
                                 "artifact_id": "art_existing",
-                                "evaluation": "poisson_replay_2h",
+                                "evaluation": "poisson_replay",
                             },
                         },
                     ],
@@ -362,7 +362,7 @@ def test_plan_materialization_preserves_selection_ledger_context(
                             "id": "evaluate",
                             "workflow": "evaluate",
                             "artifact_from": "train",
-                            "set": {"evaluation": "poisson_replay_2h"},
+                            "set": {"evaluation": "poisson_replay"},
                         },
                     ],
                 }

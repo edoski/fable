@@ -5,7 +5,7 @@ rebuildable query index over completed run snapshots. CSV files are named
 human-readable exports from that index, not durable state.
 
 Result records contain modern evaluator results only. Current rows may use
-`evaluation=poisson_replay_2h` or `evaluation=full_temporal_replay`; historical
+`evaluation=poisson_replay` or `evaluation=full_temporal_replay`; historical
 `paper_replay_2h` results stay in notes such as `PROGRESS.md` until rerun under
 current semantics.
 

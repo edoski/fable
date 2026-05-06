@@ -14,11 +14,11 @@ problem: current_row_nominal
 dataset_builder: fixed_sequence_temporal
 model: lstm
 prediction: icdcs_2026
-objective: profit_poisson_replay_2h
+objective: profit_poisson_replay
 acquisition: {provider: publicnode}
 training: {id: default, split: default}
 tuning: {id: default, space: lstm_fixed_context}
-evaluation: {id: poisson_replay_2h}
+evaluation: {id: poisson_replay}
 ```
 
 Producer workflow selections may override surface fields by name. Evaluation is a root consumer: it selects an existing artifact and corpus by id, plus evaluator/runtime controls.
@@ -65,7 +65,7 @@ Dataset builders:
 
 - `fixed_sequence_temporal`: derives and persists one fixed context length from training data.
 
-Evaluators: `poisson_replay_2h` and `full_temporal_replay`. The default surface uses `poisson_replay_2h`; `full_temporal_replay` is available as a sibling evaluator and objective.
+Evaluators: `poisson_replay` and `full_temporal_replay`. The default surface uses `poisson_replay`; `full_temporal_replay` is available as a sibling evaluator and objective.
 
 Benchmarks: `priority_fee_ablation`, `unsafe_core_fee_dynamics_ablation`, `safe_baseline_grid`, `large_capacity_hpo`, `lookback_window_sweep`, `slot_spacing_sweep`, `elapsed_position_ablation`, `delay_degradation_sweep`, and `evaluator_objective_grid`.
 

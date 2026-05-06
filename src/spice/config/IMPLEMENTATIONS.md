@@ -19,7 +19,7 @@ A Concrete Owner Config is the concrete local-spec config selected by an owner i
 
 ## Local Specs
 
-Local specs are small named configs such as `model/lstm.yaml`, `problem/current_row_nominal.yaml`, `evaluation/poisson_replay_2h.yaml`, or `evaluation/full_temporal_replay.yaml`.
+Local specs are small named configs such as `model/lstm.yaml`, `problem/current_row_nominal.yaml`, `evaluation/poisson_replay.yaml`, or `evaluation/full_temporal_replay.yaml`.
 
 Config Group Loading has two explicit paths:
 

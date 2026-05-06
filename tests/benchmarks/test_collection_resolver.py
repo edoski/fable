@@ -32,7 +32,7 @@ def _evaluate_config(tmp_path: Path) -> EvaluateConfig:
         artifact_id="artifact-1",
         dataset_id="dataset-1",
         evaluation=coerce_evaluator_config(
-            load_named_group_payload("poisson_replay_2h", "evaluation")
+            load_named_group_payload("poisson_replay", "evaluation")
         ),
         delay_seconds=36,
     )

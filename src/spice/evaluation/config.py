@@ -30,8 +30,8 @@ class PoissonReplayEvaluatorConfig(EvaluatorConfig):
     @classmethod
     def validate_poisson_id(cls, value: str) -> str:
         value = EvaluatorConfig.validate_id(value)
-        if value != "poisson_replay_2h":
-            raise ValueError("evaluation.id must be poisson_replay_2h")
+        if value != "poisson_replay":
+            raise ValueError("evaluation.id must be poisson_replay")
         return value
 
 

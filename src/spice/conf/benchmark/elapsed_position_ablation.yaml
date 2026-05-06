@@ -29,12 +29,12 @@ cases:
       - id: train_baseline
         workflow: train
         set:
-          objective: profit_poisson_replay_2h
-          evaluation: poisson_replay_2h
+          objective: profit_poisson_replay
+          evaluation: poisson_replay
           variant: baseline
       - id: evaluate_baseline
         workflow: evaluate
         after: [train_baseline]
         artifact_from: train_baseline
         set:
-          evaluation: poisson_replay_2h
+          evaluation: poisson_replay
