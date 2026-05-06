@@ -48,8 +48,43 @@ def _submission(*, execution_ref: str = "slurm:57549") -> BenchmarkSubmissionRec
     )
 
 
-def _entry(config: EvaluateConfig | None = None) -> BenchmarkPlanEntry:
+def _entry(
+    config: EvaluateConfig | None = None,
+    *,
+    artifact_source_dataset_id: str | None = None,
+) -> BenchmarkPlanEntry:
     config = _evaluate_config(Path("/tmp/spice-test")) if config is None else config
+    root_entries = [
+        BenchmarkMaterializedRoot(
+            run_id="case.evaluate",
+            workflow=WorkflowTask.EVALUATE,
+            role="consumed",
+            root_kind="dataset",
+            root_id=config.dataset_id,
+            dataset_id=config.dataset_id,
+        ),
+        BenchmarkMaterializedRoot(
+            run_id="case.evaluate",
+            workflow=WorkflowTask.EVALUATE,
+            role="consumed",
+            root_kind="artifact",
+            root_id=config.artifact_id,
+            artifact_id=config.artifact_id,
+            dataset_id=config.dataset_id,
+        ),
+    ]
+    if artifact_source_dataset_id is not None:
+        root_entries.append(
+            BenchmarkMaterializedRoot(
+                run_id="case.evaluate",
+                workflow=WorkflowTask.EVALUATE,
+                role="source",
+                root_kind="dataset",
+                root_id=artifact_source_dataset_id,
+                dataset_id=artifact_source_dataset_id,
+                source_run_id="case.train",
+            )
+        )
     return BenchmarkPlanEntry(
         run_id="case.evaluate",
         case_id="case",
@@ -65,27 +100,7 @@ def _entry(config: EvaluateConfig | None = None) -> BenchmarkPlanEntry:
             evaluation=config.evaluation.id,
             delay_seconds=config.delay_seconds,
         ),
-        root_ledger=BenchmarkRootLedger(
-            entries=(
-                BenchmarkMaterializedRoot(
-                    run_id="case.evaluate",
-                    workflow=WorkflowTask.EVALUATE,
-                    role="consumed",
-                    root_kind="dataset",
-                    root_id=config.dataset_id,
-                    dataset_id=config.dataset_id,
-                ),
-                BenchmarkMaterializedRoot(
-                    run_id="case.evaluate",
-                    workflow=WorkflowTask.EVALUATE,
-                    role="consumed",
-                    root_kind="artifact",
-                    root_id=config.artifact_id,
-                    artifact_id=config.artifact_id,
-                    dataset_id=config.dataset_id,
-                ),
-            )
-        ),
+        root_ledger=BenchmarkRootLedger(entries=tuple(root_entries)),
         config=config,
     )
 
@@ -112,8 +127,17 @@ def _summary(
     )
 
 
-def _manifest(*, max_delay_seconds: int = 36, artifact_id: str = "artifact-1"):
-    return SimpleNamespace(max_delay_seconds=max_delay_seconds, artifact_id=artifact_id)
+def _manifest(
+    *,
+    max_delay_seconds: int = 36,
+    artifact_id: str = "artifact-1",
+    dataset_id: str = "dataset-1",
+):
+    return SimpleNamespace(
+        max_delay_seconds=max_delay_seconds,
+        artifact_id=artifact_id,
+        dataset_id=dataset_id,
+    )
 
 
 def _artifact_record(root_path: Path, *, artifact_id: str = "artifact-1") -> CatalogArtifactRecord:
@@ -191,10 +215,7 @@ def test_collection_resolver_returns_none_when_summary_is_missing(
         lambda _path: [],
     )
 
-    assert (
-        resolve_benchmark_evaluation(_selection(config), artifact_record=artifact_record)
-        is None
-    )
+    assert resolve_benchmark_evaluation(_selection(config), artifact_record=artifact_record) is None
 
 
 def test_collection_resolver_rejects_duplicate_matching_summaries(
@@ -388,3 +409,27 @@ def test_collection_resolver_rejects_manifest_artifact_mismatch(
 
     with pytest.raises(SpiceOperatorError, match="Artifact manifest"):
         resolve_benchmark_evaluation(_selection(config), artifact_record=artifact_record)
+
+
+def test_collection_resolver_rejects_artifact_source_dataset_mismatch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = _evaluate_config(tmp_path)
+    artifact_record = _local_artifact_record(tmp_path)
+    monkeypatch.setattr(
+        "spice.benchmarks.collection_resolver.load_training_summary",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(
+        "spice.benchmarks.collection_resolver.load_artifact_manifest",
+        lambda _path: _manifest(dataset_id="other-source"),
+    )
+
+    selection = benchmark_collection_selection(
+        _entry(config, artifact_source_dataset_id="source-dataset"),
+        _submission(),
+    )
+
+    with pytest.raises(SpiceOperatorError, match="source dataset"):
+        resolve_benchmark_evaluation(selection, artifact_record=artifact_record)

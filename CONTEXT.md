@@ -88,8 +88,12 @@ _Avoid_: depends-on tuple, submission helper state
 Benchmark-owned durable root facts for a Benchmark Plan Entry, recording typed consumed, produced, and source root entries separately from benchmark selection coordinates.
 _Avoid_: injected selection ids, materialization state dict
 
+**Benchmark Root Policy**:
+Benchmark-owned planning module that applies dependency-produced study/artifact roots, asks storage for root facts or catalog fallback, and emits the Benchmark Root Ledger.
+_Avoid_: storage benchmark materializer, dependency id patcher
+
 **Benchmark Plan Materialization**:
-Benchmark module that turns Benchmark Specs, Cases, and Steps into Benchmark Plan Entries by expanding dimensions, delegating dependency/root policy to benchmark ledgers, and resolving Workflow Config snapshots.
+Benchmark module that turns Benchmark Specs, Cases, and Steps into Benchmark Plan Entries by expanding dimensions, delegating dependency/root policy to Benchmark Root Policy, and resolving Workflow Config snapshots.
 _Avoid_: benchmark compilation helper, id patching
 
 **Benchmark Run**:

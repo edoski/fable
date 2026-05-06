@@ -30,15 +30,15 @@ collect all expected evaluate results -> collection.json
 results.sqlite projection -> CSV export/query
 ```
 
-**Benchmark Plan Materialization** expands dimensions, asks the benchmark ledger materializer to normalize dependency/root policy, calls normal workflow resolution, and produces durable plan entries with resolved workflow snapshots. Inline problem grids produce inline `ProblemSpec` values during materialization; the selection ledger stores the selected problem id, while the resolved workflow config stores the full executable problem.
+**Benchmark Plan Materialization** expands dimensions, asks the benchmark root policy to normalize dependency-derived root selection, calls normal workflow resolution, and produces durable plan entries with resolved workflow snapshots. Inline problem grids produce inline `ProblemSpec` values during materialization; the selection ledger stores the selected problem id, while the resolved workflow config stores the full executable problem.
 
-The public planning seam is `benchmarks.planning`. Its private internals own case expansion, dependency matching, dependency-derived root selection, root ledger finalization, and selection ledger materialization. Callers use `plan_benchmark()` and the planning models exported from that package; they do not import planning internals.
+The public planning seam is `benchmarks.planning`. Its private internals own case expansion, dependency matching, dependency-derived root selection, root ledger finalization, and selection ledger materialization. Storage is only an adapter for resolved root facts and catalog fallback needed by benchmark root policy. Callers use `plan_benchmark()` and the planning models exported from that package; they do not import planning internals.
 
 ## Root Ledger
 
 The root ledger is benchmark audit state, not storage catalog state. Each plan entry stores typed materialized root entries with `run_id`, workflow, role, root kind, root id, optional source run id, and root-specific ids. Roles are `consumed`, `produced`, and `source`; root kinds are `dataset`, `study`, and `artifact`.
 
-The benchmark ledger materializer owns the required order: prepare dependency-derived selection, resolve the workflow config, finalize the root ledger from resolved config identity, then record produced roots for later dependent steps. Tuned train steps can consume a study produced by a prior tune step. Evaluate steps can consume an artifact produced by a prior train step, while separately recording the artifact-source dataset.
+Benchmark root policy owns the required order: prepare dependency-derived selection, resolve the workflow config, finalize the root ledger from resolved config identity, then record produced roots for later dependent steps. Tuned train steps can consume a study produced by a prior tune step. Evaluate steps can consume an artifact produced by a prior train step, while separately recording the artifact-source dataset.
 
 ## Module Map
 
@@ -67,6 +67,6 @@ Run dirs are canonical benchmark audit state. `results.sqlite` is a rebuildable 
 
 The CLI creates run dirs, submits existing run dirs, collects existing run dirs, exports CSV, and reads the result index. It does not re-plan during submit or collect.
 
-Remote transfer during collection uses an execution-owned `StorageTransferTransaction`; matching uses a **Benchmark Collection Resolver**. Collection builds a `BenchmarkCollectionSelection` from the plan entry and submission, asks the transaction for the selected local artifact record, then passes that record to the resolver. The resolver reads `artifact_record.state_db_path`, validates artifact identity, matches `(evaluator_id, delay_seconds, execution_ref)`, rejects stale or missing execution provenance, and does not re-resolve the local catalog.
+Remote transfer during collection uses an execution-owned `StorageTransferTransaction`; matching uses a **Benchmark Collection Resolver**. Collection builds a `BenchmarkCollectionSelection` from the plan entry and submission, asks the transaction for the selected local artifact record, then passes that record to the resolver. The resolver reads `artifact_record.state_db_path`, validates artifact and artifact-source dataset identity, matches `(evaluator_id, delay_seconds, execution_ref)`, rejects stale or missing execution provenance, and does not re-resolve the local catalog.
 
 Benchmark JSON shapes are operator-facing. Keep them stable unless a field name is part of a deliberate terminology cleanup.

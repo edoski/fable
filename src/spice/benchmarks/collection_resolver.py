@@ -24,6 +24,7 @@ class BenchmarkCollectionSelection:
     storage_root: Path
     artifact_id: str
     evaluation_dataset_id: str
+    artifact_source_dataset_id: str | None
     evaluator_id: str
     configured_delay_seconds: int | None
     execution_ref: str
@@ -75,6 +76,7 @@ def benchmark_collection_selection(
         storage_root=entry.config.storage.root,
         artifact_id=entry.config.artifact_id,
         evaluation_dataset_id=entry.config.dataset_id,
+        artifact_source_dataset_id=entry.root_ledger.artifact_source_dataset_id(),
         evaluator_id=entry.config.evaluation.id,
         configured_delay_seconds=entry.config.delay_seconds,
         execution_ref=submission.execution_ref,
@@ -97,6 +99,15 @@ def resolve_benchmark_evaluation(
         raise SpiceOperatorError(
             "Artifact manifest does not match benchmark collection selection for "
             f"{selection.run_id}: {manifest.artifact_id} != {selection.artifact_id}"
+        )
+    if (
+        selection.artifact_source_dataset_id is not None
+        and manifest.dataset_id != selection.artifact_source_dataset_id
+    ):
+        raise SpiceOperatorError(
+            "Artifact manifest source dataset does not match benchmark collection "
+            f"selection for {selection.run_id}: {manifest.dataset_id} != "
+            f"{selection.artifact_source_dataset_id}"
         )
     expected_delay = selection.configured_delay_seconds or manifest.max_delay_seconds
     summaries = _matching_evaluation_summaries(

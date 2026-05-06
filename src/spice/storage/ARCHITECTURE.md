@@ -92,6 +92,7 @@ storage/
   operator.py        show/delete command outcomes and ambiguity policy
   workflow_roots.py  workflow-facing root handles and root-handle factories
   workflow_root_materialization.py  selector/producer identity -> workflow roots
+  benchmark_roots.py adapter for benchmark root planning facts/catalog fallback
   transactions.py    workflow-facing root commit/mutation/reindex boundaries
   lifecycle.py       low-level staging, promotion, validation, and delete cascade
   sync_cli.py        remote-side transfer path/root-kind helper commands
@@ -101,7 +102,7 @@ storage/
 
 Storage owns persisted payload ABI. Modeling and evaluation own runtime result objects; named storage `PayloadCodec` objects translate those objects at the SQLite table boundary. Persistence modules call codec objects directly, keeping encode/decode locality at one seam per persisted record type. Artifact manifests persist Temporal Capability as the artifact-facing compiler capability bundle and persist artifact semantics as its normalized semantic projection. Artifact evaluation state stores an **Evaluation Config Snapshot**, not a live evaluator config object, so evaluation storage identity is based on immutable evaluator provenance.
 
-Producer identity and consumer selection stay separate inside `storage.workflow_root_materialization`. Producer paths derive ids and root handles for roots that workflows are about to create. Consumer paths resolve existing roots through the catalog before workflows read them. Root handles expose root facts and manifest loading. Storage transactions expose staging, promotion, selected-path commit, existing-root mutation, and reindex boundaries; lower-level lifecycle remains path and root-kind infrastructure.
+Producer identity and consumer selection stay separate inside `storage.workflow_root_materialization`. Producer paths derive ids and root handles for roots that workflows are about to create. Consumer paths resolve existing roots through the catalog before workflows read them. Root handles expose root facts and manifest loading. Storage transactions expose staging, promotion, selected-path commit, existing-root mutation, and reindex boundaries; lower-level lifecycle remains path and root-kind infrastructure. Benchmark planning uses `storage.benchmark_roots` only as an adapter for storage-owned root facts and catalog fallback; benchmark ledger shape stays benchmark-owned.
 
 `operator.py` owns Storage Operator Outcomes for show/delete command behavior: list-vs-detail selection, detail ambiguity, narrowing attributes, delete-blocked diagnostics, and refresh rendering. CLI code maps options to selectors, maps narrowing attributes to flag names, and prints renderable sections.
 
