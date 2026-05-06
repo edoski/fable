@@ -18,9 +18,6 @@ from .acquisition_stage import CorpusAcquisitionStage
 from .metadata import (
     AcquireRunRecord,
     DatasetManifest,
-    build_acquire_run_record,
-    build_dataset_manifest,
-    provider_metadata,
 )
 from .planning import (
     CorpusAcquisitionSourceRequirements,
@@ -119,7 +116,6 @@ async def assemble_corpus(
         )
 
     controller = AcquisitionPullController.from_config(config.acquisition)
-    current_provider = provider_metadata(config)
     stage = CorpusAcquisitionStage.open(
         config=config,
         roots=roots,
@@ -134,44 +130,18 @@ async def assemble_corpus(
         requested_history_window_seconds=requested_history_window_seconds,
         status=emit,
     )
-    history_plan = fulfillment.history_plan
-    evaluation_plan = fulfillment.evaluation_plan
-    manifest = build_dataset_manifest(
-        config=config,
-        dataset_id=roots.corpus.dataset_id,
-        history_plan=history_plan,
-        evaluation_plan=evaluation_plan,
-        history_validation=fulfillment.history_result.validation,
-        evaluation_validation=fulfillment.evaluation_result.validation,
-        history_outcome=fulfillment.history_result.outcome.value,
-        evaluation_outcome=fulfillment.evaluation_result.outcome.value,
-        history_file_count=fulfillment.history_result.file_count,
-        evaluation_file_count=fulfillment.evaluation_result.file_count,
-        source_requirements=planning_context.source_requirements,
-    )
-    acquire_run = build_acquire_run_record(
-        config=config,
-        provider=current_provider,
-        acquisition_runtime=controller.snapshot(),
-        requested_history_window_seconds=fulfillment.requested_history_window_seconds,
-        resolved_capability_samples=fulfillment.resolved_capability_samples,
-    )
-    committed_root_kind = stage.commit(
-        manifest=manifest,
-        acquire_run=acquire_run,
-        fulfillment=fulfillment,
-    )
+    publication = stage.publish(fulfillment=fulfillment)
     return CorpusAssemblyResult(
         mode="committed",
-        history_plan=history_plan,
-        evaluation_plan=evaluation_plan,
-        requested_history_window_seconds=fulfillment.requested_history_window_seconds,
-        resolved_capability_samples=fulfillment.resolved_capability_samples,
-        history_outcome=fulfillment.history_result.outcome,
-        history_row_count=fulfillment.history_result.validation.row_count,
-        evaluation_outcome=fulfillment.evaluation_result.outcome,
-        evaluation_row_count=fulfillment.evaluation_result.validation.row_count,
-        manifest=manifest,
-        acquire_run=acquire_run,
-        committed_root_kind=committed_root_kind,
+        history_plan=publication.history_plan,
+        evaluation_plan=publication.evaluation_plan,
+        requested_history_window_seconds=publication.requested_history_window_seconds,
+        resolved_capability_samples=publication.resolved_capability_samples,
+        history_outcome=publication.history_outcome,
+        history_row_count=publication.history_row_count,
+        evaluation_outcome=publication.evaluation_outcome,
+        evaluation_row_count=publication.evaluation_row_count,
+        manifest=publication.manifest,
+        acquire_run=publication.acquire_run,
+        committed_root_kind=publication.committed_root_kind,
     )

@@ -14,13 +14,20 @@ from ..storage.corpus import write_dataset_state
 from ..storage.engine import RootKind
 from ..storage.transactions import PartialRootTransaction
 from ..storage.workflow_roots import AcquireWorkflowRoots
-from .metadata import AcquireRunRecord, DatasetManifest
+from .metadata import (
+    AcquireRunRecord,
+    DatasetManifest,
+    build_acquire_run_record,
+    build_dataset_manifest,
+    provider_metadata,
+)
 from .planning import HISTORY_REFILL_ATTEMPT_LIMIT, CorpusCapabilityPlanningContext
 from .split_materialization import (
     CorpusSplitIntent,
     CorpusSplitKind,
     CorpusSplitMaterializationSession,
     CorpusSplitMaterializationSpec,
+    CorpusSplitOutcome,
     DatasetBuildResult,
 )
 
@@ -37,6 +44,21 @@ class CorpusAcquisitionStageFulfillment:
     evaluation_plan: BlockPullPlan
     requested_history_window_seconds: int
     resolved_capability_samples: int
+
+
+@dataclass(frozen=True, slots=True)
+class CorpusAcquisitionPublication:
+    history_plan: BlockPullPlan
+    evaluation_plan: BlockPullPlan
+    requested_history_window_seconds: int
+    resolved_capability_samples: int
+    history_outcome: CorpusSplitOutcome
+    history_row_count: int
+    evaluation_outcome: CorpusSplitOutcome
+    evaluation_row_count: int
+    manifest: DatasetManifest
+    acquire_run: AcquireRunRecord
+    committed_root_kind: RootKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,13 +138,31 @@ class CorpusAcquisitionStage:
             resolved_capability_samples=resolved_capability_samples,
         )
 
-    def commit(
+    def publish(
         self,
         *,
-        manifest: DatasetManifest,
-        acquire_run: AcquireRunRecord,
         fulfillment: CorpusAcquisitionStageFulfillment,
-    ) -> RootKind:
+    ) -> CorpusAcquisitionPublication:
+        manifest = build_dataset_manifest(
+            config=self.config,
+            dataset_id=self.roots.corpus.dataset_id,
+            history_plan=fulfillment.history_plan,
+            evaluation_plan=fulfillment.evaluation_plan,
+            history_validation=fulfillment.history_result.validation,
+            evaluation_validation=fulfillment.evaluation_result.validation,
+            history_outcome=fulfillment.history_result.outcome.value,
+            evaluation_outcome=fulfillment.evaluation_result.outcome.value,
+            history_file_count=fulfillment.history_result.file_count,
+            evaluation_file_count=fulfillment.evaluation_result.file_count,
+            source_requirements=self.planning_context.source_requirements,
+        )
+        acquire_run = build_acquire_run_record(
+            config=self.config,
+            provider=provider_metadata(self.config),
+            acquisition_runtime=self.controller.snapshot(),
+            requested_history_window_seconds=fulfillment.requested_history_window_seconds,
+            resolved_capability_samples=fulfillment.resolved_capability_samples,
+        )
         temp_state_db = self.temp_root / ".spice" / "state.sqlite"
         write_dataset_state(
             temp_state_db,
@@ -141,7 +181,19 @@ class CorpusAcquisitionStage:
         transaction.add(self.roots.corpus.state_db_path, temp_state_db)
         committed_root_kind = transaction.commit().root_kind
         remove_path(self.temp_root)
-        return committed_root_kind
+        return CorpusAcquisitionPublication(
+            history_plan=fulfillment.history_plan,
+            evaluation_plan=fulfillment.evaluation_plan,
+            requested_history_window_seconds=fulfillment.requested_history_window_seconds,
+            resolved_capability_samples=fulfillment.resolved_capability_samples,
+            history_outcome=fulfillment.history_result.outcome,
+            history_row_count=fulfillment.history_result.validation.row_count,
+            evaluation_outcome=fulfillment.evaluation_result.outcome,
+            evaluation_row_count=fulfillment.evaluation_result.validation.row_count,
+            manifest=manifest,
+            acquire_run=acquire_run,
+            committed_root_kind=committed_root_kind,
+        )
 
     async def _ensure_sufficient_history(
         self,

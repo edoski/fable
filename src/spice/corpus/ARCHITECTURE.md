@@ -36,7 +36,7 @@ External uncertainty enters through acquisition: provider failures, missing bloc
 
 ## Corpus Assembly
 
-Corpus Assembly owns acquisition-to-corpus orchestration. It builds a Corpus Capability Planning context, asks it for history/evaluation window and refill decisions, delegates staging/fulfillment/commit mechanics to Corpus Acquisition Stage, builds dataset provenance, and returns the committed corpus result.
+Corpus Assembly owns acquisition-to-corpus orchestration. It builds a Corpus Capability Planning context, asks it for history/evaluation window and refill decisions, delegates staging, split fulfillment, provenance publication, and commit mechanics to Corpus Acquisition Stage, and returns the committed corpus result.
 
 Corpus Capability Planning owns feature/problem contract compilation for acquisition coverage, generic Corpus Acquisition Source Requirements, initial history sizing, valid temporal capability sample counting, and bounded refill policy. Source requirements describe required source columns, optional enrichments, temporal unit, ordering key, and partition key. They are corpus-level requirements, not RPC configuration. The acquire workflow translates them into a concrete block-source adapter choice.
 
