@@ -29,9 +29,8 @@ from ..temporal.scaling import ScalerStats
 from .payloads import (
     PayloadCodec,
     PayloadModel,
-    decode_payload_model,
     mapping_payload,
-    model_payload,
+    payload_model_codec,
     string_payload,
 )
 from .semantics_codecs import ARTIFACT_SEMANTICS_CODEC
@@ -361,90 +360,35 @@ class EvaluationSummaryPayload(PayloadModel):
         )
 
 
-def _encode_artifact_manifest(manifest: TrainingArtifactManifest) -> dict[str, object]:
-    return model_payload(ArtifactManifestPayload.from_manifest(manifest), label="artifact manifest")
-
-
-def _decode_artifact_manifest(payload: dict[str, object]):
-    return decode_payload_model(
-        "artifact manifest",
-        ArtifactManifestPayload,
-        payload,
-        lambda model: model.to_manifest(),
-    )
-
-
-def _encode_training_summary(summary: TrainingRuntimeSummary) -> dict[str, object]:
-    return model_payload(TrainingSummaryPayload.from_runtime(summary), label="training summary")
-
-
-def _decode_training_summary(payload: dict[str, object]):
-    return decode_payload_model(
-        "training summary",
-        TrainingSummaryPayload,
-        payload,
-        lambda model: model.to_runtime(),
-    )
-
-
-def _encode_training_epoch(record: TrainingEpochRecord) -> dict[str, object]:
-    return model_payload(TrainingEpochPayload.from_record(record), label="training epoch")
-
-
-def _decode_training_epoch(payload: dict[str, object]):
-    return decode_payload_model(
-        "training epoch",
-        TrainingEpochPayload,
-        payload,
-        lambda model: model.to_record(),
-    )
-
-
-def _encode_evaluation_summary(summary: EvaluationRuntimeSummary) -> dict[str, object]:
-    return model_payload(EvaluationSummaryPayload.from_runtime(summary), label="evaluation summary")
-
-
-def _decode_evaluation_summary(payload: dict[str, object]):
-    return decode_payload_model(
-        "evaluation summary",
-        EvaluationSummaryPayload,
-        payload,
-        lambda model: model.to_runtime(),
-    )
-
-
-def _encode_evaluation_run(run: EvaluationRun) -> dict[str, object]:
-    return model_payload(EvaluationRunPayload.from_run(run), label="evaluation run")
-
-
-def _decode_evaluation_run(payload: dict[str, object]):
-    return decode_payload_model(
-        "evaluation run",
-        EvaluationRunPayload,
-        payload,
-        lambda model: model.to_run(),
-    )
-
-
-ARTIFACT_MANIFEST_CODEC: PayloadCodec[TrainingArtifactManifest] = PayloadCodec(
-    encode=_encode_artifact_manifest,
-    decode=_decode_artifact_manifest,
+ARTIFACT_MANIFEST_CODEC: PayloadCodec[TrainingArtifactManifest] = payload_model_codec(
+    "artifact manifest",
+    ArtifactManifestPayload,
+    ArtifactManifestPayload.from_manifest,
+    ArtifactManifestPayload.to_manifest,
 )
-TRAINING_SUMMARY_CODEC: PayloadCodec[TrainingRuntimeSummary] = PayloadCodec(
-    encode=_encode_training_summary,
-    decode=_decode_training_summary,
+TRAINING_SUMMARY_CODEC: PayloadCodec[TrainingRuntimeSummary] = payload_model_codec(
+    "training summary",
+    TrainingSummaryPayload,
+    TrainingSummaryPayload.from_runtime,
+    TrainingSummaryPayload.to_runtime,
 )
-TRAINING_EPOCH_CODEC: PayloadCodec[TrainingEpochRecord] = PayloadCodec(
-    encode=_encode_training_epoch,
-    decode=_decode_training_epoch,
+TRAINING_EPOCH_CODEC: PayloadCodec[TrainingEpochRecord] = payload_model_codec(
+    "training epoch",
+    TrainingEpochPayload,
+    TrainingEpochPayload.from_record,
+    TrainingEpochPayload.to_record,
 )
-EVALUATION_SUMMARY_CODEC: PayloadCodec[EvaluationRuntimeSummary] = PayloadCodec(
-    encode=_encode_evaluation_summary,
-    decode=_decode_evaluation_summary,
+EVALUATION_SUMMARY_CODEC: PayloadCodec[EvaluationRuntimeSummary] = payload_model_codec(
+    "evaluation summary",
+    EvaluationSummaryPayload,
+    EvaluationSummaryPayload.from_runtime,
+    EvaluationSummaryPayload.to_runtime,
 )
-EVALUATION_RUN_CODEC: PayloadCodec[EvaluationRun] = PayloadCodec(
-    encode=_encode_evaluation_run,
-    decode=_decode_evaluation_run,
+EVALUATION_RUN_CODEC: PayloadCodec[EvaluationRun] = payload_model_codec(
+    "evaluation run",
+    EvaluationRunPayload,
+    EvaluationRunPayload.from_run,
+    EvaluationRunPayload.to_run,
 )
 
 

@@ -4,8 +4,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Annotated, Literal, TypeAlias, cast
+from typing import Literal, TypeAlias, cast
 
 import typer
 
@@ -14,21 +13,38 @@ from ...config.resolution import resolve_workflow_command_config
 from ...config.workflow_snapshots import ResolvedWorkflowConfig
 from ...core.errors import SpiceOperatorError
 from ...execution.session import ExecutionSession, open_execution_session
-from ..options import DEFAULT_REMOTE_TARGET, RemoteTargetOption
+from ..options import (
+    DEFAULT_REMOTE_TARGET,
+    RemoteTargetOption,
+    WorkflowArtifactConsumerOption,
+    WorkflowBatchSizeOption,
+    WorkflowChainOption,
+    WorkflowDatasetConsumerOption,
+    WorkflowDelaySecondsOption,
+    WorkflowDependencyOption,
+    WorkflowDetachOption,
+    WorkflowDryRunOption,
+    WorkflowEvaluationDatasetOption,
+    WorkflowEvaluationOverrideOption,
+    WorkflowEvaluationSpecOption,
+    WorkflowFeaturesOption,
+    WorkflowModelOption,
+    WorkflowObjectiveOption,
+    WorkflowProblemOption,
+    WorkflowProviderOption,
+    WorkflowSplitOption,
+    WorkflowStorageRootWriteOption,
+    WorkflowStudyConsumerOption,
+    WorkflowStudyOption,
+    WorkflowSurfaceOption,
+    WorkflowTrainingOption,
+    WorkflowTrialCountOption,
+    WorkflowTuningOption,
+    WorkflowTuningSpaceOption,
+    WorkflowVariantOption,
+)
 
 ModelWorkflowTask: TypeAlias = Literal[WorkflowTask.TRAIN, WorkflowTask.TUNE]
-
-
-def _selection_option(*param_decls: str, metavar: str, help: str) -> object:
-    return typer.Option(*param_decls, metavar=metavar, help=help, rich_help_panel="Selection")
-
-
-def _execution_option(*param_decls: str, metavar: str, help: str) -> object:
-    return typer.Option(*param_decls, metavar=metavar, help=help, rich_help_panel="Execution")
-
-
-def _output_option(*param_decls: str, metavar: str, help: str) -> object:
-    return typer.Option(*param_decls, metavar=metavar, help=help, rich_help_panel="Outputs")
 
 
 def _submit_selected_workflow(
@@ -88,54 +104,13 @@ def _submit_model_workflow(
 
 
 def acquire_command(
-    surface: Annotated[
-        str | None,
-        _selection_option(
-            "--surface",
-            metavar="SURFACE",
-            help="Resolve a named workflow surface.",
-        ),
-    ] = None,
-    chain: Annotated[
-        str | None,
-        _selection_option("--chain", metavar="CHAIN", help="Override the target chain."),
-    ] = None,
-    problem: Annotated[
-        str | None,
-        _selection_option("--problem", metavar="PROBLEM", help="Override the problem spec."),
-    ] = None,
-    features: Annotated[
-        str | None,
-        _selection_option(
-            "--features",
-            metavar="FEATURES",
-            help="Override the features spec.",
-        ),
-    ] = None,
-    provider: Annotated[
-        str | None,
-        _selection_option(
-            "--provider",
-            metavar="PROVIDER",
-            help="Override the RPC provider spec.",
-        ),
-    ] = None,
-    storage_root: Annotated[
-        Path | None,
-        _output_option(
-            "--storage-root",
-            metavar="PATH",
-            help="Store outputs under a non-default root.",
-        ),
-    ] = None,
-    dry_run: Annotated[
-        bool | None,
-        typer.Option(
-            "--dry-run/--no-dry-run",
-            help="Skip persistence and RPC side effects.",
-            rich_help_panel="Execution",
-        ),
-    ] = None,
+    surface: WorkflowSurfaceOption = None,
+    chain: WorkflowChainOption = None,
+    problem: WorkflowProblemOption = None,
+    features: WorkflowFeaturesOption = None,
+    provider: WorkflowProviderOption = None,
+    storage_root: WorkflowStorageRootWriteOption = None,
+    dry_run: WorkflowDryRunOption = None,
 ) -> None:
     from ...workflows import acquire
 
@@ -156,107 +131,24 @@ def acquire_command(
 
 
 def train_command(
-    surface: Annotated[
-        str | None,
-        _selection_option(
-            "--surface",
-            metavar="SURFACE",
-            help="Resolve a named workflow surface.",
-        ),
-    ] = None,
-    chain: Annotated[
-        str | None,
-        _selection_option("--chain", metavar="CHAIN", help="Override the target chain."),
-    ] = None,
-    problem: Annotated[
-        str | None,
-        _selection_option("--problem", metavar="PROBLEM", help="Override the problem spec."),
-    ] = None,
-    features: Annotated[
-        str | None,
-        _selection_option(
-            "--features",
-            metavar="FEATURES",
-            help="Override the features spec.",
-        ),
-    ] = None,
-    objective: Annotated[
-        str | None,
-        _selection_option(
-            "--objective",
-            metavar="OBJECTIVE",
-            help="Override the objective spec.",
-        ),
-    ] = None,
-    evaluation: Annotated[
-        str | None,
-        _selection_option(
-            "--evaluation",
-            metavar="EVALUATION",
-            help="Override the evaluation spec.",
-        ),
-    ] = None,
-    model: Annotated[
-        str | None,
-        _selection_option("--model", metavar="MODEL", help="Override the model spec."),
-    ] = None,
-    tuning_space: Annotated[
-        str | None,
-        _selection_option(
-            "--tuning-space",
-            metavar="TUNING_SPACE",
-            help="Override the tuning-space spec.",
-        ),
-    ] = None,
-    training: Annotated[
-        str | None,
-        _selection_option(
-            "--training",
-            metavar="TRAINING",
-            help="Override the training spec.",
-        ),
-    ] = None,
-    split: Annotated[
-        str | None,
-        _selection_option("--split", metavar="SPLIT", help="Override the split spec."),
-    ] = None,
-    tuning: Annotated[
-        str | None,
-        _selection_option("--tuning", metavar="TUNING", help="Override the tuning spec."),
-    ] = None,
-    study: Annotated[
-        str | None,
-        _selection_option("--study", metavar="STUDY", help="Override the study name."),
-    ] = None,
-    variant: Annotated[
-        str | None,
-        _selection_option("--variant", metavar="VARIANT", help="Override the artifact variant."),
-    ] = None,
-    dataset_id: Annotated[
-        str | None,
-        _selection_option("--dataset-id", metavar="DATASET_ID", help="Consume this corpus root."),
-    ] = None,
-    study_id: Annotated[
-        str | None,
-        _selection_option("--study-id", metavar="STUDY_ID", help="Consume this study root."),
-    ] = None,
-    dependency: Annotated[
-        str | None,
-        _execution_option(
-            "--dependency",
-            metavar="DEPENDENCY",
-            help="Pass one Slurm dependency spec such as afterok:12345.",
-        ),
-    ] = None,
+    surface: WorkflowSurfaceOption = None,
+    chain: WorkflowChainOption = None,
+    problem: WorkflowProblemOption = None,
+    features: WorkflowFeaturesOption = None,
+    objective: WorkflowObjectiveOption = None,
+    evaluation: WorkflowEvaluationOverrideOption = None,
+    model: WorkflowModelOption = None,
+    tuning_space: WorkflowTuningSpaceOption = None,
+    training: WorkflowTrainingOption = None,
+    split: WorkflowSplitOption = None,
+    tuning: WorkflowTuningOption = None,
+    study: WorkflowStudyOption = None,
+    variant: WorkflowVariantOption = None,
+    dataset_id: WorkflowDatasetConsumerOption = None,
+    study_id: WorkflowStudyConsumerOption = None,
+    dependency: WorkflowDependencyOption = None,
     target: RemoteTargetOption = DEFAULT_REMOTE_TARGET,
-    detach: Annotated[
-        bool,
-        typer.Option(
-            "--detach",
-            help="Submit and exit without following the job.",
-            rich_help_panel="Execution",
-        ),
-    ] = False,
+    detach: WorkflowDetachOption = False,
 ) -> None:
     _submit_model_workflow(
         task=WorkflowTask.TRAIN,
@@ -284,107 +176,23 @@ def train_command(
 
 
 def tune_command(
-    surface: Annotated[
-        str | None,
-        _selection_option(
-            "--surface",
-            metavar="SURFACE",
-            help="Resolve a named workflow surface.",
-        ),
-    ] = None,
-    chain: Annotated[
-        str | None,
-        _selection_option("--chain", metavar="CHAIN", help="Override the target chain."),
-    ] = None,
-    problem: Annotated[
-        str | None,
-        _selection_option("--problem", metavar="PROBLEM", help="Override the problem spec."),
-    ] = None,
-    features: Annotated[
-        str | None,
-        _selection_option(
-            "--features",
-            metavar="FEATURES",
-            help="Override the features spec.",
-        ),
-    ] = None,
-    objective: Annotated[
-        str | None,
-        _selection_option(
-            "--objective",
-            metavar="OBJECTIVE",
-            help="Override the objective spec.",
-        ),
-    ] = None,
-    evaluation: Annotated[
-        str | None,
-        _selection_option(
-            "--evaluation",
-            metavar="EVALUATION",
-            help="Override the evaluation spec.",
-        ),
-    ] = None,
-    model: Annotated[
-        str | None,
-        _selection_option("--model", metavar="MODEL", help="Override the model spec."),
-    ] = None,
-    tuning_space: Annotated[
-        str | None,
-        _selection_option(
-            "--tuning-space",
-            metavar="TUNING_SPACE",
-            help="Override the tuning-space spec.",
-        ),
-    ] = None,
-    training: Annotated[
-        str | None,
-        _selection_option(
-            "--training",
-            metavar="TRAINING",
-            help="Override the training spec.",
-        ),
-    ] = None,
-    split: Annotated[
-        str | None,
-        _selection_option("--split", metavar="SPLIT", help="Override the split spec."),
-    ] = None,
-    tuning: Annotated[
-        str | None,
-        _selection_option("--tuning", metavar="TUNING", help="Override the tuning spec."),
-    ] = None,
-    study: Annotated[
-        str | None,
-        _selection_option("--study", metavar="STUDY", help="Override the study name."),
-    ] = None,
-    dataset_id: Annotated[
-        str | None,
-        _selection_option("--dataset-id", metavar="DATASET_ID", help="Consume this corpus root."),
-    ] = None,
-    trial_count: Annotated[
-        int | None,
-        _execution_option(
-            "--trial-count",
-            metavar="COUNT",
-            help="Override the requested trial count.",
-        ),
-    ] = None,
-    dependency: Annotated[
-        str | None,
-        _execution_option(
-            "--dependency",
-            metavar="DEPENDENCY",
-            help="Pass one Slurm dependency spec such as afterok:12345.",
-        ),
-    ] = None,
+    surface: WorkflowSurfaceOption = None,
+    chain: WorkflowChainOption = None,
+    problem: WorkflowProblemOption = None,
+    features: WorkflowFeaturesOption = None,
+    objective: WorkflowObjectiveOption = None,
+    evaluation: WorkflowEvaluationOverrideOption = None,
+    model: WorkflowModelOption = None,
+    tuning_space: WorkflowTuningSpaceOption = None,
+    training: WorkflowTrainingOption = None,
+    split: WorkflowSplitOption = None,
+    tuning: WorkflowTuningOption = None,
+    study: WorkflowStudyOption = None,
+    dataset_id: WorkflowDatasetConsumerOption = None,
+    trial_count: WorkflowTrialCountOption = None,
+    dependency: WorkflowDependencyOption = None,
     target: RemoteTargetOption = DEFAULT_REMOTE_TARGET,
-    detach: Annotated[
-        bool,
-        typer.Option(
-            "--detach",
-            help="Submit and exit without following the job.",
-            rich_help_panel="Execution",
-        ),
-    ] = False,
+    detach: WorkflowDetachOption = False,
 ) -> None:
     _submit_model_workflow(
         task=WorkflowTask.TUNE,
@@ -411,59 +219,14 @@ def tune_command(
 
 
 def evaluate_command(
-    artifact_id: Annotated[
-        str | None,
-        _selection_option(
-            "--artifact-id",
-            metavar="ARTIFACT_ID",
-            help="Consume this artifact root.",
-        ),
-    ] = None,
-    dataset_id: Annotated[
-        str | None,
-        _selection_option(
-            "--dataset-id",
-            metavar="DATASET_ID",
-            help="Evaluate on this corpus root.",
-        ),
-    ] = None,
-    evaluation: Annotated[
-        str | None,
-        _selection_option("--evaluation", metavar="EVALUATION", help="Use this evaluator spec."),
-    ] = None,
-    delay_seconds: Annotated[
-        int | None,
-        _execution_option(
-            "--delay-seconds",
-            metavar="SECONDS",
-            help="Override the evaluation delay in seconds.",
-        ),
-    ] = None,
-    batch_size: Annotated[
-        int | None,
-        _execution_option(
-            "--batch-size",
-            metavar="COUNT",
-            help="Override the evaluation batch size.",
-        ),
-    ] = None,
-    dependency: Annotated[
-        str | None,
-        _execution_option(
-            "--dependency",
-            metavar="DEPENDENCY",
-            help="Pass one Slurm dependency spec such as afterok:12345.",
-        ),
-    ] = None,
+    artifact_id: WorkflowArtifactConsumerOption = None,
+    dataset_id: WorkflowEvaluationDatasetOption = None,
+    evaluation: WorkflowEvaluationSpecOption = None,
+    delay_seconds: WorkflowDelaySecondsOption = None,
+    batch_size: WorkflowBatchSizeOption = None,
+    dependency: WorkflowDependencyOption = None,
     target: RemoteTargetOption = DEFAULT_REMOTE_TARGET,
-    detach: Annotated[
-        bool,
-        typer.Option(
-            "--detach",
-            help="Submit and exit without following the job.",
-            rich_help_panel="Execution",
-        ),
-    ] = False,
+    detach: WorkflowDetachOption = False,
 ) -> None:
     config = resolve_workflow_command_config(
         WorkflowTask.EVALUATE,

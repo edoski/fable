@@ -10,58 +10,26 @@ from spice.storage.catalog.codecs import (
     decode_remote_catalog_record,
     encode_remote_catalog_record,
 )
-from spice.storage.catalog.records import (
-    CatalogArtifactRecord,
-    CatalogDatasetRecord,
-    CatalogStudyRecord,
-)
 from spice.storage.engine import RootKind
+from tests.catalog_helpers import artifact_record, dataset_record, study_record
 
 
-def _dataset_record() -> CatalogDatasetRecord:
+def _dataset_record():
     root = Path("/storage/corpora/ethereum/dataset-1")
-    return CatalogDatasetRecord(
-        dataset_id="dataset-1",
-        dataset_name="dataset",
-        chain_name="ethereum",
-        root_path=root,
-        state_db_path=root / ".spice" / "state.sqlite",
-    )
+    return dataset_record(root)
 
 
-def _study_record() -> CatalogStudyRecord:
+def _study_record():
     root = Path("/storage/studies/ethereum/study-1")
-    return CatalogStudyRecord(
-        study_id="study-1",
-        study_name="study",
-        dataset_id="dataset-1",
-        dataset_name="dataset",
-        chain_name="ethereum",
-        features_id="features",
-        prediction_id="prediction",
-        model_id="model",
-        problem_id="problem",
-        root_path=root,
-        state_db_path=root / ".spice" / "state.sqlite",
-    )
+    return study_record(root)
 
 
-def _artifact_record(*, study_id: str | None = None) -> CatalogArtifactRecord:
+def _artifact_record(*, study_id: str | None = None):
     root = Path("/storage/artifacts/ethereum/artifact-1")
-    return CatalogArtifactRecord(
-        artifact_id="artifact-1",
-        dataset_id="dataset-1",
-        dataset_name="dataset",
-        chain_name="ethereum",
-        features_id="features",
-        prediction_id="prediction",
-        model_id="model",
-        problem_id="problem",
-        variant="baseline",
+    return artifact_record(
+        root,
         study_id=study_id,
         study_name=None if study_id is None else "study",
-        root_path=root,
-        state_db_path=root / ".spice" / "state.sqlite",
     )
 
 

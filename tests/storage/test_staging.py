@@ -8,7 +8,6 @@ import pytest
 from spice.config.models import ArtifactVariant
 from spice.core.errors import StateConflictError, StateLayoutError
 from spice.storage.catalog.index import ReindexedCatalogRoot
-from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.engine import (
     ARTIFACT_ROOT_KIND,
     DATASET_ROOT_KIND,
@@ -31,6 +30,7 @@ from spice.storage.transactions import (
     record_study_root_mutation,
 )
 from spice.storage.workflow_roots import ArtifactRootHandle, StudyRootHandle
+from tests.catalog_helpers import artifact_record, dataset_record
 
 
 def test_partial_root_transaction_promotes_selected_paths_and_reindexes(
@@ -44,13 +44,7 @@ def test_partial_root_transaction_promotes_selected_paths_and_reindexes(
     (source_dir / "blocks.parquet").write_text("payload", encoding="utf-8")
     captured: dict[str, Path] = {}
 
-    record = CatalogDatasetRecord(
-        dataset_id="dataset-1",
-        dataset_name="dataset",
-        chain_name="ethereum",
-        root_path=root_path,
-        state_db_path=root_path / ".spice" / "state.sqlite",
-    )
+    record = dataset_record(root_path)
 
     def fake_reindex_catalog_root(storage_root: Path, *, root_path: Path) -> ReindexedCatalogRoot:
         captured.update({"storage_root": storage_root, "root_path": root_path})
@@ -377,7 +371,8 @@ def test_delete_catalog_root_rejects_noncanonical_record_path(tmp_path: Path) ->
         root_kind=RootKind.ARTIFACT,
         tables=ARTIFACT_TABLES,
     )
-    record = CatalogArtifactRecord(
+    record = artifact_record(
+        root_path,
         artifact_id="artifact-1",
         dataset_id="dataset-1",
         dataset_name="dataset",
@@ -389,8 +384,6 @@ def test_delete_catalog_root_rejects_noncanonical_record_path(tmp_path: Path) ->
         variant="baseline",
         study_id=None,
         study_name=None,
-        root_path=root_path,
-        state_db_path=state_db_path(root_path),
     )
 
     with pytest.raises(StateLayoutError, match="canonical <chain>/<root-id>"):

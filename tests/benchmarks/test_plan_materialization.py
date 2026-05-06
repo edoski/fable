@@ -9,9 +9,8 @@ from spice.benchmarks.plan_materialization import materialize_benchmark_plan
 from spice.config import EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from spice.core.errors import ConfigResolutionError
 from spice.storage.catalog.index import upsert_catalog_record
-from spice.storage.catalog.records import CatalogArtifactRecord, CatalogStudyRecord
-from spice.storage.engine import state_db_path
 from spice.storage.root_identity import produced_artifact_id, produced_study_id
+from tests.catalog_helpers import artifact_record, study_record
 
 ETH_DATASET_ID = "cor_9a73b1e88edb488afb1e"
 
@@ -212,7 +211,8 @@ def test_plan_materialization_uses_catalog_dataset_for_explicit_tuned_study(
     study_root = storage_root / "studies" / "ethereum" / "std_existing"
     upsert_catalog_record(
         storage_root,
-        CatalogStudyRecord(
+        study_record(
+            study_root,
             study_id="std_existing",
             study_name="existing",
             dataset_id=ETH_DATASET_ID,
@@ -222,8 +222,6 @@ def test_plan_materialization_uses_catalog_dataset_for_explicit_tuned_study(
             prediction_id="icdcs_2026",
             model_id="lstm",
             problem_id="current_row_nominal",
-            root_path=study_root,
-            state_db_path=state_db_path(study_root),
         ),
     )
 
@@ -284,7 +282,8 @@ def test_plan_materialization_records_explicit_artifact_source_dataset_from_cata
     artifact_root = storage_root / "artifacts" / "ethereum" / "art_existing"
     upsert_catalog_record(
         storage_root,
-        CatalogArtifactRecord(
+        artifact_record(
+            artifact_root,
             artifact_id="art_existing",
             dataset_id=ETH_DATASET_ID,
             dataset_name="icdcs_2026",
@@ -296,8 +295,6 @@ def test_plan_materialization_records_explicit_artifact_source_dataset_from_cata
             variant="baseline",
             study_id=None,
             study_name=None,
-            root_path=artifact_root,
-            state_db_path=state_db_path(artifact_root),
         ),
     )
     evaluate_dataset_id = "cor_cross_corpus_same_chain"

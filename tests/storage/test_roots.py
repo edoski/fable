@@ -4,13 +4,14 @@ import pytest
 
 from spice.core.errors import StateLayoutError
 from spice.storage.catalog.index import list_artifact_records, upsert_catalog_record
-from spice.storage.catalog.records import CatalogArtifactRecord
 from spice.storage.engine import RootKind, ensure_state_db, state_db_path
 from spice.storage.lifecycle import delete_catalog_artifact_root
+from tests.catalog_helpers import artifact_record
 
 
 def _artifact_record(root_path):
-    return CatalogArtifactRecord(
+    return artifact_record(
+        root_path,
         artifact_id="art_1",
         dataset_id="cor_1",
         dataset_name="dataset",
@@ -22,8 +23,6 @@ def _artifact_record(root_path):
         variant="baseline",
         study_id=None,
         study_name=None,
-        root_path=root_path,
-        state_db_path=state_db_path(root_path),
     )
 
 

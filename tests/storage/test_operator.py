@@ -3,11 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from spice.storage.catalog.index import upsert_catalog_record
-from spice.storage.catalog.records import (
-    CatalogArtifactRecord,
-    CatalogDatasetRecord,
-    CatalogStudyRecord,
-)
 from spice.storage.operator import (
     StorageDeleteCommand,
     StorageDeleteFailure,
@@ -18,22 +13,21 @@ from spice.storage.operator import (
     show_storage,
 )
 from spice.storage.selectors import ArtifactSelector, DatasetSelector
+from tests.catalog_helpers import artifact_record, dataset_record, study_record
 
 
-def _dataset_record(storage_root: Path) -> CatalogDatasetRecord:
-    root_path = storage_root / "corpora" / "ethereum" / "cor_1"
-    return CatalogDatasetRecord(
+def _dataset_record(storage_root: Path):
+    return dataset_record(
+        storage_root / "corpora" / "ethereum" / "cor_1",
         dataset_id="cor_1",
         dataset_name="dataset",
         chain_name="ethereum",
-        root_path=root_path,
-        state_db_path=root_path / ".spice" / "state.sqlite",
     )
 
 
-def _study_record(storage_root: Path) -> CatalogStudyRecord:
-    root_path = storage_root / "studies" / "ethereum" / "std_1"
-    return CatalogStudyRecord(
+def _study_record(storage_root: Path):
+    return study_record(
+        storage_root / "studies" / "ethereum" / "std_1",
         study_id="std_1",
         study_name="study",
         dataset_id="cor_1",
@@ -43,8 +37,6 @@ def _study_record(storage_root: Path) -> CatalogStudyRecord:
         prediction_id="prediction",
         model_id="model",
         problem_id="problem",
-        root_path=root_path,
-        state_db_path=root_path / ".spice" / "state.sqlite",
     )
 
 
@@ -53,9 +45,9 @@ def _artifact_record(
     artifact_id: str,
     *,
     model_id: str = "model",
-) -> CatalogArtifactRecord:
-    root_path = storage_root / "artifacts" / "ethereum" / artifact_id
-    return CatalogArtifactRecord(
+):
+    return artifact_record(
+        storage_root / "artifacts" / "ethereum" / artifact_id,
         artifact_id=artifact_id,
         dataset_id="cor_1",
         dataset_name="dataset",
@@ -67,8 +59,6 @@ def _artifact_record(
         variant="baseline",
         study_id="std_1",
         study_name="study",
-        root_path=root_path,
-        state_db_path=root_path / ".spice" / "state.sqlite",
     )
 
 

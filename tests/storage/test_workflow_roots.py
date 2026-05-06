@@ -4,11 +4,6 @@ from typing import cast
 
 from spice.config import AcquireConfig, EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from spice.config.models import ArtifactVariant
-from spice.storage.catalog.records import (
-    CatalogArtifactRecord,
-    CatalogDatasetRecord,
-    CatalogStudyRecord,
-)
 from spice.storage.root_identity import (
     produced_artifact_id,
     produced_corpus_id,
@@ -25,22 +20,24 @@ from spice.storage.workflow_roots import (
     CorpusRootHandle,
     TunedTrainWorkflowRoots,
 )
+from tests.catalog_helpers import artifact_record, dataset_record, study_record
 
 
 def _dataset_record(tmp_path, *, dataset_id: str, chain_name: str = "ethereum"):
     root = tmp_path / "catalog" / "datasets" / dataset_id
-    return CatalogDatasetRecord(
+    return dataset_record(
+        root,
         dataset_id=dataset_id,
         dataset_name=f"{chain_name}_dataset",
         chain_name=chain_name,
-        root_path=root,
-        state_db_path=root / "custom-state.sqlite",
+        state_db=root / "custom-state.sqlite",
     )
 
 
 def _study_record(tmp_path, *, dataset_id: str, chain_name: str = "ethereum"):
     root = tmp_path / "catalog" / "studies" / "std_existing"
-    return CatalogStudyRecord(
+    return study_record(
+        root,
         study_id="std_existing",
         study_name="existing_study",
         dataset_id=dataset_id,
@@ -50,8 +47,7 @@ def _study_record(tmp_path, *, dataset_id: str, chain_name: str = "ethereum"):
         prediction_id="icdcs_2026",
         model_id="lstm",
         problem_id="current_row_nominal",
-        root_path=root,
-        state_db_path=root / "custom-state.sqlite",
+        state_db=root / "custom-state.sqlite",
     )
 
 
@@ -63,7 +59,8 @@ def _artifact_record(
     chain_name: str = "ethereum",
 ):
     root = tmp_path / "catalog" / "artifacts" / artifact_id
-    return CatalogArtifactRecord(
+    return artifact_record(
+        root,
         artifact_id=artifact_id,
         dataset_id=dataset_id,
         dataset_name=f"{chain_name}_dataset",
@@ -75,8 +72,7 @@ def _artifact_record(
         variant="baseline",
         study_id=None,
         study_name=None,
-        root_path=root,
-        state_db_path=root / "custom-state.sqlite",
+        state_db=root / "custom-state.sqlite",
     )
 
 
@@ -239,4 +235,3 @@ def test_corpus_root_handle_loads_manifest(tmp_path, monkeypatch) -> None:
 
     assert root.load_manifest() is manifest
     assert calls == [dataset.state_db_path]
-

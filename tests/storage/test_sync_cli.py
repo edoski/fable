@@ -4,19 +4,13 @@ from pathlib import Path
 
 from spice.storage import sync_cli
 from spice.storage.catalog.codecs import decode_remote_catalog_record
-from spice.storage.catalog.records import CatalogDatasetRecord
 from spice.storage.engine import RootKind
+from tests.catalog_helpers import dataset_record
 
 
 def test_sync_cli_resolve_record_emits_remote_catalog_envelope(monkeypatch, capsys) -> None:
     root = Path("/storage/corpora/ethereum/dataset-1")
-    record = CatalogDatasetRecord(
-        dataset_id="dataset-1",
-        dataset_name="dataset",
-        chain_name="ethereum",
-        root_path=root,
-        state_db_path=root / ".spice" / "state.sqlite",
-    )
+    record = dataset_record(root)
     monkeypatch.setattr(
         sync_cli,
         "resolve_catalog_record_by_id",

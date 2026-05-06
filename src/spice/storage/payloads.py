@@ -115,6 +115,18 @@ def decode_payload_model(
     )
 
 
+def payload_model_codec(
+    label: str,
+    model_type: type[PayloadModelT],
+    from_value: Callable[[T], PayloadModelT],
+    to_value: Callable[[PayloadModelT], T],
+) -> PayloadCodec[T]:
+    return PayloadCodec(
+        encode=lambda value: model_payload(from_value(value), label=label),
+        decode=lambda payload: decode_payload_model(label, model_type, payload, to_value),
+    )
+
+
 def type_adapter_payload(
     adapter: TypeAdapter[Any],
     value: object,

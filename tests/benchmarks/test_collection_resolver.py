@@ -23,6 +23,7 @@ from spice.config.groups import load_named_group_payload
 from spice.core.errors import SpiceOperatorError
 from spice.evaluation.registry import coerce_evaluator_config
 from spice.storage.catalog.records import CatalogArtifactRecord
+from tests.catalog_helpers import artifact_record
 
 
 def _evaluate_config(tmp_path: Path) -> EvaluateConfig:
@@ -149,21 +150,7 @@ def _manifest(
 
 
 def _artifact_record(root_path: Path, *, artifact_id: str = "artifact-1") -> CatalogArtifactRecord:
-    return CatalogArtifactRecord(
-        artifact_id=artifact_id,
-        dataset_id="dataset-1",
-        dataset_name="dataset",
-        chain_name="ethereum",
-        features_id="features",
-        prediction_id="prediction",
-        model_id="model",
-        problem_id="problem",
-        variant="baseline",
-        study_id=None,
-        study_name=None,
-        root_path=root_path,
-        state_db_path=root_path / ".spice" / "state.sqlite",
-    )
+    return artifact_record(root_path, artifact_id=artifact_id)
 
 
 def _local_artifact_record(tmp_path: Path) -> CatalogArtifactRecord:

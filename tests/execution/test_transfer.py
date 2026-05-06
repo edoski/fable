@@ -14,9 +14,9 @@ from spice.execution.transfer_transaction import StorageTransferTransaction
 from spice.storage.artifact import write_artifact_manifest
 from spice.storage.catalog.codecs import encode_remote_catalog_record
 from spice.storage.catalog.index import ReindexedCatalogRoot
-from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.engine import RootKind
 from tests.artifact_helpers import manifest
+from tests.catalog_helpers import artifact_record, dataset_record
 
 
 class _FakeSession:
@@ -78,31 +78,18 @@ class _FakeSession:
         shutil.copytree(source_root, destination_root, dirs_exist_ok=True)
 
 
-def _dataset_record(root_path: Path) -> CatalogDatasetRecord:
-    return CatalogDatasetRecord(
-        dataset_id="dataset-1",
-        dataset_name="current_row_fee_dynamics",
-        chain_name="ethereum",
-        root_path=root_path,
-        state_db_path=root_path / ".spice" / "state.sqlite",
-    )
+def _dataset_record(root_path: Path):
+    return dataset_record(root_path, dataset_name="current_row_fee_dynamics")
 
 
-def _artifact_record(root_path: Path) -> CatalogArtifactRecord:
-    return CatalogArtifactRecord(
-        artifact_id="artifact-1",
-        dataset_id="dataset-1",
+def _artifact_record(root_path: Path):
+    return artifact_record(
+        root_path,
         dataset_name="current_row_fee_dynamics",
-        chain_name="ethereum",
         features_id="current_row_fee_dynamics",
         prediction_id="icdcs_2026",
         model_id="lstm",
         problem_id="current_row_fee_dynamics",
-        variant="baseline",
-        study_id=None,
-        study_name=None,
-        root_path=root_path,
-        state_db_path=root_path / ".spice" / "state.sqlite",
     )
 
 

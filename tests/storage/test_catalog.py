@@ -12,11 +12,11 @@ from spice.storage.catalog.index import (
     list_dataset_records,
     upsert_catalog_record,
 )
-from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.engine import DATASET_ROOT_KIND, ensure_state_db, state_db_path
 from spice.storage.layout import catalog_db_path
 from spice.storage.schema import DATASET_TABLES
 from spice.storage.selectors import ArtifactSelector, DatasetSelector
+from tests.catalog_helpers import artifact_record, dataset_record
 
 
 def _dataset_timestamps(path: Path, dataset_id: str) -> tuple[int, int]:
@@ -38,22 +38,21 @@ def test_catalog_upsert_keeps_created_at_stable(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setattr(store, "_now_timestamp", lambda: next(timestamps))
 
     dataset_root = storage_root / "corpora" / "ethereum" / "dataset-1"
-    record = CatalogDatasetRecord(
+    record = dataset_record(
+        dataset_root,
         dataset_id="dataset-1",
         dataset_name="old",
         chain_name="ethereum",
-        root_path=dataset_root,
-        state_db_path=state_db_path(dataset_root),
     )
     upsert_catalog_record(storage_root, record)
     upsert_catalog_record(
         storage_root,
-        CatalogDatasetRecord(
+        dataset_record(
+            record.root_path,
             dataset_id=record.dataset_id,
             dataset_name="new",
             chain_name=record.chain_name,
-            root_path=record.root_path,
-            state_db_path=record.state_db_path,
+            state_db=record.state_db_path,
         ),
     )
 
@@ -75,17 +74,17 @@ def test_catalog_filters_by_exact_root_ids(tmp_path: Path) -> None:
     artifact_root = storage_root / "artifacts" / "ethereum" / "artifact-1"
     upsert_catalog_record(
         storage_root,
-        CatalogDatasetRecord(
+        dataset_record(
+            dataset_root,
             dataset_id="dataset-1",
             dataset_name="daily",
             chain_name="ethereum",
-            root_path=dataset_root,
-            state_db_path=state_db_path(dataset_root),
         ),
     )
     upsert_catalog_record(
         storage_root,
-        CatalogArtifactRecord(
+        artifact_record(
+            artifact_root,
             artifact_id="artifact-1",
             dataset_id="dataset-1",
             dataset_name="daily",
@@ -97,8 +96,6 @@ def test_catalog_filters_by_exact_root_ids(tmp_path: Path) -> None:
             variant="baseline",
             study_id=None,
             study_name=None,
-            root_path=artifact_root,
-            state_db_path=state_db_path(artifact_root),
         ),
     )
 
