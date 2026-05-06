@@ -2,9 +2,11 @@
 
 from ._policy import CorpusSplitOutcome
 from ._session import (
+    CorpusSplitMaterializationSession,
+)
+from ._types import (
     CorpusSplitIntent,
     CorpusSplitKind,
-    CorpusSplitMaterializationSession,
     CorpusSplitMaterializationSpec,
     DatasetBuildResult,
 )
