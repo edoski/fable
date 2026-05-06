@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from spice.storage.catalog.index import upsert_catalog_record
+from spice.storage.catalog.materialization import materialize_catalog_root
 from spice.storage.operator import (
     StorageDeleteCommand,
     StorageDeleteFailure,
@@ -121,7 +122,10 @@ def test_show_filtered_unique_match_renders_detail(tmp_path: Path, monkeypatch) 
     )
 
     assert isinstance(outcome, StorageShowRendered)
-    assert seen == {"root_path": record.root_path, "detail": None}
+    assert seen == {
+        "root_path": materialize_catalog_root(storage_root, record).root_path,
+        "detail": None,
+    }
     assert outcome.renderable.title == "artifact summary"
 
 

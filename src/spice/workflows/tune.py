@@ -64,15 +64,15 @@ def run(config: TuneConfig, *, reporter: Reporter | None = None) -> None:
     corpus_manifest = prepared.corpus_manifest
     active_reporter.header("tune", _workflow_facts(config, roots))
 
-    opened = open_tuning_execution(
-        config,
-        roots=roots,
-        corpus_manifest=corpus_manifest,
-    )
-    record_study_root_mutation(
+    opened_commit = record_study_root_mutation(
         roots.study,
-        mutation=lambda: None,
+        mutation=lambda: open_tuning_execution(
+            config,
+            roots=roots,
+            corpus_manifest=corpus_manifest,
+        ),
     )
+    opened = opened_commit.result
     summary_commit = record_study_root_mutation(
         roots.study,
         mutation=lambda: run_tuning_execution(

@@ -45,8 +45,11 @@ def _artifact_record(*, study_id: str | None = None):
 def test_remote_catalog_record_codec_round_trips_records(record, root_kind: str) -> None:
     encoded = encode_remote_catalog_record(record)
     decoded = decode_remote_catalog_record(encoded)
+    payload = json.loads(encoded)
 
-    assert json.loads(encoded)["root_kind"] == root_kind
+    assert payload["root_kind"] == root_kind
+    assert "root_path" not in payload["record"]
+    assert "state_db_path" not in payload["record"]
     assert decoded == record
 
 

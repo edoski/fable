@@ -4,16 +4,16 @@ from typing import cast
 
 from spice.config import AcquireConfig, EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from spice.config.models import ArtifactVariant
-from spice.storage.root_identity import (
-    produced_artifact_id,
-    produced_corpus_id,
-    produced_study_id,
-)
+from spice.storage.catalog.materialization import materialize_catalog_root
 from spice.storage.workflow_root_materialization import (
     materialize_acquire_roots,
     materialize_evaluate_roots,
     materialize_train_roots,
     materialize_tune_roots,
+    materialize_workflow_root_facts,
+    produced_artifact_id,
+    produced_corpus_id,
+    produced_study_id,
 )
 from spice.storage.workflow_roots import (
     BaselineTrainWorkflowRoots,
@@ -131,9 +131,10 @@ def test_root_handle_constructors_own_catalog_and_producer_shapes(tmp_path) -> N
         variant=ArtifactVariant.TUNED,
         study=produced_study,
     )
+    corpus_location = materialize_catalog_root(storage_root, dataset)
 
-    assert corpus.state_db_path == dataset.state_db_path
-    assert corpus.history_dir == dataset.root_path / "history"
+    assert corpus.state_db_path == corpus_location.state_db_path
+    assert corpus.history_dir == corpus_location.root_path / "history"
     assert study_handle.dataset_id == dataset.dataset_id
     assert artifact_handle.variant is ArtifactVariant.BASELINE
     assert produced_corpus.root_path == storage_root / "corpora" / "polygon" / "cor_new"
@@ -157,9 +158,10 @@ def test_tune_consumer_roots_resolve_dataset_and_produced_study(
     )
 
     roots = materialize_tune_roots(config)
+    dataset_location = materialize_catalog_root(config.storage.root, dataset)
 
     assert roots.corpus.dataset_id == config.dataset_id
-    assert roots.corpus.state_db_path == dataset.state_db_path
+    assert roots.corpus.state_db_path == dataset_location.state_db_path
     assert roots.study.study_id == produced_study_id(config)
     assert roots.study.dataset_id == dataset.dataset_id
     assert roots.study.chain_name == "polygon"
@@ -182,9 +184,10 @@ def test_baseline_train_consumer_roots_resolve_dataset_and_produced_artifact(
     )
 
     roots = materialize_train_roots(config)
+    dataset_location = materialize_catalog_root(config.storage.root, dataset)
 
     assert isinstance(roots, BaselineTrainWorkflowRoots)
-    assert roots.corpus.state_db_path == dataset.state_db_path
+    assert roots.corpus.state_db_path == dataset_location.state_db_path
     assert roots.artifact.artifact_id == produced_artifact_id(
         config,
         dataset_id=dataset.dataset_id,
@@ -217,9 +220,10 @@ def test_tuned_train_consumer_roots_use_study_dataset_for_artifact_identity(
     )
 
     roots = materialize_train_roots(config)
+    study_location = materialize_catalog_root(config.storage.root, study)
 
     assert isinstance(roots, TunedTrainWorkflowRoots)
-    assert roots.study.state_db_path == study.state_db_path
+    assert roots.study.state_db_path == study_location.state_db_path
     assert roots.corpus.dataset_id == "cor_from_study"
     assert roots.artifact.artifact_id == produced_artifact_id(
         config,
@@ -254,25 +258,28 @@ def test_evaluate_consumer_roots_resolve_dataset_and_artifact_independently(
     )
 
     roots = materialize_evaluate_roots(config)
+    dataset_location = materialize_catalog_root(config.storage.root, dataset)
+    artifact_location = materialize_catalog_root(config.storage.root, artifact)
 
     assert roots.corpus.dataset_id == config.dataset_id
     assert roots.artifact.artifact_id == config.artifact_id
-    assert roots.corpus.state_db_path == dataset.state_db_path
-    assert roots.artifact.state_db_path == artifact.state_db_path
+    assert roots.corpus.state_db_path == dataset_location.state_db_path
+    assert roots.artifact.state_db_path == artifact_location.state_db_path
     assert roots.artifact.dataset_id == "cor_artifact"
 
 
 def test_corpus_root_handle_loads_manifest(tmp_path, monkeypatch) -> None:
     dataset = _dataset_record(tmp_path, dataset_id="cor_existing")
+    location = materialize_catalog_root(tmp_path, dataset)
     root = CorpusRootHandle(
         storage_root=tmp_path,
         dataset_id=dataset.dataset_id,
         dataset_name=dataset.dataset_name,
         chain_name=dataset.chain_name,
-        root_path=dataset.root_path,
-        state_db_path=dataset.state_db_path,
-        history_dir=dataset.root_path / "history",
-        evaluation_dir=dataset.root_path / "evaluation",
+        root_path=location.root_path,
+        state_db_path=location.state_db_path,
+        history_dir=location.root_path / "history",
+        evaluation_dir=location.root_path / "evaluation",
     )
     manifest = object()
     calls: list[object] = []
@@ -283,4 +290,47 @@ def test_corpus_root_handle_loads_manifest(tmp_path, monkeypatch) -> None:
     )
 
     assert root.load_manifest() is manifest
-    assert calls == [dataset.state_db_path]
+    assert calls == [location.state_db_path]
+
+
+def test_workflow_root_facts_use_known_benchmark_sources_before_catalog(
+    tmp_path,
+    load_workflow_config,
+) -> None:
+    config = cast(
+        TrainConfig,
+        load_workflow_config(
+            WorkflowTask.TRAIN,
+            workspace=tmp_path,
+            variant="tuned",
+        ),
+    )
+    config = config.model_copy(update={"study_id": "std_from_benchmark", "dataset_id": None})
+
+    facts = materialize_workflow_root_facts(
+        config,
+        known_study_dataset_ids={"std_from_benchmark": "cor_from_benchmark"},
+    )
+
+    assert facts.consumed.study_id == "std_from_benchmark"
+    assert facts.consumed_study_dataset_id == "cor_from_benchmark"
+    assert facts.produced_artifact_dataset_id == "cor_from_benchmark"
+
+
+def test_workflow_root_facts_preserve_evaluate_dataset_and_artifact_source(
+    tmp_path,
+    load_workflow_config,
+) -> None:
+    config = cast(
+        EvaluateConfig,
+        load_workflow_config(WorkflowTask.EVALUATE, workspace=tmp_path),
+    )
+
+    facts = materialize_workflow_root_facts(
+        config,
+        known_artifact_dataset_ids={config.artifact_id: "cor_artifact_source"},
+    )
+
+    assert facts.consumed.dataset_id == config.dataset_id
+    assert facts.consumed.artifact_id == config.artifact_id
+    assert facts.consumed_artifact_dataset_id == "cor_artifact_source"

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config.models import ArtifactVariant
+from .catalog.materialization import materialize_catalog_root
 from .catalog.records import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
 from .corpus import load_dataset_manifest
 from .engine import state_db_path
@@ -100,15 +101,16 @@ def corpus_root_handle_from_record(
     storage_root: Path,
     record: CatalogDatasetRecord,
 ) -> CorpusRootHandle:
+    location = materialize_catalog_root(storage_root, record)
     return CorpusRootHandle(
         storage_root=storage_root,
         dataset_id=record.dataset_id,
         dataset_name=record.dataset_name,
         chain_name=record.chain_name,
-        root_path=record.root_path,
-        state_db_path=record.state_db_path,
-        history_dir=corpus_history_dir_path(record.root_path),
-        evaluation_dir=corpus_evaluation_dir_path(record.root_path),
+        root_path=location.root_path,
+        state_db_path=location.state_db_path,
+        history_dir=corpus_history_dir_path(location.root_path),
+        evaluation_dir=corpus_evaluation_dir_path(location.root_path),
     )
 
 
@@ -116,6 +118,7 @@ def study_root_handle_from_record(
     storage_root: Path,
     record: CatalogStudyRecord,
 ) -> StudyRootHandle:
+    location = materialize_catalog_root(storage_root, record)
     return StudyRootHandle(
         storage_root=storage_root,
         study_id=record.study_id,
@@ -123,8 +126,8 @@ def study_root_handle_from_record(
         dataset_id=record.dataset_id,
         dataset_name=record.dataset_name,
         chain_name=record.chain_name,
-        root_path=record.root_path,
-        state_db_path=record.state_db_path,
+        root_path=location.root_path,
+        state_db_path=location.state_db_path,
     )
 
 
@@ -132,14 +135,15 @@ def artifact_root_handle_from_record(
     storage_root: Path,
     record: CatalogArtifactRecord,
 ) -> ArtifactRootHandle:
+    location = materialize_catalog_root(storage_root, record)
     return ArtifactRootHandle(
         storage_root=storage_root,
         artifact_id=record.artifact_id,
         dataset_id=record.dataset_id,
         dataset_name=record.dataset_name,
         chain_name=record.chain_name,
-        root_path=record.root_path,
-        state_db_path=record.state_db_path,
+        root_path=location.root_path,
+        state_db_path=location.state_db_path,
         variant=ArtifactVariant(record.variant),
         study_id=record.study_id,
         study_name=record.study_name,

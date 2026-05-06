@@ -4,6 +4,7 @@ from typer.testing import CliRunner
 
 from spice.cli.app import app
 from spice.execution.transfer_transaction import TransferredArtifactRoot
+from spice.storage.catalog.materialization import materialize_catalog_root
 from tests.catalog_helpers import artifact_record, dataset_record
 
 runner = CliRunner()
@@ -51,7 +52,7 @@ def test_transfer_pull_artifact_command_uses_pulled_envelope(monkeypatch, tmp_pa
     pulled = TransferredArtifactRoot(
         source_record=record,
         local_record=record,
-        destination_root=record.root_path,
+        destination_root=materialize_catalog_root(tmp_path / "outputs", record).root_path,
         dataset_present=False,
     )
 

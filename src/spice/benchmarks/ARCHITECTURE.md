@@ -30,9 +30,9 @@ collect all expected evaluate results -> collection.json
 results.sqlite projection -> CSV export/query
 ```
 
-**Benchmark Plan Materialization** expands dimensions, matches dependencies, normalizes dependency-derived root selection, calls normal workflow resolution, asks storage for root facts when catalog fallback is needed, and produces durable plan entries with resolved workflow snapshots. Inline problem grids produce inline `ProblemSpec` values during materialization; the selection ledger stores the selected problem id, while the resolved workflow config stores the full executable problem.
+**Benchmark Plan Materialization** expands dimensions, matches dependencies, normalizes dependency-derived root selection, calls normal workflow resolution, asks Storage Root Materialization for consumed/produced/source root facts, and produces durable plan entries with resolved workflow snapshots. Inline problem grids produce inline `ProblemSpec` values during materialization; the selection ledger stores the selected problem id, while the resolved workflow config stores the full executable problem.
 
-The public plan materialization seam is `benchmarks.plan_materialization`. Its private internals own case expansion, dependency matching, dependency-derived root selection, root finalization, and selection ledger materialization. Storage access is an internal adapter for resolved root facts and catalog fallback. Callers use `materialize_benchmark_plan()` and the durable models exported from that package; they do not import materialization internals.
+The public plan materialization seam is `benchmarks.plan_materialization`. Its private internals own case expansion, dependency matching, dependency-derived root selection, root finalization, and selection ledger materialization. Storage owns scalar root-fact derivation; benchmark owns the durable ledger/run-state shape. Callers use `materialize_benchmark_plan()` and the durable models exported from that package; they do not import materialization internals.
 
 ## Root Facts And Ledger
 
@@ -69,6 +69,6 @@ Run dirs are canonical benchmark audit state. `results.sqlite` is a rebuildable 
 
 The CLI creates run dirs, submits existing run dirs, collects existing run dirs, exports CSV, and reads the result index. It does not re-plan during submit or collect.
 
-Remote transfer during collection uses an execution-owned `StorageTransferTransaction`; matching uses a **Benchmark Collection Resolver**. Collection builds a `BenchmarkCollectionSelection` from the plan entry and submission, asks the transaction for the selected local artifact record, then passes that record to the resolver. The resolver reads `artifact_record.state_db_path`, validates artifact and artifact-source dataset identity, matches `(evaluator_id, delay_seconds, execution_ref)`, rejects stale or missing execution provenance, and does not re-resolve the local catalog.
+Remote transfer during collection uses an execution-owned `StorageTransferTransaction`; matching uses a **Benchmark Collection Resolver**. Collection builds a `BenchmarkCollectionSelection` from the plan entry and submission, asks the transaction for the selected local artifact record, then passes that record to the resolver. The resolver materializes the local artifact state path from storage root plus artifact identity, validates artifact and artifact-source dataset identity, matches `(evaluator_id, delay_seconds, execution_ref)`, rejects stale or missing execution provenance, and does not re-resolve the local catalog.
 
 Benchmark JSON shapes are operator-facing. Keep them stable unless a field name is part of a deliberate terminology cleanup.

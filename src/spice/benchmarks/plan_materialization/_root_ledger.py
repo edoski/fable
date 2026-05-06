@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ...config.models import ArtifactVariant, TrainConfig, WorkflowTask
+from ...config.models import ArtifactVariant, WorkflowTask
 from ...config.selections import (
     EvaluateWorkflowSelection,
     TrainWorkflowSelection,
@@ -14,6 +14,7 @@ from ...config.selections import (
 )
 from ...config.workflow_snapshots import ResolvedWorkflowConfig
 from ...core.errors import ConfigResolutionError
+from ...storage.workflow_root_materialization import materialize_workflow_root_facts
 from ._models import (
     BenchmarkDependencyLedger,
     BenchmarkRootFacts,
@@ -21,7 +22,6 @@ from ._models import (
     BenchmarkRootLedger,
     BenchmarkRootLedgerEntry,
 )
-from ._storage_facts import BenchmarkRootStorageAdapter
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,16 +72,25 @@ class BenchmarkProducedRootIndex:
             dataset_id=entry.dataset_id,
         )
 
-    def study_dataset_id(self, study_id: str) -> str | None:
-        for entry in self.root_entries:
-            if (
-                entry.role == "produced"
-                and entry.root_kind == "study"
-                and entry.study_id == study_id
-                and entry.dataset_id is not None
-            ):
-                return entry.dataset_id
-        return None
+    def produced_study_dataset_ids(self) -> dict[str, str]:
+        return {
+            entry.study_id: entry.dataset_id
+            for entry in self.root_entries
+            if entry.role == "produced"
+            and entry.root_kind == "study"
+            and entry.study_id is not None
+            and entry.dataset_id is not None
+        }
+
+    def produced_artifact_dataset_ids(self) -> dict[str, str]:
+        return {
+            entry.artifact_id: entry.dataset_id
+            for entry in self.root_entries
+            if entry.role == "produced"
+            and entry.root_kind == "artifact"
+            and entry.artifact_id is not None
+            and entry.dataset_id is not None
+        }
 
     def produced_root_for_run(
         self,
@@ -104,13 +113,11 @@ class BenchmarkProducedRootIndex:
 @dataclass(slots=True)
 class BenchmarkRootLedgerBuilder:
     produced_roots: BenchmarkProducedRootIndex
-    storage: BenchmarkRootStorageAdapter
 
     @classmethod
     def create(cls) -> BenchmarkRootLedgerBuilder:
         return cls(
             produced_roots=BenchmarkProducedRootIndex.create(),
-            storage=BenchmarkRootStorageAdapter(),
         )
 
     def prepare_selection(
@@ -164,40 +171,25 @@ class BenchmarkRootLedgerBuilder:
         config: ResolvedWorkflowConfig,
         prepared: PreparedBenchmarkRootSelection,
     ) -> FinalizedBenchmarkRoots:
-        consumed = self.storage.consumed_roots(config)
-        train_dataset_id = (
-            self._train_dataset_id(config) if isinstance(config, TrainConfig) else None
+        root_facts = materialize_workflow_root_facts(
+            config,
+            known_study_dataset_ids=self.produced_roots.produced_study_dataset_ids(),
+            known_artifact_dataset_ids=self.produced_roots.produced_artifact_dataset_ids(),
+            artifact_source_dataset_id=prepared.artifact_source_dataset_id,
         )
-        produced = self.storage.produced_roots(config, dataset_id=train_dataset_id)
-        consumed_study_dataset_id = (
-            self._study_dataset_id(config, consumed.study_id)
-            if consumed.study_id is not None
-            else None
-        )
-        consumed_artifact_dataset_id = (
-            self._artifact_dataset_id(config, consumed.artifact_id, prepared)
-            if consumed.artifact_id is not None
-            else None
-        )
-        produced_study_dataset_id = (
-            consumed.dataset_id if produced.study_id is not None else None
-        )
-        produced_artifact_dataset_id = (
-            consumed.dataset_id or train_dataset_id
-            if produced.artifact_id is not None
-            else None
-        )
+        consumed = root_facts.consumed
+        produced = root_facts.produced
         facts = BenchmarkRootFacts(
             consumed_dataset_id=consumed.dataset_id,
             consumed_study_id=consumed.study_id,
-            consumed_study_dataset_id=consumed_study_dataset_id,
+            consumed_study_dataset_id=root_facts.consumed_study_dataset_id,
             consumed_artifact_id=consumed.artifact_id,
-            consumed_artifact_dataset_id=consumed_artifact_dataset_id,
+            consumed_artifact_dataset_id=root_facts.consumed_artifact_dataset_id,
             produced_study_id=produced.study_id,
-            produced_study_dataset_id=produced_study_dataset_id,
+            produced_study_dataset_id=root_facts.produced_study_dataset_id,
             produced_artifact_id=produced.artifact_id,
-            produced_artifact_dataset_id=produced_artifact_dataset_id,
-            artifact_source_dataset_id=prepared.artifact_source_dataset_id,
+            produced_artifact_dataset_id=root_facts.produced_artifact_dataset_id,
+            artifact_source_dataset_id=root_facts.source.artifact_dataset_id,
         )
         entries: list[BenchmarkRootLedgerEntry] = []
         if consumed.dataset_id is not None:
@@ -220,7 +212,7 @@ class BenchmarkRootLedgerBuilder:
                     root_kind="study",
                     root_id=consumed.study_id,
                     study_id=consumed.study_id,
-                    dataset_id=consumed_study_dataset_id,
+                    dataset_id=root_facts.consumed_study_dataset_id,
                 )
             )
         if consumed.artifact_id is not None:
@@ -232,7 +224,7 @@ class BenchmarkRootLedgerBuilder:
                     root_kind="artifact",
                     root_id=consumed.artifact_id,
                     artifact_id=consumed.artifact_id,
-                    dataset_id=consumed_artifact_dataset_id,
+                    dataset_id=root_facts.consumed_artifact_dataset_id,
                     source_run_id=prepared.artifact_from_run_id,
                 )
             )
@@ -245,7 +237,7 @@ class BenchmarkRootLedgerBuilder:
                     root_kind="study",
                     root_id=produced.study_id,
                     study_id=produced.study_id,
-                    dataset_id=produced_study_dataset_id,
+                    dataset_id=root_facts.produced_study_dataset_id,
                 )
             )
         if produced.artifact_id is not None:
@@ -257,18 +249,18 @@ class BenchmarkRootLedgerBuilder:
                     root_kind="artifact",
                     root_id=produced.artifact_id,
                     artifact_id=produced.artifact_id,
-                    dataset_id=produced_artifact_dataset_id,
+                    dataset_id=root_facts.produced_artifact_dataset_id,
                 )
             )
-        if prepared.artifact_source_dataset_id is not None:
+        if root_facts.source.artifact_dataset_id is not None:
             entries.append(
                 BenchmarkRootLedgerEntry(
                     run_id=run_id,
                     workflow=workflow,
                     role="source",
                     root_kind="dataset",
-                    root_id=prepared.artifact_source_dataset_id,
-                    dataset_id=prepared.artifact_source_dataset_id,
+                    root_id=root_facts.source.artifact_dataset_id,
+                    dataset_id=root_facts.source.artifact_dataset_id,
                     source_run_id=prepared.artifact_from_run_id,
                 )
             )
@@ -279,37 +271,3 @@ class BenchmarkRootLedgerBuilder:
 
     def record_ledger(self, ledger: BenchmarkRootLedger) -> None:
         self.produced_roots.record_ledger(ledger)
-
-    def _train_dataset_id(self, config: ResolvedWorkflowConfig) -> str:
-        if not isinstance(config, TrainConfig):
-            raise TypeError("train dataset id resolution requires TrainConfig")
-        if config.dataset_id is not None:
-            return config.dataset_id
-        if config.study_id is None:
-            raise ConfigResolutionError(
-                "train artifact source did not declare dataset_id or study_id"
-            )
-        return self._study_dataset_id(config, config.study_id)
-
-    def _study_dataset_id(
-        self,
-        config: ResolvedWorkflowConfig,
-        study_id: str,
-    ) -> str:
-        benchmark_dataset_id = self.produced_roots.study_dataset_id(study_id)
-        if benchmark_dataset_id is not None:
-            return benchmark_dataset_id
-        return self.storage.study_dataset_id(config.storage.root, study_id=study_id)
-
-    def _artifact_dataset_id(
-        self,
-        config: ResolvedWorkflowConfig,
-        artifact_id: str,
-        prepared: PreparedBenchmarkRootSelection,
-    ) -> str:
-        if prepared.artifact_source_dataset_id is not None:
-            return prepared.artifact_source_dataset_id
-        return self.storage.artifact_dataset_id(
-            config.storage.root,
-            artifact_id=artifact_id,
-        )

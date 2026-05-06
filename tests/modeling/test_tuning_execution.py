@@ -27,7 +27,7 @@ from spice.modeling.tuning_execution import (
     open_tuning_execution,
     run_tuning_execution,
 )
-from spice.storage.root_identity import produced_study_id
+from spice.storage.workflow_root_materialization import produced_study_id
 from tests.root_handle_helpers import corpus_handle, study_handle, tune_roots
 
 TEST_DATASET_ID = "cor_9a73b1e88edb488afb1e"

@@ -73,10 +73,10 @@ resolve artifact
   -> materialize roots
   -> validate semantics/capability/coverage and build inference dataset
   -> score evaluator
-  -> upsert evaluation state with execution provenance when remote
+  -> record artifact evaluation state through Storage Transactions with execution provenance when remote
 ```
 
-Evaluate writes into the existing artifact state DB. It does not stage or replace the artifact root.
+Evaluate writes into the existing artifact state DB through `storage.transactions.record_artifact_evaluation_state()`. It does not stage or replace the artifact root.
 
 ## Remote Submission Boundary
 

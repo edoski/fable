@@ -74,11 +74,7 @@ def _record_to_row(
     record: CatalogRecord,
 ) -> dict[str, object]:
     concrete = spec.require_record(record)
-    return {
-        field_name: str(value) if isinstance(value, Path) else value
-        for field_name in spec.field_names
-        for value in (getattr(concrete, field_name),)
-    }
+    return {field_name: getattr(concrete, field_name) for field_name in spec.field_names}
 
 
 def _record_from_row(
@@ -88,9 +84,7 @@ def _record_from_row(
     payload: dict[str, object | None] = {}
     for field_name in spec.field_names:
         value = row[field_name]
-        if field_name in spec.path_fields:
-            payload[field_name] = Path(str(value))
-        elif value is None and field_name in spec.nullable_fields:
+        if value is None and field_name in spec.nullable_fields:
             payload[field_name] = None
         else:
             payload[field_name] = str(value)

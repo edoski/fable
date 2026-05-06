@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, cast
 
 from ...core.errors import SpiceOperatorError
@@ -56,11 +55,7 @@ def decode_remote_catalog_record(
 def _record_to_payload(record: CatalogRecord) -> dict[str, object | None]:
     spec = spec_for_record(record)
     concrete = spec.require_record(record)
-    return {
-        field_name: str(value) if isinstance(value, Path) else value
-        for field_name in spec.field_names
-        for value in (getattr(concrete, field_name),)
-    }
+    return {field_name: getattr(concrete, field_name) for field_name in spec.field_names}
 
 
 def _record_from_payload(
@@ -86,10 +81,7 @@ def _record_from_payload(
                 raise SpiceOperatorError(f"remote catalog record field {name} cannot be null")
             values[name] = None
             continue
-        if name in spec.path_fields:
-            values[name] = Path(_require_string(name, value))
-        else:
-            values[name] = _require_string(name, value)
+        values[name] = _require_string(name, value)
     return spec.record_type(**cast(Any, values))
 
 

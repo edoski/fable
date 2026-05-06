@@ -10,9 +10,9 @@ The catalog is an index, not the source of truth. Root-local SQLite state owns p
 
 ## Invariants
 
-Catalog rows point to root paths and state DB paths. Reindexing reads root-local state and upserts catalog rows. Upserts must not rewrite `created_at`. Deleting catalog rows must be coordinated with root deletion in `storage.lifecycle`.
+Catalog rows store identity and selector/search facts only. Root paths and state DB paths are materialized canonically from storage root plus catalog identity. Reindexing reads root-local state, verifies the scanned path matches manifest identity, and upserts catalog rows. Upserts must not rewrite `created_at`. Deleting catalog rows must be coordinated with root deletion in `storage.lifecycle`.
 
-Private root-kind metadata names the table, primary key field, typed record, path fields, nullable fields, parent directory, and default ordering for each catalog root kind. Callers use `catalog.index` for list/resolve/upsert/reindex operations and `catalog.codecs` for remote record envelopes; they do not use registry specs directly.
+Private root-kind metadata names the table, primary key field, typed record, nullable fields, parent directory, and default ordering for each catalog root kind. Callers use `catalog.index` for list/resolve/upsert/reindex operations, `catalog.materialization` for canonical root locations, and `catalog.codecs` for remote record envelopes; they do not use registry specs directly.
 
 ## Extension Points
 
@@ -41,9 +41,9 @@ selector queries
 ## Table Shape
 
 ```text
-dataset_index   dataset_id, dataset_name, chain_name, root paths, timestamps
-study_index     study_id, dataset/model/problem selectors, root paths, timestamps
-artifact_index  artifact_id, dataset/model/problem/variant selectors, root paths, timestamps
+dataset_index   dataset_id, dataset_name, chain_name, timestamps
+study_index     study_id, dataset/model/problem selectors, timestamps
+artifact_index  artifact_id, dataset/model/problem/variant selectors, timestamps
 ```
 
 Catalog records are intentionally flat. Flat rows make selector queries simple and make CLI output predictable.

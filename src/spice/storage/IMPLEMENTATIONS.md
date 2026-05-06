@@ -101,9 +101,9 @@ writer receives staged root
   -> reindex catalog
 ```
 
-Corpus acquisition promotes selected paths inside a corpus root from the corpus handle. Existing-root mutation effects validate the expected root kind and reindex after successful mutation; tune uses this for study state. Evaluation state is recorded through `storage.artifact.record_evaluation_state()` and intentionally does not reindex because artifact catalog rows derive from the manifest, not evaluation summaries.
+Corpus acquisition promotes selected paths inside a corpus root from the corpus handle. Existing-root mutation effects validate the expected root kind and reindex after successful mutation; tune uses this for study state, including study opening. Evaluation state is recorded through `storage.transactions.record_artifact_evaluation_state()` and intentionally does not reindex because artifact catalog rows derive from the manifest, not evaluation summaries.
 
-`workflow_roots.py` exposes root handle models and owns handle construction from catalog records and producer identity. `workflow_root_materialization.py` resolves selectors, asks Producer Root Identity for output ids, and assembles workflow root sets; Workflow Preparation consumes those handles for preflight. Storage Transactions own handle-shaped promotion, selected-path commit, mutation, and reindex boundaries.
+`workflow_roots.py` exposes root handle models and read behavior. `workflow_root_materialization.py` resolves selectors, derives produced ids, materializes scalar root facts, and assembles workflow root sets; Workflow Preparation consumes those handles for preflight. Existing catalog records are identity/search facts only, so `storage.catalog.materialization` derives root paths and state DB paths from storage root plus record identity. Storage Transactions own handle-shaped promotion, selected-path commit, mutation, and reindex boundaries.
 
 ## Transfer Support
 

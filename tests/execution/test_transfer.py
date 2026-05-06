@@ -14,6 +14,7 @@ from spice.execution.transfer_transaction import StorageTransferTransaction
 from spice.storage.artifact import write_artifact_manifest
 from spice.storage.catalog.codecs import encode_remote_catalog_record
 from spice.storage.catalog.index import ReindexedCatalogRoot
+from spice.storage.catalog.materialization import materialize_catalog_root
 from spice.storage.engine import RootKind
 from tests.artifact_helpers import manifest
 from tests.catalog_helpers import artifact_record, dataset_record
@@ -99,7 +100,7 @@ def test_storage_transfer_transaction_pushes_dataset_to_canonical_corpus_destina
 ) -> None:
     local_storage_root = tmp_path / "outputs"
     record = _dataset_record(local_storage_root / "corpora" / "ethereum" / "dataset-1")
-    record.root_path.mkdir(parents=True)
+    materialize_catalog_root(local_storage_root, record).root_path.mkdir(parents=True)
     remote_storage_root = tmp_path / "remote-storage"
     session = _FakeSession(remote_storage_root)
     monkeypatch.setattr(
@@ -205,8 +206,12 @@ def test_storage_transfer_transaction_uses_promoted_catalog_record(tmp_path) -> 
     pulled = transaction.pull_artifact(record.artifact_id, replace=False)
 
     destination_root = local_storage_root / "artifacts" / record.chain_name / record.artifact_id
-    assert pulled.local_record.root_path == destination_root
-    assert pulled.local_record.state_db_path == destination_root / ".spice" / "state.sqlite"
+    assert materialize_catalog_root(local_storage_root, pulled.local_record).root_path == (
+        destination_root
+    )
+    assert materialize_catalog_root(local_storage_root, pulled.local_record).state_db_path == (
+        destination_root / ".spice" / "state.sqlite"
+    )
     assert pulled.local_record.artifact_id == manifest().artifact_id
 
 
@@ -234,7 +239,7 @@ def test_storage_transfer_transaction_cleanup_failure_preserves_primary_exceptio
     monkeypatch,
 ) -> None:
     record = _dataset_record(tmp_path / "outputs" / "corpora" / "ethereum" / "dataset-1")
-    record.root_path.mkdir(parents=True)
+    materialize_catalog_root(tmp_path / "outputs", record).root_path.mkdir(parents=True)
     session = _FakeSession(
         tmp_path / "remote-storage",
         fail_on="finalize-stage",

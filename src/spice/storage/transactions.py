@@ -6,9 +6,10 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from ..core.files import replace_paths_atomic
+from .artifact import record_evaluation_state
 from .catalog.index import ReindexedCatalogRoot, reindex_catalog_root
 from .engine import (
     ARTIFACT_ROOT_KIND,
@@ -22,6 +23,9 @@ from .lifecycle import RootStage, staged_root, validate_root_destination_path
 from .workflow_roots import ArtifactRootHandle, CorpusRootHandle, StudyRootHandle
 
 EffectT = TypeVar("EffectT")
+
+if TYPE_CHECKING:
+    from ..modeling.results import EvaluationRuntimeSummary, LoadedEvaluationSummary
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,3 +183,17 @@ def record_study_root_mutation(
         expected_root_kind=STUDY_ROOT_KIND,
         mutation=mutation,
     )
+
+
+def record_artifact_evaluation_state(
+    artifact: ArtifactRootHandle,
+    *,
+    summary: EvaluationRuntimeSummary,
+) -> LoadedEvaluationSummary:
+    validate_root_destination_path(
+        artifact.storage_root,
+        destination_root=artifact.root_path,
+        expected_root_kind=ARTIFACT_ROOT_KIND,
+    )
+    require_root_kind(artifact.state_db_path, ARTIFACT_ROOT_KIND)
+    return record_evaluation_state(artifact.state_db_path, summary=summary)

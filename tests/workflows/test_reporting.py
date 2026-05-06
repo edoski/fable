@@ -150,8 +150,8 @@ def test_evaluate_workflow_uses_prepared_artifact_inference_context(
     monkeypatch.setattr(evaluate_workflow, "score_evaluation", fake_score)
     monkeypatch.setattr(
         evaluate_workflow,
-        "record_evaluation_state",
-        lambda _db_path, *, summary: SimpleNamespace(runtime=summary),
+        "record_artifact_evaluation_state",
+        lambda _artifact, *, summary: SimpleNamespace(runtime=summary),
     )
     monkeypatch.setattr(
         evaluate_workflow,
@@ -323,10 +323,17 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
         return object()
 
     monkeypatch.setattr(tune_workflow, "run_tuning_execution", fake_run_tuning_execution)
+    mutations: list[str] = []
+
+    def fake_record_study_root_mutation(*_args, mutation, **_kwargs):
+        result = mutation()
+        mutations.append(type(result).__name__)
+        return SimpleNamespace(result=result)
+
     monkeypatch.setattr(
         tune_workflow,
         "record_study_root_mutation",
-        lambda *_args, mutation, **_kwargs: SimpleNamespace(result=mutation()),
+        fake_record_study_root_mutation,
     )
     monkeypatch.setattr(
         tune_workflow,
@@ -348,4 +355,5 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
     assert "trial 1/2 complete value=0.2000 best_epoch=2" in rendered
     assert "trial 2/2 complete value=0.3500 best_epoch=3" in rendered
     assert "tune complete" in rendered
+    assert mutations == ["SimpleNamespace", "object"]
     assert "fit epoch=" not in rendered

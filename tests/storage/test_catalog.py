@@ -5,13 +5,35 @@ from pathlib import Path
 
 import pytest
 
+from spice.config.models import ChainRuntimeSpec
 from spice.core.errors import StateLayoutError
+from spice.corpus.metadata import (
+    AcquireRunFacts,
+    AcquireRunRecord,
+    AcquisitionConfigSnapshot,
+    BlockRangeMetadata,
+    ChainMetadata,
+    CompactValidationReport,
+    CorpusAcquisitionSourceRequirements,
+    CorpusSplitManifest,
+    CorpusSplitManifests,
+    DatasetAcquisitionRuntimeMetadata,
+    DatasetIdentity,
+    DatasetManifest,
+    ProviderMetadata,
+    SplitCoverageMetadata,
+    SplitMaterializationMetadata,
+    SplitRequestMetadata,
+    TimestampRangeMetadata,
+)
 from spice.storage.artifact import load_artifact_manifest
 from spice.storage.catalog.index import (
     list_artifact_records,
     list_dataset_records,
+    reindex_catalog_root,
     upsert_catalog_record,
 )
+from spice.storage.corpus import write_dataset_state
 from spice.storage.engine import DATASET_ROOT_KIND, ensure_state_db, state_db_path
 from spice.storage.layout import catalog_db_path
 from spice.storage.schema import DATASET_TABLES
@@ -27,6 +49,87 @@ def _dataset_timestamps(path: Path, dataset_id: str) -> tuple[int, int]:
         ).fetchone()
     assert row is not None
     return int(row[0]), int(row[1])
+
+
+def _dataset_manifest(*, dataset_id: str) -> DatasetManifest:
+    split = CorpusSplitManifest(
+        kind="history",
+        request=SplitRequestMetadata(
+            start_timestamp=1,
+            end_timestamp=2,
+            start_block=1,
+            end_block=2,
+        ),
+        coverage=SplitCoverageMetadata(
+            first_timestamp=1,
+            last_timestamp=2,
+            first_block=1,
+            last_block=1,
+            rows=1,
+        ),
+        validation=CompactValidationReport(
+            status="clean",
+            rows=1,
+            block_range=BlockRangeMetadata(first=1, last=1),
+            timestamp_range=TimestampRangeMetadata(first=1, last=2),
+        ),
+        materialization=SplitMaterializationMetadata(outcome="reused", file_count=1),
+    )
+    return DatasetManifest(
+        dataset=DatasetIdentity(id=dataset_id, name="dataset"),
+        chain=ChainMetadata(
+            name="ethereum",
+            runtime=ChainRuntimeSpec(
+                chain_id=1,
+                uses_poa_extra_data=False,
+                nominal_block_time_seconds=12.0,
+            ),
+        ),
+        splits=CorpusSplitManifests(history=split, evaluation=split),
+        source_requirements=CorpusAcquisitionSourceRequirements(
+            required_columns=frozenset(
+                {"block_number", "timestamp", "chain_id", "base_fee_per_gas"}
+            ),
+            optional_enrichments=frozenset(),
+            temporal_unit="block",
+            ordering_key="block_number",
+            partition_key="chain_id",
+        ),
+    )
+
+
+def _acquire_run() -> AcquireRunRecord:
+    return AcquireRunRecord(
+        provider=ProviderMetadata(
+            name="publicnode",
+            reference="ethereum",
+            endpoint_fingerprint="abcdef0123456789",
+        ),
+        facts=AcquireRunFacts(
+            requested_history_window_seconds=86400,
+            resolved_capability_samples=1000,
+        ),
+        settings=AcquisitionConfigSnapshot(
+            chunk_size=5000,
+            rpc_batch_size=100,
+            rpc_concurrency=8,
+            rpc_min_batch_size=10,
+            rpc_concurrency_rungs=[8, 4, 2],
+        ),
+        runtime=DatasetAcquisitionRuntimeMetadata(
+            configured_batch_size=100,
+            final_batch_size=50,
+            min_batch_size=10,
+            configured_concurrency=8,
+            final_concurrency=4,
+            concurrency_rungs=[8, 4, 2],
+            oversize_error_count=0,
+            transient_error_count=0,
+            oversize_backoffs=0,
+            transient_backoffs=0,
+            concurrency_recoveries=0,
+        ),
+    )
 
 
 def test_catalog_upsert_keeps_created_at_stable(tmp_path: Path, monkeypatch) -> None:
@@ -48,11 +151,10 @@ def test_catalog_upsert_keeps_created_at_stable(tmp_path: Path, monkeypatch) -> 
     upsert_catalog_record(
         storage_root,
         dataset_record(
-            record.root_path,
+            dataset_root,
             dataset_id=record.dataset_id,
             dataset_name="new",
             chain_name=record.chain_name,
-            state_db=record.state_db_path,
         ),
     )
 
@@ -111,3 +213,17 @@ def test_catalog_filters_by_exact_root_ids(tmp_path: Path) -> None:
             selector=ArtifactSelector(dataset_id="dataset-1"),
         )
     ] == ["artifact-1"]
+
+
+def test_catalog_reindex_rejects_root_path_that_disagrees_with_manifest_identity(
+    tmp_path: Path,
+) -> None:
+    storage_root = tmp_path / "outputs"
+    root = storage_root / "corpora" / "ethereum" / "wrong-dataset"
+    db_path = state_db_path(root)
+    manifest = _dataset_manifest(dataset_id="dataset-1")
+
+    write_dataset_state(db_path, manifest=manifest, acquire_run=_acquire_run())
+
+    with pytest.raises(StateLayoutError, match="manifest identity"):
+        reindex_catalog_root(storage_root, root_path=root)

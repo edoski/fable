@@ -24,6 +24,7 @@ from .catalog.index import (
     resolve_dataset_record,
     resolve_study_record,
 )
+from .catalog.materialization import materialize_catalog_root
 from .catalog.records import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
 from .catalog.registry import catalog_record_root_kind, catalog_root_parent_path
 from .catalog.store import delete_catalog_record
@@ -221,9 +222,10 @@ def delete_catalog_root(
     record: CatalogDatasetRecord | CatalogStudyRecord | CatalogArtifactRecord,
 ) -> None:
     expected_root_kind = catalog_record_root_kind(record)
+    location = materialize_catalog_root(storage_root, record)
     _delete_catalog_root_record(
         storage_root,
-        root_path=record.root_path,
+        root_path=location.root_path,
         expected_root_kind=expected_root_kind,
         catalog_delete=lambda catalog_path: delete_catalog_record(catalog_path, record),
         stop_dir=catalog_root_parent_path(storage_root, expected_root_kind),

@@ -16,6 +16,7 @@ from .catalog.index import (
     list_study_records,
     refresh_catalog,
 )
+from .catalog.materialization import materialize_catalog_root
 from .catalog.records import (
     CatalogArtifactRecord,
     CatalogDatasetRecord,
@@ -165,10 +166,10 @@ def show_storage(query: StorageShowQuery) -> StorageShowOutcome:
             narrowing_attributes=_narrowing_attributes(spec, records, query.selector),
         )
     if query.detail is not None:
-        return _describe_record(records[0], detail=query.detail)
+        return _describe_record(query.storage_root, records[0], detail=query.detail)
     if not _selector_has_filters(query.selector) or len(records) != 1:
         return StorageShowRendered(_list_renderable(spec, records))
-    return _describe_record(records[0], detail=None)
+    return _describe_record(query.storage_root, records[0], detail=None)
 
 
 def delete_storage(command: StorageDeleteCommand) -> StorageDeleteOutcome:
@@ -257,8 +258,16 @@ def _selector_has_filters(selector: StorageSelector) -> bool:
     return any(getattr(selector, field.name) is not None for field in fields(selector))
 
 
-def _describe_record(record: CatalogRecord, *, detail: str | None) -> StorageShowRendered:
-    description = describe_root(record.root_path, detail=detail)
+def _describe_record(
+    storage_root: Path,
+    record: CatalogRecord,
+    *,
+    detail: str | None,
+) -> StorageShowRendered:
+    description = describe_root(
+        materialize_catalog_root(storage_root, record).root_path,
+        detail=detail,
+    )
     title, sections = sectioned_summary(description)
     return StorageShowRendered(RenderableSections(title=title, sections=sections))
 

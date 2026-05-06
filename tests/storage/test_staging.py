@@ -24,6 +24,7 @@ from spice.storage.schema import ARTIFACT_TABLES
 from spice.storage.transactions import (
     commit_artifact_root,
     commit_corpus_acquisition,
+    record_artifact_evaluation_state,
     record_study_root_mutation,
 )
 from spice.storage.workflow_roots import CorpusRootHandle
@@ -251,6 +252,42 @@ def test_record_study_root_mutation_reindexes_after_successful_mutation(
     assert calls == ["mutate", "reindex:True:True"]
 
 
+def test_record_artifact_evaluation_state_validates_root_without_reindex(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    storage_root = tmp_path / "outputs"
+    artifact = artifact_handle(
+        storage_root,
+        corpus=corpus_handle(storage_root, dataset_id="dataset-1"),
+        artifact_id="artifact-1",
+    )
+    ensure_state_db(
+        artifact.state_db_path,
+        root_kind=ARTIFACT_ROOT_KIND,
+        tables=(),
+    )
+    calls: list[str] = []
+    expected_summary = object()
+
+    monkeypatch.setattr(
+        "spice.storage.transactions.record_evaluation_state",
+        lambda db_path, *, summary: calls.append(
+            f"record:{db_path == artifact.state_db_path}:{summary is expected_summary}"
+        )
+        or "loaded",
+    )
+    monkeypatch.setattr(
+        "spice.storage.transactions.reindex_catalog_root",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("evaluation state should not reindex")
+        ),
+    )
+
+    assert record_artifact_evaluation_state(artifact, summary=expected_summary) == "loaded"
+    assert calls == ["record:True:True"]
+
+
 def test_record_study_root_mutation_does_not_reindex_after_mutation_failure(
     tmp_path: Path,
     monkeypatch,
@@ -317,7 +354,7 @@ def test_promote_root_stage_rejects_noncanonical_destination_layout(tmp_path: Pa
         )
 
 
-def test_delete_catalog_root_rejects_noncanonical_record_path(tmp_path: Path) -> None:
+def test_delete_catalog_root_materializes_canonical_record_path(tmp_path: Path) -> None:
     storage_root = tmp_path / "outputs"
     root_path = storage_root / "artifacts" / "artifact-1"
     ensure_state_db(
@@ -340,7 +377,7 @@ def test_delete_catalog_root_rejects_noncanonical_record_path(tmp_path: Path) ->
         study_name=None,
     )
 
-    with pytest.raises(StateLayoutError, match="canonical <chain>/<root-id>"):
+    with pytest.raises(StateLayoutError, match="missing state DB"):
         delete_catalog_artifact_root(storage_root, record)
 
     assert root_path.exists()

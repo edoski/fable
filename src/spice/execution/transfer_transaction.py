@@ -10,10 +10,9 @@ from typing import Protocol
 from ..core.errors import SpiceOperatorError
 from ..storage.catalog.codecs import decode_remote_catalog_record
 from ..storage.catalog.index import ReindexedCatalogRoot, resolve_dataset_record
-from ..storage.catalog.materialization import catalog_record_root_path
+from ..storage.catalog.materialization import materialize_catalog_root
 from ..storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord, CatalogRecord
 from ..storage.engine import RootKind
-from ..storage.layout import corpus_root_path
 from ..storage.lifecycle import (
     cleanup_root_stage,
     prepare_root_stage,
@@ -210,17 +209,18 @@ class StorageTransferTransaction:
             self.local_storage_root,
             selector=DatasetSelector(dataset_id=dataset_id),
         )
-        destination_root = catalog_record_root_path(
+        source = materialize_catalog_root(self.local_storage_root, record)
+        destination = materialize_catalog_root(
             self._remote_adapter.storage_root,
             record,
         )
         _execute_transfer(
             adapter=self._remote_adapter,
-            destination_root=destination_root,
+            destination_root=destination.root_path,
             root_kind=RootKind.CORPUS,
             replace=replace,
             rsync=lambda staged_root: self.session.rsync_to(
-                source_root=record.root_path,
+                source_root=source.root_path,
                 destination_root=staged_root,
             ),
         )
@@ -236,14 +236,15 @@ class StorageTransferTransaction:
         if cached is not None:
             return cached
         source_record = self._remote_adapter.resolve_artifact_record(artifact_id)
-        destination_root = catalog_record_root_path(self.local_storage_root, source_record)
+        source = materialize_catalog_root(self._remote_adapter.storage_root, source_record)
+        destination = materialize_catalog_root(self.local_storage_root, source_record)
         promoted = _execute_transfer(
             adapter=self._local_adapter,
-            destination_root=destination_root,
+            destination_root=destination.root_path,
             root_kind=RootKind.ARTIFACT,
             replace=replace,
             rsync=lambda staged_root: self.session.rsync_from(
-                source_root=source_record.root_path,
+                source_root=source.root_path,
                 destination_root=staged_root,
             ),
         )
@@ -252,11 +253,15 @@ class StorageTransferTransaction:
         transferred = TransferredArtifactRoot(
             source_record=source_record,
             local_record=promoted.record,
-            destination_root=destination_root,
-            dataset_present=_local_dataset_root(
+            destination_root=destination.root_path,
+            dataset_present=materialize_catalog_root(
                 self.local_storage_root,
-                source_record,
-            ).exists(),
+                CatalogDatasetRecord(
+                    dataset_id=source_record.dataset_id,
+                    dataset_name=source_record.dataset_name,
+                    chain_name=source_record.chain_name,
+                ),
+            ).root_path.exists(),
         )
         self._artifact_cache[artifact_id] = transferred
         return transferred
@@ -307,7 +312,3 @@ def _cleanup_preserving_primary(
         adapter.cleanup_stage(staged_root)
     except Exception as cleanup_error:
         primary.add_note(f"cleanup failed: {cleanup_error}")
-
-
-def _local_dataset_root(storage_root: Path, record: CatalogArtifactRecord) -> Path:
-    return corpus_root_path(storage_root, chain_name=record.chain_name, corpus_id=record.dataset_id)

@@ -9,7 +9,7 @@ from spice.benchmarks.plan_materialization import materialize_benchmark_plan
 from spice.config import EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from spice.core.errors import ConfigResolutionError
 from spice.storage.catalog.index import upsert_catalog_record
-from spice.storage.root_identity import produced_artifact_id, produced_study_id
+from spice.storage.workflow_root_materialization import produced_artifact_id, produced_study_id
 from tests.catalog_helpers import artifact_record, study_record
 
 ETH_DATASET_ID = "cor_9a73b1e88edb488afb1e"

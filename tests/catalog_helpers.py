@@ -7,7 +7,6 @@ from spice.storage.catalog.records import (
     CatalogDatasetRecord,
     CatalogStudyRecord,
 )
-from spice.storage.engine import state_db_path
 
 
 def dataset_record(
@@ -18,12 +17,11 @@ def dataset_record(
     chain_name: str = "ethereum",
     state_db: Path | None = None,
 ) -> CatalogDatasetRecord:
+    del root_path, state_db
     return CatalogDatasetRecord(
         dataset_id=dataset_id,
         dataset_name=dataset_name,
         chain_name=chain_name,
-        root_path=root_path,
-        state_db_path=state_db or state_db_path(root_path),
     )
 
 
@@ -41,6 +39,7 @@ def study_record(
     problem_id: str = "problem",
     state_db: Path | None = None,
 ) -> CatalogStudyRecord:
+    del root_path, state_db
     return CatalogStudyRecord(
         study_id=study_id,
         study_name=study_name,
@@ -51,8 +50,6 @@ def study_record(
         prediction_id=prediction_id,
         model_id=model_id,
         problem_id=problem_id,
-        root_path=root_path,
-        state_db_path=state_db or state_db_path(root_path),
     )
 
 
@@ -72,6 +69,7 @@ def artifact_record(
     study_name: str | None = None,
     state_db: Path | None = None,
 ) -> CatalogArtifactRecord:
+    del root_path, state_db
     return CatalogArtifactRecord(
         artifact_id=artifact_id,
         dataset_id=dataset_id,
@@ -84,6 +82,4 @@ def artifact_record(
         variant=variant,
         study_id=study_id,
         study_name=study_name,
-        root_path=root_path,
-        state_db_path=state_db or state_db_path(root_path),
     )

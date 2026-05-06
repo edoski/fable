@@ -93,7 +93,7 @@ Benchmark-owned scalar root facts on a Benchmark Plan Entry for caller-facing co
 _Avoid_: root ledger helper methods, config echo
 
 **Benchmark Plan Materialization**:
-Benchmark module that turns Benchmark Specs, Cases, and Steps into Benchmark Plan Entries by expanding dimensions, matching dependencies, applying dependency-derived root selections, resolving Workflow Config snapshots, asking storage for root facts or catalog fallback, and emitting Benchmark Root Facts plus the Benchmark Root Ledger.
+Benchmark module that turns Benchmark Specs, Cases, and Steps into Benchmark Plan Entries by expanding dimensions, matching dependencies, applying dependency-derived root selections, resolving Workflow Config snapshots, asking Storage Root Materialization for root facts, and emitting Benchmark Root Facts plus the Benchmark Root Ledger.
 _Avoid_: benchmark compilation helper, id patching
 
 **Benchmark Run**:
@@ -129,7 +129,7 @@ A typed query for one existing catalog record, preferably by exact root id: data
 _Avoid_: workflow selector
 
 **Root Handle**:
-Resolved runtime reference to a storage root after catalog lookup or deterministic producer identity. Carries root id/name, chain, root path, state database path, and root-specific identity. Mutation policy lives in Storage Transactions.
+Resolved runtime reference to a storage root after catalog lookup or deterministic producer identity. Carries root id/name, chain, root path, state database path, and root-specific identity. Existing-root paths are materialized from storage root plus catalog identity, never trusted from catalog rows. Mutation policy lives in Storage Transactions.
 _Avoid_: path bag, catalog record
 
 **Produced Root Handle**:
@@ -137,7 +137,7 @@ Root Handle for a not-yet-existing or staged workflow output, derived from Produ
 _Avoid_: workflow paths
 
 **Storage Root Materialization**:
-Storage-owned module that resolves consumed roots through exact Storage Selectors, derives Produced Root Handles from Producer Root Identity, and returns workflow-facing root handles before Workflow Preparation performs domain preflight.
+Storage-owned module that resolves consumed roots through exact Storage Selectors, derives produced root ids and Produced Root Handles from Producer Root Identity, materializes consumed/produced/source scalar root facts, and returns workflow-facing root handles before Workflow Preparation performs domain preflight.
 _Avoid_: workflow root resolution, path derivation helper
 
 **Root Lifecycle**:

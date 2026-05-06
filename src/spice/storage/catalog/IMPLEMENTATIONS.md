@@ -23,7 +23,7 @@ If the catalog is missing or stale, it can be refreshed from roots.
 | `study_index` | Study roots. |
 | `artifact_index` | Artifact roots. |
 
-Rows store selector fields, root path, state DB path, created timestamp, and updated timestamp. Upsert preserves `created_at` and changes `updated_at`.
+Rows store selector fields, created timestamp, and updated timestamp. Root locations are materialized from canonical layout rules instead of persisted in catalog rows. Upsert preserves `created_at` and changes `updated_at`.
 
 ## Refresh
 
@@ -39,9 +39,9 @@ scan registered root-kind directories
 
 ## Single-Root Reindex
 
-After a workflow promotes a root, `reindex_catalog_root()` updates the catalog entry for that root and returns the reindexed catalog record. This avoids full scans after every successful workflow.
+After a workflow promotes a root, `reindex_catalog_root()` updates the catalog entry for that root and returns the reindexed catalog record. It rejects scanned roots whose path does not match the manifest identity. This avoids full scans after every successful workflow.
 
-`catalog.registry` is private metadata over corpus, study, and artifact roots. `catalog.store` owns SQLite row conversion and upsert/delete/list mechanics. `catalog.materialization` owns manifest-to-record conversion and canonical destination paths. `catalog.codecs` owns the strict remote record envelope. `catalog.index` keeps the typed selector-facing API and is the public entrypoint for catalog reads, writes, refresh, and reindex.
+`catalog.registry` is private metadata over corpus, study, and artifact roots. `catalog.store` owns SQLite row conversion and upsert/delete/list mechanics. `catalog.materialization` owns manifest-to-record conversion and canonical root locations. `catalog.codecs` owns the strict remote record envelope. `catalog.index` keeps the typed selector-facing API and is the public entrypoint for catalog reads, writes, refresh, and reindex.
 
 ## Selectors
 
@@ -65,7 +65,7 @@ Delete validates that the selected path stays under the expected storage subtree
 | --- | --- |
 | Zero matches | Selector does not identify an existing root. |
 | Multiple matches | Selector is too broad. |
-| Root path outside subtree | Catalog row is unsafe for deletion. |
+| Root path outside subtree | Materialized root location is unsafe for deletion. |
 | Dependent roots exist | Delete needs explicit cascade. |
 | Root-kind mismatch | Catalog row points to wrong root type. |
 

@@ -26,21 +26,16 @@ def _artifact_record(root_path):
     )
 
 
-@pytest.mark.parametrize("case", ["outside", "kind_mismatch", "missing_db"])
+@pytest.mark.parametrize("case", ["kind_mismatch", "missing_db"])
 def test_delete_artifact_rejects_invalid_catalog_roots(tmp_path, case: str) -> None:
     storage_root = tmp_path / "outputs"
-    if case == "outside":
-        artifact_root = tmp_path / "outside-artifact"
-        artifact_root.mkdir()
-        message = "outside the artifact storage subtree"
+    artifact_root = storage_root / "artifacts" / "ethereum" / "art_1"
+    if case == "kind_mismatch":
+        ensure_state_db(state_db_path(artifact_root), root_kind=RootKind.STUDY, tables=())
+        message = "Catalog root kind mismatch"
     else:
-        artifact_root = storage_root / "artifacts" / "ethereum" / "art_1"
-        if case == "kind_mismatch":
-            ensure_state_db(state_db_path(artifact_root), root_kind=RootKind.STUDY, tables=())
-            message = "Catalog root kind mismatch"
-        else:
-            artifact_root.mkdir(parents=True)
-            message = "missing state DB"
+        artifact_root.mkdir(parents=True)
+        message = "missing state DB"
 
     with pytest.raises(StateLayoutError, match=message):
         delete_catalog_artifact_root(storage_root, _artifact_record(artifact_root))

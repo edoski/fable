@@ -13,7 +13,7 @@ from ..engine import RootKind, detect_root_kind, state_db_path
 from ..layout import catalog_db_path
 from ..selectors import ArtifactSelector, DatasetSelector, StudySelector
 from . import store as catalog_store
-from .materialization import catalog_record_from_root
+from .materialization import catalog_record_from_root, validate_catalog_root_location
 from .records import CatalogArtifactRecord, CatalogDatasetRecord, CatalogRecord, CatalogStudyRecord
 from .registry import (
     ARTIFACT_ROOT_SPEC,
@@ -216,8 +216,17 @@ def _reindex_catalog_root(catalog_path: Path, *, root_path: Path) -> ReindexedCa
     db_path = state_db_path(root_path)
     root_kind = detect_root_kind(db_path)
     record = catalog_record_from_root(root_path, db_path, root_kind)
+    validate_catalog_root_location(
+        _storage_root_from_catalog_path(catalog_path),
+        root_path=root_path,
+        record=record,
+    )
     catalog_store.upsert_catalog_record(catalog_path, record)
     return ReindexedCatalogRoot(root_kind=root_kind, record=record)
+
+
+def _storage_root_from_catalog_path(catalog_path: Path) -> Path:
+    return catalog_path.parent.parent
 
 
 def _roots_under(parent: Path) -> list[Path]:

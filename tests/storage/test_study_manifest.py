@@ -20,7 +20,6 @@ from spice.corpus.metadata import (
     SplitRequestMetadata,
     TimestampRangeMetadata,
 )
-from spice.storage.root_identity import produced_study_id
 from spice.storage.study_manifest import (
     insert_study_manifest,
     load_study_manifest,
@@ -28,6 +27,7 @@ from spice.storage.study_manifest import (
     try_load_study_manifest,
 )
 from spice.storage.study_manifest_codecs import STUDY_MANIFEST_CODEC
+from spice.storage.workflow_root_materialization import produced_study_id
 from tests.root_handle_helpers import corpus_handle, study_handle
 
 TEST_DATASET_ID = "cor_9a73b1e88edb488afb1e"

@@ -67,11 +67,11 @@ Tune mutates study state rather than staging an entire root for each trial.
 EvaluateConfig
   -> prepare evaluation roots and inference context
   -> score model with evaluator through modeling.scoring
-  -> storage records evaluation state with execution provenance when remote
+  -> Storage Transaction records evaluation state with execution provenance when remote
   -> report result
 ```
 
-Evaluate appends or updates artifact state. It does not stage a full artifact root, and storage intentionally does not reindex the artifact catalog for evaluation summaries.
+Evaluate appends or updates artifact state through `record_artifact_evaluation_state()`. It does not stage a full artifact root, and storage intentionally does not reindex the artifact catalog for evaluation summaries.
 
 ## Extension Points
 

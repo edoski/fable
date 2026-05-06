@@ -22,6 +22,7 @@ from spice.config import EvaluateConfig, StorageSpec, WorkflowTask
 from spice.config.groups import load_named_group_payload
 from spice.core.errors import SpiceOperatorError
 from spice.evaluation.registry import coerce_evaluator_config
+from spice.storage.catalog.materialization import materialize_catalog_root
 from spice.storage.catalog.records import CatalogArtifactRecord
 from tests.catalog_helpers import artifact_record
 
@@ -188,7 +189,9 @@ def test_collection_resolver_uses_local_artifact_record_and_loads_matching_summa
     assert resolved is not None
     assert resolved.evaluation is summary
     assert resolved.training is training
-    assert loaded_paths == [artifact_record.state_db_path] * 3
+    assert loaded_paths == [
+        materialize_catalog_root(config.storage.root, artifact_record).state_db_path
+    ] * 3
 
 
 def test_collection_resolver_returns_none_when_summary_is_missing(

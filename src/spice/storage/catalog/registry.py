@@ -25,7 +25,6 @@ class CatalogRootKindSpec(Generic[RecordT]):
     key_field: str
     parent_name: str
     default_order: tuple[str, ...]
-    path_fields: frozenset[str] = frozenset({"root_path", "state_db_path"})
     nullable_fields: frozenset[str] = frozenset()
 
     @property

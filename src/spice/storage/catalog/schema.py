@@ -12,8 +12,6 @@ dataset_index = Table(
     Column("dataset_id", String, primary_key=True),
     Column("dataset_name", String, nullable=False),
     Column("chain_name", String, nullable=False),
-    Column("root_path", String, nullable=False),
-    Column("state_db_path", String, nullable=False),
     Column("created_at", Integer, nullable=False),
     Column("updated_at", Integer, nullable=False),
 )
@@ -30,8 +28,6 @@ study_index = Table(
     Column("prediction_id", String, nullable=False),
     Column("model_id", String, nullable=False),
     Column("problem_id", String, nullable=False),
-    Column("root_path", String, nullable=False),
-    Column("state_db_path", String, nullable=False),
     Column("created_at", Integer, nullable=False),
     Column("updated_at", Integer, nullable=False),
 )
@@ -50,8 +46,6 @@ artifact_index = Table(
     Column("variant", String, nullable=False),
     Column("study_id", String),
     Column("study_name", String),
-    Column("root_path", String, nullable=False),
-    Column("state_db_path", String, nullable=False),
     Column("created_at", Integer, nullable=False),
     Column("updated_at", Integer, nullable=False),
 )

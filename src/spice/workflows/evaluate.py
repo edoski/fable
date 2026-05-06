@@ -12,7 +12,7 @@ from ..modeling.results import (
 )
 from ..modeling.scoring import score_evaluation
 from ..modeling.summary import evaluation_result_fields
-from ..storage.artifact import record_evaluation_state
+from ..storage.transactions import record_artifact_evaluation_state
 from ..storage.workflow_roots import EvaluateWorkflowRoots
 from .preparation import prepare_evaluate
 
@@ -58,8 +58,8 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
         metric_descriptors=inference_context.evaluator_contract.metric_descriptors,
         execution_provenance=_current_execution_provenance(),
     )
-    summary = record_evaluation_state(
-        roots.artifact.state_db_path,
+    summary = record_artifact_evaluation_state(
+        roots.artifact,
         summary=runtime_summary,
     )
     active_reporter.result("evaluate", evaluation_result_fields(summary))

@@ -13,6 +13,7 @@ from ..storage.artifact import (
     load_artifact_manifest,
     load_training_summary,
 )
+from ..storage.catalog.materialization import materialize_catalog_root
 from ..storage.catalog.records import CatalogArtifactRecord
 from .plan_materialization import BenchmarkPlanEntry
 from .runs import BenchmarkSubmissionRecord
@@ -92,8 +93,9 @@ def resolve_benchmark_evaluation(
             "Artifact record does not match benchmark collection selection for "
             f"{selection.run_id}: {artifact_record.artifact_id} != {selection.artifact_id}"
         )
-    training_summary = load_training_summary(artifact_record.state_db_path)
-    manifest = load_artifact_manifest(artifact_record.state_db_path)
+    artifact_location = materialize_catalog_root(selection.storage_root, artifact_record)
+    training_summary = load_training_summary(artifact_location.state_db_path)
+    manifest = load_artifact_manifest(artifact_location.state_db_path)
     if manifest.artifact_id != selection.artifact_id:
         raise SpiceOperatorError(
             "Artifact manifest does not match benchmark collection selection for "
@@ -114,7 +116,7 @@ def resolve_benchmark_evaluation(
     )
     summaries = _matching_evaluation_summaries(
         selection,
-        summaries=tuple(list_evaluation_summaries(artifact_record.state_db_path)),
+        summaries=tuple(list_evaluation_summaries(artifact_location.state_db_path)),
         expected_delay=expected_delay,
     )
     if not summaries:
