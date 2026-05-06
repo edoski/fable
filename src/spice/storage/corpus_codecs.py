@@ -26,7 +26,7 @@ from ..corpus.metadata import (
     SplitRequestMetadata,
     TimestampRangeMetadata,
 )
-from .payloads import PayloadModel, decode_payload_model, model_payload
+from .payloads import PayloadCodec, PayloadModel, decode_payload_model, model_payload
 
 
 class DatasetIdentityPayload(PayloadModel):
@@ -413,14 +413,14 @@ class AcquireRunPayload(PayloadModel):
         )
 
 
-def dataset_manifest_payload(manifest: DatasetManifest) -> dict[str, object]:
+def _encode_dataset_manifest(manifest: DatasetManifest) -> dict[str, object]:
     return model_payload(
         DatasetManifestPayload.from_manifest(manifest),
         label="dataset manifest",
     )
 
 
-def dataset_manifest_from_payload(payload: dict[str, object]) -> DatasetManifest:
+def _decode_dataset_manifest(payload: dict[str, object]) -> DatasetManifest:
     return decode_payload_model(
         "dataset manifest",
         DatasetManifestPayload,
@@ -429,14 +429,24 @@ def dataset_manifest_from_payload(payload: dict[str, object]) -> DatasetManifest
     )
 
 
-def acquire_run_payload(run: AcquireRunRecord) -> dict[str, object]:
+def _encode_acquire_run(run: AcquireRunRecord) -> dict[str, object]:
     return model_payload(AcquireRunPayload.from_record(run), label="acquire run")
 
 
-def acquire_run_from_payload(payload: dict[str, object]) -> AcquireRunRecord:
+def _decode_acquire_run(payload: dict[str, object]) -> AcquireRunRecord:
     return decode_payload_model(
         "acquire run",
         AcquireRunPayload,
         payload,
         lambda model: model.to_record(),
     )
+
+
+DATASET_MANIFEST_CODEC: PayloadCodec[DatasetManifest] = PayloadCodec(
+    encode=_encode_dataset_manifest,
+    decode=_decode_dataset_manifest,
+)
+ACQUIRE_RUN_CODEC: PayloadCodec[AcquireRunRecord] = PayloadCodec(
+    encode=_encode_acquire_run,
+    decode=_decode_acquire_run,
+)

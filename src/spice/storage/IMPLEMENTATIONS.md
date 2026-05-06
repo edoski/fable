@@ -39,14 +39,14 @@ The engine creates the expected tables for a root kind and validates table shape
 | Root kind | Main tables |
 | --- | --- |
 | corpus | `dataset_manifest`, `acquire_runs` |
-| artifact | `artifact_manifest`, `training_summary`, `training_epochs`, `evaluation_summary`, `evaluation_runs` |
+| artifact | `artifact_manifest`, `training_summary`, `training_epochs`, `evaluation_summary` |
 | study | `study_manifest` plus Optuna tables |
 
 SQLite connections enable foreign keys, WAL, and busy timeout.
 
 ## Payload Codecs
 
-`storage.payloads` owns generic SQLite payload stores plus raw persisted-payload validation helpers. Root-local payload codecs for corpus, study, and artifact state use strict `PayloadModel` envelopes at the SQLite boundary so malformed state consistently raises `StateLayoutError`. Semantic payloads use TypeAdapter canonical round trips because they persist dataclass contract bundles rather than root table envelopes.
+`storage.payloads` owns generic SQLite payload stores plus raw persisted-payload validation helpers. Root-local payload codecs are named `PayloadCodec` objects for corpus, study, and artifact state. Persistence modules call those codec objects directly, so the persisted payload ABI has one seam per record type. Semantic payload codecs use TypeAdapter canonical round trips because they persist dataclass contract bundles rather than root table envelopes.
 
 ## Deterministic IDs
 

@@ -8,12 +8,7 @@ from pathlib import Path
 
 from ..core.errors import MissingStateError
 from ..corpus.metadata import AcquireRunRecord, DatasetManifest
-from .corpus_codecs import (
-    acquire_run_from_payload,
-    acquire_run_payload,
-    dataset_manifest_from_payload,
-    dataset_manifest_payload,
-)
+from .corpus_codecs import ACQUIRE_RUN_CODEC, DATASET_MANIFEST_CODEC
 from .engine import (
     DATASET_ROOT_KIND,
     create_state_engine,
@@ -21,26 +16,16 @@ from .engine import (
     require_root_kind,
     touch_meta,
 )
-from .payloads import (
-    PayloadCodec,
-    SequencePayloadStore,
-    SingletonPayloadStore,
-)
+from .payloads import SequencePayloadStore, SingletonPayloadStore
 from .schema import DATASET_TABLES, acquire_runs, dataset_manifest
 
 _DATASET_MANIFEST_STORE = SingletonPayloadStore(
     table=dataset_manifest,
-    codec=PayloadCodec(
-        encode=dataset_manifest_payload,
-        decode=dataset_manifest_from_payload,
-    ),
+    codec=DATASET_MANIFEST_CODEC,
 )
 _ACQUIRE_RUN_STORE = SequencePayloadStore(
     table=acquire_runs,
-    codec=PayloadCodec(
-        encode=acquire_run_payload,
-        decode=acquire_run_from_payload,
-    ),
+    codec=ACQUIRE_RUN_CODEC,
 )
 
 

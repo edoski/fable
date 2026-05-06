@@ -8,7 +8,7 @@ from ..core.errors import StateLayoutError
 from ..features import FeaturePrerequisites
 from ..metrics import MetricDescriptor
 from ..semantics import ArtifactSemantics, StudySemantics, TemporalCapabilitySemantics
-from .payloads import type_adapter_payload, type_adapter_value
+from .payloads import PayloadCodec, type_adapter_payload, type_adapter_value
 
 _STUDY_SEMANTICS_ADAPTER = TypeAdapter(StudySemantics)
 _ARTIFACT_SEMANTICS_ADAPTER = TypeAdapter(ArtifactSemantics)
@@ -25,7 +25,7 @@ for _adapter in (
     _adapter.rebuild(_types_namespace=_ADAPTER_NAMESPACE)
 
 
-def artifact_semantics_payload(semantics: ArtifactSemantics) -> dict[str, object]:
+def _encode_artifact_semantics(semantics: ArtifactSemantics) -> dict[str, object]:
     return type_adapter_payload(
         _ARTIFACT_SEMANTICS_ADAPTER,
         semantics,
@@ -33,18 +33,18 @@ def artifact_semantics_payload(semantics: ArtifactSemantics) -> dict[str, object
     )
 
 
-def artifact_semantics_from_payload(payload: dict[str, object]) -> ArtifactSemantics:
+def _decode_artifact_semantics(payload: dict[str, object]) -> ArtifactSemantics:
     semantics = type_adapter_value(
         _ARTIFACT_SEMANTICS_ADAPTER,
         payload,
         label="semantics payload",
     )
-    if payload != artifact_semantics_payload(semantics):
+    if payload != _encode_artifact_semantics(semantics):
         raise StateLayoutError("Invalid semantics payload payload: payload is not canonical JSON")
     return semantics
 
 
-def study_semantics_payload(semantics: StudySemantics) -> dict[str, object]:
+def _encode_study_semantics(semantics: StudySemantics) -> dict[str, object]:
     return type_adapter_payload(
         _STUDY_SEMANTICS_ADAPTER,
         semantics,
@@ -52,12 +52,22 @@ def study_semantics_payload(semantics: StudySemantics) -> dict[str, object]:
     )
 
 
-def study_semantics_from_payload(payload: dict[str, object]) -> StudySemantics:
+def _decode_study_semantics(payload: dict[str, object]) -> StudySemantics:
     semantics = type_adapter_value(
         _STUDY_SEMANTICS_ADAPTER,
         payload,
         label="semantics payload",
     )
-    if payload != study_semantics_payload(semantics):
+    if payload != _encode_study_semantics(semantics):
         raise StateLayoutError("Invalid semantics payload payload: payload is not canonical JSON")
     return semantics
+
+
+ARTIFACT_SEMANTICS_CODEC: PayloadCodec[ArtifactSemantics] = PayloadCodec(
+    encode=_encode_artifact_semantics,
+    decode=_decode_artifact_semantics,
+)
+STUDY_SEMANTICS_CODEC: PayloadCodec[StudySemantics] = PayloadCodec(
+    encode=_encode_study_semantics,
+    decode=_decode_study_semantics,
+)

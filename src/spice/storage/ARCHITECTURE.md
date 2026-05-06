@@ -94,7 +94,7 @@ storage/
   catalog/           global searchable index, catalog records, schema, store, and codecs
 ```
 
-Storage owns persisted payload ABI. Modeling and evaluation own runtime result objects; storage codecs translate those objects at the SQLite table boundary. Artifact manifests persist Temporal Capability as the artifact-facing compiler capability bundle and persist artifact semantics as its normalized semantic projection. Artifact evaluation state stores an **Evaluation Config Snapshot**, not a live evaluator config object, so evaluation storage identity is based on immutable evaluator provenance.
+Storage owns persisted payload ABI. Modeling and evaluation own runtime result objects; named storage `PayloadCodec` objects translate those objects at the SQLite table boundary. Persistence modules call codec objects directly, keeping encode/decode locality at one seam per persisted record type. Artifact manifests persist Temporal Capability as the artifact-facing compiler capability bundle and persist artifact semantics as its normalized semantic projection. Artifact evaluation state stores an **Evaluation Config Snapshot**, not a live evaluator config object, so evaluation storage identity is based on immutable evaluator provenance.
 
 Producer identity and consumer selection stay separate inside `storage.workflow_root_materialization`. Producer paths derive ids and root handles for roots that workflows are about to create. Consumer paths resolve existing roots through the catalog before workflows read them. Root handles expose root facts and manifest loading. Storage transactions expose staging, promotion, selected-path commit, and reindex boundaries; lower-level lifecycle remains path and root-kind infrastructure.
 

@@ -16,16 +16,10 @@ from sqlalchemy.engine import Connection, RowMapping
 
 from ..core.errors import MissingStateError, StateLayoutError
 from .artifact_codecs import (
-    artifact_manifest_from_payload,
-    artifact_manifest_payload,
-    evaluation_run_from_payload,
-    evaluation_run_payload,
-    evaluation_summary_from_payload,
-    evaluation_summary_payload,
-    training_epoch_from_payload,
-    training_epoch_payload,
-    training_summary_from_payload,
-    training_summary_payload,
+    ARTIFACT_MANIFEST_CODEC,
+    EVALUATION_SUMMARY_CODEC,
+    TRAINING_EPOCH_CODEC,
+    TRAINING_SUMMARY_CODEC,
 )
 from .engine import (
     ARTIFACT_ROOT_KIND,
@@ -35,11 +29,10 @@ from .engine import (
     table_exists,
     touch_meta,
 )
-from .payloads import PayloadCodec, SingletonPayloadStore, mapping_payload
+from .payloads import SingletonPayloadStore, mapping_payload
 from .schema import (
     ARTIFACT_TABLES,
     artifact_manifest,
-    evaluation_runs,
     evaluation_summary,
     training_epochs,
     training_summary,
@@ -58,17 +51,11 @@ if TYPE_CHECKING:
 
 _ARTIFACT_MANIFEST_STORE = SingletonPayloadStore(
     table=artifact_manifest,
-    codec=PayloadCodec(
-        encode=artifact_manifest_payload,
-        decode=artifact_manifest_from_payload,
-    ),
+    codec=ARTIFACT_MANIFEST_CODEC,
 )
 _TRAINING_SUMMARY_STORE = SingletonPayloadStore(
     table=training_summary,
-    codec=PayloadCodec(
-        encode=training_summary_payload,
-        decode=training_summary_from_payload,
-    ),
+    codec=TRAINING_SUMMARY_CODEC,
 )
 
 
@@ -124,7 +111,7 @@ def write_training_state(
                 conn.execute(
                     training_epochs.insert(),
                     [
-                        {"epoch": record.epoch, "payload": training_epoch_payload(record)}
+                        {"epoch": record.epoch, "payload": TRAINING_EPOCH_CODEC.encode(record)}
                         for record in epoch_rows
                     ],
                 )
@@ -172,13 +159,14 @@ def list_training_epochs(db_path: Path) -> list[TrainingEpochRecord]:
                 .mappings()
                 .all()
             )
-        return [
-            training_epoch_from_payload(
-                mapping_payload(row["payload"], label="training_epochs"),
-                epoch=int(row["epoch"]),
-            )
+        records = [
+            TRAINING_EPOCH_CODEC.decode(mapping_payload(row["payload"], label="training_epochs"))
             for row in rows
         ]
+        for row, record in zip(rows, records, strict=True):
+            if record.epoch != int(row["epoch"]):
+                raise StateLayoutError("training epoch payload does not match row epoch")
+        return records
     finally:
         engine.dispose()
 
@@ -196,7 +184,7 @@ def upsert_evaluation_state(
     engine = create_state_engine(db_path)
     try:
         with engine.begin() as conn:
-            payload = evaluation_summary_payload(summary)
+            payload = EVALUATION_SUMMARY_CODEC.encode(summary)
             statement = sqlite_insert(evaluation_summary).values(
                 evaluation_id=evaluation_storage_id,
                 recorded_at=recorded_at,
@@ -211,23 +199,6 @@ def upsert_evaluation_state(
                     },
                 )
             )
-            conn.execute(
-                delete(evaluation_runs).where(
-                    evaluation_runs.c.evaluation_id == evaluation_storage_id
-                )
-            )
-            if summary.runs:
-                conn.execute(
-                    evaluation_runs.insert(),
-                    [
-                        {
-                            "evaluation_id": evaluation_storage_id,
-                            "ordinal": ordinal,
-                            "payload": evaluation_run_payload(run),
-                        }
-                        for ordinal, run in enumerate(summary.runs, start=1)
-                    ],
-                )
             touch_meta(conn, root_kind=ARTIFACT_ROOT_KIND)
     finally:
         engine.dispose()
@@ -272,7 +243,6 @@ def list_evaluation_summaries(db_path: Path) -> list[LoadedEvaluationSummary]:
         with engine.connect() as conn:
             manifest = _ARTIFACT_MANIFEST_STORE.load(conn)
             rows = _evaluation_summary_rows(conn)
-            runs_by_id = _evaluation_runs_by_id(conn)
         if manifest is None:
             return []
         return [
@@ -280,9 +250,8 @@ def list_evaluation_summaries(db_path: Path) -> list[LoadedEvaluationSummary]:
                 evaluation_storage_id=str(row["evaluation_id"]),
                 recorded_at=int(row["recorded_at"]),
                 manifest=manifest,
-                runtime=evaluation_summary_from_payload(
-                    mapping_payload(row["payload"], label="evaluation_summary"),
-                    runs=runs_by_id.get(str(row["evaluation_id"]), []),
+                runtime=EVALUATION_SUMMARY_CODEC.decode(
+                    mapping_payload(row["payload"], label="evaluation_summary")
                 ),
             )
             for row in rows
@@ -298,25 +267,20 @@ def list_evaluation_runs(
 ) -> list[EvaluationRun]:
     if db_path.is_file():
         require_root_kind(db_path, ARTIFACT_ROOT_KIND)
-    if not table_exists(db_path, evaluation_runs.name):
+    if not table_exists(db_path, evaluation_summary.name):
         return []
-    engine = create_state_engine(db_path)
-    try:
-        with engine.connect() as conn:
-            resolved_evaluation_id = evaluation_storage_id
-            if resolved_evaluation_id is None:
-                evaluation_storage_ids = _evaluation_storage_ids(conn)
-                if not evaluation_storage_ids:
-                    return []
-                if len(evaluation_storage_ids) > 1:
-                    raise StateLayoutError(
-                        "Multiple evaluation summaries stored; specify evaluation_storage_id "
-                        "when listing evaluation runs"
-                    )
-                resolved_evaluation_id = evaluation_storage_ids[0]
-            return _evaluation_runs_by_id(conn).get(resolved_evaluation_id, [])
-    finally:
-        engine.dispose()
+    if evaluation_storage_id is None:
+        summaries = list_evaluation_summaries(db_path)
+        if not summaries:
+            return []
+        if len(summaries) > 1:
+            raise StateLayoutError(
+                "Multiple evaluation summaries stored; specify evaluation_storage_id "
+                "when listing evaluation runs"
+            )
+        return list(summaries[0].runtime.runs)
+    summary = load_evaluation_summary(db_path, evaluation_storage_id=evaluation_storage_id)
+    return [] if summary is None else list(summary.runtime.runs)
 
 
 def _evaluation_storage_id(summary: EvaluationRuntimeSummary) -> str:
@@ -338,17 +302,6 @@ def _evaluation_storage_id(summary: EvaluationRuntimeSummary) -> str:
     return f"{summary.evaluator_id}-{summary.delay_seconds}s-{digest}"
 
 
-def _evaluation_storage_ids(conn: Connection) -> list[str]:
-    return [
-        str(row["evaluation_id"])
-        for row in conn.execute(
-            select(evaluation_summary.c.evaluation_id).order_by(evaluation_summary.c.evaluation_id)
-        )
-        .mappings()
-        .all()
-    ]
-
-
 def _evaluation_summary_rows(conn: Connection) -> list[RowMapping]:
     return list(
         conn.execute(
@@ -364,22 +317,3 @@ def _evaluation_summary_rows(conn: Connection) -> list[RowMapping]:
         .mappings()
         .all()
     )
-
-
-def _evaluation_runs_by_id(conn: Connection) -> dict[str, list[EvaluationRun]]:
-    grouped: dict[str, list[EvaluationRun]] = {}
-    for row in (
-        conn.execute(
-            select(evaluation_runs.c.evaluation_id, evaluation_runs.c.payload).order_by(
-                evaluation_runs.c.evaluation_id,
-                evaluation_runs.c.ordinal,
-            )
-        )
-        .mappings()
-        .all()
-    ):
-        evaluation_storage_id = str(row["evaluation_id"])
-        grouped.setdefault(evaluation_storage_id, []).append(
-            evaluation_run_from_payload(mapping_payload(row["payload"], label="evaluation_runs"))
-        )
-    return grouped

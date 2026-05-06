@@ -27,13 +27,14 @@ from ..temporal.contracts import (
 )
 from ..temporal.scaling import ScalerStats
 from .payloads import (
+    PayloadCodec,
     PayloadModel,
     decode_payload_model,
     mapping_payload,
     model_payload,
     string_payload,
 )
-from .semantics_codecs import artifact_semantics_from_payload, artifact_semantics_payload
+from .semantics_codecs import ARTIFACT_SEMANTICS_CODEC
 
 if TYPE_CHECKING:
     from ..modeling.results import (
@@ -160,7 +161,7 @@ class ArtifactManifestPayload(PayloadModel):
             scaler=manifest.scaler.model_dump(mode="json", exclude_none=True),
             builder_runtime_metadata=manifest.builder_runtime_metadata.model_dump(mode="json"),
             temporal_capability=temporal_capability_payload(manifest.temporal_capability),
-            semantics=artifact_semantics_payload(manifest.semantics),
+            semantics=ARTIFACT_SEMANTICS_CODEC.encode(manifest.semantics),
         )
 
     def to_manifest(self) -> TrainingArtifactManifest:
@@ -200,7 +201,7 @@ class ArtifactManifestPayload(PayloadModel):
                     label="artifact_manifest.temporal_capability",
                 )
             ),
-            semantics=artifact_semantics_from_payload(self.semantics),
+            semantics=ARTIFACT_SEMANTICS_CODEC.decode(self.semantics),
         )
 
 
@@ -251,6 +252,7 @@ class TrainingSummaryPayload(PayloadModel):
 
 
 class TrainingEpochPayload(PayloadModel):
+    epoch: int
     train_metrics: dict[str, float]
     validation_metrics: dict[str, float]
     objective_metrics: dict[str, float]
@@ -258,16 +260,17 @@ class TrainingEpochPayload(PayloadModel):
     @classmethod
     def from_record(cls, record: TrainingEpochRecord) -> TrainingEpochPayload:
         return cls(
+            epoch=record.epoch,
             train_metrics=_metric_values_payload(record.train_metrics),
             validation_metrics=_metric_values_payload(record.validation_metrics),
             objective_metrics=_metric_values_payload(record.objective_metrics),
         )
 
-    def to_record(self, *, epoch: int) -> TrainingEpochRecord:
+    def to_record(self) -> TrainingEpochRecord:
         from ..modeling.results import TrainingEpochRecord
 
         return TrainingEpochRecord(
-            epoch=epoch,
+            epoch=self.epoch,
             train_metrics=MetricSet(values=self.train_metrics),
             validation_metrics=MetricSet(values=self.validation_metrics),
             objective_metrics=MetricSet(values=self.objective_metrics),
@@ -330,6 +333,7 @@ class EvaluationSummaryPayload(PayloadModel):
     metrics: dict[str, float]
     window_metrics: dict[str, WindowMetricSummaryPayload]
     total_events: int
+    runs: list[EvaluationRunPayload]
 
     @classmethod
     def from_runtime(cls, summary: EvaluationRuntimeSummary) -> EvaluationSummaryPayload:
@@ -353,9 +357,10 @@ class EvaluationSummaryPayload(PayloadModel):
                 for metric_id, window_metric in summary.window_metrics.items()
             },
             total_events=summary.total_events,
+            runs=[EvaluationRunPayload.from_run(run) for run in summary.runs],
         )
 
-    def to_runtime(self, *, runs: list[EvaluationRun]) -> EvaluationRuntimeSummary:
+    def to_runtime(self) -> EvaluationRuntimeSummary:
         from ..modeling.results import EvaluationConfigSnapshot, EvaluationRuntimeSummary
 
         return EvaluationRuntimeSummary(
@@ -378,15 +383,15 @@ class EvaluationSummaryPayload(PayloadModel):
                 for metric_id, window_metric in self.window_metrics.items()
             },
             total_events=self.total_events,
-            runs=runs,
+            runs=[run.to_run() for run in self.runs],
         )
 
 
-def artifact_manifest_payload(manifest: TrainingArtifactManifest) -> dict[str, object]:
+def _encode_artifact_manifest(manifest: TrainingArtifactManifest) -> dict[str, object]:
     return model_payload(ArtifactManifestPayload.from_manifest(manifest), label="artifact manifest")
 
 
-def artifact_manifest_from_payload(payload: dict[str, object]):
+def _decode_artifact_manifest(payload: dict[str, object]):
     return decode_payload_model(
         "artifact manifest",
         ArtifactManifestPayload,
@@ -395,11 +400,11 @@ def artifact_manifest_from_payload(payload: dict[str, object]):
     )
 
 
-def training_summary_payload(summary: TrainingRuntimeSummary) -> dict[str, object]:
+def _encode_training_summary(summary: TrainingRuntimeSummary) -> dict[str, object]:
     return model_payload(TrainingSummaryPayload.from_runtime(summary), label="training summary")
 
 
-def training_summary_from_payload(payload: dict[str, object]):
+def _decode_training_summary(payload: dict[str, object]):
     return decode_payload_model(
         "training summary",
         TrainingSummaryPayload,
@@ -408,47 +413,65 @@ def training_summary_from_payload(payload: dict[str, object]):
     )
 
 
-def training_epoch_payload(record: TrainingEpochRecord) -> dict[str, object]:
+def _encode_training_epoch(record: TrainingEpochRecord) -> dict[str, object]:
     return model_payload(TrainingEpochPayload.from_record(record), label="training epoch")
 
 
-def training_epoch_from_payload(payload: dict[str, object], *, epoch: int):
+def _decode_training_epoch(payload: dict[str, object]):
     return decode_payload_model(
         "training epoch",
         TrainingEpochPayload,
         payload,
-        lambda model: model.to_record(epoch=epoch),
+        lambda model: model.to_record(),
     )
 
 
-def evaluation_summary_payload(summary: EvaluationRuntimeSummary) -> dict[str, object]:
+def _encode_evaluation_summary(summary: EvaluationRuntimeSummary) -> dict[str, object]:
     return model_payload(EvaluationSummaryPayload.from_runtime(summary), label="evaluation summary")
 
 
-def evaluation_summary_from_payload(
-    payload: dict[str, object],
-    *,
-    runs: list[EvaluationRun],
-):
+def _decode_evaluation_summary(payload: dict[str, object]):
     return decode_payload_model(
         "evaluation summary",
         EvaluationSummaryPayload,
         payload,
-        lambda model: model.to_runtime(runs=runs),
+        lambda model: model.to_runtime(),
     )
 
 
-def evaluation_run_payload(run: EvaluationRun) -> dict[str, object]:
+def _encode_evaluation_run(run: EvaluationRun) -> dict[str, object]:
     return model_payload(EvaluationRunPayload.from_run(run), label="evaluation run")
 
 
-def evaluation_run_from_payload(payload: dict[str, object]):
+def _decode_evaluation_run(payload: dict[str, object]):
     return decode_payload_model(
         "evaluation run",
         EvaluationRunPayload,
         payload,
         lambda model: model.to_run(),
     )
+
+
+ARTIFACT_MANIFEST_CODEC: PayloadCodec[TrainingArtifactManifest] = PayloadCodec(
+    encode=_encode_artifact_manifest,
+    decode=_decode_artifact_manifest,
+)
+TRAINING_SUMMARY_CODEC: PayloadCodec[TrainingRuntimeSummary] = PayloadCodec(
+    encode=_encode_training_summary,
+    decode=_decode_training_summary,
+)
+TRAINING_EPOCH_CODEC: PayloadCodec[TrainingEpochRecord] = PayloadCodec(
+    encode=_encode_training_epoch,
+    decode=_decode_training_epoch,
+)
+EVALUATION_SUMMARY_CODEC: PayloadCodec[EvaluationRuntimeSummary] = PayloadCodec(
+    encode=_encode_evaluation_summary,
+    decode=_decode_evaluation_summary,
+)
+EVALUATION_RUN_CODEC: PayloadCodec[EvaluationRun] = PayloadCodec(
+    encode=_encode_evaluation_run,
+    decode=_decode_evaluation_run,
+)
 
 
 def _execution_provenance_payload(

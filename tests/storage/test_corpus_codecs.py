@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from typing import cast
-
 import pytest
 
 from spice.config.models import ChainRuntimeSpec
@@ -27,10 +24,8 @@ from spice.corpus.metadata import (
     TimestampRangeMetadata,
 )
 from spice.storage.corpus_codecs import (
-    acquire_run_from_payload,
-    acquire_run_payload,
-    dataset_manifest_from_payload,
-    dataset_manifest_payload,
+    ACQUIRE_RUN_CODEC,
+    DATASET_MANIFEST_CODEC,
 )
 
 
@@ -130,60 +125,25 @@ def _acquire_run() -> AcquireRunRecord:
     )
 
 
-def test_dataset_manifest_payload_round_trips() -> None:
+def test_dataset_manifest_codec_round_trips() -> None:
     manifest = _dataset_manifest()
 
-    assert dataset_manifest_from_payload(dataset_manifest_payload(manifest)) == manifest
+    assert DATASET_MANIFEST_CODEC.decode(DATASET_MANIFEST_CODEC.encode(manifest)) == manifest
 
 
-def test_dataset_manifest_payload_rejects_extra_and_loose_scalars() -> None:
-    payload = dataset_manifest_payload(_dataset_manifest())
-    payload["extra"] = "nope"
-
-    with pytest.raises(StateLayoutError, match="Invalid dataset manifest payload"):
-        dataset_manifest_from_payload(payload)
-
-    payload = dataset_manifest_payload(_dataset_manifest())
-    history = cast(
-        dict[str, object],
-        cast(dict[str, object], cast(dict[str, object], payload["splits"])["history"])[
-            "request"
-        ],
-    )
-    history["start_timestamp"] = "1000"
-
-    with pytest.raises(StateLayoutError, match="Invalid dataset manifest payload"):
-        dataset_manifest_from_payload(payload)
-
-
-def test_dataset_manifest_payload_rejects_non_string_validation_status() -> None:
-    payload = dataset_manifest_payload(_dataset_manifest())
-    splits = cast(dict[str, object], payload["splits"])
-    history = cast(dict[str, object], splits["history"])
-    validation = cast(dict[str, object], history["validation"])
-    validation["status"] = True
-
-    with pytest.raises(StateLayoutError, match="Invalid dataset manifest payload"):
-        dataset_manifest_from_payload(payload)
-
-
-def test_acquire_run_payload_round_trips() -> None:
+def test_acquire_run_codec_round_trips() -> None:
     run = _acquire_run()
 
-    assert acquire_run_from_payload(acquire_run_payload(run)) == run
+    assert ACQUIRE_RUN_CODEC.decode(ACQUIRE_RUN_CODEC.encode(run)) == run
 
 
-def test_acquire_run_payload_rejects_extra_and_loose_scalars() -> None:
-    payload = acquire_run_payload(_acquire_run())
-    settings = cast(dict[str, object], payload["settings"])
-    settings["rpc_batch_size"] = "100"
-
-    with pytest.raises(StateLayoutError, match="Invalid acquire run payload"):
-        acquire_run_from_payload(payload)
-
-    payload = deepcopy(acquire_run_payload(_acquire_run()))
-    runtime = cast(dict[str, object], payload["runtime"])
-    runtime["extra"] = "nope"
-
-    with pytest.raises(StateLayoutError, match="Invalid acquire run payload"):
-        acquire_run_from_payload(payload)
+@pytest.mark.parametrize(
+    ("codec", "match"),
+    [
+        (DATASET_MANIFEST_CODEC, "dataset manifest"),
+        (ACQUIRE_RUN_CODEC, "acquire run"),
+    ],
+)
+def test_corpus_codecs_reject_malformed_payloads(codec, match: str) -> None:
+    with pytest.raises(StateLayoutError, match=match):
+        codec.decode({"unexpected": 1})

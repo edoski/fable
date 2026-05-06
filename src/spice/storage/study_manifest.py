@@ -22,9 +22,9 @@ from .identity import (
     study_definition_identity_from_tuned_config,
     study_manifest_identity,
 )
-from .payloads import PayloadCodec, SingletonPayloadStore
+from .payloads import SingletonPayloadStore
 from .schema import STUDY_TABLES, study_manifest
-from .study_manifest_codecs import study_manifest_from_payload, study_manifest_payload
+from .study_manifest_codecs import STUDY_MANIFEST_CODEC
 from .study_models import StudyManifest
 
 if TYPE_CHECKING:
@@ -35,10 +35,7 @@ STUDY_SAMPLER_NAME = "TPESampler"
 
 _STUDY_MANIFEST_STORE = SingletonPayloadStore(
     table=study_manifest,
-    codec=PayloadCodec(
-        encode=study_manifest_payload,
-        decode=study_manifest_from_payload,
-    ),
+    codec=STUDY_MANIFEST_CODEC,
 )
 
 

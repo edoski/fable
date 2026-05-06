@@ -22,8 +22,8 @@ from ..modeling.families.registry import coerce_model_config
 from ..modeling.tuned_config import coerce_tuning_space_config
 from ..objectives import coerce_objective_config
 from .identity import identity_payload, study_manifest_identity
-from .payloads import PayloadModel, decode_payload_model
-from .semantics_codecs import study_semantics_from_payload, study_semantics_payload
+from .payloads import PayloadCodec, PayloadModel, decode_payload_model
+from .semantics_codecs import STUDY_SEMANTICS_CODEC
 from .study_models import StudyManifest
 
 
@@ -58,7 +58,7 @@ class StudyManifestPayload(PayloadModel):
     def from_manifest(cls, manifest: StudyManifest) -> StudyManifestPayload:
         payload = {
             **identity_payload(study_manifest_identity(manifest)),
-            "semantics": study_semantics_payload(manifest.semantics),
+            "semantics": STUDY_SEMANTICS_CODEC.encode(manifest.semantics),
         }
         return cls.model_validate(payload)
 
@@ -96,11 +96,11 @@ class StudyManifestPayload(PayloadModel):
                 model=model,
                 problem=problem,
             ),
-            semantics=study_semantics_from_payload(self.semantics),
+            semantics=STUDY_SEMANTICS_CODEC.decode(self.semantics),
         )
 
 
-def study_manifest_payload(manifest: StudyManifest) -> dict[str, object]:
+def _encode_study_manifest(manifest: StudyManifest) -> dict[str, object]:
     payload = StudyManifestPayload.from_manifest(manifest).model_dump(
         mode="json",
         exclude_none=True,
@@ -108,13 +108,19 @@ def study_manifest_payload(manifest: StudyManifest) -> dict[str, object]:
     return cast(dict[str, object], payload)
 
 
-def study_manifest_from_payload(payload: dict[str, object]) -> StudyManifest:
+def _decode_study_manifest(payload: dict[str, object]) -> StudyManifest:
     return decode_payload_model(
         "study manifest",
         StudyManifestPayload,
         payload,
         lambda model: model.to_manifest(),
     )
+
+
+STUDY_MANIFEST_CODEC: PayloadCodec[StudyManifest] = PayloadCodec(
+    encode=_encode_study_manifest,
+    decode=_decode_study_manifest,
+)
 
 
 def coerce_study_tuning_space(

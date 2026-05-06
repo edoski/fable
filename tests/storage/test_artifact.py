@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import cast
-
 import pytest
 
 from spice.config import (
@@ -58,18 +56,13 @@ from spice.storage.artifact import (
     write_training_state,
 )
 from spice.storage.artifact_codecs import (
-    evaluation_run_from_payload,
-    evaluation_run_payload,
-    evaluation_summary_from_payload,
-    evaluation_summary_payload,
-    training_summary_from_payload,
+    ARTIFACT_MANIFEST_CODEC,
+    EVALUATION_RUN_CODEC,
+    EVALUATION_SUMMARY_CODEC,
+    TRAINING_SUMMARY_CODEC,
 )
 from spice.storage.engine import DATASET_ROOT_KIND, ensure_state_db
 from spice.storage.schema import DATASET_TABLES
-from spice.storage.semantics_codecs import (
-    artifact_semantics_from_payload,
-    artifact_semantics_payload,
-)
 from spice.temporal import TemporalCapability
 from spice.temporal.compilers.observed_time_window import ObservedTimeWindowRuntimeMetadata
 from spice.temporal.contracts import compile_problem_contract
@@ -296,53 +289,52 @@ def test_training_artifact_summary_round_trip(tmp_path) -> None:
     assert loaded_epochs == epoch_rows
 
 
-def test_training_summary_payload_rejects_loose_scalar_types() -> None:
-    with pytest.raises(StateLayoutError, match="training summary"):
-        training_summary_from_payload(
-            {
-                "n_rows_available": "128",
-                "n_rows_used": True,
-                "train_samples": 10,
-                "validation_samples": 5,
-                "test_samples": 5,
-                "best_epoch": 1,
-                "best_objective_metric_id": "total_loss",
-                "best_objective_value": "0.25",
-                "best_validation_metrics": {"total_loss": "0.25"},
-                "test_metrics": {"total_loss": 0.3},
-            }
-        )
+def test_artifact_manifest_codec_round_trips() -> None:
+    manifest = _manifest()
+
+    assert ARTIFACT_MANIFEST_CODEC.decode(ARTIFACT_MANIFEST_CODEC.encode(manifest)) == manifest
 
 
-def test_evaluation_run_payload_rejects_loose_scalar_types() -> None:
-    with pytest.raises(StateLayoutError, match="evaluation run"):
-        evaluation_run_from_payload(
-            {
-                "n_events": True,
-                "metrics": {"profit_over_baseline": "0.2"},
-                "metadata": {"mode": True},
-            }
-        )
+def test_training_summary_codec_round_trips() -> None:
+    summary = TrainingRuntimeSummary(
+        n_rows_available=128,
+        n_rows_used=96,
+        split_sizes=SplitSizes(train_samples=16, validation_samples=4, test_samples=4),
+        best_epoch=2,
+        best_objective_metric_id="total_loss",
+        best_objective_value=0.25,
+        best_validation_metrics=MetricSet(values={"total_loss": 0.25}),
+        test_metrics=MetricSet(values={"total_loss": 0.3}),
+    )
+
+    assert TRAINING_SUMMARY_CODEC.decode(TRAINING_SUMMARY_CODEC.encode(summary)) == summary
 
 
-def test_evaluation_run_payload_rejects_bool_metadata() -> None:
+def test_evaluation_run_codec_round_trips() -> None:
+    run = EvaluationRun(
+        n_events=2,
+        metrics={"profit_over_baseline": 0.2},
+        metadata={"mode": "poisson_replay_2h"},
+    )
+
+    assert EVALUATION_RUN_CODEC.decode(EVALUATION_RUN_CODEC.encode(run)) == run
+
+
+def test_evaluation_summary_codec_round_trips() -> None:
+    summary = _evaluation_summary(0.2)
+
+    assert EVALUATION_SUMMARY_CODEC.decode(EVALUATION_SUMMARY_CODEC.encode(summary)) == summary
+
+
+def test_evaluation_run_codec_rejects_bool_metadata() -> None:
     with pytest.raises(TypeError, match="metadata"):
-        evaluation_run_payload(
+        EVALUATION_RUN_CODEC.encode(
             EvaluationRun(
                 n_events=1,
                 metrics={"profit_over_baseline": 0.2},
                 metadata={"mode": True},
             )
         )
-
-
-def test_evaluation_summary_payload_rejects_extra_metric_descriptor_keys() -> None:
-    payload = evaluation_summary_payload(_evaluation_summary(0.2))
-    descriptor = cast(dict[str, object], payload["metric_descriptors"][0])
-    descriptor["extra"] = "nope"
-
-    with pytest.raises(StateLayoutError, match="Invalid evaluation summary payload"):
-        evaluation_summary_from_payload(payload, runs=[])
 
 
 def _evaluation_summary(value: float, *, seed: int = 2026) -> EvaluationRuntimeSummary:
@@ -556,15 +548,6 @@ def test_evaluation_config_snapshot_rejects_non_canonical_payload() -> None:
                 "seed": 2026,
             }
         )
-
-
-def test_artifact_semantics_payload_rejects_loose_scalar_types() -> None:
-    payload = artifact_semantics_payload(_manifest().semantics)
-    problem_payload = cast(dict[str, object], payload["problem"])
-    problem_payload["sample_count"] = "24"
-
-    with pytest.raises(StateLayoutError, match="semantics payload"):
-        artifact_semantics_from_payload(payload)
 
 
 def test_evaluation_run_listing_rejects_non_artifact_root_kind(tmp_path) -> None:

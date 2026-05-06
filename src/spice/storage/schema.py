@@ -59,14 +59,6 @@ evaluation_summary = Table(
     Column("payload", JSON, nullable=False),
 )
 
-evaluation_runs = Table(
-    "evaluation_runs",
-    metadata,
-    Column("evaluation_id", String, primary_key=True),
-    Column("ordinal", Integer, primary_key=True),
-    Column("payload", JSON, nullable=False),
-)
-
 study_manifest = Table(
     "study_manifest",
     metadata,
@@ -81,5 +73,4 @@ ARTIFACT_TABLES = (
     training_summary,
     training_epochs,
     evaluation_summary,
-    evaluation_runs,
 )
