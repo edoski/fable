@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from spice.storage import sync_cli
-from spice.storage.catalog.records import CatalogDatasetRecord
 from spice.storage.catalog.codecs import decode_remote_catalog_record
+from spice.storage.catalog.records import CatalogDatasetRecord
 from spice.storage.engine import RootKind
 
 

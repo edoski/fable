@@ -9,14 +9,14 @@ from pathlib import Path
 
 from ...config.workflow_snapshots import ResolvedWorkflowConfig
 from ...core.errors import ConfigResolutionError, SelectorResolutionError
-from ...storage.catalog.index import resolve_study_record
+from ...storage.catalog.index import resolve_artifact_record, resolve_study_record
 from ...storage.root_identity import (
     ConsumedRootFacts,
     ProducedRootFacts,
     consumed_root_facts,
     produced_root_facts,
 )
-from ...storage.selectors import StudySelector
+from ...storage.selectors import ArtifactSelector, StudySelector
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,3 +46,18 @@ class BenchmarkRootStorageAdapter:
         except SelectorResolutionError as exc:
             raise ConfigResolutionError(str(exc)) from exc
         return study.dataset_id
+
+    def artifact_dataset_id(
+        self,
+        storage_root: Path,
+        *,
+        artifact_id: str,
+    ) -> str:
+        try:
+            artifact = resolve_artifact_record(
+                storage_root,
+                selector=ArtifactSelector(artifact_id=artifact_id),
+            )
+        except SelectorResolutionError as exc:
+            raise ConfigResolutionError(str(exc)) from exc
+        return artifact.dataset_id

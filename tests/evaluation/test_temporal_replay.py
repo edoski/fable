@@ -18,7 +18,6 @@ from spice.evaluation.poisson_replay import (
 )
 from spice.evaluation.temporal_replay_runner import (
     TemporalReplaySelection,
-    poisson_replay_no_runs_error,
     run_temporal_replay,
 )
 from spice.prediction.decoded_offsets import DecodedOffsets
@@ -124,14 +123,14 @@ def test_temporal_replay_runner_composes_adapter_runs() -> None:
 
 
 def test_temporal_replay_runner_owns_no_run_error() -> None:
-    with pytest.raises(SpiceOperatorError, match="poisson_arrivals"):
+    with pytest.raises(SpiceOperatorError, match="fake adapter"):
         run_temporal_replay(
             _store(),
             _execution_policy(),
             DecodedOffsets(torch.tensor([0, 1], dtype=torch.int64)),
             np.array([0, 1], dtype=np.int64),
             adapter=_FakeReplayAdapter(()),
-            no_runs_error=poisson_replay_no_runs_error(),
+            no_runs_error=SpiceOperatorError("fake adapter produced no runs"),
         )
 
 

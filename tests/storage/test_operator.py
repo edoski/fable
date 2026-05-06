@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord, CatalogStudyRecord
 from spice.storage.catalog.index import upsert_catalog_record
+from spice.storage.catalog.records import (
+    CatalogArtifactRecord,
+    CatalogDatasetRecord,
+    CatalogStudyRecord,
+)
 from spice.storage.operator import (
     StorageDeleteCommand,
     StorageDeleteFailure,

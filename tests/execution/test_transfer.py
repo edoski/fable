@@ -12,9 +12,9 @@ from spice.core.errors import StateConflictError
 from spice.execution.session import ExecutionSession
 from spice.execution.transfer_transaction import StorageTransferTransaction
 from spice.storage.artifact import write_artifact_manifest
-from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.catalog.codecs import encode_remote_catalog_record
 from spice.storage.catalog.index import ReindexedCatalogRoot
+from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.engine import RootKind
 from tests.artifact_helpers import manifest
 

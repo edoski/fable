@@ -7,6 +7,7 @@ __pycache__/
 *.sqlite-wal
 *.sqlite-shm
 *.sqlite-journal
+/benchmarks/results.sqlite
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

@@ -6,8 +6,8 @@ from typer.testing import CliRunner
 
 from spice.cli.app import app
 from spice.cli.commands import storage as storage_commands
-from spice.storage.catalog.records import CatalogArtifactRecord
 from spice.storage.catalog.index import upsert_catalog_record
+from spice.storage.catalog.records import CatalogArtifactRecord
 from spice.storage.operator import RenderableSections, StorageShowRendered
 
 runner = CliRunner()

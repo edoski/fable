@@ -7,12 +7,12 @@ import pytest
 
 from spice.core.errors import StateLayoutError
 from spice.storage.artifact import load_artifact_manifest
-from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.catalog.index import (
     list_artifact_records,
     list_dataset_records,
     upsert_catalog_record,
 )
+from spice.storage.catalog.records import CatalogArtifactRecord, CatalogDatasetRecord
 from spice.storage.engine import DATASET_ROOT_KIND, ensure_state_db, state_db_path
 from spice.storage.layout import catalog_db_path
 from spice.storage.schema import DATASET_TABLES

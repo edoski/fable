@@ -9,7 +9,7 @@ from spice.benchmarks.plan_materialization import materialize_benchmark_plan
 from spice.config import EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from spice.core.errors import ConfigResolutionError
 from spice.storage.catalog.index import upsert_catalog_record
-from spice.storage.catalog.records import CatalogStudyRecord
+from spice.storage.catalog.records import CatalogArtifactRecord, CatalogStudyRecord
 from spice.storage.engine import state_db_path
 from spice.storage.root_identity import produced_artifact_id, produced_study_id
 
@@ -62,6 +62,12 @@ def test_plan_materialization_injects_study_id_for_tuned_train_dependency(
     assert train.config.study_id == produced_study_id(tune.config)
     assert train.config.dataset_id is None
     assert train.root_ledger.root_id(role="consumed", root_kind="study") == (train.config.study_id)
+    consumed_study = next(
+        entry
+        for entry in train.root_ledger.entries
+        if entry.role == "consumed" and entry.root_kind == "study"
+    )
+    assert consumed_study.dataset_id == ETH_DATASET_ID
     assert tune.root_ledger.produced_study_id() == produced_study_id(tune.config)
     assert train.selection.study == "case_study"
 
@@ -187,6 +193,12 @@ def test_plan_materialization_preserves_explicit_evaluate_dataset_id_with_artifa
         train.config,
         dataset_id=ETH_DATASET_ID,
     )
+    consumed_artifact = next(
+        entry
+        for entry in evaluate.root_ledger.entries
+        if entry.role == "consumed" and entry.root_kind == "artifact"
+    )
+    assert consumed_artifact.dataset_id == ETH_DATASET_ID
     assert evaluate.root_ledger.consumed_dataset_id() == evaluate_dataset_id
     assert evaluate.root_ledger.consumed_artifact_id() == evaluate.config.artifact_id
     assert evaluate.root_ledger.artifact_source_dataset_id() == ETH_DATASET_ID
@@ -251,11 +263,81 @@ def test_plan_materialization_uses_catalog_dataset_for_explicit_tuned_study(
 
     assert isinstance(train.config, TrainConfig)
     assert isinstance(evaluate.config, EvaluateConfig)
+    consumed_study = next(
+        entry
+        for entry in train.root_ledger.entries
+        if entry.role == "consumed" and entry.root_kind == "study"
+    )
+    assert consumed_study.dataset_id == ETH_DATASET_ID
     assert evaluate.config.dataset_id == ETH_DATASET_ID
     assert evaluate.config.artifact_id == produced_artifact_id(
         train.config,
         dataset_id=ETH_DATASET_ID,
     )
+
+
+def test_plan_materialization_records_explicit_artifact_source_dataset_from_catalog(
+    tmp_path: Path,
+    isolate_conf_root,
+) -> None:
+    storage_root = tmp_path / "outputs"
+    artifact_root = storage_root / "artifacts" / "ethereum" / "art_existing"
+    upsert_catalog_record(
+        storage_root,
+        CatalogArtifactRecord(
+            artifact_id="art_existing",
+            dataset_id=ETH_DATASET_ID,
+            dataset_name="icdcs_2026",
+            chain_name="ethereum",
+            features_id="core_fee_dynamics",
+            prediction_id="icdcs_2026",
+            model_id="lstm",
+            problem_id="current_row_nominal",
+            variant="baseline",
+            study_id=None,
+            study_name=None,
+            root_path=artifact_root,
+            state_db_path=state_db_path(artifact_root),
+        ),
+    )
+    evaluate_dataset_id = "cor_cross_corpus_same_chain"
+
+    entries = _materialize(
+        isolate_conf_root,
+        {
+            "cases": [
+                {
+                    "id": "case",
+                    "base": {
+                        "surface": "current_row_fee_dynamics",
+                        "storage_root": str(storage_root),
+                    },
+                    "steps": [
+                        {
+                            "id": "evaluate",
+                            "workflow": "evaluate",
+                            "set": {
+                                "dataset_id": evaluate_dataset_id,
+                                "artifact_id": "art_existing",
+                                "evaluation": "poisson_replay_2h",
+                            },
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+
+    evaluate = next(entry for entry in entries if entry.workflow is WorkflowTask.EVALUATE)
+    consumed_artifact = next(
+        entry
+        for entry in evaluate.root_ledger.entries
+        if entry.role == "consumed" and entry.root_kind == "artifact"
+    )
+
+    assert isinstance(evaluate.config, EvaluateConfig)
+    assert evaluate.root_ledger.consumed_dataset_id() == evaluate_dataset_id
+    assert consumed_artifact.dataset_id == ETH_DATASET_ID
 
 
 def test_plan_materialization_preserves_selection_ledger_context(

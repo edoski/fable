@@ -8,7 +8,6 @@ from typing import Protocol
 
 import numpy as np
 
-from ..core.errors import SpiceOperatorError
 from ..metrics import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..prediction.decoded_offsets import DecodedOffsets, require_decoded_offsets
 from ..prediction.decoding import DecodedPredictionResult
@@ -144,13 +143,6 @@ def run_temporal_replay(
     if not runs:
         raise no_runs_error or ValueError("evaluation produced no runs")
     return _temporal_replay_result_to_summary(summarize_temporal_accounting_runs(runs))
-
-
-def poisson_replay_no_runs_error() -> SpiceOperatorError:
-    return SpiceOperatorError(
-        "poisson_arrivals evaluation produced no valid arrivals; "
-        "adjust the benchmark rate or window"
-    )
 
 
 def _validated_selected_positions(
