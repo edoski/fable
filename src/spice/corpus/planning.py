@@ -18,14 +18,6 @@ HISTORY_WINDOW_CUSHION_RATIO = 0.10
 HISTORY_REFILL_CUSHION_RATIO = 0.10
 HISTORY_REFILL_ATTEMPT_LIMIT = 3
 CORE_CORPUS_SOURCE_COLUMNS = frozenset({"block_number", "timestamp", "chain_id"})
-PRIORITY_FEE_SOURCE_COLUMNS = frozenset(
-    {
-        "priority_fee_p10",
-        "priority_fee_p50",
-        "priority_fee_p90",
-        "priority_fee_spread",
-    }
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,12 +57,9 @@ class CorpusCapabilityPlanningContext:
     @property
     def source_requirements(self) -> CorpusAcquisitionSourceRequirements:
         required_columns = frozenset(self.feature_contract.required_source_columns)
-        optional_enrichments: set[str] = set()
-        if PRIORITY_FEE_SOURCE_COLUMNS.intersection(required_columns):
-            optional_enrichments.add("priority_fee_percentiles")
         return CorpusAcquisitionSourceRequirements(
             required_columns=CORE_CORPUS_SOURCE_COLUMNS | required_columns,
-            optional_enrichments=frozenset(optional_enrichments),
+            optional_enrichments=self.feature_contract.optional_source_enrichments,
             temporal_unit="block",
             ordering_key="block_number",
             partition_key="chain_id",

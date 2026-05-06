@@ -239,8 +239,10 @@ def test_core_fee_dynamics_source_columns_follow_selected_feature_family() -> No
     )
 
     assert "priority_fee_p50" not in baseline_contract.required_source_columns
+    assert "priority_fee_percentiles" not in baseline_contract.optional_source_enrichments
     assert "gas_used" in baseline_contract.required_source_columns
     assert "priority_fee_p50" in priority_contract.required_source_columns
+    assert "priority_fee_percentiles" in priority_contract.optional_source_enrichments
 
 
 def test_core_fee_dynamics_local_trends_build_finite_aligned_table() -> None:

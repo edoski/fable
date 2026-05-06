@@ -80,7 +80,7 @@ Corpus planning derives source requirements from feature and problem contracts b
 | `ordering_key` | Monotonic row key, currently `block_number`. |
 | `partition_key` | Optional source partition, currently `chain_id`. |
 
-Priority-fee features add the `priority_fee_percentiles` enrichment and require priority-fee source columns. The RPC adapter maps that enrichment to `eth_feeHistory`; other future adapters can satisfy the same requirement differently.
+Priority-fee feature sources declare the `priority_fee_percentiles` enrichment and require priority-fee source columns. Corpus planning copies that feature-owned fact into source requirements alongside corpus-generic columns. The RPC adapter maps that enrichment to `eth_feeHistory`; other future adapters can satisfy the same requirement differently.
 
 ## Split Manifest
 

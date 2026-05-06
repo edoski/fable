@@ -5,6 +5,7 @@ from __future__ import annotations
 from ...core import FeatureSpec, SourceSpec
 from ._transforms import delta, log1p, rolling_feature, shift_feature, shifted_column
 
+PRIORITY_FEE_PERCENTILES_ENRICHMENT = "priority_fee_percentiles"
 PRIORITY_FEE_OUTPUTS = (
     "prev_priority_fee_p10",
     "prev_priority_fee_p50",
@@ -38,24 +39,28 @@ def priority_fee_sources() -> dict[str, SourceSpec]:
             warmup_rows=1,
             required_after_warmup=True,
             compute=lambda blocks: shifted_column(blocks, "priority_fee_p10"),
+            optional_enrichments=frozenset({PRIORITY_FEE_PERCENTILES_ENRICHMENT}),
         ),
         "prev_priority_fee_p50": SourceSpec(
             source_columns=("priority_fee_p50",),
             warmup_rows=1,
             required_after_warmup=True,
             compute=lambda blocks: shifted_column(blocks, "priority_fee_p50"),
+            optional_enrichments=frozenset({PRIORITY_FEE_PERCENTILES_ENRICHMENT}),
         ),
         "prev_priority_fee_p90": SourceSpec(
             source_columns=("priority_fee_p90",),
             warmup_rows=1,
             required_after_warmup=True,
             compute=lambda blocks: shifted_column(blocks, "priority_fee_p90"),
+            optional_enrichments=frozenset({PRIORITY_FEE_PERCENTILES_ENRICHMENT}),
         ),
         "prev_priority_fee_spread": SourceSpec(
             source_columns=("priority_fee_spread",),
             warmup_rows=1,
             required_after_warmup=True,
             compute=lambda blocks: shifted_column(blocks, "priority_fee_spread"),
+            optional_enrichments=frozenset({PRIORITY_FEE_PERCENTILES_ENRICHMENT}),
         ),
     }
 

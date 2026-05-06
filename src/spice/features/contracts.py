@@ -13,6 +13,7 @@ from .core import (
     ResolvedFeatureTable,
     build_feature_table,
     feature_graph_fingerprint,
+    feature_optional_enrichments,
     feature_prerequisites,
     feature_source_columns,
 )
@@ -29,6 +30,7 @@ class CompiledFeatureContract:
     feature_graph_fingerprint: str
     feature_prerequisites: FeaturePrerequisites
     required_source_columns: frozenset[str] = frozenset()
+    optional_source_enrichments: frozenset[str] = frozenset()
 
     @property
     def semantics(self) -> FeatureSemantics:
@@ -62,4 +64,5 @@ def compile_feature_contract(*, features: FeaturesConfig) -> CompiledFeatureCont
         ),
         feature_prerequisites=feature_prerequisites(catalog, feature_names),
         required_source_columns=feature_source_columns(catalog, feature_names),
+        optional_source_enrichments=feature_optional_enrichments(catalog, feature_names),
     )

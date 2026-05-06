@@ -27,7 +27,7 @@ Main operations:
 | Estimate recent interval | Sample recent blocks to estimate seconds per block. |
 | Fetch block batch | Use Web3 batch requests, then canonicalize rows. |
 
-`eth_feeHistory` is only requested when the selected feature catalog needs priority-fee reward percentiles. Gas utilization is derived from canonical block fields, so no-priority datasets do not need fee-history RPC calls.
+`eth_feeHistory` is only requested when corpus source requirements include the feature-owned `priority_fee_percentiles` enrichment. Gas utilization is derived from canonical block fields, so no-priority datasets do not need fee-history RPC calls.
 
 Binary search is needed because block timestamps are monotonic enough for range lookup, but the chain does not expose "block at timestamp" as a native RPC call.
 

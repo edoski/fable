@@ -67,6 +67,7 @@ class SourceSpec:
     warmup_rows: int
     required_after_warmup: bool
     compute: ComputeSourceFn
+    optional_enrichments: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +142,19 @@ def feature_source_columns(
         for feature_name in ordered
         for source_name in catalog.features[feature_name].source_dependencies
         for column in catalog.sources[source_name].source_columns
+    )
+
+
+def feature_optional_enrichments(
+    catalog: FeatureCatalog,
+    feature_names: tuple[str, ...],
+) -> frozenset[str]:
+    ordered = _dependency_order(feature_names, catalog=catalog)
+    return frozenset(
+        enrichment
+        for feature_name in ordered
+        for source_name in catalog.features[feature_name].source_dependencies
+        for enrichment in catalog.sources[source_name].optional_enrichments
     )
 
 
@@ -364,4 +378,3 @@ def _dependency_order(
 
 def _float_column(blocks: pl.DataFrame, column: str) -> FloatVector:
     return blocks[column].cast(pl.Float64).to_numpy().astype(np.float64, copy=False)
-

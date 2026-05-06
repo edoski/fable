@@ -22,7 +22,7 @@ FeatureSpec formulas
 ResolvedFeatureTable
 ```
 
-`SourceSpec` owns causality and availability. Current base fee is allowed as `base_fee_per_gas[t]` because EIP-1559 base fee for block `t` is deterministic from parent state and observable before block `t` execution. Canonical finalized block facts such as gas used and tx count are exposed only through lagged sources. The explicit unsafe family exposes same-block gas/tx facts only for leakage A/B benchmarks.
+`SourceSpec` owns causality, availability, required canonical columns, and optional acquisition enrichments. Current base fee is allowed as `base_fee_per_gas[t]` because EIP-1559 base fee for block `t` is deterministic from parent state and observable before block `t` execution. Canonical finalized block facts such as gas used and tx count are exposed only through lagged sources. The explicit unsafe family exposes same-block gas/tx facts only for leakage A/B benchmarks.
 
 `FeatureSpec` owns formulas over source and feature dependencies. The default catalog is `core_fee_dynamics`.
 
@@ -47,7 +47,7 @@ All previous-block facts are lagged inside their `SourceSpec`, not ad hoc in dat
 
 `core_fee_dynamics_unsafe` is a separate no-priority catalog with finalized gas and tx-count facts exposed from the current row. It is not deployable; it exists as an explicit same-block leakage comparator.
 
-`core_fee_dynamics_with_priority_fee` is a separate catalog that extends canonical `core_fee_dynamics` with lagged public priority-fee p10/p50/p90/spread scalars plus p50/spread local trend features.
+`core_fee_dynamics_with_priority_fee` is a separate catalog that extends canonical `core_fee_dynamics` with lagged public priority-fee p10/p50/p90/spread scalars plus p50/spread local trend features. Its priority-fee sources declare the `priority_fee_percentiles` acquisition enrichment; corpus planning does not infer that provider fact from column names.
 
 `elapsed_seconds` remains implemented only for the separate `core_fee_dynamics_elapsed_position` ablation catalog. It measures timestamp distance from the first row in the materialized feature table. It is not part of the default catalog because it can encode corpus position, long-term regime, or split-specific trends rather than reusable fee dynamics.
 
