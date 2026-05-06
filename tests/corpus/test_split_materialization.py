@@ -377,6 +377,52 @@ def test_evaluation_split_materialization_extends_overlap(tmp_path) -> None:
     assert load_block_frame(result.path)["block_number"].to_list() == [101, 102, 103, 104]
 
 
+def test_evaluation_split_materialization_extends_prefix_and_suffix(tmp_path) -> None:
+    _write_block_dataset_dir(
+        tmp_path / "evaluation",
+        start_block=100,
+        row_count=4,
+        start_timestamp=1_000,
+    )
+    source = _RangeSource()
+    plan = BlockPullPlan(
+        window=TimestampRange(start=976, end=1_072),
+        block_range=BlockRange(start=98, end=106),
+        expected_rows=8,
+    )
+
+    result = asyncio.run(
+        _session(source).fulfill(
+            CorpusSplitIntent(
+                kind=CorpusSplitKind.EVALUATION,
+                output_dir=tmp_path / "evaluation",
+                working_dir=tmp_path / "work",
+                plan=plan,
+            )
+        )
+    )
+
+    assert result.outcome is CorpusSplitOutcome.EXTENDED
+    assert source.partial_ranges == [(98, 100), (104, 106)]
+    assert source.requests == [(98, 100), (104, 106)]
+    assert sorted(path.name for path in result.path.glob("*.parquet")) == [
+        "ethereum__blocks__100_to_101.parquet",
+        "ethereum__blocks__102_to_103.parquet",
+        "ethereum__blocks__104_to_105.parquet",
+        "ethereum__blocks__98_to_99.parquet",
+    ]
+    assert load_block_frame(result.path)["block_number"].to_list() == [
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+    ]
+
+
 def test_evaluation_split_materialization_rebuilds_overlap_outside_window(
     tmp_path,
 ) -> None:

@@ -55,7 +55,7 @@ Loads scan recursively, skip hidden paths, combine chunks, and sort by `block_nu
 
 ## Corpus Assembly
 
-Corpus Assembly has one public Interface: `assemble_corpus()`. It returns a dry-run plan or a committed corpus result. Corpus Capability Planning owns history sizing and refill decisions. Corpus Split Materialization owns history/evaluation dataset reuse, extension, rebuild, validation, and parquet IO. Its internal policy assesses staged and committed split candidates against the active Split Intent, then returns an executable plan for staged reuse, committed reuse, extension, full materialization, or invalid staged rejection. When extending a split, the materialization session computes missing pull ranges and reusable overlap, copies whole reusable parquet chunks, and rewrites only edge or newly pulled ranges.
+Corpus acquisition has two public Interfaces: `acquisition_source_requirements()` for configuring the acquisition Adapter, and `assemble_corpus()` for dry-run planning or committed corpus publication. Corpus Capability Planning owns history sizing and refill decisions. Corpus Split Materialization owns history/evaluation dataset reuse, extension, rebuild, validation, and parquet IO. Its internal policy assesses staged and committed split candidates against the active Split Intent, then returns an executable plan for staged reuse, committed reuse, extension, full materialization, or invalid staged rejection. When extending a split, the materialization session computes missing pull ranges and reusable overlap, copies whole reusable parquet chunks, and rewrites only edge or newly pulled ranges.
 
 | Materialization outcome | Behavior |
 | --- | --- |
