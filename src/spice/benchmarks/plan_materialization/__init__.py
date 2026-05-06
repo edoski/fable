@@ -1,25 +1,25 @@
 # pyright: strict
 
-"""Benchmark planning public interface."""
+"""Benchmark plan materialization public interface."""
 
 from ._models import (
     BenchmarkDependencyLedger,
-    BenchmarkMaterializedRoot,
     BenchmarkPlanEntry,
     BenchmarkRootKind,
     BenchmarkRootLedger,
+    BenchmarkRootLedgerEntry,
     BenchmarkRootRole,
     BenchmarkSelectionLedger,
 )
-from ._planner import plan_benchmark
+from ._planner import materialize_benchmark_plan
 
 __all__ = [
     "BenchmarkDependencyLedger",
-    "BenchmarkMaterializedRoot",
+    "BenchmarkRootLedgerEntry",
     "BenchmarkPlanEntry",
     "BenchmarkRootKind",
     "BenchmarkRootLedger",
     "BenchmarkRootRole",
     "BenchmarkSelectionLedger",
-    "plan_benchmark",
+    "materialize_benchmark_plan",
 ]

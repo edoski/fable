@@ -7,10 +7,10 @@ from types import SimpleNamespace
 import yaml
 from typer.testing import CliRunner
 
-from spice.benchmarks.planning import (
+from spice.benchmarks.plan_materialization import (
     BenchmarkDependencyLedger,
-    BenchmarkMaterializedRoot,
     BenchmarkRootLedger,
+    BenchmarkRootLedgerEntry,
     BenchmarkSelectionLedger,
 )
 from spice.benchmarks.result_index import upsert_benchmark_collection_snapshot
@@ -19,7 +19,11 @@ from spice.benchmarks.result_records import (
     BenchmarkResultRecord,
     MetricValueRecord,
 )
-from spice.benchmarks.runs import create_benchmark_run_dir, write_collection_snapshot
+from spice.benchmarks.runs import (
+    create_benchmark_run_dir,
+    load_benchmark_run,
+    write_collection_snapshot,
+)
 from spice.cli.app import app
 from spice.config import WorkflowTask
 from spice.core.errors import SpiceOperatorError
@@ -48,7 +52,7 @@ def _benchmark_record() -> BenchmarkResultRecord:
         selection=BenchmarkSelectionLedger(surface="current_row_fee_dynamics"),
         root_ledger=BenchmarkRootLedger(
             entries=(
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id="case.evaluate",
                     workflow=WorkflowTask.EVALUATE,
                     role="consumed",
@@ -56,7 +60,7 @@ def _benchmark_record() -> BenchmarkResultRecord:
                     root_id="dataset-1",
                     dataset_id="dataset-1",
                 ),
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id="case.evaluate",
                     workflow=WorkflowTask.EVALUATE,
                     role="consumed",
@@ -66,7 +70,7 @@ def _benchmark_record() -> BenchmarkResultRecord:
                     dataset_id="dataset-1",
                     source_run_id="case.train",
                 ),
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id="case.evaluate",
                     workflow=WorkflowTask.EVALUATE,
                     role="source",
@@ -177,11 +181,11 @@ def test_benchmark_plan_creates_run_dir(isolate_conf_root, tmp_path: Path) -> No
     payload = json.loads(result.stdout)
     run_dir = Path(payload["run_dir"])
     assert payload["entries"] == 1
-    assert (run_dir / "metadata.json").is_file()
-    rows = [json.loads(line) for line in (run_dir / "plan.jsonl").read_text().splitlines()]
-    assert rows[0]["run_id"] == "single.train"
-    assert rows[0]["workflow"] == "train"
-    assert rows[0]["config"]["artifact"]["variant"] == "baseline"
+    run = load_benchmark_run(run_dir)
+    assert run.metadata.benchmark == "plan_case"
+    assert run.plan[0].run_id == "single.train"
+    assert run.plan[0].workflow is WorkflowTask.TRAIN
+    assert run.plan[0].config.artifact.variant.value == "baseline"
 
 
 def test_benchmark_submit_uses_persisted_plan(
@@ -273,8 +277,9 @@ def test_benchmark_submit_uses_persisted_plan(
     assert rows[0]["execution_ref"] == "slurm:100"
     assert rows[1]["dependency"] == "afterok:100"
     assert Path(rows[0]["run_dir"]) == run_dir
-    assert (run_dir / "plan.jsonl").is_file()
-    assert (run_dir / "submission.jsonl").is_file()
+    run = load_benchmark_run(run_dir)
+    assert len(run.plan) == 2
+    assert sorted(run.submissions) == ["single.evaluate", "single.train"]
 
 
 def test_benchmark_collect_reports_success(monkeypatch, tmp_path: Path) -> None:

@@ -28,7 +28,7 @@ from ._roots import BenchmarkPlanLedgerMaterializer
 from ._selection import materialize_selection_ledger
 
 
-def plan_benchmark(name: str) -> list[BenchmarkPlanEntry]:
+def materialize_benchmark_plan(name: str) -> list[BenchmarkPlanEntry]:
     spec = _load_benchmark_spec(name)
     return _materialize_benchmark_spec(name, spec)
 

@@ -1,22 +1,22 @@
 # pyright: strict
 
-"""Storage adapter for benchmark root planning."""
+"""Storage fact access for benchmark plan materialization."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..config.workflow_snapshots import ResolvedWorkflowConfig
-from ..core.errors import ConfigResolutionError, SelectorResolutionError
-from .catalog.index import resolve_study_record
-from .root_identity import (
+from ...config.workflow_snapshots import ResolvedWorkflowConfig
+from ...core.errors import ConfigResolutionError, SelectorResolutionError
+from ...storage.catalog.index import resolve_study_record
+from ...storage.root_identity import (
     ConsumedRootFacts,
     ProducedRootFacts,
     consumed_root_facts,
     produced_root_facts,
 )
-from .selectors import StudySelector
+from ...storage.selectors import StudySelector
 
 
 @dataclass(frozen=True, slots=True)

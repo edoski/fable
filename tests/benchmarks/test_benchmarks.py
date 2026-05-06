@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from spice.benchmarks.planning import plan_benchmark
+from spice.benchmarks.plan_materialization import materialize_benchmark_plan
 from spice.config.models import EvaluateConfig, TuneConfig, WorkflowTask
 from spice.core.errors import ConfigResolutionError
 
@@ -89,7 +89,7 @@ def test_benchmark_dimensions_expand_tuned_train_and_artifact_from(
         },
     )
 
-    plan = plan_benchmark("dimension_case")
+    plan = materialize_benchmark_plan("dimension_case")
 
     assert len(plan) == 12
     train = next(entry for entry in plan if entry.step_id == "train_tuned")
@@ -108,7 +108,7 @@ def test_benchmark_dimensions_expand_tuned_train_and_artifact_from(
         and "problems-current_row_nominal__lookback_seconds-600__sample_count-1000000"
         in entry.run_id
     )
-    assert train.config.model_dump()["study_id"]
+    assert train.config.study_id is not None
     assert isinstance(grid_tune.config, TuneConfig)
     assert grid_tune.config.problem.id == (
         "current_row_nominal__lookback_seconds-600__sample_count-1000000"
@@ -136,7 +136,7 @@ def test_packaged_benchmark_yamls_keep_expected_shapes() -> None:
     }
 
     for name, expected_count in expected_counts.items():
-        plan = plan_benchmark(name)
+        plan = materialize_benchmark_plan(name)
         evaluate_entries = [
             entry for entry in plan if entry.workflow is WorkflowTask.EVALUATE
         ]
@@ -153,7 +153,7 @@ def test_packaged_benchmark_yamls_keep_expected_shapes() -> None:
 
 
 def test_evaluator_objective_grid_keeps_cross_evaluation_bindings() -> None:
-    plan = plan_benchmark("evaluator_objective_grid")
+    plan = materialize_benchmark_plan("evaluator_objective_grid")
 
     poisson_full = next(
         entry
@@ -217,7 +217,7 @@ def test_benchmark_rejects_step_local_evaluate_training_fields(isolate_conf_root
     )
 
     with pytest.raises(ConfigResolutionError, match="does not support fields: variant"):
-        plan_benchmark("bad_evaluate")
+        materialize_benchmark_plan("bad_evaluate")
 
 
 def test_benchmark_rejects_invalid_problem_grid(isolate_conf_root) -> None:
@@ -247,7 +247,7 @@ def test_benchmark_rejects_invalid_problem_grid(isolate_conf_root) -> None:
     )
 
     with pytest.raises(ConfigResolutionError, match="values must be positive"):
-        plan_benchmark("invalid_grid")
+        materialize_benchmark_plan("invalid_grid")
 
 
 def test_benchmark_rejects_step_dependency_cycles(isolate_conf_root) -> None:
@@ -270,4 +270,4 @@ def test_benchmark_rejects_step_dependency_cycles(isolate_conf_root) -> None:
     )
 
     with pytest.raises(ConfigResolutionError, match="future step"):
-        plan_benchmark("cycle")
+        materialize_benchmark_plan("cycle")

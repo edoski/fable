@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from ..config.models import WorkflowTask
 from ..core.errors import SpiceOperatorError
 from ..modeling.results import LoadedEvaluationSummary, LoadedTrainingSummary
-from .planning import (
+from .plan_materialization import (
     BenchmarkDependencyLedger,
     BenchmarkPlanEntry,
     BenchmarkRootLedger,

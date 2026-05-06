@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 
 from spice.benchmarks.ledger import export_results_csv
-from spice.benchmarks.planning import (
+from spice.benchmarks.plan_materialization import (
     BenchmarkDependencyLedger,
-    BenchmarkMaterializedRoot,
     BenchmarkRootLedger,
+    BenchmarkRootLedgerEntry,
     BenchmarkSelectionLedger,
 )
 from spice.benchmarks.result_index import (
@@ -49,7 +49,7 @@ def _record(
         selection=BenchmarkSelectionLedger(surface="current_row_fee_dynamics"),
         root_ledger=BenchmarkRootLedger(
             entries=(
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id=run_id,
                     workflow=WorkflowTask.EVALUATE,
                     role="consumed",
@@ -57,7 +57,7 @@ def _record(
                     root_id="evaluation-dataset-1",
                     dataset_id="evaluation-dataset-1",
                 ),
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id=run_id,
                     workflow=WorkflowTask.EVALUATE,
                     role="consumed",
@@ -67,7 +67,7 @@ def _record(
                     dataset_id="evaluation-dataset-1",
                     source_run_id="case.train",
                 ),
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id=run_id,
                     workflow=WorkflowTask.EVALUATE,
                     role="source",

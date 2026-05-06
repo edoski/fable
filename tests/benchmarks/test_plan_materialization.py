@@ -5,11 +5,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from spice.benchmarks.planning import plan_benchmark
+from spice.benchmarks.plan_materialization import materialize_benchmark_plan
 from spice.config import EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from spice.core.errors import ConfigResolutionError
-from spice.storage.catalog.records import CatalogStudyRecord
 from spice.storage.catalog.index import upsert_catalog_record
+from spice.storage.catalog.records import CatalogStudyRecord
 from spice.storage.engine import state_db_path
 from spice.storage.root_identity import produced_artifact_id, produced_study_id
 
@@ -23,10 +23,10 @@ def _materialize(isolate_conf_root, payload: dict[str, object]):
         yaml.safe_dump(payload, sort_keys=False),
         encoding="utf-8",
     )
-    return plan_benchmark("materialization_case")
+    return materialize_benchmark_plan("materialization_case")
 
 
-def test_materialization_injects_study_id_for_tuned_train_dependency(
+def test_plan_materialization_injects_study_id_for_tuned_train_dependency(
     isolate_conf_root,
 ) -> None:
     entries = _materialize(
@@ -66,7 +66,7 @@ def test_materialization_injects_study_id_for_tuned_train_dependency(
     assert train.selection.study == "case_study"
 
 
-def test_materialization_rejects_tuned_train_without_study_source(
+def test_plan_materialization_rejects_tuned_train_without_study_source(
     isolate_conf_root,
 ) -> None:
     with pytest.raises(ConfigResolutionError, match="tune dependency or explicit study_id"):
@@ -93,7 +93,7 @@ def test_materialization_rejects_tuned_train_without_study_source(
         )
 
 
-def test_materialization_injects_artifact_and_dataset_for_artifact_from(
+def test_plan_materialization_injects_artifact_and_dataset_for_artifact_from(
     isolate_conf_root,
 ) -> None:
     entries = _materialize(
@@ -141,7 +141,7 @@ def test_materialization_injects_artifact_and_dataset_for_artifact_from(
     assert evaluate.root_ledger.artifact_source_dataset_id() == ETH_DATASET_ID
 
 
-def test_materialization_preserves_explicit_evaluate_dataset_id_with_artifact_from(
+def test_plan_materialization_preserves_explicit_evaluate_dataset_id_with_artifact_from(
     isolate_conf_root,
 ) -> None:
     evaluate_dataset_id = "cor_cross_corpus_same_chain"
@@ -192,7 +192,7 @@ def test_materialization_preserves_explicit_evaluate_dataset_id_with_artifact_fr
     assert evaluate.root_ledger.artifact_source_dataset_id() == ETH_DATASET_ID
 
 
-def test_materialization_uses_catalog_dataset_for_explicit_tuned_study(
+def test_plan_materialization_uses_catalog_dataset_for_explicit_tuned_study(
     tmp_path: Path,
     isolate_conf_root,
 ) -> None:
@@ -258,7 +258,7 @@ def test_materialization_uses_catalog_dataset_for_explicit_tuned_study(
     )
 
 
-def test_materialization_preserves_selection_ledger_context(
+def test_plan_materialization_preserves_selection_ledger_context(
     isolate_conf_root,
 ) -> None:
     entries = _materialize(

@@ -10,7 +10,7 @@ from .result_index import (  # noqa: E402
     rebuild_benchmark_result_index,
 )
 from .submission import (  # noqa: E402
-    plan_benchmark_run,
+    materialize_benchmark_plan_run,
     submit_benchmark_run,
 )
 
@@ -19,7 +19,7 @@ __all__ = [
     "benchmark_result_index_counts",
     "collect_benchmark_run",
     "list_benchmark_results",
-    "plan_benchmark_run",
+    "materialize_benchmark_plan_run",
     "rebuild_benchmark_result_index",
     "submit_benchmark_run",
 ]

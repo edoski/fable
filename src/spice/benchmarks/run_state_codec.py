@@ -17,7 +17,7 @@ from ..config.workflow_snapshots import (
     workflow_config_snapshot_payload,
 )
 from ..core.errors import SpiceOperatorError
-from .planning import (
+from .plan_materialization import (
     BenchmarkDependencyLedger,
     BenchmarkPlanEntry,
     BenchmarkRootLedger,

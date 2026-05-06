@@ -9,7 +9,7 @@ from pathlib import Path
 
 from ..core.errors import SpiceOperatorError
 from ..execution.session import ExecutionSession, open_execution_session
-from .planning import BenchmarkPlanEntry, plan_benchmark
+from .plan_materialization import BenchmarkPlanEntry, materialize_benchmark_plan
 from .runs import (
     BenchmarkSubmissionRecord,
     append_submission_jsonl,
@@ -33,13 +33,13 @@ class SubmittedBenchmarkWorkflow:
     run_dir: Path
 
 
-def plan_benchmark_run(
+def materialize_benchmark_plan_run(
     name: str,
     *,
     target: str,
     runs_root: Path,
 ) -> PlannedBenchmarkRun:
-    entries = plan_benchmark(name)
+    entries = materialize_benchmark_plan(name)
     run_dir = create_benchmark_run_dir(name, target=target, runs_root=runs_root)
     write_plan_jsonl(run_dir, entries)
     return PlannedBenchmarkRun(run_dir=run_dir, entry_count=len(entries))

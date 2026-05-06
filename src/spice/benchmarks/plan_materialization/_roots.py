@@ -19,7 +19,7 @@ from ._models import (
     BenchmarkDependencyLedger,
     BenchmarkRootLedger,
 )
-from ._root_policy import BenchmarkRootPolicy
+from ._root_ledger import BenchmarkRootLedgerBuilder
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +33,7 @@ class BenchmarkPlanLedgers:
 @dataclass(slots=True)
 class BenchmarkPlanLedgerMaterializer:
     dependency_resolver: BenchmarkDependencyResolver
-    root_policy: BenchmarkRootPolicy
+    root_ledger_builder: BenchmarkRootLedgerBuilder
 
     @classmethod
     def create(
@@ -49,7 +49,7 @@ class BenchmarkPlanLedgerMaterializer:
                 run_ids,
                 dependency_plan=dependency_plan,
             ),
-            root_policy=BenchmarkRootPolicy.create(),
+            root_ledger_builder=BenchmarkRootLedgerBuilder.create(),
         )
 
     def materialize(
@@ -61,18 +61,18 @@ class BenchmarkPlanLedgerMaterializer:
         resolve_config: Callable[[WorkflowTask, WorkflowSelection], ResolvedWorkflowConfig],
     ) -> BenchmarkPlanLedgers:
         dependencies = self.dependency_resolver.resolve(seed)
-        prepared_roots = self.root_policy.prepare_selection(
+        prepared_roots = self.root_ledger_builder.prepare_selection(
             workflow_selection,
             dependencies,
         )
         config = resolve_config(seed.workflow, prepared_roots.selection)
-        root_ledger = self.root_policy.finalize_ledger(
+        root_ledger = self.root_ledger_builder.finalize_ledger(
             run_id=run_id,
             workflow=seed.workflow,
             config=config,
             prepared=prepared_roots,
         )
-        self.root_policy.record_ledger(root_ledger)
+        self.root_ledger_builder.record_ledger(root_ledger)
         return BenchmarkPlanLedgers(
             dependencies=dependencies,
             selection=prepared_roots.selection,

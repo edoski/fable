@@ -46,7 +46,7 @@ class BenchmarkSelectionLedger(ConfigModel):
     storage_root: Path | None = None
 
 
-class BenchmarkMaterializedRoot(ConfigModel):
+class BenchmarkRootLedgerEntry(ConfigModel):
     run_id: str
     workflow: WorkflowTask
     role: BenchmarkRootRole
@@ -59,7 +59,7 @@ class BenchmarkMaterializedRoot(ConfigModel):
 
 
 class BenchmarkRootLedger(ConfigModel):
-    entries: tuple[BenchmarkMaterializedRoot, ...] = ()
+    entries: tuple[BenchmarkRootLedgerEntry, ...] = ()
 
     def root_id(
         self,

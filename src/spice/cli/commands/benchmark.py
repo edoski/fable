@@ -34,9 +34,9 @@ def benchmark_plan_command(
         typer.Option("--runs-root", help="Benchmark run root directory."),
     ] = Path("outputs") / "benchmarks" / "runs",
 ) -> None:
-    from ...benchmarks.submission import plan_benchmark_run
+    from ...benchmarks.submission import materialize_benchmark_plan_run
 
-    planned = plan_benchmark_run(name, target=target, runs_root=runs_root)
+    planned = materialize_benchmark_plan_run(name, target=target, runs_root=runs_root)
     _echo_json({"run_dir": str(planned.run_dir), "entries": planned.entry_count})
 
 

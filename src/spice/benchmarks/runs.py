@@ -10,7 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from ..core.validation import validate_path_segment
-from .planning import BenchmarkPlanEntry
+from .plan_materialization import BenchmarkPlanEntry
 from .run_state_codec import (
     BenchmarkRunMetadata,
     BenchmarkSubmissionRecord,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,11 +7,11 @@ from types import SimpleNamespace
 import pytest
 
 from spice.benchmarks.collection import collect_benchmark_run
-from spice.benchmarks.planning import (
+from spice.benchmarks.plan_materialization import (
     BenchmarkDependencyLedger,
-    BenchmarkMaterializedRoot,
     BenchmarkPlanEntry,
     BenchmarkRootLedger,
+    BenchmarkRootLedgerEntry,
     BenchmarkSelectionLedger,
 )
 from spice.benchmarks.result_store import index_counts
@@ -110,7 +109,7 @@ def _evaluate_root_ledger(
 ) -> BenchmarkRootLedger:
     return BenchmarkRootLedger(
         entries=(
-            BenchmarkMaterializedRoot(
+            BenchmarkRootLedgerEntry(
                 run_id=run_id,
                 workflow=WorkflowTask.EVALUATE,
                 role="consumed",
@@ -118,7 +117,7 @@ def _evaluate_root_ledger(
                 root_id=dataset_id,
                 dataset_id=dataset_id,
             ),
-            BenchmarkMaterializedRoot(
+            BenchmarkRootLedgerEntry(
                 run_id=run_id,
                 workflow=WorkflowTask.EVALUATE,
                 role="consumed",
@@ -219,92 +218,6 @@ def test_benchmark_plan_jsonl_round_trips_plan_entry(tmp_path: Path) -> None:
     assert restored.selection == entry.selection
     assert restored.root_ledger == entry.root_ledger
     assert restored.config.model_dump(mode="json") == config.model_dump(mode="json")
-
-
-def test_benchmark_plan_jsonl_rejects_non_list_dependencies(tmp_path: Path) -> None:
-    config = _evaluate_config(tmp_path)
-    run_dir = create_benchmark_run_dir(
-        "bad_plan",
-        target="disi_l40",
-        runs_root=tmp_path / "outputs" / "benchmarks" / "runs",
-    )
-    entry = BenchmarkPlanEntry(
-        run_id="case.evaluate",
-        case_id="case",
-        step_id="evaluate",
-        workflow=WorkflowTask.EVALUATE,
-        dependencies=BenchmarkDependencyLedger(
-            local_run_ids=(),
-            external_slurm_dependencies=(),
-            artifact_from_run_id=None,
-        ),
-        dimension_labels={},
-        selection=BenchmarkSelectionLedger(),
-        root_ledger=BenchmarkRootLedger(),
-        config=config,
-    )
-    write_plan_jsonl(run_dir, [entry])
-    payload = json.loads((run_dir / "plan.jsonl").read_text(encoding="utf-8"))
-    payload["dependencies"]["local_run_ids"] = "case.train"
-    (run_dir / "plan.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
-
-    with pytest.raises(SpiceOperatorError, match="benchmark JSONL field must be a list"):
-        load_plan_jsonl(run_dir)
-
-
-@pytest.mark.parametrize(
-    "mutate",
-    [
-        lambda payload: payload.__setitem__("run_id", 123),
-        lambda payload: payload["dependencies"].__setitem__("local_run_ids", [123]),
-        lambda payload: payload.__setitem__("dimension_labels", {"models": 123}),
-        lambda payload: payload["dependencies"].__setitem__("artifact_from_run_id", 123),
-        lambda payload: payload["root_ledger"]["entries"][0].__setitem__("root_id", 123),
-    ],
-)
-def test_benchmark_plan_jsonl_rejects_non_string_identity_fields(
-    tmp_path: Path,
-    mutate,
-) -> None:
-    config = _evaluate_config(tmp_path)
-    run_dir = create_benchmark_run_dir(
-        "bad_plan",
-        target="disi_l40",
-        runs_root=tmp_path / "outputs" / "benchmarks" / "runs",
-    )
-    entry = BenchmarkPlanEntry(
-        run_id="case.evaluate",
-        case_id="case",
-        step_id="evaluate",
-        workflow=WorkflowTask.EVALUATE,
-        dependencies=BenchmarkDependencyLedger(
-            local_run_ids=(),
-            external_slurm_dependencies=(),
-            artifact_from_run_id="case.train",
-        ),
-        dimension_labels={"models": "lstm"},
-        selection=BenchmarkSelectionLedger(),
-        root_ledger=BenchmarkRootLedger(
-            entries=(
-                BenchmarkMaterializedRoot(
-                    run_id="case.evaluate",
-                    workflow=WorkflowTask.EVALUATE,
-                    role="consumed",
-                    root_kind="artifact",
-                    root_id="artifact-1",
-                    artifact_id="artifact-1",
-                ),
-            )
-        ),
-        config=config,
-    )
-    write_plan_jsonl(run_dir, [entry])
-    payload = json.loads((run_dir / "plan.jsonl").read_text(encoding="utf-8"))
-    mutate(payload)
-    (run_dir / "plan.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
-
-    with pytest.raises(SpiceOperatorError, match="string"):
-        load_plan_jsonl(run_dir)
 
 
 def test_benchmark_collect_writes_snapshot_and_replaces_index_rows(

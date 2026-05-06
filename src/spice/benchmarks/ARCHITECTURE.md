@@ -30,22 +30,22 @@ collect all expected evaluate results -> collection.json
 results.sqlite projection -> CSV export/query
 ```
 
-**Benchmark Plan Materialization** expands dimensions, asks the benchmark root policy to normalize dependency-derived root selection, calls normal workflow resolution, and produces durable plan entries with resolved workflow snapshots. Inline problem grids produce inline `ProblemSpec` values during materialization; the selection ledger stores the selected problem id, while the resolved workflow config stores the full executable problem.
+**Benchmark Plan Materialization** expands dimensions, matches dependencies, normalizes dependency-derived root selection, calls normal workflow resolution, asks storage for root facts when catalog fallback is needed, and produces durable plan entries with resolved workflow snapshots. Inline problem grids produce inline `ProblemSpec` values during materialization; the selection ledger stores the selected problem id, while the resolved workflow config stores the full executable problem.
 
-The public planning seam is `benchmarks.planning`. Its private internals own case expansion, dependency matching, dependency-derived root selection, root ledger finalization, and selection ledger materialization. Storage is only an adapter for resolved root facts and catalog fallback needed by benchmark root policy. Callers use `plan_benchmark()` and the planning models exported from that package; they do not import planning internals.
+The public plan materialization seam is `benchmarks.plan_materialization`. Its private internals own case expansion, dependency matching, dependency-derived root selection, root ledger finalization, and selection ledger materialization. Storage access is an internal adapter for resolved root facts and catalog fallback. Callers use `materialize_benchmark_plan()` and the durable models exported from that package; they do not import materialization internals.
 
 ## Root Ledger
 
-The root ledger is benchmark audit state, not storage catalog state. Each plan entry stores typed materialized root entries with `run_id`, workflow, role, root kind, root id, optional source run id, and root-specific ids. Roles are `consumed`, `produced`, and `source`; root kinds are `dataset`, `study`, and `artifact`.
+The root ledger is benchmark audit state, not storage catalog state. Each plan entry stores typed root ledger entries with `run_id`, workflow, role, root kind, root id, optional source run id, and root-specific ids. Roles are `consumed`, `produced`, and `source`; root kinds are `dataset`, `study`, and `artifact`.
 
-Benchmark root policy owns the required order: prepare dependency-derived selection, resolve the workflow config, finalize the root ledger from resolved config identity, then record produced roots for later dependent steps. Tuned train steps can consume a study produced by a prior tune step. Evaluate steps can consume an artifact produced by a prior train step, while separately recording the artifact-source dataset.
+Benchmark Plan Materialization owns the required order: prepare dependency-derived selection, resolve the workflow config, finalize the root ledger from resolved config identity, then record produced roots for later dependent steps. Tuned train steps can consume a study produced by a prior tune step. Evaluate steps can consume an artifact produced by a prior train step, while separately recording the artifact-source dataset.
 
 ## Module Map
 
 ```text
 benchmarks/
   schema.py      benchmark YAML schema
-  planning/      public planning interface plus private expansion/dependency/root/selection internals
+  plan_materialization/  public plan materialization interface plus private internals
   result_records.py  collection snapshot and result records
   result_schema.py   SQLite result projection schema
   result_store.py    low-level SQLite result projection

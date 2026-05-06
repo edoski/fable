@@ -9,11 +9,11 @@ from spice.benchmarks.collection_resolver import (
     benchmark_collection_selection,
     resolve_benchmark_evaluation,
 )
-from spice.benchmarks.planning import (
+from spice.benchmarks.plan_materialization import (
     BenchmarkDependencyLedger,
-    BenchmarkMaterializedRoot,
     BenchmarkPlanEntry,
     BenchmarkRootLedger,
+    BenchmarkRootLedgerEntry,
     BenchmarkSelectionLedger,
 )
 from spice.benchmarks.runs import BenchmarkSubmissionRecord
@@ -55,7 +55,7 @@ def _entry(
 ) -> BenchmarkPlanEntry:
     config = _evaluate_config(Path("/tmp/spice-test")) if config is None else config
     root_entries = [
-        BenchmarkMaterializedRoot(
+        BenchmarkRootLedgerEntry(
             run_id="case.evaluate",
             workflow=WorkflowTask.EVALUATE,
             role="consumed",
@@ -63,7 +63,7 @@ def _entry(
             root_id=config.dataset_id,
             dataset_id=config.dataset_id,
         ),
-        BenchmarkMaterializedRoot(
+        BenchmarkRootLedgerEntry(
             run_id="case.evaluate",
             workflow=WorkflowTask.EVALUATE,
             role="consumed",
@@ -75,7 +75,7 @@ def _entry(
     ]
     if artifact_source_dataset_id is not None:
         root_entries.append(
-            BenchmarkMaterializedRoot(
+            BenchmarkRootLedgerEntry(
                 run_id="case.evaluate",
                 workflow=WorkflowTask.EVALUATE,
                 role="source",
@@ -332,7 +332,7 @@ def test_collection_selection_rejects_root_ledger_mismatch(tmp_path: Path) -> No
     entry = _entry(config)
     bad_ledger = BenchmarkRootLedger(
         entries=(
-            BenchmarkMaterializedRoot(
+            BenchmarkRootLedgerEntry(
                 run_id="case.evaluate",
                 workflow=WorkflowTask.EVALUATE,
                 role="consumed",

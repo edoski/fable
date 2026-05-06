@@ -14,13 +14,13 @@ from ...config.selections import (
 )
 from ...config.workflow_snapshots import ResolvedWorkflowConfig
 from ...core.errors import ConfigResolutionError
-from ...storage.benchmark_roots import BenchmarkRootStorageAdapter
 from ._models import (
     BenchmarkDependencyLedger,
-    BenchmarkMaterializedRoot,
     BenchmarkRootKind,
     BenchmarkRootLedger,
+    BenchmarkRootLedgerEntry,
 )
+from ._storage_facts import BenchmarkRootStorageAdapter
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +38,7 @@ class PreparedBenchmarkRootSelection:
 
 @dataclass(slots=True)
 class BenchmarkProducedRootIndex:
-    root_entries: list[BenchmarkMaterializedRoot]
+    root_entries: list[BenchmarkRootLedgerEntry]
 
     @classmethod
     def create(cls) -> BenchmarkProducedRootIndex:
@@ -81,7 +81,7 @@ class BenchmarkProducedRootIndex:
         run_id: str,
         *,
         root_kind: BenchmarkRootKind,
-    ) -> BenchmarkMaterializedRoot | None:
+    ) -> BenchmarkRootLedgerEntry | None:
         matches = [
             entry
             for entry in self.root_entries
@@ -95,12 +95,12 @@ class BenchmarkProducedRootIndex:
 
 
 @dataclass(slots=True)
-class BenchmarkRootPolicy:
+class BenchmarkRootLedgerBuilder:
     produced_roots: BenchmarkProducedRootIndex
     storage: BenchmarkRootStorageAdapter
 
     @classmethod
-    def create(cls) -> BenchmarkRootPolicy:
+    def create(cls) -> BenchmarkRootLedgerBuilder:
         return cls(
             produced_roots=BenchmarkProducedRootIndex.create(),
             storage=BenchmarkRootStorageAdapter(),
@@ -162,10 +162,10 @@ class BenchmarkRootPolicy:
             self._train_dataset_id(config) if isinstance(config, TrainConfig) else None
         )
         produced = self.storage.produced_roots(config, dataset_id=train_dataset_id)
-        entries: list[BenchmarkMaterializedRoot] = []
+        entries: list[BenchmarkRootLedgerEntry] = []
         if consumed.dataset_id is not None:
             entries.append(
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id=run_id,
                     workflow=workflow,
                     role="consumed",
@@ -176,7 +176,7 @@ class BenchmarkRootPolicy:
             )
         if consumed.study_id is not None:
             entries.append(
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id=run_id,
                     workflow=workflow,
                     role="consumed",
@@ -188,7 +188,7 @@ class BenchmarkRootPolicy:
             )
         if consumed.artifact_id is not None:
             entries.append(
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id=run_id,
                     workflow=workflow,
                     role="consumed",
@@ -201,7 +201,7 @@ class BenchmarkRootPolicy:
             )
         if produced.study_id is not None:
             entries.append(
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id=run_id,
                     workflow=workflow,
                     role="produced",
@@ -213,7 +213,7 @@ class BenchmarkRootPolicy:
             )
         if produced.artifact_id is not None:
             entries.append(
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id=run_id,
                     workflow=workflow,
                     role="produced",
@@ -225,7 +225,7 @@ class BenchmarkRootPolicy:
             )
         if prepared.artifact_source_dataset_id is not None:
             entries.append(
-                BenchmarkMaterializedRoot(
+                BenchmarkRootLedgerEntry(
                     run_id=run_id,
                     workflow=workflow,
                     role="source",

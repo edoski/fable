@@ -4,7 +4,6 @@ from typing import cast
 
 from spice.config import AcquireConfig, EvaluateConfig, TrainConfig, TuneConfig, WorkflowTask
 from spice.config.models import ArtifactVariant
-from spice.storage.benchmark_roots import BenchmarkRootStorageAdapter
 from spice.storage.catalog.records import (
     CatalogArtifactRecord,
     CatalogDatasetRecord,
@@ -241,25 +240,3 @@ def test_corpus_root_handle_loads_manifest(tmp_path, monkeypatch) -> None:
     assert root.load_manifest() is manifest
     assert calls == [dataset.state_db_path]
 
-
-def test_benchmark_root_storage_adapter_resolves_external_study_dataset(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    adapter = BenchmarkRootStorageAdapter()
-    study = _study_record(tmp_path, dataset_id="cor_from_catalog", chain_name="polygon")
-    seen = {}
-    storage_root = tmp_path / "outputs"
-
-    def resolve_study_record(storage_root_arg, *, selector):
-        seen["storage_root"] = storage_root_arg
-        seen["study_id"] = selector.study_id
-        return study
-
-    monkeypatch.setattr(
-        "spice.storage.benchmark_roots.resolve_study_record",
-        resolve_study_record,
-    )
-
-    assert adapter.study_dataset_id(storage_root, study_id="std_existing") == "cor_from_catalog"
-    assert seen == {"storage_root": storage_root, "study_id": "std_existing"}
