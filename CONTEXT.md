@@ -13,8 +13,8 @@ Unresolved workflow intent: a producer-root Surface selection with optional over
 _Avoid_: request
 
 **Root Consumer Selection**:
-Explicit existing-root id intent for a workflow or action that reads an existing corpus, study, or artifact.
-_Avoid_: config echo, fuzzy selector
+Config/workflow-level exact existing-root intent for a workflow or action that reads a corpus, study, or artifact. It names root ids and runtime controls before storage lookup; it is not a catalog query and does not reproduce producer config identity.
+_Avoid_: config echo, fuzzy selector, storage selector
 
 **Storage Operator Outcome**:
 Renderable result produced by storage-owned show/delete command logic for an existing persisted root.
@@ -52,12 +52,16 @@ _Avoid_: YAML helper, generic config loader
 The typed temporal problem definition selected by a workflow.
 _Avoid_: problem config, problem preset
 
+**Temporal Problem Compiler**:
+Temporal-owned module selected by `problem.compiler.id` that lowers a Problem Spec plus feature and execution-policy contracts into a Compiled Problem Contract. Compiler adapters own temporal geometry, feature prerequisites, capability-store and delay-store construction, and runtime metadata codecs; they do not own action masks, prediction targets, model architecture, or evaluator metrics.
+_Avoid_: benchmark compiler, materialization helper, problem helper
+
 **Feature Catalog**:
 Registered feature implementation selected by `features.id`. It owns source availability, formulas, selectable outputs, prerequisites, and fingerprint sources for one feature set.
 _Avoid_: feature allow-list, output slice
 
 **Temporal Capability**:
-Typed value carried by trained artifacts that bundles the problem compiler runtime metadata with the artifact action width and maximum supported delay.
+Typed value carried by trained artifacts that bundles Temporal Problem Compiler runtime metadata with the artifact action width and maximum supported delay.
 _Avoid_: max slots, compiler metadata payload
 
 **Tuning Execution**:
@@ -93,8 +97,8 @@ Benchmark-owned scalar root facts on a Benchmark Plan Entry for caller-facing co
 _Avoid_: root ledger helper methods, config echo
 
 **Benchmark Plan Materialization**:
-Benchmark module that turns Benchmark Specs, Cases, and Steps into Benchmark Plan Entries by expanding dimensions, matching dependencies, applying dependency-derived root selections, resolving Workflow Config snapshots, asking Storage Root Materialization for root facts, and emitting Benchmark Root Facts plus the Benchmark Root Ledger.
-_Avoid_: benchmark compilation helper, id patching
+Benchmark-owned module that turns Benchmark Specs, Cases, and Steps into Benchmark Plan Entries by expanding dimensions, matching dependencies, applying dependency-derived root selections, resolving Workflow Configs, serializing Resolved Workflow Snapshots, asking Storage Root Materialization for root facts, and emitting Benchmark Root Facts plus the Benchmark Root Ledger. This is not temporal compilation.
+_Avoid_: benchmark compilation helper, id patching, generic materialization
 
 **Benchmark Run**:
 One durable benchmark plan with local run-state files for metadata, plan, submission, and collection snapshot.
@@ -125,8 +129,8 @@ Rebuildable SQLite projection over Benchmark Collection Snapshots used for small
 _Avoid_: canonical results database
 
 **Storage Selector**:
-A typed query for one existing catalog record, preferably by exact root id: dataset, study, or artifact.
-_Avoid_: workflow selector
+Storage/catalog query interface for one existing catalog record: dataset, study, or artifact. Workflow consumers should use exact-id selectors derived from Root Consumer Selection; operator commands may use narrowing filters and keep ambiguity handling inside storage.operator.
+_Avoid_: workflow selector, root consumer selection
 
 **Root Handle**:
 Resolved runtime reference to a storage root after catalog lookup or deterministic producer identity. Carries root id/name, chain, root path, state database path, and root-specific identity. Existing-root paths are materialized from storage root plus catalog identity, never trusted from catalog rows. Mutation policy lives in Storage Transactions.
@@ -137,8 +141,8 @@ Root Handle for a not-yet-existing or staged workflow output, derived from Produ
 _Avoid_: workflow paths
 
 **Storage Root Materialization**:
-Storage-owned module that resolves consumed roots through exact Storage Selectors, derives produced root ids and Produced Root Handles from Producer Root Identity, materializes consumed/produced/source scalar root facts, and returns workflow-facing root handles before Workflow Preparation performs domain preflight.
-_Avoid_: workflow root resolution, path derivation helper
+Storage-owned module and seam that turns resolved workflow root identity into workflow-facing root handles and scalar root facts. It resolves consumed roots through Storage Selectors, derives produced root ids and Produced Root Handles from Producer Root Identity, materializes consumed/produced/source Benchmark Root Facts, and returns Root Handles before Workflow Preparation performs domain preflight.
+_Avoid_: workflow root resolution, path derivation helper, generic materialization
 
 **Root Lifecycle**:
 Validation, staging, promotion, partial commit, reindex, and delete behavior for storage roots.
@@ -276,6 +280,7 @@ _Avoid_: execution backend
 - **Resolved Workflow Hydration** loads **Resolved Workflow Snapshots** directly and does not run **Surface** resolution.
 - **Config Group Loading** feeds **Surface** resolution and raw config display/edit paths through separate Interfaces.
 - A **Problem Spec** can be selected by name or supplied inline by benchmark problem grids.
+- A **Temporal Problem Compiler** selected by a **Problem Spec** returns the compiled temporal Interface used for capability-store and delay-store construction.
 - An **Evaluation Config Snapshot** freezes evaluator config provenance for persisted artifact evaluation state without representing the whole evaluate Workflow Config.
 - A **Benchmark** contains one or more **Benchmark Cases**.
 - A **Benchmark Case** contains one or more **Benchmark Steps**.
@@ -285,6 +290,8 @@ _Avoid_: execution backend
 - A **Benchmark Run** records **Benchmark Plan Entries**, submissions, and one **Benchmark Collection Snapshot**.
 - A **Benchmark Collection Snapshot** contains **Benchmark Result Records** for all expected collected evaluate steps after **Evaluation Execution Provenance** matches the submitted execution ref.
 - The **Benchmark Result Index** projects **Benchmark Result Records** for query and CSV export.
+- A **Root Consumer Selection** is workflow/config intent; **Storage Root Materialization** converts it into exact-id **Storage Selectors** for catalog lookup.
+- **Benchmark Plan Materialization** and **Storage Root Materialization** are separate owner-qualified modules, not adapters behind a generic materialization interface.
 - A **Storage Selector** resolves existing persisted roots through the catalog before consumers build paths.
 - A **Root Handle** is the workflow-facing result of resolving a **Storage Selector** or produced-root identity through **Storage Root Materialization**.
 - A **Produced Root Handle** is derived from **Producer Root Identity** and canonical storage layout.
