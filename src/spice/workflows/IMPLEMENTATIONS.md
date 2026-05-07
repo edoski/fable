@@ -1,6 +1,6 @@
 # Concrete Workflows
 
-Workflows orchestrate complete user operations. They do not own model architectures, feature math, storage schema, or evaluator algorithms. Workflow Preparation performs preflight once by calling Storage Root Materialization for root handles and owning active config, training/tuning coverage validation, and artifact inference setup. Runners call owner packages, and Storage Transactions expose handle-shaped commit and mutation boundaries for results.
+Workflows orchestrate complete user operations. They do not own model architectures, feature math, storage schema, or evaluator algorithms. Workflow Preparation performs preflight once by calling Storage Root Materialization for root handles and owning active config, training/tuning coverage validation, and artifact inference setup. `workflows.reporting` owns runner-facing report composition. Runners call owner packages, and Storage Transactions expose handle-shaped commit and mutation boundaries for results.
 
 ## Workflow Map
 

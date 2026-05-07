@@ -11,6 +11,7 @@ from spice.metrics import MetricDescriptor, MetricSet
 from spice.modeling.training_runner import TrainingEpochProgress
 from spice.modeling.tuning_execution import TuningTrialProgress
 from spice.workflows import evaluate as evaluate_workflow
+from spice.workflows import reporting as workflow_reporting
 from spice.workflows import train as train_workflow
 from spice.workflows import tune as tune_workflow
 from tests.root_handle_helpers import (
@@ -154,7 +155,7 @@ def test_evaluate_workflow_uses_prepared_artifact_inference_context(
         lambda _artifact, *, summary: SimpleNamespace(runtime=summary),
     )
     monkeypatch.setattr(
-        evaluate_workflow,
+        workflow_reporting,
         "evaluation_result_fields",
         lambda _summary: [("evaluation", "poisson_replay"), ("events", "2")],
     )
@@ -234,7 +235,7 @@ def test_train_workflow_emits_compact_epoch_output(
         lambda *_args, writer, **_kwargs: SimpleNamespace(result=writer(tmp_path / "stage")),
     )
     monkeypatch.setattr(
-        train_workflow,
+        workflow_reporting,
         "training_result_fields",
         lambda summary, artifact_dir: [("artifact", str(artifact_dir)), ("best_epoch", "1")],
     )
@@ -336,7 +337,7 @@ def test_tune_workflow_emits_per_trial_not_per_epoch_output(
         fake_record_study_root_mutation,
     )
     monkeypatch.setattr(
-        tune_workflow,
+        workflow_reporting,
         "study_result_fields",
         lambda _summary: [
             ("complete", "2"),

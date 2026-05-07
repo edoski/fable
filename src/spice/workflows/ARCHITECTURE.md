@@ -24,13 +24,13 @@ workflow runner
 
 Workflows receive typed configs. They do not resolve remote target defaults. They do not branch on concrete evaluator or prediction implementation ids.
 
-`preparation.py` is the generic preflight seam. It calls Storage Root Materialization for root handles, then keeps tuned active config, training/tuning coverage preflight, and artifact inference context preparation behind the workflow preparation Interface. Runner modules then report progress, call owner packages, and cross explicit storage-owned effect boundaries.
+`preparation.py` is the generic preflight seam. It calls Storage Root Materialization for root handles, then keeps tuned active config, training/tuning coverage preflight, and artifact inference context preparation behind the workflow preparation Interface. `workflows.reporting` owns runner-facing report composition. Runner modules call owner packages, cross explicit storage-owned effect boundaries, and emit workflow events through that reporting module.
 
 ## Acquire
 
 ```text
 AcquireConfig
-  -> prepare produced corpus root
+  -> materialize produced corpus root
   -> report acquisition plan
   -> create block source with corpus-derived source requirements
   -> delegate corpus assembly

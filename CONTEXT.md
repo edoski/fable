@@ -241,11 +241,11 @@ Evaluation-owned module that computes realized, baseline, optimum, and economic 
 _Avoid_: fee accounting, replay accounting
 
 **Temporal Replay Metric Catalog**:
-Evaluation-private catalog of Temporal Replay metric ids, descriptors, event-mean/window aggregation facts, and result field mapping.
+Evaluation-private catalog of Temporal Replay metric ids, descriptors, event-mean/window aggregation facts, metric assembly, and generic result extraction.
 _Avoid_: benchmark metric schema, objective metric registry
 
 **Workflow Command Selection**:
-Operator-edge construction of typed workflow selections from explicit CLI values before config resolution.
+CLI-owned operator-edge construction of typed workflow selections from explicit CLI values before config resolution.
 _Avoid_: CLI request builder
 
 **Benchmark Collection Resolver**:

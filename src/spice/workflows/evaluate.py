@@ -11,39 +11,27 @@ from ..modeling.results import (
     build_evaluation_runtime_summary,
 )
 from ..modeling.scoring import score_evaluation
-from ..modeling.summary import evaluation_result_fields
 from ..storage.transactions import record_artifact_evaluation_state
-from ..storage.workflow_roots import EvaluateWorkflowRoots
 from .preparation import prepare_evaluate
-
-
-def _workflow_facts(
-    config: EvaluateConfig,
-    roots: EvaluateWorkflowRoots,
-) -> list[tuple[str, str]]:
-    facts = [
-        ("dataset", roots.corpus.dataset_name),
-        ("dataset_id", roots.corpus.dataset_id),
-        ("artifact_id", roots.artifact.artifact_id),
-        ("delay", "artifact_max" if config.delay_seconds is None else f"{config.delay_seconds}s"),
-        ("evaluation", config.evaluation.id),
-        ("batch_size", str(config.batch_size)),
-    ]
-    return facts
+from .reporting import (
+    evaluate_workflow_facts,
+    report_evaluate_prepare,
+    report_evaluate_result,
+)
 
 
 def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
     prepared_workflow = prepare_evaluate(config)
     roots = prepared_workflow.roots
     active_reporter = reporter or Reporter()
-    active_reporter.header("evaluate", _workflow_facts(config, roots))
+    active_reporter.header("evaluate", evaluate_workflow_facts(config, roots))
     inference_context = prepared_workflow.inference_context
     prepared = inference_context.prepared
-    active_reporter.milestone(
-        "prepare "
-        f"history_rows={prepared.n_history_rows} "
-        f"evaluation_rows={prepared.n_evaluation_rows} "
-        f"samples={prepared.sample_count}"
+    report_evaluate_prepare(
+        active_reporter,
+        n_history_rows=prepared.n_history_rows,
+        n_evaluation_rows=prepared.n_evaluation_rows,
+        sample_count=prepared.sample_count,
     )
     evaluation = score_evaluation(
         scoring_plan=inference_context.scoring_plan,
@@ -62,7 +50,7 @@ def run(config: EvaluateConfig, *, reporter: Reporter | None = None) -> None:
         roots.artifact,
         summary=runtime_summary,
     )
-    active_reporter.result("evaluate", evaluation_result_fields(summary))
+    report_evaluate_result(active_reporter, summary=summary)
 
 
 def _current_execution_provenance() -> EvaluationExecutionProvenance | None:

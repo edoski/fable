@@ -26,7 +26,7 @@ workflow/service result rendered to stdout
 
 Workflow commands run acquisition locally and submit CUDA workflows to remote execution. Transfer commands call execution transfer services. Config commands call config group APIs.
 
-Workflow command modules construct `AcquireWorkflowSelection`, `TrainWorkflowSelection`, `TuneWorkflowSelection`, or `EvaluateWorkflowSelection` directly from explicit CLI values before running local acquire or handing a resolved workflow config to an **Execution Session**. Config owns fresh resolution from typed Workflow Selection to Workflow Config; the Execution Session serializes resolved snapshots for remote runs.
+`cli.workflow_command_selection` constructs `AcquireWorkflowSelection`, `TrainWorkflowSelection`, `TuneWorkflowSelection`, or `EvaluateWorkflowSelection` from explicit CLI values before commands run local acquire or hand a resolved workflow config to execution submission. Config owns fresh resolution from typed Workflow Selection to Workflow Config; execution serializes resolved snapshots for remote runs.
 
 CLI command registration adapts `SpiceOperatorError` into Typer/Click operator errors at the command seam. Core errors stay plain project exceptions; parse errors remain Typer-owned.
 
@@ -60,7 +60,7 @@ remote train/tune/evaluate:
   may use --target, --dependency, --detach
   do not expose --submit or --storage-root
   remote storage comes from the execution target spec
-  follow logs when ExecutionSession.follow_by_default allows it unless --detach is set
+  execution submission follows logs when the target allows it unless --detach is set
 ```
 
 This matches the CUDA operating model: corpora are acquired locally and pushed, while train, tune, and evaluate execute on the cluster.

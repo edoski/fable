@@ -114,7 +114,7 @@ def test_model_workflow_cli_resolves_and_submits_selection_surface(
             )
 
     monkeypatch.setattr(
-        "spice.cli.commands.workflows.open_execution_session",
+        "spice.execution.submission.open_execution_session",
         lambda _target: FakeSession(),
     )
 
@@ -221,7 +221,7 @@ def test_train_submit_uses_cli_default_remote_target(monkeypatch) -> None:
         captured["target_name"] = target_name
         return FakeSession()
 
-    monkeypatch.setattr("spice.cli.commands.workflows.open_execution_session", fake_open_session)
+    monkeypatch.setattr("spice.execution.submission.open_execution_session", fake_open_session)
 
     result = runner.invoke(
         app,
@@ -285,8 +285,7 @@ def test_train_submit_cli_renders_follow_failure(monkeypatch) -> None:
 
     monkeypatch.setattr(workflow_commands, "resolve_workflow_config", _fake_resolve)
     monkeypatch.setattr(
-        workflow_commands,
-        "open_execution_session",
+        "spice.execution.submission.open_execution_session",
         lambda _target: FakeSession(),
     )
 

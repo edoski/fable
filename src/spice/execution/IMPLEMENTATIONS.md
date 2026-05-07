@@ -34,7 +34,7 @@ An execution target defines:
 
 ## Execution Session
 
-`spice.execution.session` is the target-bound Interface for remote operations. It owns shell quoting, command execution, module execution, rsync, SLURM submission, target follow policy, job following, final-state reads, and remote git commit lookup. A job submission is only the submitted job receipt: workflow task, job id, and log path.
+`spice.execution.session` is the target-bound Interface for remote operations. It owns shell quoting, command execution, module execution, rsync, SLURM submission, target follow policy, job following, final-state reads, and remote git commit lookup. `spice.execution.submission` owns the higher-level direct workflow submit/follow lifecycle. A job submission is only the submitted job receipt: workflow task, job id, and log path.
 
 There is no additional remote-execution session protocol while SSH/SLURM is the only Adapter.
 
@@ -60,7 +60,7 @@ remote_runner evaluate '{...json...}'
 
 ## Log Following
 
-After submit, the CLI follows the remote log when `ExecutionSession.follow_by_default` allows it and `--detach` is absent. The session polls `squeue` while tailing output. When the job leaves the queue, it asks `sacct` for final state. Any final state other than `COMPLETED` is treated as an operator-facing error.
+After direct workflow submit, `execution.submission` follows the remote log when `ExecutionSession.follow_by_default` allows it and `--detach` is absent. The session polls `squeue` while tailing output. When the job leaves the queue, it asks `sacct` for final state. Any final state other than `COMPLETED` is treated as an operator-facing error.
 
 ## Storage Root Rewrite
 

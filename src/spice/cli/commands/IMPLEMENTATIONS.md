@@ -28,7 +28,7 @@ Commands:
 | `tune` | Submit tuning remotely. |
 | `evaluate` | Submit evaluation remotely. |
 
-`train`, `tune`, and `evaluate` support `--dependency`, `--target`, and `--detach`. They do not expose `--submit` or `--storage-root`; remote execution rewrites storage root from the selected target config. The CLI follows submitted logs through `ExecutionSession.follow_by_default` unless `--detach` is set.
+`train`, `tune`, and `evaluate` support `--dependency`, `--target`, and `--detach`. They do not expose `--submit` or `--storage-root`; remote execution rewrites storage root from the selected target config. Execution submission owns the submit/follow/final-state lifecycle; CLI command reporting renders the submission events.
 
 Default remote target is `disi_l40` at the CLI layer.
 

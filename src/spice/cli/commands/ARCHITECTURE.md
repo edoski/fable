@@ -10,7 +10,7 @@ Command modules should translate user language into typed selections or storage 
 
 ## Invariants
 
-Workflow commands construct typed Workflow Selection models and call `resolve_workflow_config()` once. Storage commands map options into storage selectors and render Storage Operator Outcomes. Transfer commands use storage selectors over existing catalog records. Config commands use config group APIs. Command modules may format output, but persistence, match policy, and ML behavior remain elsewhere.
+Workflow commands delegate explicit option values to `cli.workflow_command_selection`, then call `resolve_workflow_config()` once. Storage commands map options into storage selectors and render Storage Operator Outcomes. Transfer commands use storage selectors over existing catalog records. Config commands use config group APIs. Command modules may format output, but persistence, match policy, submission lifecycle, and ML behavior remain elsewhere.
 
 Remote workflow commands and transfer commands share the same remote-target option. The default target is provided by the CLI layer, then passed downstream explicitly.
 

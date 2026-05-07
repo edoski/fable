@@ -4,18 +4,11 @@
 
 from __future__ import annotations
 
-import typer
-
-from ...config import (
-    AcquireWorkflowSelection,
-    EvaluateWorkflowSelection,
-    TrainWorkflowSelection,
-    TuneWorkflowSelection,
-)
+from ...config import TrainWorkflowSelection, TuneWorkflowSelection
 from ...config.resolution import resolve_workflow_config
 from ...config.resolved_workflows import ResolvedWorkflowConfig
-from ...core.errors import SpiceOperatorError
-from ...execution.session import ExecutionSession, open_execution_session
+from ...core.reporting import Reporter
+from ...execution.submission import submit_resolved_workflow
 from ..options import (
     DEFAULT_REMOTE_TARGET,
     RemoteTargetOption,
@@ -46,43 +39,30 @@ from ..options import (
     WorkflowTuningSpaceOption,
     WorkflowVariantOption,
 )
+from ..workflow_command_selection import (
+    acquire_workflow_selection,
+    evaluate_workflow_selection,
+    train_workflow_selection,
+    tune_workflow_selection,
+)
+from ._workflow_reporting import report_workflow_submission_event
 
 
 def _submit_selected_workflow(
     *,
     config: ResolvedWorkflowConfig,
-    session: ExecutionSession,
+    target: str,
     dependency: str | None,
     detach: bool,
 ) -> None:
-    task = config.workflow
-    submission = session.submit_workflow(
-        task,
-        config=config,
+    reporter = Reporter()
+    submit_resolved_workflow(
+        config,
+        target=target,
         dependency=dependency,
+        detach=detach,
+        on_event=lambda event: report_workflow_submission_event(reporter, event),
     )
-    typer.echo(
-        " ".join(
-            [
-                "submit",
-                f"workflow={task.value}",
-                f"job_id={submission.job_id}",
-                f"log={submission.log_path}",
-            ]
-        )
-    )
-    if detach or not session.follow_by_default:
-        return
-    try:
-        state = session.follow_job(submission)
-    except KeyboardInterrupt:
-        typer.echo(f"submit detached job_id={submission.job_id} state=running")
-        return
-    if state is None:
-        return
-    typer.echo(f"submit finished job_id={submission.job_id} state={state}")
-    if state != "COMPLETED":
-        raise SpiceOperatorError(f"Job {submission.job_id} ended with state {state}")
 
 
 def _submit_model_workflow(
@@ -93,10 +73,9 @@ def _submit_model_workflow(
     detach: bool,
 ) -> None:
     config = resolve_workflow_config(selection)
-    session = open_execution_session(target)
     _submit_selected_workflow(
         config=config,
-        session=session,
+        target=target,
         dependency=dependency,
         detach=detach,
     )
@@ -115,7 +94,7 @@ def acquire_command(
 
     acquire.run(
         resolve_workflow_config(
-            AcquireWorkflowSelection(
+            acquire_workflow_selection(
                 surface=surface,
                 chain=chain,
                 problem=problem,
@@ -149,7 +128,7 @@ def train_command(
     detach: WorkflowDetachOption = False,
 ) -> None:
     _submit_model_workflow(
-        selection=TrainWorkflowSelection(
+        selection=train_workflow_selection(
             surface=surface,
             chain=chain,
             problem=problem,
@@ -192,7 +171,7 @@ def tune_command(
     detach: WorkflowDetachOption = False,
 ) -> None:
     _submit_model_workflow(
-        selection=TuneWorkflowSelection(
+        selection=tune_workflow_selection(
             surface=surface,
             chain=chain,
             problem=problem,
@@ -225,7 +204,7 @@ def evaluate_command(
     detach: WorkflowDetachOption = False,
 ) -> None:
     config = resolve_workflow_config(
-        EvaluateWorkflowSelection(
+        evaluate_workflow_selection(
             artifact_id=artifact_id,
             dataset_id=dataset_id,
             evaluation=evaluation,
@@ -233,10 +212,9 @@ def evaluate_command(
             batch_size=batch_size,
         )
     )
-    session = open_execution_session(target)
     _submit_selected_workflow(
         config=config,
-        session=session,
+        target=target,
         dependency=dependency,
         detach=detach,
     )

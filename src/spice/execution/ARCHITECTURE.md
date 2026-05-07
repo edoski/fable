@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`execution` owns remote target models, **Execution Session** creation, SSH command execution, Slurm submission, remote workflow entrypoints, and SSH/rsync transfer orchestration. It receives explicit target names from operator edges.
+`execution` owns remote target models, **Execution Session** creation, direct workflow submit/follow lifecycle, SSH command execution, Slurm submission, remote workflow entrypoints, and SSH/rsync transfer orchestration. It receives explicit target names from operator edges.
 
 ## Flow
 
@@ -55,6 +55,10 @@ evaluate
 ```
 
 Acquire is not routed through this resolved workflow snapshot path. Acquisition has provider/RPC behavior and storage commit mechanics that are resolved through the normal acquire workflow path.
+
+## Direct Workflow Submission
+
+`execution.submission` owns direct train/tune/evaluate submission lifecycle: open the explicit target session, submit the resolved workflow, emit submission events, follow logs when target policy allows it, detach on operator interrupt, and raise on non-completed final states. Benchmark Plan Execution does not use this lifecycle because it submits persisted plans without following each job.
 
 ## Transfer Boundary
 

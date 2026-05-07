@@ -13,17 +13,12 @@ from ..corpus.assembly import (
     acquisition_source_requirements,
     assemble_corpus,
 )
-from ..corpus.summary import acquire_dry_run_fields, acquisition_result_fields
-from .preparation import prepare_acquire
-
-
-def _workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:
-    return [
-        ("dataset", config.dataset.name),
-        ("chain", config.chain.name),
-        ("problem", config.problem.id),
-        ("provider", config.rpc_endpoint.provider_name),
-    ]
+from ..storage.workflow_root_materialization import materialize_acquire_roots
+from .reporting import (
+    acquire_workflow_facts,
+    report_acquire_result,
+    report_acquire_staging_warning,
+)
 
 
 def run(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
@@ -34,9 +29,9 @@ def run(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
 
 
 async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None) -> None:
-    prepared = prepare_acquire(config)
+    roots = materialize_acquire_roots(config)
     active_reporter = reporter or Reporter()
-    active_reporter.header("acquire", _workflow_facts(config))
+    active_reporter.header("acquire", acquire_workflow_facts(config))
     source_requirements = acquisition_source_requirements(config)
     block_client = BlockRpcClient(
         config.rpc_endpoint,
@@ -45,49 +40,16 @@ async def _run_async(config: AcquireConfig, *, reporter: Reporter | None = None)
     )
     try:
         result = await assemble_corpus(
-            CorpusAssemblyRequest(config=config, roots=prepared.roots),
+            CorpusAssemblyRequest(config=config, roots=roots),
             block_client,
             status=active_reporter.milestone,
         )
-        if result.mode == "dry_run":
-            active_reporter.result(
-                "acquire",
-                acquire_dry_run_fields(
-                    config,
-                    history_window_seconds=result.requested_history_window_seconds,
-                    history_plan=result.history_plan,
-                    evaluation_plan=result.evaluation_plan,
-                ),
-                status="dry_run",
-            )
-            return
-        if (
-            result.history_outcome is None
-            or result.history_row_count is None
-            or result.evaluation_outcome is None
-            or result.evaluation_row_count is None
-        ):
-            raise RuntimeError("Committed corpus assembly result is missing split facts")
-        active_reporter.result(
-            "acquire",
-            acquisition_result_fields(
-                history_outcome=result.history_outcome,
-                history_row_count=result.history_row_count,
-                evaluation_outcome=result.evaluation_outcome,
-                evaluation_row_count=result.evaluation_row_count,
-            ),
-        )
+        report_acquire_result(active_reporter, config=config, result=result)
     except (KeyboardInterrupt, asyncio.CancelledError):
-        active_reporter.milestone(
-            "acquire cancelled; partial staging preserved for resume",
-            level="warning",
-        )
+        report_acquire_staging_warning(active_reporter, reason="cancelled")
         raise
     except Exception:
-        active_reporter.milestone(
-            "acquire failed; partial staging preserved for resume",
-            level="warning",
-        )
+        report_acquire_staging_warning(active_reporter, reason="failed")
         raise
     finally:
         await block_client.close()
