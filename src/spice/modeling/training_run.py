@@ -14,4 +14,3 @@ class TrainingRunResult:
     model: TemporalModel
     prepared: PreparedTrainingDataset
     training_result: TrainingResult
-    prediction_training_state: object | None

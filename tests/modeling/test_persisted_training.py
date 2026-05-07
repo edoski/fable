@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -9,7 +10,7 @@ import torch
 
 from spice.metrics import MetricSet
 from spice.modeling.batch_plan import BatchRuntimeContext, DeviceStorageBudget
-from spice.modeling.persisted_training import run_persisted_training
+from spice.modeling.persisted_training import run_persisted_training, run_trial_training
 from spice.modeling.runtime_planning import ModelingRuntimePlan
 from spice.modeling.training_run import TrainingRunResult
 from spice.modeling.training_runner import TrainingResult
@@ -51,8 +52,8 @@ def _training_run(*, model: object) -> TrainingRunResult:
         ),
     )
     return TrainingRunResult(
-        model=model,
-        prepared=prepared,
+        model=cast(Any, model),
+        prepared=cast(Any, prepared),
         training_result=TrainingResult(
             best_epoch=1,
             objective_metric_id="score",
@@ -63,7 +64,6 @@ def _training_run(*, model: object) -> TrainingRunResult:
             prediction_training_state=object(),
             runtime_plan=runtime_plan,
         ),
-        prediction_training_state=object(),
     )
 
 
@@ -115,6 +115,10 @@ def _patch_persisted_training(monkeypatch: pytest.MonkeyPatch, *, training_model
     def fake_score_prediction_metrics(metric_spec):
         evaluated_models.append(metric_spec.model)
         assert metric_spec.runtime_plan is training_run.training_result.runtime_plan
+        assert (
+            metric_spec.prediction_training_state
+            is training_run.training_result.prediction_training_state
+        )
         return MetricSet({"score": float(len(evaluated_models))})
 
     monkeypatch.setattr(
@@ -138,16 +142,15 @@ def test_persisted_training_split_metrics_use_reloaded_artifact_model(
 
     run = run_persisted_training(
         tmp_path / "history.parquet",
-        spec=_spec(),
+        spec=cast(Any, _spec()),
         artifact_dir=tmp_path / "artifact",
-        persist_artifact=True,
     )
 
     assert evaluated_models == [loaded_model, loaded_model]
     assert run.artifact_dir == tmp_path / "artifact"
 
 
-def test_non_persisted_training_split_metrics_use_training_run_model(
+def test_trial_training_split_metrics_use_training_run_model(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -159,12 +162,9 @@ def test_non_persisted_training_split_metrics_use_training_run_model(
         loaded_model=loaded_model,
     )
 
-    run = run_persisted_training(
+    run_trial_training(
         tmp_path / "history.parquet",
-        spec=_spec(),
-        artifact_dir=tmp_path / "artifact",
-        persist_artifact=False,
+        spec=cast(Any, _spec()),
     )
 
     assert evaluated_models == [training_model, training_model]
-    assert run.artifact_dir == tmp_path / "artifact"

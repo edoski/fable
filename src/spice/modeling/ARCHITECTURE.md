@@ -67,11 +67,11 @@ EvaluationSummary
 
 Artifact inference validation is centralized in `modeling.artifact_inference`. It turns an active evaluate workflow config plus a trained artifact into trusted scoring inputs, then delegates tensorization state reconstruction to the Temporal Dataset Preparation Interface. Evaluator execution stays in `modeling.scoring` when model inference is involved.
 
-Artifact training and temporary tuning trials use separate training-spec entrypoints so artifact identity and study identity stay explicit at the workflow seam.
+Artifact training and tuning trials use separate training-spec entrypoints so artifact identity and study identity stay explicit at the workflow seam.
 
-Persisted training writes model files and artifact state into the directory supplied by the workflow storage effect. Modeling owns payload production and split-metric evaluation; storage owns whether that directory becomes the committed artifact root.
+Persisted training writes model files and artifact state into the directory supplied by the workflow storage effect. Modeling owns payload production and split-metric evaluation; storage owns whether that directory becomes the committed artifact root. Tuning trials run through the non-persisted trial-training path and keep model selection in memory.
 
-Tuning Execution is centralized in `modeling.tuning_execution`. It opens compatible study state, validates resume counts, runs Optuna trials in temporary artifact directories, records trial metadata, and returns storage-owned study summaries. Workflows resolve roots, validate coverage, attach reporter callbacks, and delegate study reindex effects to storage.
+Tuning Execution is centralized in `modeling.tuning_execution`. It opens compatible study state, validates resume counts, runs Optuna trials, records trial metadata, and returns storage-owned study summaries. Workflows resolve roots, validate coverage, attach reporter callbacks, and delegate study reindex effects to storage.
 
 During training, `Objective Runtime` owns objective metric production. Validation objectives return validation metrics directly. Evaluation objectives receive the `EvaluationScoringRuntimePlan` built by the Training Runner and call the generic model-to-evaluator scoring bridge; the training loop still does not know evaluator internals.
 

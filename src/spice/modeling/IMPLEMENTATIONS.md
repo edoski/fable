@@ -18,7 +18,7 @@ corpus rows
   -> artifact manifest + model.pt
 ```
 
-The artifact manifest records exact configs, semantic fingerprints, scaler, dataset-builder metadata, and model metadata. Artifact root state stores training and evaluation summaries.
+The artifact manifest records exact configs, semantic fingerprints, scaler, dataset-builder metadata, and model metadata. Artifact root state stores training and evaluation summaries. Prepared batch storage is transient runtime storage; artifact persistence stores manifest, scaler, builder runtime metadata, model weights, and summaries, not prepared batch tensors.
 
 ## Training Context
 
@@ -57,7 +57,7 @@ Batch Plan binds representation batches with prediction targets, orders samples 
 
 Training is CUDA-only. `runtime_planning.py` builds the executable runtime plan: seed setup, CUDA runtime context, backend determinism, precision, and model placement/compilation. `_runtime.py` owns coarse CUDA budget discovery and shared budget arithmetic.
 
-`training_runtime.prepare_training_runtime()` prepares the model, optimizer, and batch plan from that runtime plan. `plan_training_runtime()` consumes the whole `ModelingRuntimePlan`, uses the private runtime probe helper to build the host warmup plan, measure the budget, and return the final measured runtime plan, then performs the training-specific warmup body: unshuffled host Batch Plan, temporary AdamW, one gradient-bearing probe step, model-state restore, and cache cleanup. Restore and cleanup run even if the probe fails. The returned prediction training state is semantic-immutable and reused for train, validation, returned training results, and split metrics. The final measured runtime plan is the runtime plan carried by the training batch plan, evaluation objectives, and persisted split-metric scoring.
+`training_runtime.prepare_training_runtime()` prepares the model, optimizer, and batch plan from that runtime plan. `plan_training_runtime()` consumes the whole `ModelingRuntimePlan`, uses the private runtime probe helper to build the host warmup plan, measure the budget, and return the final measured runtime plan, then performs the training-specific warmup body: unshuffled host Batch Plan, temporary AdamW, one gradient-bearing probe step, model-state restore, and cache cleanup. Restore and cleanup run even if the probe fails. `TrainingResult` owns the semantic-immutable prediction training state reused for train, validation, returned training results, and split metrics. The final measured runtime plan is the runtime plan carried by the training batch plan, evaluation objectives, and persisted split-metric scoring.
 
 `_epoch_execution` owns the mechanics inside a train or validation epoch. `_fit_policy` owns finite-metric behavior, objective history, strict `min_delta`, best-state tracking, progress payloads, and patience stopping. `training_runner.run_training_fit()` calls callbacks, keeps the best state in memory, restores it before returning, and assembles the public result.
 

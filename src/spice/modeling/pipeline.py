@@ -261,5 +261,4 @@ def run_training(
         model=model,
         prepared=prepared,
         training_result=training_result,
-        prediction_training_state=training_result.prediction_training_state,
     )

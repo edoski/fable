@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
 
 import optuna
@@ -31,7 +29,7 @@ from ..storage.study_models import (
     trial_params_payload,
 )
 from ..storage.study_optuna import load_or_create_materialized_study
-from .persisted_training import run_persisted_training
+from .persisted_training import run_trial_training
 from .pipeline import build_trial_training_spec
 from .tuned_config import sample_tuned_parameters
 from .tuning import apply_tuned_parameters
@@ -190,13 +188,6 @@ def _current_best_trial_number(study: optuna.Study) -> int | None:
         return None
 
 
-def _trial_work_dir(study_root: Path, trial_number: int) -> TemporaryDirectory[str]:
-    return TemporaryDirectory(
-        dir=study_root.parent,
-        prefix=f".trial-{trial_number:03d}.",
-    )
-
-
 @contextmanager
 def _optuna_warning_verbosity() -> Iterator[None]:
     previous_verbosity = optuna.logging.get_verbosity()
@@ -226,15 +217,9 @@ def _trial_objective(
         corpus_manifest=corpus_manifest,
     )
     history_block_path = roots.corpus.history_dir
-    with _trial_work_dir(roots.study.root_path, trial.number) as temp_dir_name:
-        persisted = run_persisted_training(
-            history_block_path,
-            spec=spec,
-            artifact_dir=Path(temp_dir_name),
-            persist_artifact=False,
-        )
-    metric_value = persisted.summary.runtime.best_objective_value
-    best_epoch = persisted.training_run.training_result.best_epoch
+    trial_run = run_trial_training(history_block_path, spec=spec)
+    metric_value = trial_run.summary.runtime.best_objective_value
+    best_epoch = trial_run.training_run.training_result.best_epoch
     _record_trial_best_epoch(trial, best_epoch)
     if config.tuning.enable_pruning:
         trial.report(metric_value, step=best_epoch)
