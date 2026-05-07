@@ -87,7 +87,7 @@ selected sample positions
 
 `poisson_replay` owns Poisson windowing, arrival sampling, chronological ordering of the replay sample view, and arrival-to-position selection. `full_temporal_replay` selects every supplied sample position once. Both feed selections to the runner, which validates metadata, handles no-run failures, and uses Temporal Accounting.
 
-Temporal Accounting returns evaluation-private temporal replay result types. A Temporal Replay Metric Catalog owns metric ids, descriptors, event-mean/window aggregation facts, metric assembly, and extraction into generic metric dictionaries. The Temporal Replay Runner attaches those descriptors and converts typed replay results to generic `EvaluationSummary` before the result leaves `evaluation`, so storage, benchmarks, reporting, and modeling keep one public evaluation result ABI.
+Temporal Accounting returns evaluation-private temporal replay result types. Event metric sums and fee sums stay as replay accounting facts until output assembly. A Temporal Replay Metric Catalog owns metric ids, descriptors, event-mean/window aggregation facts, metric assembly, and extraction into generic metric dictionaries. The Temporal Replay Runner attaches those descriptors and converts typed replay results to generic `EvaluationSummary` before the result leaves `evaluation`, so storage, benchmarks, reporting, and modeling keep one public evaluation result ABI.
 
 ## Metric Descriptor Rule
 

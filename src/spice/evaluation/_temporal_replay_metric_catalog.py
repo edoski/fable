@@ -175,11 +175,15 @@ def temporal_replay_metric_values(
 
 
 def temporal_replay_fee_sum_totals(
-    run_metrics: Iterable[Mapping[str, float]],
+    run_fee_sums: Iterable[Mapping[str, float]],
 ) -> dict[str, float]:
     totals = {metric_id: 0.0 for metric_id in _TEMPORAL_REPLAY_FEE_SUM_METRIC_IDS}
-    for metrics in run_metrics:
-        values = validate_temporal_replay_metric_values(metrics)
+    for fee_sums in run_fee_sums:
+        values = _require_ids(
+            fee_sums,
+            expected_ids=_TEMPORAL_REPLAY_FEE_SUM_METRIC_IDS,
+            label="Temporal Replay fee-sum metrics",
+        )
         for metric_id in totals:
             totals[metric_id] += values[metric_id]
     return _require_ids(

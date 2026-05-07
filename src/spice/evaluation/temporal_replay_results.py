@@ -14,6 +14,7 @@ from .contracts import EvaluationMetadataValue
 class TemporalReplayRunResult:
     n_events: int
     metrics: Mapping[str, float]
+    fee_sums: Mapping[str, float]
     event_metric_sums: Mapping[str, float]
     metadata: dict[str, EvaluationMetadataValue]
 

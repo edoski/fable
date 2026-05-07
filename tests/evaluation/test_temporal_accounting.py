@@ -78,6 +78,13 @@ def test_selected_temporal_decisions_compute_exact_event_metrics() -> None:
     assert run.metrics["realized_fee_sum"] == pytest.approx(150.0)
     assert run.metrics["baseline_fee_sum"] == pytest.approx(160.0)
     assert run.metrics["optimum_fee_sum"] == pytest.approx(140.0)
+    assert run.fee_sums == pytest.approx(
+        {
+            "realized_fee_sum": 150.0,
+            "baseline_fee_sum": 160.0,
+            "optimum_fee_sum": 140.0,
+        }
+    )
     assert run.event_metric_sums["profit_over_baseline"] == pytest.approx(
         1.0 / 7.0, rel=1e-5
     )
@@ -147,6 +154,15 @@ def test_temporal_accounting_aggregates_event_means_and_window_summaries() -> No
 
     assert result.total_events == 2
     assert result.metrics == pytest.approx(combined_result.metrics)
+    assert {
+        key: result.metrics[key]
+        for key in ("realized_fee_sum", "baseline_fee_sum", "optimum_fee_sum")
+    } == pytest.approx(
+        {
+            key: sum(run.fee_sums[key] for run in result.runs)
+            for key in ("realized_fee_sum", "baseline_fee_sum", "optimum_fee_sum")
+        }
+    )
     assert result.window_metrics["profit_over_baseline"].mean == pytest.approx(
         sum(run.metrics["profit_over_baseline"] for run in result.runs) / 2.0
     )

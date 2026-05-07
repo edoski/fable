@@ -62,7 +62,7 @@ def summarize_selected_temporal_decision_runs(
     event_metric_sums = temporal_replay_event_sum_totals(
         run.event_metric_sums for run in runs
     )
-    fee_sums = temporal_replay_fee_sum_totals(run.metrics for run in runs)
+    fee_sums = temporal_replay_fee_sum_totals(run.fee_sums for run in runs)
     _validate_fee_totals(fee_sums)
     return TemporalReplayResult(
         metrics=temporal_replay_metric_values(
@@ -131,6 +131,7 @@ def _summarize_selected_temporal_decision_run(
             fee_sums=costs.fee_sums,
             n_events=costs.n_events,
         ),
+        fee_sums=costs.fee_sums,
         event_metric_sums=costs.event_metric_sums,
         metadata={
             **dict(metadata),

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import pytest
 import torch
@@ -208,10 +210,10 @@ def test_poisson_replay_reports_event_summary_metadata() -> None:
         descriptor.id for descriptor in evaluator.metric_descriptors
     }
     assert all(run.n_events == run.metadata["n_arrivals"] for run in summary.runs)
-    assert all(
-        run.metadata["window_start_timestamp"] < run.metadata["window_end_timestamp"]
-        for run in summary.runs
-    )
+    for run in summary.runs:
+        start = cast(int | float, run.metadata["window_start_timestamp"])
+        end = cast(int | float, run.metadata["window_end_timestamp"])
+        assert start < end
     assert all("overflow_count" in run.metadata for run in summary.runs)
 
 
