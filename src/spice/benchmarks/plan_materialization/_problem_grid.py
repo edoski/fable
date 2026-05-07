@@ -17,14 +17,21 @@ from ..schema import ProblemDimensionEntry
 @dataclass(frozen=True, slots=True)
 class MaterializedProblemVariant:
     label: str
-    problem: str | ProblemSpec
+    executable_problem: str | ProblemSpec
+    selection_problem: str
 
 
 def materialize_problem_variants(
     entry: ProblemDimensionEntry,
 ) -> list[MaterializedProblemVariant]:
     if entry.ref is not None:
-        return [MaterializedProblemVariant(label=entry.ref, problem=entry.ref)]
+        return [
+            MaterializedProblemVariant(
+                label=entry.ref,
+                executable_problem=entry.ref,
+                selection_problem=entry.ref,
+            )
+        ]
     grid = entry.grid
     if grid is None:
         raise ConfigResolutionError("problem dimension entry is empty")
@@ -41,7 +48,13 @@ def materialize_problem_variants(
                 "id": problem_id,
             }
         )
-        variants.append(MaterializedProblemVariant(label=problem_id, problem=problem))
+        variants.append(
+            MaterializedProblemVariant(
+                label=problem_id,
+                executable_problem=problem,
+                selection_problem=problem_id,
+            )
+        )
     return variants
 
 

@@ -25,35 +25,53 @@ class PlanSeed:
     step_id: str
     workflow: WorkflowTask
     dimension_labels: Mapping[str, str]
-    row: Mapping[str, object]
+    workflow_row: Mapping[str, object]
+    selection_row: Mapping[str, object]
 
 
 @dataclass(frozen=True, slots=True)
 class _DimensionVariant:
     dimension: str
     label: str
-    patch: Mapping[str, object]
+    workflow_patch: Mapping[str, object]
+    selection_patch: Mapping[str, object]
 
 
 def expand_case(case: BenchmarkCase) -> list[PlanSeed]:
     global_combos = _dimension_combinations(_expand_dimensions(case.dimensions))
     seeds: list[PlanSeed] = []
     for global_combo in global_combos:
-        global_patch = _merge_patches([variant.patch for variant in global_combo])
+        global_workflow_patch = _merge_patches(
+            [variant.workflow_patch for variant in global_combo]
+        )
+        global_selection_patch = _merge_patches(
+            [variant.selection_patch for variant in global_combo]
+        )
         global_labels = {variant.dimension: variant.label for variant in global_combo}
         for step in case.steps:
             step_combos = _dimension_combinations(_expand_step_dimensions(step.dimensions))
             for step_combo in step_combos:
-                step_patch = _merge_patches([variant.patch for variant in step_combo])
+                step_workflow_patch = _merge_patches(
+                    [variant.workflow_patch for variant in step_combo]
+                )
+                step_selection_patch = _merge_patches(
+                    [variant.selection_patch for variant in step_combo]
+                )
                 step_labels = {
                     **global_labels,
                     **{variant.dimension: variant.label for variant in step_combo},
                 }
-                row = {
+                workflow_row = {
                     **case.base,
-                    **global_patch,
+                    **global_workflow_patch,
                     **step.set,
-                    **step_patch,
+                    **step_workflow_patch,
+                }
+                selection_row = {
+                    **case.base,
+                    **global_selection_patch,
+                    **step.set,
+                    **step_selection_patch,
                 }
                 seeds.append(
                     PlanSeed(
@@ -61,7 +79,8 @@ def expand_case(case: BenchmarkCase) -> list[PlanSeed]:
                         step_id=step.id,
                         workflow=step.workflow,
                         dimension_labels=step_labels,
-                        row=row,
+                        workflow_row=workflow_row,
+                        selection_row=selection_row,
                     )
                 )
     return seeds
@@ -95,7 +114,8 @@ def _expand_dimensions(
                         _DimensionVariant(
                             dimension="problems",
                             label=variant.label,
-                            patch={"problem": variant.problem},
+                            workflow_patch={"problem": variant.executable_problem},
+                            selection_patch={"problem": variant.selection_problem},
                         )
                     )
             expanded.append(variants)
@@ -105,7 +125,8 @@ def _expand_dimensions(
                 _DimensionVariant(
                     dimension=name,
                     label=_label_for_patch(entry.set),
-                    patch=entry.set,
+                    workflow_patch=entry.set,
+                    selection_patch=entry.set,
                 )
                 for entry in cast(list[SetDimensionEntry], entries)
             ]
@@ -121,7 +142,8 @@ def _expand_step_dimensions(
             _DimensionVariant(
                 dimension=name,
                 label=_label_for_patch(entry.set),
-                patch=entry.set,
+                workflow_patch=entry.set,
+                selection_patch=entry.set,
             )
             for entry in entries
         ]

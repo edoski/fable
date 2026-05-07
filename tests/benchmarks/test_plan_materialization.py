@@ -377,3 +377,59 @@ def test_plan_materialization_preserves_selection_ledger_context(
     assert evaluate.selection.objective == "validation_total_loss"
     assert evaluate.root_facts.consumed_dataset_id == ETH_DATASET_ID
     assert evaluate.root_facts.consumed_artifact_id == evaluate.config.artifact_id
+
+
+def test_problem_grid_keeps_selection_problem_id_with_inline_workflow_problem(
+    isolate_conf_root,
+) -> None:
+    entries = _materialize(
+        isolate_conf_root,
+        {
+            "cases": [
+                {
+                    "id": "case",
+                    "base": {
+                        "surface": "current_row_fee_dynamics",
+                        "dataset_id": ETH_DATASET_ID,
+                    },
+                    "dimensions": {
+                        "problems": [
+                            {
+                                "grid": {
+                                    "base": "current_row_nominal",
+                                    "fields": {
+                                        "lookback_seconds": [600],
+                                        "sample_count": [1000000],
+                                    },
+                                }
+                            }
+                        ]
+                    },
+                    "steps": [
+                        {
+                            "id": "train",
+                            "workflow": "train",
+                            "set": {"variant": "baseline"},
+                        },
+                        {
+                            "id": "evaluate",
+                            "workflow": "evaluate",
+                            "artifact_from": "train",
+                            "set": {"evaluation": "poisson_replay"},
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+    problem_id = "current_row_nominal__lookback_seconds-600__sample_count-1000000"
+    train = next(entry for entry in entries if entry.workflow is WorkflowTask.TRAIN)
+    evaluate = next(entry for entry in entries if entry.workflow is WorkflowTask.EVALUATE)
+
+    assert isinstance(train.config, TrainConfig)
+    assert isinstance(evaluate.config, EvaluateConfig)
+    assert train.config.problem.id == problem_id
+    assert train.config.problem.lookback_seconds == 600
+    assert train.config.problem.sample_count == 1000000
+    assert train.selection.problem == problem_id
+    assert evaluate.selection.problem == problem_id

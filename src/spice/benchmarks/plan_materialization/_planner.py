@@ -93,7 +93,7 @@ def _materialize_benchmark_case(case: BenchmarkCase) -> list[BenchmarkPlanEntry]
                 dependencies=ledgers.dependencies,
                 dimension_labels=dict(seed.dimension_labels),
                 selection=materialize_selection_ledger(
-                    source_row=seed.row,
+                    selection_row=seed.selection_row,
                     workflow_selection=ledgers.selection,
                 ),
                 root_facts=ledgers.root_facts,
@@ -126,7 +126,7 @@ def _selection_for_seed(seed: PlanSeed) -> WorkflowSelection:
         fields = workflow_selection_field_set(seed.workflow)
         payload = {
             key: value
-            for key, value in seed.row.items()
+            for key, value in seed.workflow_row.items()
             if key in fields and value is not None
         }
         selection = workflow_selection_type(seed.workflow).model_validate(payload)
