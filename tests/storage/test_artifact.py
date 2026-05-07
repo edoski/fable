@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from spice.core.errors import StateLayoutError
+from spice.core.errors import ConfigResolutionError, StateLayoutError
 from spice.evaluation import EvaluationRun, PoissonReplayEvaluatorConfig, coerce_evaluator_config
 from spice.metrics import MetricDescriptor, MetricSet, WindowMetricSummary
 from spice.modeling.results import (
@@ -375,7 +375,7 @@ def test_evaluation_config_snapshot_freezes_storage_identity() -> None:
 
 
 def test_evaluation_config_snapshot_rejects_non_canonical_payload() -> None:
-    with pytest.raises(ValueError, match="canonical JSON"):
+    with pytest.raises(ConfigResolutionError, match="window_seconds"):
         EvaluationConfigSnapshot.from_payload(
             {
                 "id": "poisson_replay",

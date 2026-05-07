@@ -6,9 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import numpy as np
-from numpy.typing import NDArray
-
 from ..metrics import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..prediction.decoding import DecodedPredictionResult
 from ..temporal.execution_policy import CompiledExecutionPolicyContract, PreparedActionSpace
@@ -19,7 +16,6 @@ if TYPE_CHECKING:
     from ..prediction import CompiledPredictionContract
 
 EvaluationMetadataValue = str | int | float
-IntVector = NDArray[np.int64]
 
 
 @dataclass(frozen=True, slots=True)

@@ -9,7 +9,7 @@ import torch
 from ....metrics import MetricDescriptor, MetricSet
 from .batch import MinBlockFeeTargetBatch, MinBlockFeeTrainingState
 from .loss import compute_multitask_loss
-from .outputs import masked_offset_logits
+from .outputs import masked_offset_argmax
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,10 +209,10 @@ def compute_batch_loss_and_state(
         targets,
         training_state=training_state,
     )
-    decoded_offsets = masked_offset_logits(
+    decoded_offsets = masked_offset_argmax(
         offset_logits.detach(),
         targets.action_mask,
-    ).argmax(dim=-1)
+    )
     resolved_state = training_state.resolve(
         device=fee_predictions.device,
         dtype=fee_predictions.dtype,

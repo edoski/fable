@@ -178,7 +178,7 @@ class TrainingConfig(_ConfigModel):
 def _default_input_normalization_config() -> InputNormalizationConfig:
     from ..temporal.input_normalization import coerce_input_normalization_config
 
-    return coerce_input_normalization_config({"id": "window_weighted_standard"})
+    return coerce_input_normalization_config({"id": "row_standard"})
 
 
 class AcquisitionRpcConfig(_ConfigModel):

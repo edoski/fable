@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
+from sklearn.preprocessing import StandardScaler
 
 if TYPE_CHECKING:
     from ..problem_store import CompiledProblemStore
@@ -30,10 +31,21 @@ def _scaler_stats(means: NDArray[np.float64], scales: NDArray[np.float64]) -> Sc
     )
 
 
-def _safe_scales(variances: NDArray[np.float64]) -> NDArray[np.float64]:
-    scales = np.sqrt(np.maximum(variances, 0.0), dtype=np.float64)
-    scales[variances <= 0.0] = 1.0
-    return scales
+def _fit_standard_scaler_stats(
+    features: NDArray[np.float64],
+    *,
+    sample_weight: NDArray[np.float64] | None = None,
+) -> ScalerStats:
+    scaler = StandardScaler()
+    scaler.fit(features, sample_weight=sample_weight)
+    if scaler.mean_ is None or scaler.scale_ is None:
+        raise ValueError("standard scaler did not produce feature statistics")
+    means = np.asarray(scaler.mean_, dtype=np.float64)
+    scales = np.asarray(scaler.scale_, dtype=np.float64)
+    return _scaler_stats(
+        means,
+        scales,
+    )
 
 
 def fit_window_weighted_standard_scaler(
@@ -48,13 +60,7 @@ def fit_window_weighted_standard_scaler(
     if float(weights.sum()) <= 0.0:
         raise ValueError("training windows did not cover any feature rows")
     features = store.feature_matrix.astype(np.float64, copy=False)
-    means = np.average(features, axis=0, weights=weights).astype(np.float64, copy=False)
-    centered = features - means
-    variances = np.average(centered * centered, axis=0, weights=weights).astype(
-        np.float64,
-        copy=False,
-    )
-    return _scaler_stats(means, _safe_scales(variances))
+    return _fit_standard_scaler_stats(features, sample_weight=weights)
 
 
 def fit_row_standard_scaler(
@@ -69,9 +75,7 @@ def fit_row_standard_scaler(
     if not np.any(covered_rows):
         raise ValueError("training windows did not cover any feature rows")
     covered = store.feature_matrix[covered_rows].astype(np.float64, copy=False)
-    means = covered.mean(axis=0, dtype=np.float64)
-    variances = covered.var(axis=0, ddof=0, dtype=np.float64)
-    return _scaler_stats(means, _safe_scales(variances))
+    return _fit_standard_scaler_stats(covered)
 
 
 def transform_feature_matrix(feature_matrix: FloatMatrix, scaler: ScalerStats) -> FloatMatrix:

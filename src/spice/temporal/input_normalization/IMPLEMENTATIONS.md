@@ -36,11 +36,10 @@ Both current normalizers produce a feature scaler and share the same transform h
 
 | Field | Meaning |
 | --- | --- |
-| `mean` | Per-feature training mean. |
-| `scale` | Per-feature training standard deviation. |
-| `safe_scale` | Zero-variance scales replaced with `1.0`. |
+| `means` | Per-feature training means. |
+| `scales` | Per-feature training standard deviations, with zero-variance scales stored as `1.0`. |
 
-Zero variance is not an error. It means the feature was constant in the fitted rows; subtracting the mean is enough.
+Zero variance is not an error. It means the feature was constant in the fitted rows; subtracting the mean is enough. Fitting delegates the numeric mean/scale calculation to scikit-learn `StandardScaler`; SPICE persists the resulting `ScalerStats` and applies the transform itself during replay.
 
 ## `row_standard`
 

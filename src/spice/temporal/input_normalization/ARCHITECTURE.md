@@ -27,6 +27,8 @@ transform_problem_store_features(problem_store, scaler)
 
 The same saved `ScalerStats` is used later during inference/evaluation so that evaluation data is transformed with training-time statistics.
 
+Scaler fitting uses scikit-learn `StandardScaler` for mean and scale statistics. The durable boundary remains SPICE-owned `ScalerStats`, and replay still uses SPICE's float32 transform helper so stored artifacts do not depend on a live sklearn object.
+
 ## Registry Pattern
 
 Input-normalization configs use `id` as the implementation selector. The local registry maps ids to concrete config types and compile hooks. `core.specs` supplies the mechanical owner-spec helper for payload coercion and compile-time type assertions; policy ids and fit hooks stay local.

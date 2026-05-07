@@ -4,18 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
 
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import field_validator
 
 from ...core.config_model import ConfigModel
-from ...core.specs import (
-    coerce_spec_config,
-    lookup_local_spec,
-    require_spec_config_from_table,
-)
+from ...core.specs import lookup_local_spec, owner_payload, validate_owner_config
 from ...core.validation import validate_path_segment
 from ...semantics import ExecutionPolicySemantics
 from ..problem_store import CompiledProblemStore
@@ -236,34 +232,12 @@ class CompiledExecutionPolicyContract:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class ExecutionPolicySpec:
-    config_type: type[ExecutionPolicyConfig]
-    compile_contract: Callable[[Any], CompiledExecutionPolicyContract]
+_SUPPORTED_EXECUTION_POLICY_IDS = frozenset({"strict_deadline_miss"})
 
 
-def _compile_strict_deadline_miss(
-    config: Any,
-) -> CompiledExecutionPolicyContract:
-    from .strict_deadline_miss import compile_execution_policy
-
-    return compile_execution_policy(config)
-
-
-def _execution_policy_specs() -> dict[str, ExecutionPolicySpec]:
-    from .strict_deadline_miss import StrictDeadlineMissConfig
-
-    return {
-        "strict_deadline_miss": ExecutionPolicySpec(
-            config_type=StrictDeadlineMissConfig,
-            compile_contract=_compile_strict_deadline_miss,
-        ),
-    }
-
-
-def execution_policy_spec(policy_id: str) -> ExecutionPolicySpec:
+def _require_execution_policy_id(policy_id: str) -> str:
     return lookup_local_spec(
-        _execution_policy_specs(),
+        {policy_id: policy_id for policy_id in _SUPPORTED_EXECUTION_POLICY_IDS},
         policy_id,
         "problem.execution_policy.id",
     )
@@ -272,25 +246,26 @@ def execution_policy_spec(policy_id: str) -> ExecutionPolicySpec:
 def coerce_execution_policy_config(
     payload: object,
 ) -> ExecutionPolicyConfig:
-    return coerce_spec_config(
+    from .strict_deadline_miss import StrictDeadlineMissConfig
+
+    if isinstance(payload, StrictDeadlineMissConfig):
+        return payload
+    raw_payload = owner_payload(
         payload,
         owner="problem.execution_policy",
-        base_config_type=ExecutionPolicyConfig,
-        id_label="problem.execution_policy.id",
-        lookup_spec=execution_policy_spec,
-        spec_config_type=lambda spec: spec.config_type,
+        config_type=ExecutionPolicyConfig,
     )
+    raw_config = validate_owner_config(raw_payload, ExecutionPolicyConfig)
+    _require_execution_policy_id(raw_config.id)
+    return validate_owner_config(raw_payload, StrictDeadlineMissConfig)
 
 
 def compile_execution_policy_contract(
     config: ExecutionPolicyConfig,
 ) -> CompiledExecutionPolicyContract:
-    spec = execution_policy_spec(config.id)
-    concrete_config = require_spec_config_from_table(
-        config,
-        config_id=config.id,
-        lookup_spec=execution_policy_spec,
-        spec_config_type=lambda entry: entry.config_type,
-        label="execution policy config",
-    )
-    return spec.compile_contract(concrete_config)
+    from .strict_deadline_miss import StrictDeadlineMissConfig, compile_execution_policy
+
+    _require_execution_policy_id(config.id)
+    if not isinstance(config, StrictDeadlineMissConfig):
+        config = validate_owner_config(config.model_dump(mode="json"), StrictDeadlineMissConfig)
+    return compile_execution_policy(config)

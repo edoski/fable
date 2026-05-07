@@ -9,9 +9,8 @@ from ....temporal.execution_policy import PreparedTemporalFacts
 from ...contracts import (
     CompiledPredictionContract,
     PredictionTargetBatch,
-    PreparedPredictionTargets,
 )
-from ...decoded_offsets import DecodedOffsets, masked_offset_argmax
+from ...decoded_offsets import DecodedOffsets
 from ...decoding import ActionSpaceDecodeContext, DecodedPredictionResult
 from .batch import (
     MinBlockFeeTargetBatch,
@@ -28,6 +27,7 @@ from .outputs import (
     MIN_LOG_FEE_HEAD_ID,
     OFFSET_LOGITS_HEAD_ID,
     build_output_spec,
+    masked_offset_argmax,
 )
 
 
@@ -51,14 +51,6 @@ def _fit_training_state(
     )
 
 
-def _prepare_targets(
-    temporal_facts: PreparedTemporalFacts,
-) -> PreparedPredictionTargets:
-    return materialize_min_block_fee_targets(
-        temporal_facts=temporal_facts,
-    )
-
-
 def _compute_batch_loss_and_state(
     outputs: ModelOutputs,
     targets: PredictionTargetBatch,
@@ -74,10 +66,6 @@ def _compute_batch_loss_and_state(
         targets,
         training_state=training_state,
     )
-
-
-def _create_epoch_accumulator():
-    return create_epoch_accumulator()
 
 
 def _decode_candidate_offsets_into(
@@ -107,9 +95,9 @@ def compile_prediction_family(
         direction="minimize",
         build_output_spec_fn=build_output_spec,
         fit_training_state_fn=_fit_training_state,
-        prepare_targets_fn=_prepare_targets,
+        prepare_targets_fn=materialize_min_block_fee_targets,
         compute_batch_loss_and_state_fn=_compute_batch_loss_and_state,
-        create_epoch_accumulator_fn=_create_epoch_accumulator,
+        create_epoch_accumulator_fn=create_epoch_accumulator,
         decoded_result_id=DecodedOffsets.decoded_result_id,
         allocate_decoded_result_fn=DecodedOffsets.allocate,
         decode_batch_result_into_fn=_decode_candidate_offsets_into,

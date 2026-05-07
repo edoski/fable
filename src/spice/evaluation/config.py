@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from ..core.config_model import ConfigModel
 from ..core.validation import validate_path_segment
 
 
 class EvaluatorConfig(ConfigModel):
+    model_config = ConfigDict(extra="forbid", validate_assignment=True, strict=True)
+
     id: str
 
     @field_validator("id")

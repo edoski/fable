@@ -9,12 +9,14 @@ from numpy.typing import NDArray
 
 from ..core.errors import SpiceOperatorError
 from .config import PoissonReplayEvaluatorConfig
-from .contracts import CompiledEvaluatorContract, IntVector
+from .contracts import CompiledEvaluatorContract
 from .temporal_replay_runner import (
     TemporalReplaySampleView,
     TemporalReplaySelection,
     compile_temporal_replay_evaluator_contract,
 )
+
+IntVector = NDArray[np.int64]
 
 
 @dataclass(frozen=True, slots=True)

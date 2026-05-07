@@ -12,7 +12,7 @@ A model architecture says how tensors are transformed. A prediction family says 
 
 Prediction configs compile into contracts. Contracts prepare targets, define output heads, compute losses and training metrics, choose the primary training metric, and decode model outputs into a typed decoded result. Generic metric descriptors, metric sets, and window summaries live in `spice.metrics`.
 
-`decoding.py` defines the generic decoded-result ABI. `DecodedOffsets` is offset-specific and lives in `decoded_offsets.py`. Generic code should depend on decoded-result ids, not assume every prediction is an offset task.
+`decoding.py` defines the generic decoded-result ABI. `DecodedOffsets` is offset-specific and lives in `decoded_offsets.py`. Family-owned offset masking stays inside `families/min_block_fee_multitask/outputs.py`. Generic code should depend on decoded-result ids, not assume every prediction is an offset task.
 
 ## Invariants
 
@@ -33,7 +33,7 @@ prediction/
   base.py       output specs
   contracts.py  compiled prediction contract
   decoding.py   generic decoded-result ABI and decode context
-  decoded_offsets.py candidate-offset decoded result and offset decode helper
+  decoded_offsets.py candidate-offset decoded result
   registry.py   prediction family dispatch
   families/     concrete target/loss/decode implementations
 ```

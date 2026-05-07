@@ -15,7 +15,7 @@ IntVector = NDArray[np.int64]
 BoolMatrix = NDArray[np.bool_]
 
 
-def _coerce_cpu_int64_vector(
+def coerce_cpu_int64_vector(
     values: torch.Tensor | IntVector,
     *,
     label: str,
@@ -65,7 +65,7 @@ class ActionSpaceDecodeContext:
     action_mask: torch.Tensor
 
     def __post_init__(self) -> None:
-        sample_positions = _coerce_cpu_int64_vector(
+        sample_positions = coerce_cpu_int64_vector(
             self.sample_positions,
             label="sample_positions",
         )

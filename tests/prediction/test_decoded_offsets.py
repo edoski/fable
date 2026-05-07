@@ -4,8 +4,9 @@ import numpy as np
 import pytest
 import torch
 
-from spice.prediction.decoded_offsets import DecodedOffsets, masked_offset_argmax
+from spice.prediction.decoded_offsets import DecodedOffsets
 from spice.prediction.decoding import ActionSpaceDecodeContext
+from spice.prediction.families.min_block_fee_multitask.outputs import masked_offset_argmax
 
 
 def test_decoded_offsets_allocation_write_select_and_equality() -> None:
