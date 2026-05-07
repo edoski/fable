@@ -1,4 +1,4 @@
-"""Thin workflow-owned objective policy seam."""
+"""Policy-only optimization objective seam."""
 
 from __future__ import annotations
 

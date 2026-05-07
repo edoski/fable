@@ -1,4 +1,4 @@
-"""Workflow-owned optimization objective seam."""
+"""Policy-only optimization objective seam."""
 
 from .base import (
     CompiledObjectiveContract,

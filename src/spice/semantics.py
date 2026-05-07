@@ -44,7 +44,7 @@ class ExecutionPolicySemantics:
 
 @dataclass(frozen=True, slots=True)
 class ObjectiveSemantics:
-    """Resolved workflow-owned optimization-objective identity for provenance."""
+    """Resolved optimization-objective identity for provenance."""
 
     objective_id: str
     metric_id: str
