@@ -272,3 +272,70 @@ def test_benchmark_rejects_step_dependency_cycles(isolate_conf_root) -> None:
 
     with pytest.raises(ConfigResolutionError, match="future step"):
         materialize_benchmark_plan("cycle")
+
+
+@pytest.mark.parametrize(
+    ("steps", "error"),
+    [
+        (
+            [
+                {"id": "train", "workflow": "train"},
+                {"id": "train", "workflow": "train"},
+            ],
+            "benchmark step ids must be unique",
+        ),
+        (
+            [
+                {"id": "evaluate", "workflow": "evaluate", "after": ["missing"]},
+            ],
+            "step evaluate depends on unknown step missing",
+        ),
+        (
+            [
+                {"id": "evaluate", "workflow": "evaluate", "after": ["evaluate"]},
+            ],
+            "step evaluate cannot depend on itself",
+        ),
+        (
+            [
+                {"id": "evaluate", "workflow": "evaluate", "artifact_from": "missing"},
+            ],
+            "step evaluate depends on unknown step missing",
+        ),
+        (
+            [
+                {"id": "evaluate", "workflow": "evaluate", "artifact_from": "train"},
+                {"id": "train", "workflow": "train"},
+            ],
+            "step evaluate depends on future step train",
+        ),
+        (
+            [
+                {"id": "evaluate", "workflow": "evaluate", "artifact_from": "evaluate"},
+            ],
+            "step evaluate cannot depend on itself",
+        ),
+    ],
+)
+def test_benchmark_dependency_validation_keeps_specific_errors(
+    isolate_conf_root,
+    steps,
+    error: str,
+) -> None:
+    conf_root = isolate_conf_root()
+    _write_benchmark(
+        conf_root,
+        "bad_dependencies",
+        {
+            "cases": [
+                {
+                    "id": "bad",
+                    "base": {"surface": "current_row_fee_dynamics"},
+                    "steps": steps,
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(ConfigResolutionError, match=error):
+        materialize_benchmark_plan("bad_dependencies")

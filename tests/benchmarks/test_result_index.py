@@ -97,6 +97,7 @@ def _snapshot(
     recorded_at_utc: str = "2026-05-01T11:00:00Z",
 ) -> BenchmarkCollectionSnapshot:
     return BenchmarkCollectionSnapshot(
+        schema_version=1,
         benchmark="bench",
         run_dir=str(run_dir),
         target="disi_l40",

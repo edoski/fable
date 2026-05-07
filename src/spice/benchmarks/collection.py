@@ -83,6 +83,7 @@ def collect_benchmark_run(
             )
         )
     snapshot = BenchmarkCollectionSnapshot(
+        schema_version=1,
         benchmark=metadata.benchmark,
         run_dir=str(run_dir),
         target=metadata.target,

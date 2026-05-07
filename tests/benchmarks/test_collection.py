@@ -384,7 +384,7 @@ def test_benchmark_collect_refuses_partial_write_when_summary_missing(
     assert not index_path.exists()
 
 
-def test_benchmark_collect_pulls_same_artifact_once_for_multiple_evaluations(
+def test_benchmark_collect_reuses_transfer_transaction_for_same_storage_root(
     tmp_path: Path,
     monkeypatch,
 ) -> None:

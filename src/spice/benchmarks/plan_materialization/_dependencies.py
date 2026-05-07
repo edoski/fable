@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from graphlib import CycleError, TopologicalSorter
 from typing import Protocol
 
 from ...config.models import WorkflowTask
@@ -150,31 +151,21 @@ def _validate_step_graph(steps: Sequence[BenchmarkStep]) -> None:
         raise ConfigResolutionError("benchmark step ids must be unique")
     step_id_set = set(step_ids)
     positions = {step.id: index for index, step in enumerate(steps)}
-    edges: dict[str, set[str]] = {step.id: set() for step in steps}
+    graph: dict[str, tuple[str, ...]] = {}
     for step in steps:
-        for dependency in _local_dependency_steps(step):
+        dependencies = _local_dependency_steps(step)
+        graph[step.id] = dependencies
+        for dependency in dependencies:
             if dependency not in step_id_set:
                 raise ConfigResolutionError(f"step {step.id} depends on unknown step {dependency}")
             if dependency == step.id:
                 raise ConfigResolutionError(f"step {step.id} cannot depend on itself")
             if positions[dependency] > positions[step.id]:
                 raise ConfigResolutionError(f"step {step.id} depends on future step {dependency}")
-            edges[dependency].add(step.id)
-    indegree = {step.id: 0 for step in steps}
-    for dependents in edges.values():
-        for dependent in dependents:
-            indegree[dependent] += 1
-    queue = deque(step_id for step_id, count in indegree.items() if count == 0)
-    visited = 0
-    while queue:
-        step_id = queue.popleft()
-        visited += 1
-        for dependent in edges[step_id]:
-            indegree[dependent] -= 1
-            if indegree[dependent] == 0:
-                queue.append(dependent)
-    if visited != len(steps):
-        raise ConfigResolutionError("benchmark step dependencies contain a cycle")
+    try:
+        tuple(TopologicalSorter(graph).static_order())
+    except CycleError as exc:
+        raise ConfigResolutionError("benchmark step dependencies contain a cycle") from exc
 
 
 def _local_dependency_steps(step: BenchmarkStep) -> tuple[str, ...]:

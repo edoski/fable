@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -88,7 +89,7 @@ class BenchmarkResultRecord(BaseModel):
 class BenchmarkCollectionSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: int = 1
+    schema_version: Literal[1]
     benchmark: str
     run_dir: str
     target: str

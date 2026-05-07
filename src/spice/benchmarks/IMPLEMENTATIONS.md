@@ -4,7 +4,7 @@
 
 `benchmarks.plan_materialization.materialize_benchmark_plan()` turns a named benchmark into durable benchmark plan entries. It resolves once. Submit and collect consume persisted run-state files and do not re-plan.
 
-Materialization keeps two durable ledgers and two fact sets distinct:
+Materialization keeps three durable ledgers plus one root-facts read model distinct:
 
 - `BenchmarkDependencyLedger` owns matched local run ids, external Slurm dependencies, and the `artifact_from` source run id.
 - `BenchmarkSelectionLedger` owns benchmark coordinate intent such as surface, chain, model, problem, objective, evaluation, runtime knobs, and inline problem ids. It does not carry consumed root ids.
@@ -15,7 +15,7 @@ Benchmark Plan Materialization owns the dependency/root sequence before the plan
 
 Problem-grid expansion keeps two rows per seed: the workflow row can carry an inline executable `ProblemSpec`, while the selection row carries the stable problem id used by the benchmark selection ledger. Normal dimensions write the same value to both rows.
 
-`plan.jsonl` stores the typed ledgers plus a Resolved Workflow Snapshot. Raw JSON validation stays private to `_run_state_codec.py`; materialization works with typed benchmark and workflow objects through the `runs.py` run-state Interface.
+`plan.jsonl` stores the typed ledgers plus a Resolved Workflow Snapshot. `_run_state_codec.py` reads persisted JSON and JSONL through strict Pydantic adapters, then hydrates workflow config snapshots through the config-owned Resolved Workflow Hydration seam. Materialization works with typed benchmark and workflow objects through the `runs.py` run-state Interface.
 
 ## Result Index
 

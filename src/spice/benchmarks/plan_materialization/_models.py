@@ -18,8 +18,7 @@ BenchmarkRootRole = Literal["consumed", "produced", "source"]
 BenchmarkRootKind = Literal["dataset", "study", "artifact"]
 
 
-@dataclass(frozen=True, slots=True)
-class BenchmarkDependencyLedger:
+class BenchmarkDependencyLedger(ConfigModel):
     local_run_ids: tuple[str, ...]
     external_slurm_dependencies: tuple[str, ...]
     artifact_from_run_id: str | None

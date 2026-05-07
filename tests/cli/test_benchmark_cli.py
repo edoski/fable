@@ -102,6 +102,7 @@ def _write_collection_run(tmp_path: Path) -> Path:
     write_benchmark_collection_snapshot(
         run.run_dir,
         BenchmarkCollectionSnapshot(
+            schema_version=1,
             benchmark="cli_collection",
             run_dir=str(run.run_dir),
             target="disi_l40",
@@ -242,6 +243,19 @@ def test_benchmark_submit_uses_persisted_plan(
     )
     assert plan_result.exit_code == 0, plan_result.stdout
     run_dir = Path(json.loads(plan_result.stdout)["run_dir"])
+    _write_benchmark(
+        conf_root,
+        "submit_case",
+        {
+            "cases": [
+                {
+                    "id": "invalid_if_replanned",
+                    "base": {"surface": "missing_surface"},
+                    "steps": [{"id": "train", "workflow": "train"}],
+                }
+            ]
+        },
+    )
 
     result = runner.invoke(app, ["benchmark", "submit", str(run_dir)])
 
