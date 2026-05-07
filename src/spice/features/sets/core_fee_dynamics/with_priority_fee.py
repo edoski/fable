@@ -12,7 +12,7 @@ from ._priority_fee import (
     priority_fee_sources,
 )
 
-CORE_FEE_DYNAMICS_OUTPUTS = base_outputs(block_fact_mode="previous")
+CORE_FEE_DYNAMICS_OUTPUTS = base_outputs()
 
 CORE_FEE_DYNAMICS_PRIORITY_FEE_OUTPUTS = (
     *CORE_FEE_DYNAMICS_OUTPUTS,
@@ -25,9 +25,6 @@ CORE_FEE_DYNAMICS_PRIORITY_FEE_FINGERPRINT_SOURCES = fingerprint_sources(
 
 CORE_FEE_DYNAMICS_PRIORITY_FEE = build_catalog(
     variant_module_path=Path(__file__).resolve(),
-    block_fact_mode="previous",
-    gas_utilization_source="prev_gas_utilization",
-    gas_utilization_base_warmup_rows=1,
     allowed_outputs=CORE_FEE_DYNAMICS_PRIORITY_FEE_OUTPUTS,
     extra_sources=priority_fee_sources(),
     extra_features=priority_fee_features(),

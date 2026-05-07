@@ -88,18 +88,14 @@ Checkpoint selection materially changes selected epochs in 5 of 6 cells. It does
 
 Distilled historical conclusions:
 
-- The unsafe same-block reference remains the strongest professor-like comparator.
 - `safe_best` improved the old safe baseline on all 9 chain-family cells in the cross-chain confirmation wave.
-- `safe_best` is not a uniform paper-beating replacement for the unsafe reference.
 - Ethereum safe-path HPO evals did not beat their `safe_best` baselines.
 - Avalanche HPO improved the weak safe Transformer and Transformer-LSTM baselines after materialization, but both show a large HPO-to-final-eval gap.
-- Avalanche Transformer-LSTM is the strongest materialized tuned safe cell in this wave and beats its same-family unsafe reference, but it still does not close the broader unsafe-reference gap across all Avalanche model families.
 
 ### Open Benchmark Decisions
 
 - Preserve the completed remote HPO wave as historical `paper_replay_2h` total-ratio evidence; do not export it into named current CSV artifacts unless rerun or re-evaluated under current evaluator semantics.
 - Reconcile local and remote code before launching the next sweep.
-- Preserve the unsafe same-block reference as an explicit runnable leakage comparator for A/B tests, not as a default or deployable feature set.
 - Treat `safe_best` as a historical role. Do not promote it to default architecture without rerunning under current safe-only configs.
 
 ### Planned Benchmark Sweeps
@@ -193,14 +189,13 @@ Feature-set stabilization sequence:
 2. The restored safe local-trend outputs are promoted into canonical `core_fee_dynamics`. This means `core_fee_dynamics` is now the expanded safe fee-dynamics set; do not keep a long-term separate local-trends feature axis.
 3. Rerun `safe_baseline_grid` and `large_capacity_hpo` once on the promoted `core_fee_dynamics` definition. These runs establish the first clean post-promotion baseline and tuned reference.
 4. Run `priority_fee_ablation` if priority fees need a current-semantics comparison. It compares canonical no-priority `core_fee_dynamics` against `core_fee_dynamics_with_priority_fee`, which adds lagged/public priority-fee scalars and p50/spread local trends.
-5. Run `unsafe_core_fee_dynamics_ablation` to isolate same-block gas/tx leakage without priority-fee features in either arm.
-6. Only after feature-set stabilization should the broader structural sweeps run: `slot_spacing_sweep`, `lookback_window_sweep`, `delay_degradation_sweep`, and optionally `elapsed_position_ablation`.
+5. Only after feature-set stabilization should the broader structural sweeps run: `slot_spacing_sweep`, `lookback_window_sweep`, `delay_degradation_sweep`, and optionally `elapsed_position_ablation`.
 
 Priority-fee local-trends rationale:
 
 - Base fee moves mechanically; priority-fee percentiles and spread can capture the urgency layer of the fee market before base fee fully reacts.
 - MEV/private orderflow is not a leakage problem if the selected inputs remain lagged public `eth_feeHistory` summaries, but it can make priority-fee signals incomplete or chain-dependent because bundles may pay through private routes or coinbase transfers.
-- Same-row priority-fee statistics remain forbidden because they are finalized current-block facts. The unsafe A/B is limited to gas/tx and fee-history gas-ratio leakage.
+- Same-row priority-fee statistics remain forbidden because they are finalized current-block facts.
 
 Benchmark sweep operator flow:
 
@@ -220,7 +215,6 @@ Configured sweep specs awaiting launch decisions:
 - `safe_baseline_grid`: untuned ETH/POL/AVAX by LSTM/Transformer/Transformer-LSTM on `current_row_fee_dynamics`, `core_fee_dynamics`, default 1M `current_row_nominal`, and `poisson_replay`.
 - `large_capacity_hpo`: bounded calibration HPO over the same 3x3 chain/model grid, large-capacity tuning spaces, 32 trials per cell, tuned train, and tuned `poisson_replay` evaluation.
 - `priority_fee_ablation`: fixed train/evaluate comparison of canonical `core_fee_dynamics` against `core_fee_dynamics_with_priority_fee` across the same 3x3 safe grid. No per-cell HPO.
-- `unsafe_core_fee_dynamics_ablation`: fixed train/evaluate comparison of canonical `core_fee_dynamics` against `core_fee_dynamics_unsafe` across the same 3x3 safe grid. No per-cell HPO.
 - `lookback_window_sweep`: fixed train/evaluate grid over ETH/POL/AVAX, LSTM/Transformer/Transformer-LSTM, and `600s`/`900s`/`1200s` lookbacks. No per-cell HPO.
 - `slot_spacing_sweep`: fixed train/evaluate comparison of `current_row_nominal` and `current_row_recent_median` across the same 3x3 safe grid. No per-cell HPO.
 - `elapsed_position_ablation`: fixed train/evaluate comparison of `core_fee_dynamics` against `core_fee_dynamics_elapsed_position` across the same 3x3 safe grid.
@@ -256,9 +250,7 @@ The feature matrix invariant is finite `float32` only. Pre-warmup placeholders m
 
 ### Archived Historical Surfaces
 
-`same_block_closed` is the frozen unsafe same-block reference. It uses the current-block action space, fixed ex-ante classes, current-row pricing, and post-block features. It is unsafe because the model can act on the same block row whose finalized block facts it already sees.
-
-`block_open_lagged` is the safe current-block surface. It keeps current base fee available but lags finalized current-block facts. It is the clean causal sibling of the unsafe reference.
+`block_open_lagged` is the safe current-block surface. It keeps current base fee available but lags finalized current-block facts.
 
 Both names are historical evidence only after the safe refactor. Current runnable work uses `current_row_fee_dynamics`.
 

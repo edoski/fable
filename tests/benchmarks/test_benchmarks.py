@@ -128,7 +128,6 @@ def test_packaged_benchmark_yamls_keep_expected_shapes() -> None:
         "evaluator_objective_grid": 54,
         "large_capacity_hpo": 27,
         "priority_fee_ablation": 36,
-        "unsafe_core_fee_dynamics_ablation": 36,
         "safe_baseline_grid": 18,
         "delay_degradation_sweep": 180,
         "elapsed_position_ablation": 36,

@@ -50,7 +50,7 @@ Providers: `publicnode`, `tenderly`.
 
 Dataset: `icdcs_2026`.
 
-Features: `core_fee_dynamics` is the canonical no-priority safe catalog. `core_fee_dynamics_unsafe` is an explicit leakage comparator catalog with same-block gas/tx facts; it is runnable for A/B tests, not a deployable/default feature set. `core_fee_dynamics_with_priority_fee` adds lagged priority-fee scalars and p50/spread local trends. `core_fee_dynamics_elapsed_position` is the elapsed-position ablation catalog; it is identical to `core_fee_dynamics` plus `elapsed_seconds`, a corpus-position signal.
+Features: `core_fee_dynamics` is the canonical no-priority safe catalog. `core_fee_dynamics_with_priority_fee` adds lagged priority-fee scalars and p50/spread local trends. `core_fee_dynamics_elapsed_position` is the elapsed-position ablation catalog; it is identical to `core_fee_dynamics` plus `elapsed_seconds`, a corpus-position signal.
 
 `core_fee_dynamics` selects safe fee, gas-pressure, local trend, cadence/calendar, rolling log-fee, and tx-count outputs. It does not include priority-fee, elapsed-time/corpus-position, raw block author/proposer, or same-block finalized gas/tx outputs.
 
@@ -67,7 +67,7 @@ Dataset builders:
 
 Evaluators: `poisson_replay` and `full_temporal_replay`. The default surface uses `poisson_replay`; `full_temporal_replay` is available as a sibling evaluator and objective.
 
-Benchmarks: `priority_fee_ablation`, `unsafe_core_fee_dynamics_ablation`, `safe_baseline_grid`, `large_capacity_hpo`, `lookback_window_sweep`, `slot_spacing_sweep`, `elapsed_position_ablation`, `delay_degradation_sweep`, and `evaluator_objective_grid`.
+Benchmarks: `priority_fee_ablation`, `safe_baseline_grid`, `large_capacity_hpo`, `lookback_window_sweep`, `slot_spacing_sweep`, `elapsed_position_ablation`, `delay_degradation_sweep`, and `evaluator_objective_grid`.
 
 `safe_baseline_grid` is the untuned ETH/POL/AVAX by LSTM/Transformer/Transformer-LSTM baseline. `large_capacity_hpo` is the bounded calibration search: the same 3x3 grid, conservative large-capacity spaces, and 32 trials per cell. `lookback_window_sweep`, `slot_spacing_sweep`, `elapsed_position_ablation`, and `delay_degradation_sweep` are fixed train/evaluate grids, not per-cell HPO grids. `delay_degradation_sweep` trains one artifact per `max_delay_seconds` value and evaluates with the artifact capability delay unless an evaluate step sets `delay_seconds`. Sample-count sweeps are deferred because larger history windows need explicit date-range and protocol-regime checks.
 

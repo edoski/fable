@@ -27,13 +27,13 @@ ResolvedFeatureTable
 
 `CompiledFeatureContract` directly owns the executable feature plan for a selected catalog: dependency order, source names, required canonical columns, acquisition enrichments, prerequisites, fingerprint facts, and table execution. Callers consume the compiled contract instead of recomputing catalog graph facts.
 
-`SourceSpec` owns causality, availability, required canonical columns, and optional acquisition enrichments. Current base fee is allowed as `base_fee_per_gas[t]` because EIP-1559 base fee for block `t` is deterministic from parent state and observable before block `t` execution. Canonical finalized block facts such as gas used and tx count are exposed only through lagged sources. The explicit unsafe family exposes same-block gas/tx facts only for leakage A/B benchmarks.
+`SourceSpec` owns causality, availability, required canonical columns, and optional acquisition enrichments. Current base fee is allowed as `base_fee_per_gas[t]` because EIP-1559 base fee for block `t` is deterministic from parent state and observable before block `t` execution. Canonical finalized block facts such as gas used and tx count are exposed only through lagged sources.
 
 `FeatureSpec` owns formulas over source and feature dependencies. The default catalog is `core_fee_dynamics`.
 
 ## Catalog Family
 
-`core_fee_dynamics` is a catalog family with separate registered catalogs for the safe baseline, unsafe same-block comparator, priority-fee extension, and elapsed-position ablation. Each registered catalog owns its selectable outputs and fingerprint sources. Formula helpers are split by behavior owner: transforms, time/cadence, base fee, block facts, fee context, and priority fee. The registry does not slice one broad catalog with external allow-lists.
+`core_fee_dynamics` is a catalog family with separate registered catalogs for the safe baseline, priority-fee extension, and elapsed-position ablation. Each registered catalog owns its selectable outputs and fingerprint sources. Formula helpers are split by behavior owner: transforms, time/cadence, base fee, block facts, fee context, and priority fee. The registry does not slice one broad catalog with external allow-lists.
 
 The safe `core_fee_dynamics` catalog is protocol-first and includes the safe local-trend signals that improved the 1M A/B grid. Output sets are composed from explicit Python groups so YAML specs can stay fully expanded while tests verify they match the canonical composition.
 
@@ -48,9 +48,7 @@ The safe `core_fee_dynamics` catalog is protocol-first and includes the safe loc
 | Gas-utilization local trends | `prev_gas_utilization_lag1..6`, `roll10/50/200_*_prev_gas_utilization` | Captures safe pressure history using lagged finalized gas facts. |
 | Additional rolling fee context | `roll10/50/200_*_logfee` | Captures shorter and longer fee regimes than the original 25/100 windows. |
 
-All previous-block facts are lagged inside their `SourceSpec`, not ad hoc in dataset builders or models. That keeps causality local to the source that owns availability. The current-row gas/tx groups are separate Python output groups used only by the unsafe leakage comparator.
-
-`core_fee_dynamics_unsafe` is a separate no-priority catalog with finalized gas and tx-count facts exposed from the current row. It is not deployable; it exists as an explicit same-block leakage comparator.
+All previous-block facts are lagged inside their `SourceSpec`, not ad hoc in dataset builders or models. That keeps causality local to the source that owns availability.
 
 `core_fee_dynamics_with_priority_fee` is a separate catalog that extends canonical `core_fee_dynamics` with lagged public priority-fee p10/p50/p90/spread scalars plus p50/spread local trend features. Its priority-fee sources declare the `priority_fee_percentiles` acquisition enrichment; corpus planning does not infer that provider fact from column names.
 

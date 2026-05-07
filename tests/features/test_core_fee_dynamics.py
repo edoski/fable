@@ -25,7 +25,6 @@ from spice.features.sets.core_fee_dynamics import _time as time_module
 from spice.features.sets.core_fee_dynamics import _transforms as transforms_module
 from spice.features.sets.core_fee_dynamics import elapsed_position as elapsed_module
 from spice.features.sets.core_fee_dynamics import safe as safe_module
-from spice.features.sets.core_fee_dynamics import unsafe as unsafe_module
 from spice.features.sets.core_fee_dynamics import with_priority_fee as priority_module
 from spice.features.sets.core_fee_dynamics.elapsed_position import (
     CORE_FEE_DYNAMICS_ELAPSED_POSITION,
@@ -34,10 +33,6 @@ from spice.features.sets.core_fee_dynamics.elapsed_position import (
 from spice.features.sets.core_fee_dynamics.safe import (
     CORE_FEE_DYNAMICS,
     CORE_FEE_DYNAMICS_OUTPUTS,
-)
-from spice.features.sets.core_fee_dynamics.unsafe import (
-    CORE_FEE_DYNAMICS_UNSAFE,
-    CORE_FEE_DYNAMICS_UNSAFE_OUTPUTS,
 )
 from spice.features.sets.core_fee_dynamics.with_priority_fee import (
     CORE_FEE_DYNAMICS_PRIORITY_FEE,
@@ -172,12 +167,6 @@ def test_core_fee_dynamics_fingerprints_follow_owned_modules() -> None:
         *shared_owner_paths,
         core_path,
     )
-    assert CORE_FEE_DYNAMICS_UNSAFE.fingerprint_sources == (
-        Path(unsafe_module.__file__).resolve(),
-        Path(family_builder_module.__file__).resolve(),
-        *shared_owner_paths,
-        core_path,
-    )
     assert CORE_FEE_DYNAMICS_PRIORITY_FEE.fingerprint_sources == (
         Path(priority_module.__file__).resolve(),
         Path(family_builder_module.__file__).resolve(),
@@ -294,37 +283,6 @@ def test_core_fee_dynamics_local_trend_lags_use_prior_rows() -> None:
     assert table.feature_matrix[3, 0] == pytest.approx((15_000_000 + 2) / 30_000_000)
     assert table.feature_matrix[3, 1] == pytest.approx((15_000_000 + 1) / 30_000_000)
     assert table.feature_matrix[3, 3] == pytest.approx(table.feature_matrix[2, 2])
-
-
-def test_core_fee_dynamics_unsafe_config_replaces_same_block_facts() -> None:
-    payload = cast(
-        dict[str, object],
-        load_named_group_payload("core_fee_dynamics_unsafe", "features"),
-    )
-    outputs = cast(list[str], payload["outputs"])
-
-    assert payload["id"] == "core_fee_dynamics_unsafe"
-    assert tuple(outputs) == CORE_FEE_DYNAMICS_UNSAFE_OUTPUTS
-    assert "log_prev_gas_used" not in outputs
-    assert "log_current_gas_used" in outputs
-    assert "prev_priority_fee_p50" not in outputs
-    coerce_features_config(payload)
-
-
-def test_core_fee_dynamics_unsafe_uses_same_block_facts() -> None:
-    table = _contract(
-        [
-            "log_current_gas_used",
-            "current_gas_utilization",
-            "current_gas_utilization_lag1",
-        ],
-        features_id="core_fee_dynamics_unsafe",
-    ).build_table(_frame(12))
-
-    assert table.feature_prerequisites == FeaturePrerequisites(warmup_rows=1)
-    assert table.feature_matrix[3, 0] == pytest.approx(np.log1p(15_000_003))
-    assert table.feature_matrix[3, 1] == pytest.approx((15_000_000 + 3) / 30_000_000)
-    assert table.feature_matrix[3, 2] == pytest.approx((15_000_000 + 2) / 30_000_000)
 
 
 def test_priority_fee_config_adds_scalar_and_trend_outputs() -> None:

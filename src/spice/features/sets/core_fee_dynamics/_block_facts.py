@@ -3,14 +3,7 @@
 from __future__ import annotations
 
 from ...core import FeatureSpec, SourceSpec
-from ._transforms import (
-    float_column,
-    gas_utilization,
-    log1p,
-    rolling_stat,
-    shift,
-    shifted_column,
-)
+from ._transforms import gas_utilization, log1p, rolling_stat, shift, shifted_column
 
 PREVIOUS_BLOCK_FACT_OUTPUTS = (
     "log_prev_gas_used",
@@ -18,17 +11,8 @@ PREVIOUS_BLOCK_FACT_OUTPUTS = (
     "prev_gas_utilization",
     "log_prev_tx_count",
 )
-CURRENT_ROW_BLOCK_FACT_OUTPUTS = (
-    "log_current_gas_used",
-    "log_current_gas_limit",
-    "current_gas_utilization",
-    "log_current_tx_count",
-)
 PREVIOUS_GAS_UTILIZATION_TREND_OUTPUTS = (
     *(f"prev_gas_utilization_lag{lag}" for lag in range(1, 7)),
-)
-CURRENT_ROW_GAS_UTILIZATION_TREND_OUTPUTS = (
-    *(f"current_gas_utilization_lag{lag}" for lag in range(1, 7)),
 )
 PREVIOUS_GAS_UTILIZATION_ROLLING_OUTPUTS = (
     "roll10_mean_prev_gas_utilization",
@@ -37,14 +21,6 @@ PREVIOUS_GAS_UTILIZATION_ROLLING_OUTPUTS = (
     "roll50_std_prev_gas_utilization",
     "roll200_mean_prev_gas_utilization",
     "roll200_std_prev_gas_utilization",
-)
-CURRENT_ROW_GAS_UTILIZATION_ROLLING_OUTPUTS = (
-    "roll10_mean_current_gas_utilization",
-    "roll10_std_current_gas_utilization",
-    "roll50_mean_current_gas_utilization",
-    "roll50_std_current_gas_utilization",
-    "roll200_mean_current_gas_utilization",
-    "roll200_std_current_gas_utilization",
 )
 
 
@@ -67,29 +43,6 @@ def previous_block_fact_sources() -> dict[str, SourceSpec]:
             warmup_rows=1,
             required_after_warmup=True,
             compute=lambda blocks: shifted_column(blocks, "tx_count"),
-        ),
-    }
-
-
-def current_row_block_fact_sources() -> dict[str, SourceSpec]:
-    return {
-        "current_gas_used": SourceSpec(
-            source_columns=("gas_used",),
-            warmup_rows=0,
-            required_after_warmup=True,
-            compute=lambda blocks: float_column(blocks, "gas_used"),
-        ),
-        "current_gas_limit": SourceSpec(
-            source_columns=("gas_limit",),
-            warmup_rows=0,
-            required_after_warmup=True,
-            compute=lambda blocks: float_column(blocks, "gas_limit"),
-        ),
-        "current_tx_count": SourceSpec(
-            source_columns=("tx_count",),
-            warmup_rows=0,
-            required_after_warmup=True,
-            compute=lambda blocks: float_column(blocks, "tx_count"),
         ),
     }
 
@@ -126,48 +79,6 @@ def previous_block_fact_features() -> dict[str, FeatureSpec]:
             history_seconds=0,
             warmup_rows=1,
             compute=lambda blocks, series, sources, features: log1p(sources["prev_tx_count"]),
-        ),
-    }
-
-
-def current_row_block_fact_features() -> dict[str, FeatureSpec]:
-    return {
-        "log_current_gas_used": FeatureSpec(
-            source_dependencies=("current_gas_used",),
-            feature_dependencies=(),
-            history_seconds=0,
-            warmup_rows=0,
-            compute=lambda blocks, series, sources, features: log1p(
-                sources["current_gas_used"]
-            ),
-        ),
-        "log_current_gas_limit": FeatureSpec(
-            source_dependencies=("current_gas_limit",),
-            feature_dependencies=(),
-            history_seconds=0,
-            warmup_rows=0,
-            compute=lambda blocks, series, sources, features: log1p(
-                sources["current_gas_limit"]
-            ),
-        ),
-        "current_gas_utilization": FeatureSpec(
-            source_dependencies=("current_gas_used", "current_gas_limit"),
-            feature_dependencies=(),
-            history_seconds=0,
-            warmup_rows=0,
-            compute=lambda blocks, series, sources, features: gas_utilization(
-                sources["current_gas_used"],
-                sources["current_gas_limit"],
-            ),
-        ),
-        "log_current_tx_count": FeatureSpec(
-            source_dependencies=("current_tx_count",),
-            feature_dependencies=(),
-            history_seconds=0,
-            warmup_rows=0,
-            compute=lambda blocks, series, sources, features: log1p(
-                sources["current_tx_count"]
-            ),
         ),
     }
 
