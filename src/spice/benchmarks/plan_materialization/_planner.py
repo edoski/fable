@@ -14,12 +14,12 @@ from ...config.models import (
     WorkflowTask,
 )
 from ...config.resolution import resolve_workflow_config
+from ...config.resolved_workflows import ResolvedWorkflowConfig
 from ...config.selections import (
     WorkflowSelection,
-    workflow_selection_fields,
+    workflow_selection_field_set,
     workflow_selection_type,
 )
-from ...config.workflow_snapshots import ResolvedWorkflowConfig
 from ...core.errors import ConfigResolutionError
 from ..schema import BenchmarkCase, BenchmarkSpec
 from ._dependencies import BenchmarkDependencyPlan
@@ -126,7 +126,7 @@ def _resolve_benchmark_config(
 
 def _selection_for_seed(seed: PlanSeed) -> WorkflowSelection:
     try:
-        fields = frozenset(workflow_selection_fields(seed.workflow))
+        fields = workflow_selection_field_set(seed.workflow)
         payload = {
             key: value
             for key, value in seed.row.items()

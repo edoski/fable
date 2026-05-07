@@ -12,7 +12,8 @@ from pathlib import Path
 
 from ..config import typed_groups as typed
 from ..config.models import WorkflowTask
-from ..config.workflow_snapshots import ResolvedWorkflowConfig, workflow_config_snapshot_json
+from ..config.resolved_workflows import ResolvedWorkflowConfig
+from ..config.workflow_snapshots import workflow_config_snapshot_json
 from ..core.errors import SpiceOperatorError
 from .models import ExecutionSpec, ExecutionWorkflowSpec
 

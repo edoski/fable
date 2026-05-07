@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import Field
 
 from ...config.models import ArtifactVariant, WorkflowTask
-from ...config.workflow_snapshots import ResolvedWorkflowConfig
+from ...config.resolved_workflows import ResolvedWorkflowConfig
 from ...core.config_model import ConfigModel
 
 BenchmarkRootRole = Literal["consumed", "produced", "source"]

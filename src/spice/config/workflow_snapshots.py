@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TypeAlias, TypeVar, cast
+from typing import TypeVar
 
 from pydantic import ValidationError
 
@@ -21,7 +21,6 @@ from .models import (
     ChainSpec,
     DatasetBuilderConfig,
     DatasetSpec,
-    EvaluateConfig,
     FeaturesConfig,
     ModelConfig,
     PredictionConfig,
@@ -29,17 +28,24 @@ from .models import (
     SplitConfig,
     StorageSpec,
     StudyConfig,
-    TrainConfig,
     TrainingConfig,
-    TuneConfig,
     TuningConfig,
     TuningSpaceConfig,
     WorkflowTask,
     coerce_features_config,
     coerce_problem_spec,
 )
-
-ResolvedWorkflowConfig: TypeAlias = TrainConfig | TuneConfig | EvaluateConfig
+from .resolved_workflows import (
+    ResolvedEvaluateWorkflowFields,
+    ResolvedModelWorkflowFields,
+    ResolvedTrainWorkflowFields,
+    ResolvedTuneWorkflowFields,
+    ResolvedWorkflowConfig,
+    build_evaluate_config,
+    build_train_config,
+    build_tune_config,
+    resolved_workflow_snapshot_payload,
+)
 
 ConfigModelT = TypeVar("ConfigModelT", bound=ConfigModel)
 OwnerConfigT = TypeVar("OwnerConfigT")
@@ -59,10 +65,7 @@ def workflow_config_snapshot_payload(
         snapshot_config = config.model_copy(
             update={"storage": StorageSpec(root=storage_root_override)}
         )
-    return cast(
-        dict[str, object],
-        snapshot_config.model_dump(mode="json", exclude_none=True),
-    )
+    return resolved_workflow_snapshot_payload(snapshot_config)
 
 
 def workflow_config_snapshot_json(
@@ -99,11 +102,11 @@ def hydrate_workflow_config_snapshot(
     _validate_snapshot_workflow(workflow, payload)
     try:
         if workflow is WorkflowTask.TRAIN:
-            return TrainConfig.model_validate(_model_workflow_payload(payload))
+            return build_train_config(_hydrate_train_fields(payload))
         if workflow is WorkflowTask.TUNE:
-            return TuneConfig.model_validate(_model_workflow_payload(payload))
+            return build_tune_config(_hydrate_tune_fields(payload))
         if workflow is WorkflowTask.EVALUATE:
-            return EvaluateConfig.model_validate(_evaluate_workflow_payload(payload))
+            return build_evaluate_config(_hydrate_evaluate_fields(payload))
     except ConfigResolutionError:
         raise
     except (ValidationError, ValueError, TypeError) as exc:
@@ -133,19 +136,40 @@ def _validate_snapshot_workflow(
         )
 
 
-def _evaluate_workflow_payload(payload: Mapping[str, object]) -> dict[str, object]:
+def _hydrate_evaluate_fields(payload: Mapping[str, object]) -> ResolvedEvaluateWorkflowFields:
     raw = dict(payload)
-    return {
-        **raw,
-        "storage": _model_field(raw, "storage", StorageSpec),
-        "evaluation": coerce_evaluator_config(
+    return ResolvedEvaluateWorkflowFields(
+        storage=_model_field(raw, "storage", StorageSpec),
+        artifact_id=_required_str(raw, "artifact_id"),
+        dataset_id=_required_str(raw, "dataset_id"),
+        evaluation=coerce_evaluator_config(
             _owner_field(raw, "evaluation", EvaluatorConfig)
         ),
-    }
+        delay_seconds=_optional_int(raw.get("delay_seconds"), label="delay_seconds"),
+        batch_size=_optional_int(raw.get("batch_size"), label="batch_size") or 256,
+    )
 
 
-def _model_workflow_payload(payload: Mapping[str, object]) -> dict[str, object]:
+def _hydrate_train_fields(payload: Mapping[str, object]) -> ResolvedTrainWorkflowFields:
     raw = dict(payload)
+    return ResolvedTrainWorkflowFields(
+        model_fields=_hydrate_model_workflow_fields(raw),
+        dataset_id=_optional_str(raw.get("dataset_id"), label="dataset_id"),
+        study_id=_optional_str(raw.get("study_id"), label="study_id"),
+    )
+
+
+def _hydrate_tune_fields(payload: Mapping[str, object]) -> ResolvedTuneWorkflowFields:
+    raw = dict(payload)
+    return ResolvedTuneWorkflowFields(
+        model_fields=_hydrate_model_workflow_fields(raw),
+        dataset_id=_required_str(raw, "dataset_id"),
+    )
+
+
+def _hydrate_model_workflow_fields(
+    raw: Mapping[str, object],
+) -> ResolvedModelWorkflowFields:
     problem = coerce_problem_spec(_owner_field(raw, "problem", ProblemSpec))
     model = coerce_model_config(_model_config_field(raw, "model"))
     tuning_space_payload = raw.get("tuning_space")
@@ -162,29 +186,28 @@ def _model_workflow_payload(payload: Mapping[str, object]) -> dict[str, object]:
             problem_config=problem,
         )
     )
-    return {
-        **raw,
-        "chain": _model_field(raw, "chain", ChainSpec),
-        "dataset": _model_field(raw, "dataset", DatasetSpec),
-        "storage": _model_field(raw, "storage", StorageSpec),
-        "problem": problem,
-        "model": model,
-        "dataset_builder": coerce_dataset_builder_config(
+    return ResolvedModelWorkflowFields(
+        chain=_model_field(raw, "chain", ChainSpec),
+        dataset=_model_field(raw, "dataset", DatasetSpec),
+        storage=_model_field(raw, "storage", StorageSpec),
+        problem=problem,
+        model=model,
+        dataset_builder=coerce_dataset_builder_config(
             _owner_field(raw, "dataset_builder", DatasetBuilderConfig)
         ),
-        "features": coerce_features_config(_owner_field(raw, "features", FeaturesConfig)),
-        "prediction": _model_field(raw, "prediction", PredictionConfig),
-        "objective": coerce_objective_config(
+        features=coerce_features_config(_owner_field(raw, "features", FeaturesConfig)),
+        prediction=_model_field(raw, "prediction", PredictionConfig),
+        objective=coerce_objective_config(
             _owner_field(raw, "objective", ObjectiveConfig)
         ),
-        "evaluation": _optional_evaluation(raw.get("evaluation")),
-        "study": _model_field(raw, "study", StudyConfig),
-        "artifact": _model_field(raw, "artifact", ArtifactConfig),
-        "split": _model_field(raw, "split", SplitConfig),
-        "training": _model_field(raw, "training", TrainingConfig),
-        "tuning": _optional_tuning(raw.get("tuning")),
-        "tuning_space": tuning_space,
-    }
+        evaluation=_optional_evaluation(raw.get("evaluation")),
+        study=_model_field(raw, "study", StudyConfig),
+        artifact=_model_field(raw, "artifact", ArtifactConfig),
+        split=_model_field(raw, "split", SplitConfig),
+        training=_model_field(raw, "training", TrainingConfig),
+        tuning=_optional_tuning(raw.get("tuning")),
+        tuning_space=tuning_space,
+    )
 
 
 def _optional_evaluation(payload: object) -> EvaluatorConfig | None:
@@ -201,6 +224,31 @@ def _optional_tuning(payload: object) -> TuningConfig | None:
     if isinstance(payload, TuningConfig):
         return payload
     return TuningConfig.model_validate(_mapping_or_model(payload, label="tuning"))
+
+
+def _optional_str(payload: object, *, label: str) -> str | None:
+    if payload is None:
+        return None
+    if not isinstance(payload, str):
+        raise ConfigResolutionError(f"resolved workflow config field {label} must be a string")
+    return payload
+
+
+def _required_str(payload: Mapping[str, object], key: str) -> str:
+    value = _field(payload, key)
+    if not isinstance(value, str):
+        raise ConfigResolutionError(f"resolved workflow config field {key} must be a string")
+    return value
+
+
+def _optional_int(payload: object, *, label: str) -> int | None:
+    if payload is None:
+        return None
+    if not isinstance(payload, int):
+        raise ConfigResolutionError(
+            f"resolved workflow config field {label} must be an integer"
+        )
+    return payload
 
 
 def _model_field(

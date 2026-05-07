@@ -33,6 +33,7 @@ from .models import (
 from .resolution import (
     resolve_workflow_config,
 )
+from .resolved_workflows import ResolvedWorkflowConfig
 from .selections import (
     AcquireWorkflowSelection,
     EvaluateWorkflowSelection,
@@ -43,7 +44,6 @@ from .selections import (
     workflow_selection_type,
 )
 from .workflow_snapshots import (
-    ResolvedWorkflowConfig,
     hydrate_workflow_config_snapshot,
     hydrate_workflow_config_snapshot_json,
     workflow_config_snapshot_json,

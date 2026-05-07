@@ -10,44 +10,18 @@ from typing import TypeAlias, cast
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..config.models import WorkflowTask
-from ..config.selections import workflow_selection_fields
+from ..config.selections import (
+    benchmark_base_fields,
+    benchmark_dimension_field_names,
+    benchmark_dimension_fields,
+    benchmark_workflows,
+    workflow_selection_field_set,
+)
 
-_MODEL_WORKFLOWS = frozenset({WorkflowTask.TRAIN, WorkflowTask.TUNE, WorkflowTask.EVALUATE})
-_STANDARD_DIMENSIONS = frozenset(
-    {
-        "data",
-        "features",
-        "models",
-        "problems",
-        "scoring",
-        "runtime",
-    }
-)
-_DIMENSION_FIELDS = {
-    "data": frozenset({"surface", "chain", "dataset_id"}),
-    "features": frozenset({"features", "surface"}),
-    "models": frozenset({"model", "tuning_space"}),
-    "scoring": frozenset({"objective", "evaluation"}),
-    "runtime": frozenset(
-        {
-            "dataset_id",
-            "training",
-            "split",
-            "tuning",
-            "study",
-            "study_id",
-            "artifact_id",
-            "trial_count",
-            "variant",
-            "delay_seconds",
-            "batch_size",
-        }
-    ),
-}
+_MODEL_WORKFLOWS = benchmark_workflows()
+_STANDARD_DIMENSIONS = benchmark_dimension_field_names() | {"problems"}
 _PROBLEM_GRID_FIELDS = frozenset({"lookback_seconds", "sample_count", "max_delay_seconds"})
-_BASE_FIELDS: frozenset[str] = frozenset(
-    field for workflow in _MODEL_WORKFLOWS for field in workflow_selection_fields(workflow)
-)
+_BASE_FIELDS = benchmark_base_fields()
 
 
 class SlurmAfterDependency(BaseModel):
@@ -192,7 +166,7 @@ class BenchmarkSpec(BaseModel):
 
 
 def _validate_dimension_set_fields(name: str, patches: Sequence[Mapping[str, object]]) -> None:
-    allowed = _DIMENSION_FIELDS.get(name)
+    allowed = benchmark_dimension_fields(name)
     if allowed is None:
         return
     for patch in patches:
@@ -208,7 +182,7 @@ def _validate_workflow_fields(
     *,
     label: str,
 ) -> None:
-    unknown = sorted(set(patch) - set(workflow_selection_fields(workflow)))
+    unknown = sorted(set(patch) - workflow_selection_field_set(workflow))
     if unknown:
         raise ValueError(
             f"{label} for {workflow.value} does not support fields: " + ", ".join(unknown)

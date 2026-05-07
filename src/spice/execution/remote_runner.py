@@ -11,10 +11,8 @@ from ..config.models import (
     WorkflowTask,
 )
 from ..config.resolution import WorkflowConfig
-from ..config.workflow_snapshots import (
-    ResolvedWorkflowConfig,
-    hydrate_workflow_config_snapshot_json,
-)
+from ..config.resolved_workflows import ResolvedWorkflowConfig
+from ..config.workflow_snapshots import hydrate_workflow_config_snapshot_json
 
 
 def run_remote_workflow(task: WorkflowTask, config: WorkflowConfig) -> None:

@@ -7,8 +7,8 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+from ...config.resolved_workflows import ResolvedWorkflowConfig
 from ...config.selections import WorkflowSelection
-from ...config.workflow_snapshots import ResolvedWorkflowConfig
 from ._dependencies import (
     BenchmarkDependencyPlan,
     BenchmarkDependencyResolver,

@@ -12,6 +12,9 @@ from spice.config import (
 )
 from spice.config.groups import load_named_group_payload
 from spice.config.selections import (
+    benchmark_selection_coordinate_fields,
+    benchmark_selection_root_fields,
+    benchmark_workflows,
     workflow_selection_fields,
     workflow_selection_type,
 )
@@ -56,7 +59,21 @@ def test_inline_problem_spec_is_valid_for_surface_workflow_selections() -> None:
             }
         )
 
-        assert "problem" in workflow_selection_fields(workflow)
-        assert selection.problem == problem
+    assert "problem" in workflow_selection_fields(workflow)
+    assert selection.problem == problem
 
     assert "problem" not in workflow_selection_fields(WorkflowTask.EVALUATE)
+
+
+def test_benchmark_selection_metadata_separates_roots_from_coordinates() -> None:
+    assert benchmark_workflows() == {
+        WorkflowTask.TRAIN,
+        WorkflowTask.TUNE,
+        WorkflowTask.EVALUATE,
+    }
+    coordinates = benchmark_selection_coordinate_fields()
+    roots = benchmark_selection_root_fields()
+
+    assert {"problem", "variant", "delay_seconds"} <= coordinates
+    assert roots == {"dataset_id", "study_id", "artifact_id"}
+    assert not roots & coordinates

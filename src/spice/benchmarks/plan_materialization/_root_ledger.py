@@ -7,12 +7,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...config.models import ArtifactVariant, WorkflowTask
+from ...config.resolved_workflows import ResolvedWorkflowConfig
 from ...config.selections import (
     EvaluateWorkflowSelection,
     TrainWorkflowSelection,
     WorkflowSelection,
 )
-from ...config.workflow_snapshots import ResolvedWorkflowConfig
 from ...core.errors import ConfigResolutionError
 from ...storage.workflow_root_materialization import materialize_workflow_root_facts
 from ._models import (

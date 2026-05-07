@@ -13,7 +13,7 @@ from ...config import (
     TuneWorkflowSelection,
 )
 from ...config.resolution import resolve_workflow_config
-from ...config.workflow_snapshots import ResolvedWorkflowConfig
+from ...config.resolved_workflows import ResolvedWorkflowConfig
 from ...core.errors import SpiceOperatorError
 from ...execution.session import ExecutionSession, open_execution_session
 from ..options import (

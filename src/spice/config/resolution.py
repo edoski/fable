@@ -37,6 +37,15 @@ from .models import (
     TuningConfig,
     TuningSpaceConfig,
 )
+from .resolved_workflows import (
+    ResolvedEvaluateWorkflowFields,
+    ResolvedModelWorkflowFields,
+    ResolvedTrainWorkflowFields,
+    ResolvedTuneWorkflowFields,
+    build_evaluate_config,
+    build_train_config,
+    build_tune_config,
+)
 from .selections import (
     AcquireWorkflowSelection,
     EvaluateWorkflowSelection,
@@ -362,12 +371,23 @@ def _resolve_train_config(selection: TrainWorkflowSelection) -> TrainConfig:
         require_tuning=False,
         allow_tuned_variant=True,
     )
-    return TrainConfig(
+    return build_train_config(
+        ResolvedTrainWorkflowFields(
+            model_fields=_resolved_model_workflow_fields(base, spine),
+            dataset_id=selection.dataset_id,
+            study_id=selection.study_id,
+        )
+    )
+
+
+def _resolved_model_workflow_fields(
+    base: ModelWorkflowBase,
+    spine: ModelWorkflowSpine,
+) -> ResolvedModelWorkflowFields:
+    return ResolvedModelWorkflowFields(
         chain=base.chain,
         dataset=base.dataset,
         storage=base.storage,
-        dataset_id=selection.dataset_id,
-        study_id=selection.study_id,
         problem=base.problem,
         model=base.model,
         dataset_builder=base.dataset_builder,
@@ -401,24 +421,19 @@ def _resolve_tune_config(selection: TuneWorkflowSelection) -> TuneConfig:
     tuning = spine.tuning
     if selection.trial_count is not None:
         tuning = _validated_config_update(tuning, trial_count=selection.trial_count)
-    return TuneConfig(
-        chain=base.chain,
-        dataset=base.dataset,
-        storage=base.storage,
-        dataset_id=_required(selection.dataset_id, "dataset_id"),
-        problem=base.problem,
-        model=base.model,
-        dataset_builder=base.dataset_builder,
-        features=base.features,
-        prediction=base.prediction,
-        objective=base.objective,
-        evaluation=base.evaluation,
-        study=base.study,
-        artifact=base.artifact,
-        training=spine.training,
-        split=spine.split,
-        tuning=tuning,
-        tuning_space=spine.tuning_space,
+    return build_tune_config(
+        ResolvedTuneWorkflowFields(
+            model_fields=_resolved_model_workflow_fields(
+                base,
+                ModelWorkflowSpine(
+                    training=spine.training,
+                    split=spine.split,
+                    tuning=tuning,
+                    tuning_space=spine.tuning_space,
+                ),
+            ),
+            dataset_id=_required(selection.dataset_id, "dataset_id"),
+        )
     )
 
 
@@ -426,15 +441,19 @@ def _resolve_evaluate_config(selection: EvaluateWorkflowSelection) -> EvaluateCo
     evaluation = _resolve_evaluation(_required(selection.evaluation, "evaluation"))
     if evaluation is None:
         raise ConfigResolutionError("evaluation is required")
-    return EvaluateConfig(
-        storage=_resolve_storage(
-            None if selection.storage_root is None else StorageSpec(root=selection.storage_root)
+    return build_evaluate_config(
+        ResolvedEvaluateWorkflowFields(
+            storage=_resolve_storage(
+                None
+                if selection.storage_root is None
+                else StorageSpec(root=selection.storage_root)
+            ),
+            artifact_id=_required(selection.artifact_id, "artifact_id"),
+            dataset_id=_required(selection.dataset_id, "dataset_id"),
+            evaluation=evaluation,
+            delay_seconds=selection.delay_seconds,
+            batch_size=selection.batch_size or 256,
         ),
-        artifact_id=_required(selection.artifact_id, "artifact_id"),
-        dataset_id=_required(selection.dataset_id, "dataset_id"),
-        evaluation=evaluation,
-        delay_seconds=selection.delay_seconds,
-        batch_size=selection.batch_size or 256,
     )
 
 

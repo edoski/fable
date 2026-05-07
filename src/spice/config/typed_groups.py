@@ -4,15 +4,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Generic, TypeVar, cast
+from typing import TypeVar, cast
 
 from ..evaluation import EvaluatorConfig
 from ..execution.models import ExecutionSpec
 from ..modeling.dataset_builders import DatasetBuilderConfig
 from ..modeling.families.base import ModelConfig
 from ..objectives import ObjectiveConfig
-from .group_catalog import ConfigGroup, validate_named_group_payload
+from .group_catalog import ConfigGroup, GroupSpec, group_spec, validate_named_group_payload
 from .groups import load_named_group_document
 from .models import (
     ChainSpec,
@@ -29,30 +28,27 @@ from .surfaces import SurfaceFrame
 
 ConfigT = TypeVar("ConfigT")
 
-
-@dataclass(frozen=True, slots=True)
-class TypedGroup(Generic[ConfigT]):
-    group: ConfigGroup
-
-
-CHAIN = TypedGroup[ChainSpec](ConfigGroup.CHAIN)
-DATASET = TypedGroup[DatasetSpec](ConfigGroup.DATASET)
-DATASET_BUILDER = TypedGroup[DatasetBuilderConfig](ConfigGroup.DATASET_BUILDER)
-EVALUATION = TypedGroup[EvaluatorConfig](ConfigGroup.EVALUATION)
-EXECUTION = TypedGroup[ExecutionSpec](ConfigGroup.EXECUTION)
-FEATURES = TypedGroup[FeaturesConfig](ConfigGroup.FEATURES)
-MODEL = TypedGroup[ModelConfig[str]](ConfigGroup.MODEL)
-OBJECTIVE = TypedGroup[ObjectiveConfig](ConfigGroup.OBJECTIVE)
-PREDICTION = TypedGroup[PredictionConfig](ConfigGroup.PREDICTION)
-PROBLEM = TypedGroup[ProblemSpec](ConfigGroup.PROBLEM)
-PROVIDER = TypedGroup[ProviderSpec](ConfigGroup.PROVIDER)
-SPLIT = TypedGroup[SplitConfig](ConfigGroup.SPLIT)
-SURFACE = TypedGroup[SurfaceFrame](ConfigGroup.SURFACE)
-TRAINING = TypedGroup[TrainingConfig](ConfigGroup.TRAINING)
-TUNING = TypedGroup[TuningConfig](ConfigGroup.TUNING)
+CHAIN = cast(GroupSpec[ChainSpec], group_spec(ConfigGroup.CHAIN))
+DATASET = cast(GroupSpec[DatasetSpec], group_spec(ConfigGroup.DATASET))
+DATASET_BUILDER = cast(
+    GroupSpec[DatasetBuilderConfig],
+    group_spec(ConfigGroup.DATASET_BUILDER),
+)
+EVALUATION = cast(GroupSpec[EvaluatorConfig], group_spec(ConfigGroup.EVALUATION))
+EXECUTION = cast(GroupSpec[ExecutionSpec], group_spec(ConfigGroup.EXECUTION))
+FEATURES = cast(GroupSpec[FeaturesConfig], group_spec(ConfigGroup.FEATURES))
+MODEL = cast(GroupSpec[ModelConfig[str]], group_spec(ConfigGroup.MODEL))
+OBJECTIVE = cast(GroupSpec[ObjectiveConfig], group_spec(ConfigGroup.OBJECTIVE))
+PREDICTION = cast(GroupSpec[PredictionConfig], group_spec(ConfigGroup.PREDICTION))
+PROBLEM = cast(GroupSpec[ProblemSpec], group_spec(ConfigGroup.PROBLEM))
+PROVIDER = cast(GroupSpec[ProviderSpec], group_spec(ConfigGroup.PROVIDER))
+SPLIT = cast(GroupSpec[SplitConfig], group_spec(ConfigGroup.SPLIT))
+SURFACE = cast(GroupSpec[SurfaceFrame], group_spec(ConfigGroup.SURFACE))
+TRAINING = cast(GroupSpec[TrainingConfig], group_spec(ConfigGroup.TRAINING))
+TUNING = cast(GroupSpec[TuningConfig], group_spec(ConfigGroup.TUNING))
 
 
-def load(spec: TypedGroup[ConfigT], name: str) -> ConfigT:
+def load(spec: GroupSpec[ConfigT], name: str) -> ConfigT:
     payload = load_named_group_document(name, spec.group)
     return cast(
         ConfigT,

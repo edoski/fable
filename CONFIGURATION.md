@@ -29,7 +29,7 @@ evaluation:
   id: poisson_replay
 ```
 
-The default runnable surface is `current_row_fee_dynamics`. `evaluation.delay_seconds` is usually omitted; evaluation workflows default it from `problem.max_delay_seconds`. `model`, `features`, `objective`, `evaluation`, `tuning_space`, `delay_seconds`, `study`, `variant`, and `trial_count` may be supplied by benchmark cases or CLI overrides when a surface leaves variation to the **Workflow Selection**.
+The default runnable surface is `current_row_fee_dynamics`. `evaluation.delay_seconds` is usually omitted; evaluation workflows default it from `problem.max_delay_seconds`. Benchmark cases and CLI overrides may supply Workflow Selection fields when a surface leaves variation open; the canonical field vocabulary lives in `config.selections`.
 
 Available evaluator ids are `poisson_replay` and `full_temporal_replay`. The matching evaluation objectives are `profit_poisson_replay` and `profit_full_temporal_replay`. Train and tune workflows require evaluation objectives to match the selected evaluator and metric direction; evaluate workflows may intentionally use a different diagnostic evaluator for an already-trained artifact.
 

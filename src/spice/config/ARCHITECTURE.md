@@ -47,13 +47,15 @@ A workflow selection is unresolved workflow intent. CLI commands build selection
 
 Selections usually refer to problem specs by name. Benchmark problem grids may supply an inline `ProblemSpec`; this still uses the same resolution path, and the resolved workflow config stores the full executable problem.
 
+`config.selections` owns workflow selection type and field metadata. CLI parsing, fresh resolution, and benchmark materialization consume that metadata instead of each restating allowed workflow-selection fields.
+
 ## Config Group Loading
 
 Config groups have two loading interfaces. `groups.load_named_group_payload()` returns a canonical raw dict for CLI show/edit, templates, fixture mutation, benchmark raw specs, and durable YAML output. `typed_groups.load()` reads group documents directly and returns context-free typed named groups for workflow resolution and other internal runtime setup.
 
-`group_catalog` owns group names, directories, identity checks, and validators shared by the raw and typed interfaces. Owner packages own concrete dispatch inside a group. Tuning-space loading stays in resolution because it depends on the selected model and problem. Benchmark typed loading stays in benchmarks.
+`group_catalog` owns group names, directories, identity checks, and validators shared by the raw and typed interfaces. `typed_groups` exposes typed views of that catalog metadata; casts stay local there. Owner packages own concrete dispatch inside a group. Tuning-space loading stays in resolution because it depends on the selected model and problem. Benchmark typed loading stays in benchmarks.
 
-Fresh resolution loads the named surface directly from the concrete Workflow Selection and constructs acquire/train/tune configs from the selected Surface values plus overrides. Selection overrides coalesce only on `None`; empty refs are treated as explicit invalid refs instead of falling back to surface defaults. `surfaces` owns frame models only.
+Fresh resolution loads the named surface directly from the concrete Workflow Selection and constructs acquire/train/tune configs from the selected Surface values plus overrides. Selection overrides coalesce only on `None`; empty refs are treated as explicit invalid refs instead of falling back to surface defaults. `surfaces` owns frame models only. Fresh resolution and snapshot hydration share typed resolved workflow builders, but fresh resolution does not route through snapshot hydration.
 
 ## Owner Coercion
 
