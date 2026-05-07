@@ -162,7 +162,7 @@ def test_config_public_commands_only(isolate_conf_root) -> None:
         "poisson_replay",
     ]
 
-    builder_result = runner.invoke(app, ["config", "list", "dataset-builder"])
+    builder_result = runner.invoke(app, ["config", "list", "dataset_builder"])
     assert builder_result.exit_code == 0, builder_result.stdout
     assert builder_result.stdout.splitlines() == ["fixed_sequence_temporal"]
 
