@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import replace
 from typing import TypeVar, overload
 
 from pydantic import ValidationError
@@ -20,19 +20,12 @@ from .models import (
     AcquireConfig,
     ArtifactConfig,
     ArtifactVariant,
-    ChainSpec,
-    DatasetBuilderConfig,
-    DatasetSpec,
     EvaluateConfig,
-    FeaturesConfig,
-    PredictionConfig,
     ProblemSpec,
     ResolvedRpcEndpointConfig,
-    SplitConfig,
     StorageSpec,
     StudyConfig,
     TrainConfig,
-    TrainingConfig,
     TuneConfig,
     TuningConfig,
     TuningSpaceConfig,
@@ -60,30 +53,6 @@ ConfigModelT = TypeVar("ConfigModelT", bound=ConfigModel)
 SelectionValueT = TypeVar("SelectionValueT")
 
 WorkflowConfig = AcquireConfig | TrainConfig | TuneConfig | EvaluateConfig
-
-
-@dataclass(frozen=True, slots=True)
-class ModelWorkflowBase:
-    dataset: DatasetSpec
-    chain: ChainSpec
-    storage: StorageSpec
-    problem: ProblemSpec
-    model: ModelConfig[str]
-    dataset_builder: DatasetBuilderConfig
-    features: FeaturesConfig
-    prediction: PredictionConfig
-    objective: ObjectiveConfig
-    evaluation: EvaluatorConfig | None
-    study: StudyConfig
-    artifact: ArtifactConfig
-
-
-@dataclass(frozen=True, slots=True)
-class ModelWorkflowSpine:
-    training: TrainingConfig
-    split: SplitConfig
-    tuning: TuningConfig | None
-    tuning_space: TuningSpaceConfig | None
 
 
 def load_named_tuning_space(
@@ -225,10 +194,13 @@ def _resolve_artifact(artifact: ArtifactConfig | None) -> ArtifactConfig:
     return artifact or ArtifactConfig()
 
 
-def _resolve_model_workflow_base(
+def _resolve_model_workflow_fields(
     selection: TrainWorkflowSelection | TuneWorkflowSelection,
     frame: SurfaceFrame,
-) -> ModelWorkflowBase:
+    *,
+    require_tuning: bool,
+    allow_tuned_variant: bool,
+) -> ResolvedModelWorkflowFields:
     evaluation_name = _selected(selection.evaluation, frame.evaluation.id)
     dataset = typed.load(typed.DATASET, frame.dataset)
     chain = typed.load(
@@ -255,7 +227,27 @@ def _resolve_model_workflow_base(
         frame.study if selection.study is None else StudyConfig(name=selection.study)
     )
     artifact = _resolve_artifact(_selected_model_artifact(selection, frame))
-    return ModelWorkflowBase(
+    training = typed.load(
+        typed.TRAINING,
+        _required(_selected(selection.training, frame.training.id), "training"),
+    )
+    split = typed.load(
+        typed.SPLIT,
+        _required(_selected(selection.split, frame.training.split), "split"),
+    )
+    tuning: TuningConfig | None = None
+    tuning_space: TuningSpaceConfig | None = None
+    if require_tuning or (allow_tuned_variant and artifact.variant is ArtifactVariant.TUNED):
+        tuning = typed.load(
+            typed.TUNING,
+            _required(_selected(selection.tuning, frame.tuning.id), "tuning"),
+        )
+        tuning_space = load_named_tuning_space(
+            _required(_selected(selection.tuning_space, frame.tuning.space), "tuning.space"),
+            model_config=model,
+            problem_config=problem,
+        )
+    return ResolvedModelWorkflowFields(
         dataset=dataset,
         chain=chain,
         storage=storage,
@@ -268,48 +260,10 @@ def _resolve_model_workflow_base(
         evaluation=evaluation,
         study=study,
         artifact=artifact,
-    )
-
-
-def _resolve_model_workflow_spine(
-    selection: TrainWorkflowSelection | TuneWorkflowSelection,
-    frame: SurfaceFrame,
-    *,
-    model: ModelConfig[str],
-    problem: ProblemSpec,
-    artifact: ArtifactConfig,
-    require_tuning: bool,
-    allow_tuned_variant: bool,
-) -> ModelWorkflowSpine:
-    training = typed.load(
-        typed.TRAINING,
-        _required(_selected(selection.training, frame.training.id), "training"),
-    )
-    split = typed.load(
-        typed.SPLIT,
-        _required(_selected(selection.split, frame.training.split), "split"),
-    )
-    if require_tuning or (allow_tuned_variant and artifact.variant.value == "tuned"):
-        tuning = typed.load(
-            typed.TUNING,
-            _required(_selected(selection.tuning, frame.tuning.id), "tuning"),
-        )
-        tuning_space = load_named_tuning_space(
-            _required(_selected(selection.tuning_space, frame.tuning.space), "tuning.space"),
-            model_config=model,
-            problem_config=problem,
-        )
-        return ModelWorkflowSpine(
-            training=training,
-            split=split,
-            tuning=tuning,
-            tuning_space=tuning_space,
-        )
-    return ModelWorkflowSpine(
         training=training,
         split=split,
-        tuning=None,
-        tuning_space=None,
+        tuning=tuning,
+        tuning_space=tuning_space,
     )
 
 
@@ -361,77 +315,37 @@ def _resolve_acquire_config(selection: AcquireWorkflowSelection) -> AcquireConfi
 
 def _resolve_train_config(selection: TrainWorkflowSelection) -> TrainConfig:
     frame = _load_surface(selection)
-    base = _resolve_model_workflow_base(selection, frame)
-    spine = _resolve_model_workflow_spine(
+    model_fields = _resolve_model_workflow_fields(
         selection,
         frame,
-        model=base.model,
-        problem=base.problem,
-        artifact=base.artifact,
         require_tuning=False,
         allow_tuned_variant=True,
     )
     return build_train_config(
         ResolvedTrainWorkflowFields(
-            model_fields=_resolved_model_workflow_fields(base, spine),
+            model_fields=model_fields,
             dataset_id=selection.dataset_id,
             study_id=selection.study_id,
         )
     )
 
 
-def _resolved_model_workflow_fields(
-    base: ModelWorkflowBase,
-    spine: ModelWorkflowSpine,
-) -> ResolvedModelWorkflowFields:
-    return ResolvedModelWorkflowFields(
-        chain=base.chain,
-        dataset=base.dataset,
-        storage=base.storage,
-        problem=base.problem,
-        model=base.model,
-        dataset_builder=base.dataset_builder,
-        features=base.features,
-        prediction=base.prediction,
-        objective=base.objective,
-        evaluation=base.evaluation,
-        study=base.study,
-        artifact=base.artifact,
-        training=spine.training,
-        split=spine.split,
-        tuning=spine.tuning,
-        tuning_space=spine.tuning_space,
-    )
-
-
 def _resolve_tune_config(selection: TuneWorkflowSelection) -> TuneConfig:
     frame = _load_surface(selection)
-    base = _resolve_model_workflow_base(selection, frame)
-    spine = _resolve_model_workflow_spine(
+    model_fields = _resolve_model_workflow_fields(
         selection,
         frame,
-        model=base.model,
-        problem=base.problem,
-        artifact=base.artifact,
         require_tuning=True,
         allow_tuned_variant=False,
     )
-    assert spine.tuning is not None
-    assert spine.tuning_space is not None
-    tuning = spine.tuning
+    assert model_fields.tuning is not None
+    assert model_fields.tuning_space is not None
+    tuning = model_fields.tuning
     if selection.trial_count is not None:
         tuning = _validated_config_update(tuning, trial_count=selection.trial_count)
     return build_tune_config(
         ResolvedTuneWorkflowFields(
-            model_fields=_resolved_model_workflow_fields(
-                base,
-                ModelWorkflowSpine(
-                    training=spine.training,
-                    split=spine.split,
-                    tuning=tuning,
-                    tuning_space=spine.tuning_space,
-                ),
-            ),
+            model_fields=replace(model_fields, tuning=tuning),
             dataset_id=_required(selection.dataset_id, "dataset_id"),
         )
     )

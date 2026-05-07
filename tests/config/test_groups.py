@@ -10,6 +10,7 @@ from spice.config.groups import (
     ensure_named_group_file,
     load_named_group_payload,
 )
+from spice.config.models import coerce_features_config, coerce_problem_spec
 
 
 def test_typed_group_loaders_return_owner_concrete_types() -> None:
@@ -28,6 +29,14 @@ def test_typed_group_loaders_return_owner_concrete_types() -> None:
     assert type(builder).__name__ == "FixedSequenceTemporalDatasetBuilderConfig"
     assert type(evaluator).__name__ == "PoissonReplayEvaluatorConfig"
     assert type(training.input_normalization).__name__ == "RowStandardConfig"
+
+
+def test_config_owned_coercers_preserve_config_identity() -> None:
+    problem = typed.load(typed.PROBLEM, "current_row_nominal")
+    features = typed.load(typed.FEATURES, "core_fee_dynamics")
+
+    assert coerce_problem_spec(problem) is problem
+    assert coerce_features_config(features) is features
 
 
 @pytest.mark.parametrize(

@@ -8,12 +8,19 @@ import pytest
 
 from spice.config import coerce_features_config, coerce_problem_spec
 from spice.config.models import ChainRuntimeSpec
+from spice.core.errors import ConfigResolutionError
 from spice.features import compile_feature_contract
 from spice.temporal.compilers import (
+    ProblemCompilerConfig,
+    coerce_problem_compiler_config,
     problem_runtime_metadata_from_compiler_payload,
     problem_runtime_metadata_payload,
 )
-from spice.temporal.compilers.observed_time_window import ObservedTimeWindowRuntimeMetadata
+from spice.temporal.compilers.observed_time_window import (
+    ObservedTimeWindowNominalSlotSpacingConfig,
+    ObservedTimeWindowRuntimeMetadata,
+    ObservedTimeWindowSlotSpacingConfig,
+)
 from spice.temporal.contracts import compile_problem_contract
 
 
@@ -30,6 +37,29 @@ def _feature_contract():
             }
         )
     )
+
+
+def test_observed_time_window_coercer_preserves_and_redispatches_slot_spacing() -> None:
+    concrete_slot_spacing = ObservedTimeWindowNominalSlotSpacingConfig()
+    concrete_compiler = coerce_problem_compiler_config(
+        {"id": "observed_time_window", "slot_spacing": concrete_slot_spacing}
+    )
+    abstract_slot_spacing = ObservedTimeWindowSlotSpacingConfig(id="nominal")
+    redispatched_compiler = coerce_problem_compiler_config(
+        {"id": "observed_time_window", "slot_spacing": abstract_slot_spacing}
+    )
+
+    assert concrete_compiler.slot_spacing is concrete_slot_spacing
+    assert redispatched_compiler.slot_spacing is not abstract_slot_spacing
+    assert isinstance(
+        redispatched_compiler.slot_spacing,
+        ObservedTimeWindowNominalSlotSpacingConfig,
+    )
+
+
+def test_incomplete_problem_compiler_selector_fails_at_compiler_boundary() -> None:
+    with pytest.raises(ConfigResolutionError, match="slot_spacing"):
+        coerce_problem_compiler_config(ProblemCompilerConfig(id="observed_time_window"))
 
 
 def _blocks(row_count: int = 80) -> pl.DataFrame:

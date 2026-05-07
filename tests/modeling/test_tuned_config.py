@@ -27,7 +27,11 @@ from spice.modeling.families.transformer_lstm import (
     TransformerLstmModelConfig,
     TransformerLstmTunedModelParams,
 )
-from spice.modeling.tuned_config import coerce_tuning_space_config, sample_tuned_parameters
+from spice.modeling.tuned_config import (
+    coerce_tuned_parameter_set,
+    coerce_tuning_space_config,
+    sample_tuned_parameters,
+)
 from spice.modeling.tuning import apply_study_best_params
 from tests.root_handle_helpers import corpus_handle, study_handle
 
@@ -51,6 +55,28 @@ def _lstm_model() -> LstmModelConfig:
         head_hidden_dim=128,
         dropout=0.2,
     )
+
+
+def test_tuning_coercers_preserve_typed_identity() -> None:
+    tuning_space = coerce_tuning_space_config(
+        {"model": {"id": "lstm", "hidden_size": [64]}},
+        model_config=_lstm_model(),
+        problem_config=_problem(),
+    )
+    tuned_parameters = coerce_tuned_parameter_set(
+        {"model": {"id": "lstm", "hidden_size": 64}},
+        model_id="lstm",
+    )
+
+    assert (
+        coerce_tuning_space_config(
+            tuning_space,
+            model_config=_lstm_model(),
+            problem_config=_problem(),
+        )
+        == tuning_space
+    )
+    assert coerce_tuned_parameter_set(tuned_parameters, model_id="lstm") is tuned_parameters
 
 
 def _transformer_lstm_model() -> TransformerLstmModelConfig:

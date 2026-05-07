@@ -10,8 +10,11 @@ from spice.modeling.dataset_builders import (
     ArtifactInferenceDatasetPreparationFacts,
     EvaluationCoverageWindow,
     FixedSequenceTemporalBuilderRuntimeMetadata,
+    FixedSequenceTemporalDatasetBuilderConfig,
     TrainingDatasetPreparationContext,
     TrainingDatasetPreparationFacts,
+    coerce_builder_runtime_metadata,
+    coerce_dataset_builder_config,
 )
 from spice.modeling.pipeline import build_artifact_training_spec
 from tests.dataset_helpers import (
@@ -32,6 +35,19 @@ def _make_history_rows_with_margin(config: TrainConfig, *, extra_rows: int = 32)
         chain_id=config.chain.runtime.chain_id,
         block_interval_seconds=block_interval_seconds,
     )
+
+
+def test_dataset_builder_coercers_preserve_concrete_config_identity() -> None:
+    config = FixedSequenceTemporalDatasetBuilderConfig()
+    metadata = FixedSequenceTemporalBuilderRuntimeMetadata(
+        sequence_length=64,
+        median_dt_seconds=1.0,
+        min_sequence_length=64,
+        max_sequence_length=4096,
+    )
+
+    assert coerce_dataset_builder_config(config) is config
+    assert coerce_builder_runtime_metadata("fixed_sequence_temporal", metadata) is metadata
 
 
 def _make_rows_with_tail_cadence_shift(

@@ -8,6 +8,7 @@ from spice.temporal.input_normalization import (
     compile_input_normalization_contract,
     transform_feature_matrix,
 )
+from spice.temporal.input_normalization.row_standard import RowStandardConfig
 from spice.temporal.problem_store import CompiledProblemStore
 
 
@@ -22,6 +23,12 @@ def _store() -> CompiledProblemStore:
         candidate_end_rows=np.array([1, 3], dtype=np.int64),
         max_candidate_slots=1,
     )
+
+
+def test_input_normalization_coercer_preserves_concrete_config_identity() -> None:
+    config = RowStandardConfig()
+
+    assert coerce_input_normalization_config(config) is config
 
 
 def test_row_standard_and_window_weighted_standard_fit_different_statistics() -> None:

@@ -103,6 +103,17 @@ def test_evaluator_compile_requires_concrete_poisson_config() -> None:
         compile_evaluator_contract(EvaluatorConfig(id="base"))
 
 
+def test_evaluator_coercer_preserves_concrete_config_identity() -> None:
+    config = coerce_evaluator_config(_poisson_config())
+
+    assert coerce_evaluator_config(config) is config
+
+
+def test_incomplete_evaluator_selector_fails_at_evaluator_boundary() -> None:
+    with pytest.raises(ConfigResolutionError, match="Field required"):
+        coerce_evaluator_config(EvaluatorConfig(id="poisson_replay"))
+
+
 def test_metric_descriptors_and_evaluator_contract_validate_primary_metric() -> None:
     def unused_run_fn(
         _store: object,

@@ -12,6 +12,7 @@ from spice.temporal import (
     coerce_execution_policy_config,
     compile_execution_policy_contract,
 )
+from spice.temporal.execution_policy.strict_deadline_miss import StrictDeadlineMissConfig
 from spice.temporal.problem_store import CompiledProblemStore
 
 
@@ -19,6 +20,12 @@ def _execution_policy():
     return compile_execution_policy_contract(
         coerce_execution_policy_config({"id": "strict_deadline_miss"})
     )
+
+
+def test_execution_policy_coercer_preserves_concrete_config_identity() -> None:
+    config = StrictDeadlineMissConfig()
+
+    assert coerce_execution_policy_config(config) is config
 
 
 def _store() -> CompiledProblemStore:
