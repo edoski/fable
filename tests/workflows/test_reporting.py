@@ -208,9 +208,10 @@ def test_train_workflow_emits_compact_epoch_output(
 
     def fake_run_persisted_training(*args, **kwargs):
         del args
-        kwargs["on_prepare_complete"](SimpleNamespace(n_rows_used=128, sample_count=24))
-        kwargs["on_fit_start"]()
-        kwargs["on_epoch_end"](
+        callbacks = kwargs["callbacks"]
+        callbacks.on_prepare_complete(SimpleNamespace(n_rows_used=128, sample_count=24))
+        callbacks.on_fit_start()
+        callbacks.on_epoch_end(
             TrainingEpochProgress(
                 epoch=1,
                 max_epochs=3,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,8 +13,7 @@ from .artifacts import (
     load_training_artifact,
     persist_training_artifact,
 )
-from .dataset_builders import PreparedTrainingDataset
-from .pipeline import TrainingSpec, run_training
+from .pipeline import TrainingRunCallbacks, TrainingSpec, run_training
 from .results import (
     LoadedTrainingSummary,
     TrainingRuntimeSummary,
@@ -24,10 +22,6 @@ from .results import (
 )
 from .scoring import PredictionMetricScoringRuntimePlan, score_prediction_metrics
 from .training_run import TrainingRunResult
-from .training_runner import (
-    EarlyStopCallback,
-    EpochEndCallback,
-)
 
 
 @dataclass(slots=True)
@@ -105,18 +99,12 @@ def run_persisted_training(
     *,
     spec: TrainingSpec,
     artifact_dir: Path,
-    on_prepare_complete: Callable[[PreparedTrainingDataset], None] | None = None,
-    on_fit_start: Callable[[], None] | None = None,
-    on_epoch_end: EpochEndCallback | None = None,
-    on_early_stop: EarlyStopCallback | None = None,
+    callbacks: TrainingRunCallbacks | None = None,
 ) -> PersistedTrainingRun:
     training_run = run_training(
         history_block_path,
         spec=spec,
-        on_prepare_complete=on_prepare_complete,
-        on_fit_start=on_fit_start,
-        on_epoch_end=on_epoch_end,
-        on_early_stop=on_early_stop,
+        callbacks=callbacks,
     )
     manifest = build_training_artifact_manifest(training_run.prepared, spec=spec)
     persist_training_artifact(
@@ -148,18 +136,12 @@ def run_trial_training(
     history_block_path: Path,
     *,
     spec: TrainingSpec,
-    on_prepare_complete: Callable[[PreparedTrainingDataset], None] | None = None,
-    on_fit_start: Callable[[], None] | None = None,
-    on_epoch_end: EpochEndCallback | None = None,
-    on_early_stop: EarlyStopCallback | None = None,
+    callbacks: TrainingRunCallbacks | None = None,
 ) -> TrialTrainingRun:
     training_run = run_training(
         history_block_path,
         spec=spec,
-        on_prepare_complete=on_prepare_complete,
-        on_fit_start=on_fit_start,
-        on_epoch_end=on_epoch_end,
-        on_early_stop=on_early_stop,
+        callbacks=callbacks,
     )
     manifest = build_training_artifact_manifest(training_run.prepared, spec=spec)
     summary = _build_summary(

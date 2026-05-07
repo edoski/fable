@@ -6,10 +6,15 @@ from ..config.models import AcquireConfig, EvaluateConfig, TrainConfig, TuneConf
 from ..core.rendering import metric_string
 from ..core.reporting import Reporter
 from ..corpus.assembly import CorpusAssemblyResult
+from ..modeling.pipeline import TrainingRunCallbacks, TrainingSpec
 from ..modeling.results import LoadedEvaluationSummary, LoadedTrainingSummary
 from ..modeling.summary import training_result_fields
 from ..modeling.training_runner import TrainingEpochProgress
-from ..modeling.tuning_execution import TuningBestProgress, TuningTrialProgress
+from ..modeling.tuning_execution import (
+    TuningBestProgress,
+    TuningExecutionCallbacks,
+    TuningTrialProgress,
+)
 from ..storage.study_models import StudySummary
 from ..storage.study_render import study_result_fields
 from ..storage.workflow_roots import (
@@ -116,6 +121,34 @@ def report_train_early_stop(
     reporter.milestone(f"fit early_stop epoch={epoch} best_epoch={best_epoch}")
 
 
+def train_reporting_callbacks(
+    reporter: Reporter,
+    *,
+    spec: TrainingSpec,
+) -> TrainingRunCallbacks:
+    return TrainingRunCallbacks(
+        on_prepare_complete=lambda prepared: report_train_prepare_complete(
+            reporter,
+            n_rows_used=prepared.n_rows_used,
+            sample_count=prepared.sample_count,
+        ),
+        on_fit_start=lambda: report_train_fit_start(
+            reporter,
+            max_epochs=spec.training.max_epochs,
+        ),
+        on_epoch_end=lambda progress: report_train_epoch(
+            reporter,
+            progress,
+            primary_metric_id=spec.prediction_contract.primary_metric_id,
+        ),
+        on_early_stop=lambda epoch, best_epoch: report_train_early_stop(
+            reporter,
+            epoch=epoch,
+            best_epoch=best_epoch,
+        ),
+    )
+
+
 def report_train_result(
     reporter: Reporter,
     *,
@@ -168,6 +201,28 @@ def report_tune_best(reporter: Reporter, progress: TuningBestProgress) -> None:
 
 def report_tune_result(reporter: Reporter, *, summary: StudySummary) -> None:
     reporter.result("tune", study_result_fields(summary))
+
+
+def tune_reporting_callbacks(reporter: Reporter) -> TuningExecutionCallbacks:
+    return TuningExecutionCallbacks(
+        on_resume=lambda existing, target: report_tune_resume(
+            reporter,
+            existing=existing,
+            target=target,
+        ),
+        on_study_start=lambda remaining: report_tune_study_start(
+            reporter,
+            remaining=remaining,
+        ),
+        on_trial_complete=lambda progress: report_tune_trial(
+            reporter,
+            progress,
+        ),
+        on_best_improved=lambda progress: report_tune_best(
+            reporter,
+            progress,
+        ),
+    )
 
 
 def evaluate_workflow_facts(

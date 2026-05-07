@@ -84,6 +84,14 @@ class TrainingSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class TrainingRunCallbacks:
+    on_prepare_complete: Callable[[PreparedTrainingDataset], None] | None = None
+    on_fit_start: Callable[[], None] | None = None
+    on_epoch_end: EpochEndCallback | None = None
+    on_early_stop: EarlyStopCallback | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CompiledTrainingContext:
     feature_contract: CompiledFeatureContract
     problem_contract: CompiledProblemContract
@@ -219,11 +227,9 @@ def run_training(
     history_block_path: Path,
     *,
     spec: TrainingSpec,
-    on_prepare_complete: Callable[[PreparedTrainingDataset], None] | None = None,
-    on_fit_start: Callable[[], None] | None = None,
-    on_epoch_end: EpochEndCallback | None = None,
-    on_early_stop: EarlyStopCallback | None = None,
+    callbacks: TrainingRunCallbacks | None = None,
 ) -> TrainingRunResult:
+    active_callbacks = callbacks or TrainingRunCallbacks()
     blocks = load_block_frame(history_block_path)
     prepared = spec.dataset_builder_contract.prepare_training_dataset(
         blocks,
@@ -234,15 +240,15 @@ def run_training(
             input_normalization_contract=spec.input_normalization_contract,
         ),
     )
-    if on_prepare_complete is not None:
-        on_prepare_complete(prepared)
+    if active_callbacks.on_prepare_complete is not None:
+        active_callbacks.on_prepare_complete(prepared)
     model = build_model(
         prepared.n_features,
         spec.prediction_contract.build_output_spec(prepared.temporal_capability.action_width),
         spec.model,
     )
-    if on_fit_start is not None:
-        on_fit_start()
+    if active_callbacks.on_fit_start is not None:
+        active_callbacks.on_fit_start()
     training_result = run_training_fit(
         TrainingFitSpec(
             model=model,
@@ -253,8 +259,8 @@ def run_training(
             training_config=spec.training,
         ),
         callbacks=TrainingCallbacks(
-            on_epoch_end=on_epoch_end,
-            on_early_stop=on_early_stop,
+            on_epoch_end=active_callbacks.on_epoch_end,
+            on_early_stop=active_callbacks.on_early_stop,
         ),
     )
     return TrainingRunResult(
