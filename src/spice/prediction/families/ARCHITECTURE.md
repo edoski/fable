@@ -14,7 +14,7 @@ Families must validate action masks, keep target tensors aligned with sample ind
 
 ## Extension Points
 
-Create a new family for a new prediction target. Reuse shared masking helpers instead of reimplementing invalid-candidate behavior.
+Create a new family for a new prediction target. Extract shared masking helpers only after multiple families need the same invalid-candidate behavior.
 
 ## Family Implementation Checklist
 
@@ -37,4 +37,4 @@ Temporal stores may have variable candidate counts. Families that score candidat
 raw logits + action mask -> masked logits -> probabilities/decision
 ```
 
-The shared helper keeps the invalid-slot behavior consistent across families.
+Masking behavior belongs to the family until it has a second caller.

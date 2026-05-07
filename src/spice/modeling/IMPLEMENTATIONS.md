@@ -117,7 +117,7 @@ Forward-only inference and split-metric passes use `forward_runtime`: callers pa
 ```text
 validate evaluator accepts prediction contract
   -> score model into decoded result
-  -> evaluator.run(store, execution_policy, decoded_result)
+  -> evaluator.run(store, execution_policy, decoded_result, action_space)
 ```
 
 This keeps evaluation scoring independent from training-loop details while making device, precision, runtime context, determinism, seed, and compile policy explicit through `EvaluationScoringRuntimePlan`. Prediction metric scoring lives in the same module and consumes the final `ModelingRuntimePlan` instead of rebuilding runtime facts from training config.

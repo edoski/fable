@@ -9,7 +9,7 @@ A named recipe that groups default config choices for one workflow family.
 _Avoid_: preset, profile
 
 **Workflow Selection**:
-Unresolved workflow intent made of a surface plus optional overrides.
+Unresolved workflow intent: a producer-root Surface selection with optional overrides, or an evaluate/root-consumer selection with exact root ids and runtime controls.
 _Avoid_: request
 
 **Root Consumer Selection**:
@@ -201,7 +201,7 @@ Execution-policy-owned set of decoded actions resolvable for a temporal sample. 
 _Avoid_: candidate rows, logits width
 
 **Temporal Outcome Facts**:
-Execution-policy-owned selected-sample facts derived from a problem store and Action Space, including action fee consequences, baseline rows, reachable actions, realized rows, and overflow masks. Prediction families consume these facts to build target batches; evaluators consume realized outcome facts to score decoded decisions.
+Execution-policy-owned selected-sample facts derived from a problem store and Action Space, including per-action outcome rows, per-action log fees, baseline rows, reachable-action masks, and overflow masks. Prediction families consume these facts to build target batches; evaluators realize selected decoded offsets through the execution-policy contract and Action Space.
 _Avoid_: prediction targets, evaluator metrics
 
 **Prediction Target Batch**:
@@ -213,12 +213,16 @@ Executable model-batch iteration plan with sample ordering, representation batch
 _Avoid_: batch source
 
 **Training Runner**:
-Fit execution module that owns runtime setup, epoch execution, objective tracking, best-state selection, and split metric evaluation.
+Fit execution module that owns epoch execution, objective tracking, best-state selection, and split metric evaluation.
 _Avoid_: training loop helper
 
 **Modeling Runtime Plan**:
 Modeling-owned executable runtime fact set for model-bound training, inference, and evaluator scoring. It carries device, precision, representation runtime context, backend determinism, seed, and compile policy; runtime modules use it for host warmup, CUDA memory measurement, final batch planning, model preparation, forward execution, and destructive training-probe restoration.
 _Avoid_: ad hoc inference probe, scoring batch size, warmup side effect
+
+**Training Runtime Plan**:
+Modeling-owned result of training runtime planning: measured Modeling Runtime Plan, final train/validation Batch Plans, and reusable prediction training state.
+_Avoid_: training batch bundle, runtime helper result
 
 **Training Fit Policy**:
 Training Runner internal policy for finite metrics, history append order, objective improvement, best-state tracking, progress payloads, and early-stop decisions.
@@ -292,7 +296,7 @@ _Avoid_: execution backend
 - An **Artifact Inference Context** trusts artifact manifest semantics, validates selected corpus compatibility, and prepares model scoring inputs.
 - A **Temporal Dataset Preparation Interface** receives domain facts plus compiled/trusted context and owns temporal sample selection, split assignment, scaler use, builder runtime metadata, selected-sample role facts, and prepared dataset assembly.
 - An **Action Space** is derived by an execution policy from a problem store and selected temporal samples during dataset preparation.
-- **Temporal Outcome Facts** are derived by an execution policy from a problem store and **Action Space** for a selected training split.
+- **Temporal Outcome Facts** are derived by an execution policy from a problem store and **Action Space** for a selected training, validation, or test sample set.
 - A **Prediction Target Batch** is derived by a prediction family from **Temporal Outcome Facts** and **Action Space**.
 - A **Training Runner** consumes prepared training data and produces fitted model state plus runtime training metrics.
 - A **Batch Plan** is built by the **Training Runner** and inference paths after runtime memory budget is known, consuming prepared temporal facts for training or Action Space for inference/decode. It does not derive Action Space, Temporal Outcome Facts, or Prediction Target Batches.
@@ -302,7 +306,7 @@ _Avoid_: execution backend
 - A **Decoded Result ABI** is produced by a prediction contract and accepted by evaluator contracts by decoded-result id.
 - An **Objective Runtime** turns validation metrics or model-bound evaluator scoring into objective metrics for the **Training Runner**.
 - A **Temporal Replay Runner** is shared by replay evaluator Adapters after prediction decoding and before **Temporal Accounting**.
-- **Temporal Accounting** is shared by evaluator Adapters after they select temporal decision events.
+- **Temporal Accounting** is used by the **Temporal Replay Runner** after replay adapters select temporal decision events.
 - **Workflow Command Selection** builds typed **Workflow Selections** from operator options before config resolution.
 - A **Benchmark Collection Resolver** consumes exact artifact id, evaluator id, resolved delay, execution ref, and the pulled artifact root to produce a collected benchmark evaluation.
 - An **Execution Session** is opened for one explicit execution target and used by submission, following, remote transfer, and benchmark collection.

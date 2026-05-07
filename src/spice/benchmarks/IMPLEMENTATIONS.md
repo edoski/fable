@@ -4,7 +4,7 @@
 
 `benchmarks.plan_materialization.materialize_benchmark_plan()` turns a named benchmark into durable benchmark plan entries. It resolves once. Submit and collect consume persisted run-state files and do not re-plan.
 
-Materialization keeps three durable ledgers distinct:
+Materialization keeps two durable ledgers and two fact sets distinct:
 
 - `BenchmarkDependencyLedger` owns matched local run ids, external Slurm dependencies, and the `artifact_from` source run id.
 - `BenchmarkSelectionLedger` owns benchmark coordinate intent such as surface, chain, model, problem, objective, evaluation, runtime knobs, and inline problem ids. It does not carry consumed root ids.

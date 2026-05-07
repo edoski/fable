@@ -1,6 +1,6 @@
 # Concrete Config Specs
 
-Checked-in YAML specs define runnable experiments without Python edits. A surface is the named workflow composition; benchmarks are matrix/DAG wrappers over surfaces and overrides. These specs are current runnable architecture only; historical unsafe and estimated-block paths are documented in top-level `ARCHIVE.md`.
+Checked-in YAML specs define runnable experiments without Python edits. A surface is the named workflow composition; benchmarks are matrix/DAG wrappers over surfaces and overrides. These specs are current runnable architecture only; historical removed benchmark matrices and estimated-block paths are documented in top-level `ARCHIVE.md`.
 
 ## Default Surface
 

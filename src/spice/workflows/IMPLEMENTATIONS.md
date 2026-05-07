@@ -11,7 +11,7 @@ tune     -> study root
 evaluate -> artifact evaluation state
 ```
 
-Acquire runs locally. Train, tune, and evaluate are remote CLI workflows; their Python runners remain direct entrypoints for the remote runner and tests.
+Acquire runs locally. CLI submits train, tune, and evaluate to remote execution; their Python runners are direct entrypoints for the remote runner and tests.
 
 ## Acquire
 

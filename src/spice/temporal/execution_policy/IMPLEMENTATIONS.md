@@ -13,7 +13,7 @@ decoded offset
   -> realized fee
 ```
 
-The policy owns action masks and temporal outcome facts: baseline rows, per-action fee consequences, reachable actions, realized rows, and overflow behavior. `CompiledExecutionPolicyContract.prepare_action_space()` validates that the prepared Action Space matches the requested samples, store action width, and mask shape before modeling, prediction, or evaluation consumes it. `prepare_temporal_facts()` prepares the Action Space and temporal outcome facts once for a sample set; prediction families then build their own target batches from those facts.
+The policy owns action masks, temporal outcome facts, and selected-action realization. Temporal outcome facts contain baseline rows, per-action fee consequences, reachable actions, and overflow behavior. `CompiledExecutionPolicyContract.prepare_action_space()` validates that the prepared Action Space matches the requested samples, store action width, and mask shape before modeling, prediction, or evaluation consumes it. `prepare_temporal_facts()` prepares the Action Space and temporal outcome facts once for a sample set; prediction families then build their own target batches from those facts.
 
 ## `strict_deadline_miss`
 

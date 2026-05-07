@@ -7,7 +7,7 @@ CLI commands are the user-facing edge. They resolve named configs, own command d
 ```text
 terminal command
   -> Typer command parser
-  -> config/surface resolution
+  -> typed workflow selection / storage selector / benchmark run action
   -> local acquire or remote submission
 ```
 
