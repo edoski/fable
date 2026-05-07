@@ -1,21 +1,21 @@
 """Corpus split materialization interface."""
 
-from ._policy import CorpusSplitOutcome
-from ._session import (
+from ._materializer import (
     CorpusSplitMaterializationSession,
 )
-from ._types import (
+from ._models import (
     CorpusSplitIntent,
     CorpusSplitKind,
+    CorpusSplitMaterializationResult,
     CorpusSplitMaterializationSpec,
-    DatasetBuildResult,
+    CorpusSplitOutcome,
 )
 
 __all__ = [
     "CorpusSplitIntent",
     "CorpusSplitKind",
     "CorpusSplitMaterializationSession",
+    "CorpusSplitMaterializationResult",
     "CorpusSplitMaterializationSpec",
     "CorpusSplitOutcome",
-    "DatasetBuildResult",
 ]

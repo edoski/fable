@@ -8,7 +8,7 @@ from ...acquisition import BlockPullPlan, BlockRange, TimestampRange
 from ..io import load_block_frame
 from ..validation import BlockDatasetValidationReport, validate_exact_window_frame
 from ._chunks import filter_block_range
-from ._policy import SplitDatasetCandidate
+from ._models import _SplitDatasetCandidate
 
 
 def validate_history_result(
@@ -73,7 +73,7 @@ def validate_evaluation_result(
 
 
 def reusable_range_matches_target_window(
-    candidate: SplitDatasetCandidate,
+    candidate: _SplitDatasetCandidate,
     block_range: BlockRange,
     window: TimestampRange,
 ) -> bool:

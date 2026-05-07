@@ -13,10 +13,10 @@ from ...core.files import remove_path
 from ..io import iter_block_files, load_block_frame
 from ._chunks import combined_frame, filter_block_range, write_block_dataset_dir
 from ._dataset_state import validate_block_dataset
-from ._policy import CorpusSplitOutcome
-from ._types import (
+from ._models import (
+    CorpusSplitMaterializationResult,
     CorpusSplitMaterializationSpec,
-    DatasetBuildResult,
+    CorpusSplitOutcome,
     ValidationCallback,
 )
 
@@ -29,7 +29,7 @@ def materialize_dataset(
     validate_result: ValidationCallback,
     frames: Sequence[pl.DataFrame] | None = None,
     outcome: CorpusSplitOutcome,
-) -> DatasetBuildResult:
+) -> CorpusSplitMaterializationResult:
     dataset_dir = working_dir / mode
     if frames is not None:
         remove_path(dataset_dir)
@@ -47,7 +47,7 @@ def materialize_dataset(
         required_columns=materialization.required_columns,
     )
     validate_result(validation, dataset_dir)
-    return DatasetBuildResult(
+    return CorpusSplitMaterializationResult(
         path=dataset_dir,
         validation=validation,
         file_count=file_count,
@@ -66,7 +66,7 @@ def materialize_dataset_from_sources(
     source_files: Sequence[Path] = (),
     frames: Sequence[pl.DataFrame] = (),
     outcome: CorpusSplitOutcome,
-) -> DatasetBuildResult:
+) -> CorpusSplitMaterializationResult:
     dataset_dir = working_dir / mode
     remove_path(dataset_dir)
     dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -89,7 +89,7 @@ def materialize_dataset_from_sources(
         required_columns=materialization.required_columns,
     )
     validate_result(validation, dataset_dir)
-    return DatasetBuildResult(
+    return CorpusSplitMaterializationResult(
         path=dataset_dir,
         validation=validation,
         file_count=len(iter_block_files(dataset_dir)),

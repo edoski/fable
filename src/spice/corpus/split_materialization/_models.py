@@ -7,9 +7,15 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from ...acquisition import BlockPullPlan
+from ...acquisition import BlockPullPlan, BlockRange
 from ..validation import BlockDatasetValidationReport
-from ._policy import CorpusSplitOutcome
+
+
+class CorpusSplitOutcome(StrEnum):
+    CREATED = "created"
+    REUSED = "reused"
+    EXTENDED = "extended"
+    REBUILT = "rebuilt"
 
 
 @dataclass(slots=True)
@@ -20,20 +26,13 @@ class CorpusSplitMaterializationSpec:
     required_columns: frozenset[str]
 
 
-@dataclass(slots=True)
-class ExistingDatasetState:
-    path: Path
-    validation: BlockDatasetValidationReport
-    file_count: int
-
-
 class CorpusSplitKind(StrEnum):
     HISTORY = "history"
     EVALUATION = "evaluation"
 
 
 @dataclass(slots=True)
-class DatasetBuildResult:
+class CorpusSplitMaterializationResult:
     path: Path
     validation: BlockDatasetValidationReport
     file_count: int
@@ -47,6 +46,27 @@ class CorpusSplitIntent:
     output_dir: Path
     working_dir: Path
     plan: BlockPullPlan
+
+
+@dataclass(frozen=True, slots=True)
+class _SplitDatasetFacts:
+    status: str
+    first_block_number: int | None
+    last_block_number: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _SplitDatasetCandidate:
+    path: Path
+    validation: BlockDatasetValidationReport
+    facts: _SplitDatasetFacts
+    file_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _SplitPullRange:
+    label: str
+    block_range: BlockRange
 
 
 StatusCallback = Callable[[str], None]

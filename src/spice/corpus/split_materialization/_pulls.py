@@ -15,8 +15,7 @@ from ...acquisition import (
 )
 from ..io import load_block_frame
 from ._chunks import ParquetBlockPullSink
-from ._policy import SplitPullRange
-from ._types import CorpusSplitMaterializationSpec
+from ._models import CorpusSplitMaterializationSpec, _SplitPullRange
 
 
 async def pull_plan_to_frame(
@@ -63,7 +62,7 @@ def plan_pull_dir(working_dir: Path, *, label: str, plan: BlockPullPlan) -> Path
 
 def pull_range_plan(
     block_source: BlockSource,
-    pull_range: SplitPullRange,
+    pull_range: _SplitPullRange,
     *,
     window: TimestampRange,
 ) -> BlockPullPlan:
@@ -73,7 +72,7 @@ def pull_range_plan(
 async def pull_plan_range_to_dir(
     *,
     block_source: BlockSource,
-    pull_range: SplitPullRange,
+    pull_range: _SplitPullRange,
     window: TimestampRange,
     working_dir: Path,
     materialization: CorpusSplitMaterializationSpec,

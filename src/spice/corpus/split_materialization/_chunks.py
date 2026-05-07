@@ -12,7 +12,7 @@ from ...acquisition import BlockPullPlan, BlockRange
 from ..contract import CanonicalBlockRow, canonicalize_block_frame
 from ..io import load_block_frame, write_block_file
 from ..validation import validate_contiguous_block_frame
-from ._types import CorpusSplitMaterializationSpec
+from ._models import CorpusSplitMaterializationSpec
 
 
 @dataclass(slots=True)

@@ -25,10 +25,10 @@ from .planning import CorpusCapabilityPlanningContext, CorpusHistoryMaterializat
 from .split_materialization import (
     CorpusSplitIntent,
     CorpusSplitKind,
+    CorpusSplitMaterializationResult,
     CorpusSplitMaterializationSession,
     CorpusSplitMaterializationSpec,
     CorpusSplitOutcome,
-    DatasetBuildResult,
 )
 
 ACQUIRE_STAGE_DIR_NAME = ".acquire-staging"
@@ -38,8 +38,8 @@ StatusCallback = Callable[[str], None]
 
 @dataclass(frozen=True, slots=True)
 class CorpusAcquisitionStageFulfillment:
-    history_result: DatasetBuildResult
-    evaluation_result: DatasetBuildResult
+    history_result: CorpusSplitMaterializationResult
+    evaluation_result: CorpusSplitMaterializationResult
     history_plan: BlockPullPlan
     evaluation_plan: BlockPullPlan
     requested_history_window_seconds: int
@@ -116,7 +116,7 @@ class CorpusAcquisitionStage:
 
         async def materialize_history(
             step: CorpusHistoryMaterializationStep,
-        ) -> DatasetBuildResult:
+        ) -> CorpusSplitMaterializationResult:
             nonlocal history_output_dir
             working_dir = (
                 self.temp_root / "history-initial"
