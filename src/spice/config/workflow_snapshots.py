@@ -16,6 +16,7 @@ from ..modeling.families.registry import coerce_model_config
 from ..modeling.tuned_config import coerce_tuning_space_config
 from .models import (
     ArtifactConfig,
+    BlockWindowSpec,
     ChainSpec,
     CorpusSpec,
     FeaturesConfig,
@@ -155,7 +156,7 @@ def _hydrate_evaluate_fields(payload: Mapping[str, object]) -> ResolvedEvaluateW
         evaluation_window=_model_field(
             raw,
             "evaluation_window",
-            TimestampWindowSpec,
+            _evaluation_window_type(raw, "evaluation_window"),
         ),
         evaluator=coerce_evaluator_config(
             _owner_field(raw, "evaluator", EvaluatorConfig)
@@ -274,6 +275,23 @@ def _model_field(
     if isinstance(value, model_type):
         return value
     return model_type.model_validate(_mapping_or_model(value, label=key))
+
+
+def _evaluation_window_type(
+    payload: Mapping[str, object],
+    key: str,
+) -> type[TimestampWindowSpec] | type[BlockWindowSpec]:
+    value = _field(payload, key)
+    if isinstance(value, BlockWindowSpec):
+        return BlockWindowSpec
+    if isinstance(value, TimestampWindowSpec):
+        return TimestampWindowSpec
+    mapping = _mapping_or_model(value, label=key)
+    if isinstance(mapping, Mapping) and (
+        "start_block" in mapping or "block_count" in mapping
+    ):
+        return BlockWindowSpec
+    return TimestampWindowSpec
 
 
 def _owner_field(

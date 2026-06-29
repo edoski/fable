@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Self
+from typing import Self, TypeAlias
 from urllib.parse import urlparse
 
 from pydantic import (
@@ -81,7 +81,19 @@ class TimestampWindowSpec(_ConfigModel):
         return self.start_timestamp + self.duration_seconds
 
 
-class EvaluationWindowSpec(TimestampWindowSpec):
+class BlockWindowSpec(_ConfigModel):
+    start_block: int = Field(gt=0)
+    block_count: int = Field(gt=0)
+
+    @property
+    def end_block_exclusive(self) -> int:
+        return self.start_block + self.block_count
+
+
+RuntimeEvaluationWindowSpec: TypeAlias = TimestampWindowSpec | BlockWindowSpec
+
+
+class EvaluationWindowSpecBase(_ConfigModel):
     id: str
     tags: list[str] = Field(default_factory=list)
 
@@ -98,6 +110,19 @@ class EvaluationWindowSpec(TimestampWindowSpec):
         for tag in value:
             validate_path_segment(tag, label="evaluation_window.tags")
         return value
+
+
+class TimestampEvaluationWindowSpec(EvaluationWindowSpecBase, TimestampWindowSpec):
+    pass
+
+
+class BlockEvaluationWindowSpec(EvaluationWindowSpecBase, BlockWindowSpec):
+    pass
+
+
+EvaluationWindowSpec: TypeAlias = (
+    TimestampEvaluationWindowSpec | BlockEvaluationWindowSpec
+)
 
 
 class EvaluationsSpec(_ConfigModel):
@@ -118,7 +143,14 @@ class EvaluationsSpec(_ConfigModel):
 
     @property
     def training_cutoff_timestamp(self) -> int:
-        return min(item.start_timestamp for item in self.items)
+        timestamp_items = [
+            item for item in self.items if isinstance(item, TimestampEvaluationWindowSpec)
+        ]
+        if len(timestamp_items) != len(self.items):
+            raise ValueError(
+                "training cutoff resolution requires timestamp evaluation windows"
+            )
+        return min(item.start_timestamp for item in timestamp_items)
 
 
 def _validate_http_endpoint_url(value: str, *, label: str) -> str:
@@ -604,7 +636,7 @@ class EvaluateConfig(_ConfigModel):
     storage: StorageSpec = Field(default_factory=StorageSpec)
     artifact_id: str
     corpus_id: str
-    evaluation_window: TimestampWindowSpec
+    evaluation_window: RuntimeEvaluationWindowSpec
     evaluator: SerializeAsAny[EvaluatorConfig]
     delay_seconds: int | None = Field(default=None, gt=0)
     batch_size: int = Field(default=256, gt=0)

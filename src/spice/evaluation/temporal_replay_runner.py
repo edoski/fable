@@ -36,6 +36,7 @@ class TemporalReplaySelection:
 class TemporalReplaySampleView:
     sample_positions: IntVector
     sample_timestamps: IntVector
+    sample_block_numbers: IntVector
     sample_count: int
 
     def __post_init__(self) -> None:
@@ -43,12 +44,18 @@ class TemporalReplaySampleView:
             raise ValueError("temporal replay sample_positions must be one-dimensional")
         if self.sample_timestamps.ndim != 1:
             raise ValueError("temporal replay sample_timestamps must be one-dimensional")
+        if self.sample_block_numbers.ndim != 1:
+            raise ValueError("temporal replay sample_block_numbers must be one-dimensional")
         if not np.issubdtype(self.sample_positions.dtype, np.integer):
             raise ValueError("temporal replay sample_positions must be integer indices")
         if not np.issubdtype(self.sample_timestamps.dtype, np.integer):
             raise ValueError("temporal replay sample_timestamps must be integer timestamps")
+        if not np.issubdtype(self.sample_block_numbers.dtype, np.integer):
+            raise ValueError("temporal replay sample_block_numbers must be integer block numbers")
         if self.sample_positions.shape[0] != self.sample_timestamps.shape[0]:
             raise ValueError("temporal replay sample view positions and timestamps must align")
+        if self.sample_positions.shape[0] != self.sample_block_numbers.shape[0]:
+            raise ValueError("temporal replay sample view positions and block numbers must align")
         if self.sample_count != int(self.sample_positions.shape[0]):
             raise ValueError("temporal replay sample_count must match sample_positions")
 
@@ -142,6 +149,7 @@ def temporal_replay_sample_view(
     return TemporalReplaySampleView(
         sample_positions=np.arange(sample_count, dtype=np.int64),
         sample_timestamps=store.sample_timestamps(resolved_sample_indices),
+        sample_block_numbers=store.sample_block_numbers(resolved_sample_indices),
         sample_count=sample_count,
     )
 

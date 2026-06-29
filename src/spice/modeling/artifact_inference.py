@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import ceil
 
-from ..config.models import EvaluateConfig
+import numpy as np
+import polars as pl
+
+from ..config.models import BlockWindowSpec, EvaluateConfig, TimestampWindowSpec
 from ..core.errors import ConfigResolutionError, StateConflictError
 from ..corpus.coverage import evaluation_coverage_requirement, validate_corpus_coverage
 from ..corpus.io import load_block_frame
@@ -20,6 +23,8 @@ from .dataset_builders import (
     CompiledInferenceDatasetPreparationRequest,
     EvaluationCoverageWindow,
     PreparedInferenceDataset,
+    SampleBlockWindow,
+    SampleTimestampWindow,
     prepare_inference_dataset,
 )
 from .results import (
@@ -63,6 +68,14 @@ class ArtifactInferenceContext:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _ResolvedEvaluationScenario:
+    scenario_start_timestamp: int
+    scenario_end_timestamp: int
+    sample_timestamp_window: SampleTimestampWindow | None
+    sample_block_window: SampleBlockWindow | None
+
+
 def prepare_artifact_inference_context(
     config: EvaluateConfig,
     *,
@@ -103,8 +116,10 @@ def prepare_artifact_inference_context(
             "delay_seconds exceeds artifact capability: "
             f"{delay_seconds} > {capability_max_delay_seconds}"
         )
-    scenario_start = config.evaluation_window.start_timestamp
-    scenario_end = config.evaluation_window.end_timestamp
+    blocks = load_block_frame(corpus.blocks_dir)
+    scenario = _resolve_evaluation_scenario(config.evaluation_window, blocks)
+    scenario_start = scenario.scenario_start_timestamp
+    scenario_end = scenario.scenario_end_timestamp
     training_cutoff = (
         manifest.training_source.training_cutoff_timestamp
         or manifest.training_source.window_end_timestamp
@@ -138,11 +153,6 @@ def prepare_artifact_inference_context(
         required_start_timestamp=required_start,
         required_end_timestamp=required_end,
     )
-    blocks = load_block_frame(corpus.blocks_dir)
-    coverage = EvaluationCoverageWindow(
-        first_timestamp=scenario_start,
-        last_timestamp=scenario_end - 1,
-    )
     prepared = prepare_inference_dataset(
         blocks.head(0),
         blocks,
@@ -153,7 +163,8 @@ def prepare_artifact_inference_context(
             sequence_runtime_metadata=manifest.sequence_runtime_metadata,
             scaler=manifest.scaler,
             temporal_capability=manifest.temporal_capability,
-            sample_timestamp_window=coverage.to_sample_timestamp_window(),
+            sample_timestamp_window=scenario.sample_timestamp_window,
+            sample_block_window=scenario.sample_block_window,
         ),
     )
     runtime_plan = build_cuda_modeling_runtime_plan(
@@ -178,6 +189,55 @@ def prepare_artifact_inference_context(
         required_coverage_end_timestamp=required_end,
         evaluator_contract=evaluator_contract,
         scoring_plan=scoring_plan,
+    )
+
+
+def _resolve_evaluation_scenario(
+    window: TimestampWindowSpec | BlockWindowSpec,
+    blocks: pl.DataFrame,
+) -> _ResolvedEvaluationScenario:
+    if isinstance(window, TimestampWindowSpec):
+        coverage = EvaluationCoverageWindow(
+            first_timestamp=window.start_timestamp,
+            last_timestamp=window.end_timestamp - 1,
+        )
+        return _ResolvedEvaluationScenario(
+            scenario_start_timestamp=window.start_timestamp,
+            scenario_end_timestamp=window.end_timestamp,
+            sample_timestamp_window=coverage.to_sample_timestamp_window(),
+            sample_block_window=None,
+        )
+    selected = (
+        blocks.filter(
+            (pl.col("block_number") >= window.start_block)
+            & (pl.col("block_number") < window.end_block_exclusive)
+        )
+        .sort("block_number")
+    )
+    if selected.height != window.block_count:
+        raise StateConflictError(
+            "evaluation block window is incomplete: "
+            f"start_block={window.start_block} "
+            f"block_count={window.block_count} found={selected.height}"
+        )
+    block_numbers = selected["block_number"].cast(pl.Int64).to_numpy()
+    if (
+        int(block_numbers[0]) != window.start_block
+        or int(block_numbers[-1]) != window.end_block_exclusive - 1
+        or np.any(np.diff(block_numbers.astype(np.int64, copy=False)) != 1)
+    ):
+        raise StateConflictError(
+            "evaluation block window must contain contiguous block numbers"
+        )
+    timestamps = selected["timestamp"].cast(pl.Int64).to_numpy()
+    return _ResolvedEvaluationScenario(
+        scenario_start_timestamp=int(timestamps[0]),
+        scenario_end_timestamp=int(timestamps[-1]) + 1,
+        sample_timestamp_window=None,
+        sample_block_window=SampleBlockWindow(
+            start_block_inclusive=window.start_block,
+            end_block_exclusive=window.end_block_exclusive,
+        ),
     )
 
 

@@ -11,7 +11,9 @@ from ..core.specs import (
     require_spec_config,
     require_spec_config_from_table,
 )
+from .block_poisson_replay import compile_block_poisson_replay_evaluator_contract
 from .config import (
+    BlockPoissonReplayEvaluatorConfig,
     EvaluatorConfig,
     PoissonReplayEvaluatorConfig,
 )
@@ -26,6 +28,16 @@ class _EvaluatorSpec:
 
 
 _EVALUATOR_SPECS: dict[str, _EvaluatorSpec] = {
+    "block_poisson_replay": _EvaluatorSpec(
+        config_type=BlockPoissonReplayEvaluatorConfig,
+        compile_contract=lambda config: compile_block_poisson_replay_evaluator_contract(
+            require_spec_config(
+                config,
+                BlockPoissonReplayEvaluatorConfig,
+                "evaluator config",
+            )
+        ),
+    ),
     "poisson_replay": _EvaluatorSpec(
         config_type=PoissonReplayEvaluatorConfig,
         compile_contract=lambda config: compile_poisson_replay_evaluator_contract(

@@ -16,6 +16,7 @@ def test_typed_group_loaders_return_owner_concrete_types() -> None:
     problem = typed.load(typed.PROBLEM, "current_row_nominal")
     model = typed.load(typed.MODEL, "lstm")
     evaluator = typed.load(typed.EVALUATOR, "poisson_replay")
+    block_evaluator = typed.load(typed.EVALUATOR, "block_poisson_replay")
     training = typed.load(typed.TRAINING, "default")
     compiler = cast(Any, problem.compiler)
 
@@ -26,6 +27,7 @@ def test_typed_group_loaders_return_owner_concrete_types() -> None:
     assert type(problem.execution_policy).__name__ == "StrictDeadlineMissConfig"
     assert type(model).__name__ == "LstmModelConfig"
     assert type(evaluator).__name__ == "PoissonReplayEvaluatorConfig"
+    assert type(block_evaluator).__name__ == "BlockPoissonReplayEvaluatorConfig"
     assert type(training.sequence).__name__ == "SequenceConfig"
 
 

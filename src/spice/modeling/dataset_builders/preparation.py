@@ -124,6 +124,23 @@ class SampleTimestampWindow:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class SampleBlockWindow:
+    start_block_inclusive: int
+    end_block_exclusive: int
+
+    def __post_init__(self) -> None:
+        if self.end_block_exclusive <= self.start_block_inclusive:
+            raise ValueError(
+                "sample block window end_block_exclusive must be greater "
+                "than start_block_inclusive"
+            )
+
+    @property
+    def block_count(self) -> int:
+        return self.end_block_exclusive - self.start_block_inclusive
+
+
 @dataclass(slots=True)
 class ArtifactInferenceDatasetPreparationFacts:
     delay_seconds: int
@@ -147,7 +164,14 @@ class CompiledInferenceDatasetPreparationRequest:
     sequence_runtime_metadata: SequenceRuntimeMetadata
     scaler: ScalerStats
     temporal_capability: TemporalCapability
-    sample_timestamp_window: SampleTimestampWindow
+    sample_timestamp_window: SampleTimestampWindow | None = None
+    sample_block_window: SampleBlockWindow | None = None
+
+    def __post_init__(self) -> None:
+        if (self.sample_timestamp_window is None) == (self.sample_block_window is None):
+            raise ValueError(
+                "inference preparation requires exactly one sample timestamp or block window"
+            )
 
 
 @dataclass(slots=True)

@@ -167,7 +167,10 @@ def test_config_public_commands_only(isolate_conf_root) -> None:
 
     evaluation_result = runner.invoke(app, ["config", "list", "evaluator"])
     assert evaluation_result.exit_code == 0, evaluation_result.stdout
-    assert evaluation_result.stdout.splitlines() == ["poisson_replay"]
+    assert evaluation_result.stdout.splitlines() == [
+        "block_poisson_replay",
+        "poisson_replay",
+    ]
 
     prediction_result = runner.invoke(app, ["config", "list", "prediction"])
     assert prediction_result.exit_code == 0, prediction_result.stdout

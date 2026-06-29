@@ -167,6 +167,7 @@ class OnlinePredictionService:
             feature_matrix=feature_table.feature_matrix,
             log_base_fees=feature_table.series.log_base_fees,
             timestamps=timestamps,
+            block_numbers=feature_table.series.block_numbers,
             anchor_rows=np.array([anchor_row], dtype=np.int64),
             context_start_rows=np.array([context_start], dtype=np.int64),
             candidate_start_rows=np.array([anchor_row], dtype=np.int64),

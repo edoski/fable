@@ -7,7 +7,11 @@ import pytest
 import torch
 
 from spice.core.errors import SpiceOperatorError
-from spice.evaluation.config import PoissonReplayEvaluatorConfig
+from spice.evaluation.block_poisson_replay import BlockPoissonReplayAdapter
+from spice.evaluation.config import (
+    BlockPoissonReplayEvaluatorConfig,
+    PoissonReplayEvaluatorConfig,
+)
 from spice.evaluation.poisson_replay import (
     PoissonReplayAdapter,
     _select_sample_positions_for_arrivals,
@@ -115,7 +119,54 @@ def test_temporal_replay_runner_builds_adapter_sample_view() -> None:
     assert adapter.samples is not None
     assert adapter.samples.sample_positions.tolist() == [0, 1, 2]
     assert adapter.samples.sample_timestamps.tolist() == [420, 180, 300]
+    assert adapter.samples.sample_block_numbers.tolist() == [7, 3, 5]
     assert adapter.samples.sample_count == 3
+
+
+def test_block_poisson_adapter_orders_by_block_number_not_timestamp() -> None:
+    samples = TemporalReplaySampleView(
+        sample_positions=np.array([0, 1, 2, 3], dtype=np.int64),
+        sample_timestamps=np.array([100, 100, 101, 102], dtype=np.int64),
+        sample_block_numbers=np.array([12, 10, 11, 13], dtype=np.int64),
+        sample_count=4,
+    )
+    adapter = BlockPoissonReplayAdapter(
+        BlockPoissonReplayEvaluatorConfig(
+            id="block_poisson_replay",
+            window_blocks=4,
+            arrival_rate_per_block=1.0,
+            repetitions=1,
+            seed=1,
+        )
+    )
+
+    selections = adapter.selections(samples)
+
+    assert selections
+    selected_blocks = samples.sample_block_numbers[selections[0].selected_positions]
+    assert selected_blocks.tolist() == sorted(selected_blocks.tolist())
+    assert selections[0].metadata["window_blocks"] == 4
+
+
+def test_block_poisson_adapter_rejects_insufficient_block_window() -> None:
+    samples = TemporalReplaySampleView(
+        sample_positions=np.array([0, 1], dtype=np.int64),
+        sample_timestamps=np.array([100, 100], dtype=np.int64),
+        sample_block_numbers=np.array([10, 11], dtype=np.int64),
+        sample_count=2,
+    )
+    adapter = BlockPoissonReplayAdapter(
+        BlockPoissonReplayEvaluatorConfig(
+            id="block_poisson_replay",
+            window_blocks=3,
+            arrival_rate_per_block=1.0,
+            repetitions=1,
+            seed=1,
+        )
+    )
+
+    with pytest.raises(ValueError, match="block window"):
+        adapter.selections(samples)
 
 
 def test_temporal_replay_runner_composes_adapter_runs() -> None:

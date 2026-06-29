@@ -1,6 +1,7 @@
 """Evaluation configs, contracts, and registry helpers."""
 
 from .config import (
+    BlockPoissonReplayEvaluatorConfig,
     EvaluatorConfig,
     PoissonReplayEvaluatorConfig,
 )
@@ -16,6 +17,7 @@ from .registry import (
 
 __all__ = [
     "CompiledEvaluatorContract",
+    "BlockPoissonReplayEvaluatorConfig",
     "EvaluationRun",
     "EvaluationSummary",
     "EvaluatorConfig",

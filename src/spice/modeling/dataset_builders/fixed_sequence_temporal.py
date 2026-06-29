@@ -174,6 +174,33 @@ def _sample_indices_in_timestamp_window(
     return np.flatnonzero(mask).astype(np.int64, copy=False)
 
 
+def _sample_indices_in_block_window(
+    store: CompiledProblemStore,
+    *,
+    start_block_inclusive: int,
+    end_block_exclusive: int,
+) -> np.ndarray:
+    if end_block_exclusive <= start_block_inclusive:
+        raise ValueError(
+            "sample block window end_block_exclusive must be greater "
+            "than start_block_inclusive"
+        )
+    all_indices = np.arange(store.n_samples, dtype=np.int64)
+    sample_blocks = store.sample_block_numbers(all_indices)
+    mask = (
+        (sample_blocks >= start_block_inclusive)
+        & (sample_blocks < end_block_exclusive)
+    )
+    selected = np.flatnonzero(mask).astype(np.int64, copy=False)
+    expected_count = end_block_exclusive - start_block_inclusive
+    if selected.size != expected_count:
+        raise ValueError(
+            "Evaluation corpus produced an incomplete block inference window: "
+            f"expected {expected_count} samples, found {selected.size}"
+        )
+    return selected
+
+
 def _split_store_indices(
     selected_sample_indices: np.ndarray,
     *,
@@ -314,15 +341,24 @@ def prepare_inference_dataset(
         history_seconds=spec.problem_contract.feature_prerequisites.history_seconds,
         warmup_rows=spec.problem_contract.feature_prerequisites.warmup_rows,
     )
-    sample_indices = _sample_indices_in_timestamp_window(
-        store,
-        start_timestamp_inclusive=(
-            spec.sample_timestamp_window.start_timestamp_inclusive
-        ),
-        end_timestamp_exclusive=(
-            spec.sample_timestamp_window.end_timestamp_exclusive
-        ),
-    )
+    if spec.sample_timestamp_window is not None:
+        sample_indices = _sample_indices_in_timestamp_window(
+            store,
+            start_timestamp_inclusive=(
+                spec.sample_timestamp_window.start_timestamp_inclusive
+            ),
+            end_timestamp_exclusive=(
+                spec.sample_timestamp_window.end_timestamp_exclusive
+            ),
+        )
+    elif spec.sample_block_window is not None:
+        sample_indices = _sample_indices_in_block_window(
+            store,
+            start_block_inclusive=spec.sample_block_window.start_block_inclusive,
+            end_block_exclusive=spec.sample_block_window.end_block_exclusive,
+        )
+    else:
+        raise ValueError("inference preparation requires a sample window")
     if sample_indices.size == 0:
         raise ValueError("Evaluation corpus produced no valid inference examples")
     scaled_store = _scale_store(store, scaler=spec.scaler)

@@ -32,3 +32,18 @@ class PoissonReplayEvaluatorConfig(EvaluatorConfig):
         if value != "poisson_replay":
             raise ValueError("evaluation.id must be poisson_replay")
         return value
+
+
+class BlockPoissonReplayEvaluatorConfig(EvaluatorConfig):
+    window_blocks: int = Field(gt=0)
+    repetitions: int = Field(gt=0)
+    seed: int = Field(ge=0)
+    arrival_rate_per_block: float = Field(gt=0.0)
+
+    @field_validator("id")
+    @classmethod
+    def validate_block_poisson_id(_cls, value: str) -> str:
+        value = EvaluatorConfig.validate_id(value)
+        if value != "block_poisson_replay":
+            raise ValueError("evaluation.id must be block_poisson_replay")
+        return value

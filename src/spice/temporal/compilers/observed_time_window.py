@@ -393,6 +393,7 @@ def _build_timestamp_window_store(
         feature_matrix=feature_table.feature_matrix,
         log_base_fees=feature_table.series.log_base_fees,
         timestamps=timestamps,
+        block_numbers=feature_table.series.block_numbers,
         anchor_rows=anchor_rows,
         context_start_rows=selected_context_starts,
         candidate_start_rows=selected_candidate_starts,

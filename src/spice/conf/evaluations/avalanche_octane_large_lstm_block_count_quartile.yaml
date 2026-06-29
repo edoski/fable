@@ -1,0 +1,650 @@
+id: avalanche_octane_large_lstm_block_count_quartile
+items:
+  - id: avalanche_block1200_fee_level_q1_001_84477552
+    start_block: 84477552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_002_84332352
+    start_block: 84332352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_003_84202752
+    start_block: 84202752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_004_84523152
+    start_block: 84523152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_005_84153552
+    start_block: 84153552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_006_85543152
+    start_block: 85543152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_007_84773952
+    start_block: 84773952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_008_85545552
+    start_block: 85545552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_009_77103552
+    start_block: 77103552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_010_85310352
+    start_block: 85310352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_011_85335552
+    start_block: 85335552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_012_85411152
+    start_block: 85411152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_013_82935552
+    start_block: 82935552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_014_84970752
+    start_block: 84970752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_015_85341552
+    start_block: 85341552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_016_85659552
+    start_block: 85659552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_017_85333152
+    start_block: 85333152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_018_80519952
+    start_block: 80519952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_019_79203552
+    start_block: 79203552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_020_77005152
+    start_block: 77005152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_021_79331952
+    start_block: 79331952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_022_83741952
+    start_block: 83741952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_023_83391552
+    start_block: 83391552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_024_79583952
+    start_block: 79583952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_025_83271552
+    start_block: 83271552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_026_83426352
+    start_block: 83426352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q1_027_80509152
+    start_block: 80509152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_001_80704752
+    start_block: 80704752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_002_79093152
+    start_block: 79093152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_003_77153952
+    start_block: 77153952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_004_76724352
+    start_block: 76724352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_005_83801952
+    start_block: 83801952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_006_82916352
+    start_block: 82916352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_007_79930752
+    start_block: 79930752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_008_79706352
+    start_block: 79706352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_009_81111552
+    start_block: 81111552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_010_80924352
+    start_block: 80924352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_011_82117152
+    start_block: 82117152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_012_85426752
+    start_block: 85426752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_013_80267952
+    start_block: 80267952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_014_80270352
+    start_block: 80270352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_015_84001152
+    start_block: 84001152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_016_76459152
+    start_block: 76459152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_017_80210352
+    start_block: 80210352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_018_81195552
+    start_block: 81195552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_019_81185952
+    start_block: 81185952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_020_81155952
+    start_block: 81155952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_021_83272752
+    start_block: 83272752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_022_76562352
+    start_block: 76562352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_023_76375152
+    start_block: 76375152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_024_79508352
+    start_block: 79508352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_025_77853552
+    start_block: 77853552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_026_77696352
+    start_block: 77696352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q2_027_83053152
+    start_block: 83053152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_001_77912352
+    start_block: 77912352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_002_78100752
+    start_block: 78100752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_003_83266752
+    start_block: 83266752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_004_76393152
+    start_block: 76393152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_005_81911952
+    start_block: 81911952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_006_82029552
+    start_block: 82029552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_007_78061152
+    start_block: 78061152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_008_82045152
+    start_block: 82045152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_009_74270352
+    start_block: 74270352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_010_74284752
+    start_block: 74284752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_011_78938352
+    start_block: 78938352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_012_82155552
+    start_block: 82155552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_013_82510752
+    start_block: 82510752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_014_82231152
+    start_block: 82231152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_015_82651152
+    start_block: 82651152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_016_74392752
+    start_block: 74392752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_017_74524752
+    start_block: 74524752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_018_82592352
+    start_block: 82592352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_019_82625952
+    start_block: 82625952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_020_82522752
+    start_block: 82522752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_021_85471152
+    start_block: 85471152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_022_82366752
+    start_block: 82366752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_023_75970752
+    start_block: 75970752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_024_82340352
+    start_block: 82340352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_025_74059152
+    start_block: 74059152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_026_74779152
+    start_block: 74779152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q3_027_74821152
+    start_block: 74821152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_001_75637152
+    start_block: 75637152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_002_78058752
+    start_block: 78058752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_003_75790752
+    start_block: 75790752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_004_74251152
+    start_block: 74251152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_005_74635152
+    start_block: 74635152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_006_79216752
+    start_block: 79216752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_007_74695152
+    start_block: 74695152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_008_74397552
+    start_block: 74397552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_009_85112352
+    start_block: 85112352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_010_74678352
+    start_block: 74678352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_011_78746352
+    start_block: 78746352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_012_78609552
+    start_block: 78609552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_013_80657952
+    start_block: 80657952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_014_78739152
+    start_block: 78739152
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_015_74355552
+    start_block: 74355552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_016_75299952
+    start_block: 75299952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_017_78436752
+    start_block: 78436752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_018_78693552
+    start_block: 78693552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_019_78466752
+    start_block: 78466752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_020_78477552
+    start_block: 78477552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_021_77284752
+    start_block: 77284752
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_022_75537552
+    start_block: 75537552
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_023_76883952
+    start_block: 76883952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_024_75812352
+    start_block: 75812352
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_025_74717952
+    start_block: 74717952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_026_76961952
+    start_block: 76961952
+    block_count: 1200
+  - id: avalanche_block1200_fee_level_q4_027_76805952
+    start_block: 76805952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_001_79553952
+    start_block: 79553952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_002_85240752
+    start_block: 85240752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_003_80858352
+    start_block: 80858352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_004_84860352
+    start_block: 84860352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_005_79471152
+    start_block: 79471152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_006_81241152
+    start_block: 81241152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_007_80061552
+    start_block: 80061552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_008_80861952
+    start_block: 80861952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_009_81461952
+    start_block: 81461952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_010_82203552
+    start_block: 82203552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_011_80732352
+    start_block: 80732352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_012_79591152
+    start_block: 79591152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_013_80815152
+    start_block: 80815152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_014_81292752
+    start_block: 81292752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_015_81278352
+    start_block: 81278352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_016_82612752
+    start_block: 82612752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_017_81613152
+    start_block: 81613152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_018_83162352
+    start_block: 83162352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_019_77980752
+    start_block: 77980752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_020_84058752
+    start_block: 84058752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_021_77431152
+    start_block: 77431152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_022_83492352
+    start_block: 83492352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_023_79814352
+    start_block: 79814352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_024_81667152
+    start_block: 81667152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_025_81383952
+    start_block: 81383952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_026_85553952
+    start_block: 85553952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q1_027_81495552
+    start_block: 81495552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_001_84821952
+    start_block: 84821952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_002_78910752
+    start_block: 78910752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_003_79048752
+    start_block: 79048752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_004_85274352
+    start_block: 85274352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_005_78601152
+    start_block: 78601152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_006_81080352
+    start_block: 81080352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_007_83740752
+    start_block: 83740752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_008_80993952
+    start_block: 80993952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_009_77191152
+    start_block: 77191152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_010_83951952
+    start_block: 83951952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_011_79610352
+    start_block: 79610352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_012_77857152
+    start_block: 77857152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_013_81824352
+    start_block: 81824352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_014_83517552
+    start_block: 83517552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_015_79201152
+    start_block: 79201152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_016_82421952
+    start_block: 82421952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_017_80165952
+    start_block: 80165952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_018_79105152
+    start_block: 79105152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_019_82690752
+    start_block: 82690752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_020_78321552
+    start_block: 78321552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_021_82954752
+    start_block: 82954752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_022_81823152
+    start_block: 81823152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_023_81351552
+    start_block: 81351552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_024_82519152
+    start_block: 82519152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_025_81919152
+    start_block: 81919152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_026_82771152
+    start_block: 82771152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q2_027_75515952
+    start_block: 75515952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_001_75340752
+    start_block: 75340752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_002_79773552
+    start_block: 79773552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_003_84061152
+    start_block: 84061152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_004_77200752
+    start_block: 77200752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_005_77636352
+    start_block: 77636352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_006_83774352
+    start_block: 83774352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_007_82562352
+    start_block: 82562352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_008_81904752
+    start_block: 81904752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_009_78916752
+    start_block: 78916752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_010_83263152
+    start_block: 83263152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_011_84783552
+    start_block: 84783552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_012_80612352
+    start_block: 80612352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_013_74741952
+    start_block: 74741952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_014_77269152
+    start_block: 77269152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_015_79226352
+    start_block: 79226352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_016_78920352
+    start_block: 78920352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_017_83824752
+    start_block: 83824752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_018_83554752
+    start_block: 83554752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_019_75143952
+    start_block: 75143952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_020_77805552
+    start_block: 77805552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_021_76269552
+    start_block: 76269552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_022_84635952
+    start_block: 84635952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_023_74925552
+    start_block: 74925552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_024_75129552
+    start_block: 75129552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_025_75077952
+    start_block: 75077952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_026_76765152
+    start_block: 76765152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q3_027_74978352
+    start_block: 74978352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_001_75583152
+    start_block: 75583152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_002_75682752
+    start_block: 75682752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_003_84491952
+    start_block: 84491952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_004_74549952
+    start_block: 74549952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_005_75093552
+    start_block: 75093552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_006_80431152
+    start_block: 80431152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_007_75311952
+    start_block: 75311952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_008_75321552
+    start_block: 75321552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_009_77006352
+    start_block: 77006352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_010_75764352
+    start_block: 75764352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_011_74487552
+    start_block: 74487552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_012_74343552
+    start_block: 74343552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_013_76076352
+    start_block: 76076352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_014_74565552
+    start_block: 74565552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_015_76202352
+    start_block: 76202352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_016_73973952
+    start_block: 73973952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_017_75869952
+    start_block: 75869952
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_018_84446352
+    start_block: 84446352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_019_84189552
+    start_block: 84189552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_020_74887152
+    start_block: 74887152
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_021_76468752
+    start_block: 76468752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_022_75909552
+    start_block: 75909552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_023_84177552
+    start_block: 84177552
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_024_84386352
+    start_block: 84386352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_025_75998352
+    start_block: 75998352
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_026_76558752
+    start_block: 76558752
+    block_count: 1200
+  - id: avalanche_block1200_volatility_q4_027_74114352
+    start_block: 74114352
+    block_count: 1200

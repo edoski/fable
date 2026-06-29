@@ -104,7 +104,7 @@ def _expand_evaluation_suites(seeds: list[PlanSeed]) -> list[PlanSeed]:
         for item in suite.items:
             window_payload = item.model_dump(
                 mode="json",
-                include={"start", "end", "duration_seconds"},
+                exclude={"id", "tags"},
                 exclude_none=True,
             )
             expanded.append(

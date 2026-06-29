@@ -7,7 +7,7 @@ from pathlib import Path
 
 def tag_values(row: dict[str, str]) -> list[str]:
     tags: list[str] = []
-    for value in row["class_tags"].split(";"):
+    for value in row.get("class_tags", "").split(";"):
         if not value:
             continue
         tags.append(value.replace(":", "_"))
@@ -24,15 +24,7 @@ def quote(value: str) -> str:
 def render_suite(suite_id: str, rows: list[dict[str, str]]) -> str:
     lines = [f"id: {suite_id}", "items:"]
     for row in rows:
-        tags = ", ".join(tag_values(row))
-        lines.extend(
-            [
-                f"  - id: {row['window_id']}",
-                f"    start: {quote(row['start_iso'])}",
-                f"    duration_seconds: {int(float(row['duration_seconds']))}",
-                f"    tags: [{tags}]",
-            ]
-        )
+        lines.extend(render_item(row, tag_values(row)))
     return "\n".join(lines) + "\n"
 
 
@@ -48,7 +40,9 @@ def unique_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
             if tag not in tags_by_id[window_id]:
                 tags_by_id[window_id].append(tag)
     for window_id, row in merged.items():
-        row["class_tags"] = ";".join(tag for tag in tags_by_id[window_id] if not tag.startswith("shortlist_"))
+        row["class_tags"] = ";".join(
+            tag for tag in tags_by_id[window_id] if not tag.startswith("shortlist_")
+        )
         row["shortlist_class"] = ""
         row["_merged_tags"] = ",".join(tags_by_id[window_id])
     return list(merged.values())
@@ -63,16 +57,29 @@ def tag_values_for_render(row: dict[str, str]) -> list[str]:
 def render_unique_suite(suite_id: str, rows: list[dict[str, str]]) -> str:
     lines = [f"id: {suite_id}", "items:"]
     for row in unique_rows(rows):
-        tags = ", ".join(tag_values_for_render(row))
+        lines.extend(render_item(row, tag_values_for_render(row)))
+    return "\n".join(lines) + "\n"
+
+
+def render_item(row: dict[str, str], tags: list[str]) -> list[str]:
+    lines = [f"  - id: {row['window_id']}"]
+    if row.get("start_block") and row.get("block_count"):
         lines.extend(
             [
-                f"  - id: {row['window_id']}",
-                f"    start: {quote(row['start_iso'])}",
-                f"    duration_seconds: {int(float(row['duration_seconds']))}",
-                f"    tags: [{tags}]",
+                f"    start_block: {int(float(row['start_block']))}",
+                f"    block_count: {int(float(row['block_count']))}",
             ]
         )
-    return "\n".join(lines) + "\n"
+    else:
+        lines.extend(
+            [
+                f"    start: {quote(row['start_iso'])}",
+                f"    duration_seconds: {int(float(row['duration_seconds']))}",
+            ]
+        )
+    if tags:
+        lines.append(f"    tags: [{', '.join(tags)}]")
+    return lines
 
 
 def main() -> None:

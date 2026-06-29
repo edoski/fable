@@ -15,10 +15,10 @@ from .models import (
     FeaturesConfig,
     PredictionConfig,
     ProblemSpec,
+    RuntimeEvaluationWindowSpec,
     SplitConfig,
     StorageSpec,
     StudyConfig,
-    TimestampWindowSpec,
     TrainConfig,
     TrainingConfig,
     TuneConfig,
@@ -73,7 +73,7 @@ class ResolvedEvaluateWorkflowFields:
     storage: StorageSpec
     artifact_id: str
     corpus_id: str
-    evaluation_window: TimestampWindowSpec
+    evaluation_window: RuntimeEvaluationWindowSpec
     evaluator: EvaluatorConfig
     delay_seconds: int | None
     batch_size: int

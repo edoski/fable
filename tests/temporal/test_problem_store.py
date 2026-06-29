@@ -79,6 +79,20 @@ def test_sample_timestamps_use_anchor_rows() -> None:
     )
 
 
+def test_sample_block_numbers_use_anchor_rows() -> None:
+    store = _store(block_numbers=np.arange(100, 108, dtype=np.int64))
+
+    np.testing.assert_array_equal(
+        store.sample_block_numbers(np.array([1, 2], dtype=np.int64)),
+        [104, 106],
+    )
+
+
+def test_store_constructor_rejects_non_increasing_block_numbers() -> None:
+    with pytest.raises(ValueError, match="block_numbers"):
+        _store(block_numbers=np.array([1, 2, 2, 4, 5, 6, 7, 8], dtype=np.int64))
+
+
 @pytest.mark.parametrize(
     "sample_indices",
     [

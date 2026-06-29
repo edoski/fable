@@ -38,11 +38,17 @@ class CompiledProblemStore:
     candidate_start_rows: IntVector
     candidate_end_rows: IntVector
     max_candidate_slots: int
+    block_numbers: IntVector | None = None
 
     def __post_init__(self) -> None:
         feature_matrix = np.asarray(self.feature_matrix, dtype=np.float32)
         log_base_fees = np.asarray(self.log_base_fees, dtype=np.float32)
         timestamps = np.asarray(self.timestamps, dtype=np.int64)
+        block_numbers = (
+            np.arange(timestamps.shape[0], dtype=np.int64)
+            if self.block_numbers is None
+            else np.asarray(self.block_numbers, dtype=np.int64)
+        )
         anchor_rows = np.asarray(self.anchor_rows, dtype=np.int64)
         context_start_rows = np.asarray(self.context_start_rows, dtype=np.int64)
         candidate_start_rows = np.asarray(self.candidate_start_rows, dtype=np.int64)
@@ -65,6 +71,9 @@ class CompiledProblemStore:
         _require_1d_row_aligned(timestamps, n_rows, name="timestamps")
         if np.any(np.diff(timestamps) < 0):
             raise ValueError("timestamps must be sorted in nondecreasing order")
+        _require_1d_row_aligned(block_numbers, n_rows, name="block_numbers")
+        if np.any(np.diff(block_numbers) <= 0):
+            raise ValueError("block_numbers must be strictly increasing")
 
         sample_count = _require_aligned_sample_rows(
             anchor_rows=anchor_rows,
@@ -93,6 +102,7 @@ class CompiledProblemStore:
         self.feature_matrix = feature_matrix
         self.log_base_fees = log_base_fees
         self.timestamps = timestamps
+        self.block_numbers = block_numbers
         self.anchor_rows = anchor_rows
         self.context_start_rows = context_start_rows
         self.candidate_start_rows = candidate_start_rows
@@ -114,6 +124,13 @@ class CompiledProblemStore:
     def sample_timestamps(self, sample_indices: IntVector) -> IntVector:
         resolved_indices = self._validated_sample_indices(sample_indices)
         return self.timestamps[self.anchor_rows[resolved_indices]].astype(
+            np.int64,
+            copy=False,
+        )
+
+    def sample_block_numbers(self, sample_indices: IntVector) -> IntVector:
+        resolved_indices = self._validated_sample_indices(sample_indices)
+        return self.block_numbers[self.anchor_rows[resolved_indices]].astype(
             np.int64,
             copy=False,
         )

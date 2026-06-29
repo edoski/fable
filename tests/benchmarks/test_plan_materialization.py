@@ -505,6 +505,93 @@ def test_evaluations_suite_fans_out_evaluate_steps_and_sets_train_cutoff(
     ]
 
 
+def test_block_evaluations_suite_fans_out_without_tags(
+    tmp_path: Path,
+    isolate_conf_root,
+) -> None:
+    conf_root = isolate_conf_root()
+    storage_root = tmp_path / "outputs"
+    artifact_root = storage_root / "artifacts" / "ethereum" / "art_test"
+    upsert_catalog_record(
+        storage_root,
+        artifact_record(
+            artifact_root,
+            artifact_id="art_test",
+            corpus_id=ETH_DATASET_ID,
+            corpus_name="icdcs_2026",
+            chain_name="ethereum",
+            features_id="core_fee_dynamics",
+            prediction_id="icdcs_2026",
+            model_id="lstm",
+            problem_id="current_row_nominal",
+            variant="baseline",
+        ),
+    )
+    (conf_root / "evaluations" / "block_suite.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "id": "block_suite",
+                "items": [
+                    {
+                        "id": "block_a",
+                        "start_block": 12_000,
+                        "block_count": 1_200,
+                    },
+                    {
+                        "id": "block_b",
+                        "start_block": 13_200,
+                        "block_count": 1_200,
+                    },
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    benchmark_path = conf_root / "benchmark" / "block_suite_case.yaml"
+    benchmark_path.write_text(
+        yaml.safe_dump(
+            {
+                "cases": [
+                    {
+                        "id": "case",
+                        "base": {
+                            "artifact_id": "art_test",
+                            "corpus_id": ETH_DATASET_ID,
+                            "evaluations": "block_suite",
+                            "evaluator": "block_poisson_replay",
+                            "storage_root": str(storage_root),
+                        },
+                        "steps": [
+                            {
+                                "id": "evaluate",
+                                "workflow": "evaluate",
+                            },
+                        ],
+                    }
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    entries = materialize_benchmark_plan("block_suite_case")
+
+    assert [entry.dimension_labels["evaluations"] for entry in entries] == [
+        "block_a",
+        "block_b",
+    ]
+    assert [entry.config.evaluation_window.start_block for entry in entries] == [
+        12_000,
+        13_200,
+    ]
+    assert [entry.config.evaluation_window.block_count for entry in entries] == [
+        1_200,
+        1_200,
+    ]
+
+
 def test_problem_grid_keeps_selection_problem_id_with_inline_workflow_problem(
     isolate_conf_root,
 ) -> None:

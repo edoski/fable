@@ -59,6 +59,16 @@ def _poisson_config() -> dict[str, str | int | float]:
     }
 
 
+def _block_poisson_config() -> dict[str, str | int | float]:
+    return {
+        "id": "block_poisson_replay",
+        "window_blocks": 4,
+        "arrival_rate_per_block": 1.0,
+        "repetitions": 3,
+        "seed": 2026,
+    }
+
+
 def _execution_policy():
     return compile_execution_policy_contract(
         coerce_execution_policy_config({"id": "strict_deadline_miss"})
@@ -85,6 +95,17 @@ def test_evaluator_config_supports_explicit_temporal_replay_specs() -> None:
 
     with pytest.raises(ConfigResolutionError, match="Known values"):
         coerce_evaluator_config({**_poisson_config(), "id": "other_evaluation"})
+
+
+def test_evaluator_config_supports_explicit_block_replay_specs() -> None:
+    config = coerce_evaluator_config(_block_poisson_config())
+    contract = compile_evaluator_contract(config)
+
+    assert config.id == "block_poisson_replay"
+    assert contract.evaluator_id == "block_poisson_replay"
+    assert contract.config == config
+    assert contract.accepted_decoded_result_id == OFFSET_DECODED_RESULT_ID
+    assert contract.primary_metric_id == "profit_over_baseline"
 
 
 def test_evaluator_compile_requires_concrete_poisson_config() -> None:
@@ -198,6 +219,26 @@ def test_poisson_replay_reports_event_summary_metadata() -> None:
     assert all("overflow_count" in run.metadata for run in summary.runs)
 
 
+def test_block_poisson_replay_reports_event_summary_metadata() -> None:
+    store = _store()
+    sample_indices = np.arange(store.n_samples, dtype=np.int64)
+    offsets = DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64))
+    evaluator = compile_evaluator_contract(coerce_evaluator_config(_block_poisson_config()))
+
+    summary = evaluator.run(
+        store,
+        _execution_policy(),
+        offsets,
+        _action_space(store, sample_indices),
+    )
+
+    assert summary.total_events == sum(run.n_events for run in summary.runs)
+    assert summary.total_events > 0
+    assert all(run.metadata["window_blocks"] == 4 for run in summary.runs)
+    assert all("window_start_block_number" in run.metadata for run in summary.runs)
+    assert all("overflow_count" in run.metadata for run in summary.runs)
+
+
 def test_poisson_replay_handles_non_chronological_sample_indices() -> None:
     store = _store()
     forward_indices = np.arange(store.n_samples, dtype=np.int64)
@@ -236,6 +277,22 @@ def test_poisson_replay_rejects_window_larger_than_sample_coverage() -> None:
     evaluator = compile_evaluator_contract(config)
 
     with pytest.raises(ValueError, match="requested replay window"):
+        evaluator.run(
+            store,
+            _execution_policy(),
+            DecodedOffsets(torch.tensor([0, 1, 0, 1], dtype=torch.int64)),
+            _action_space(store, sample_indices),
+        )
+
+
+def test_block_poisson_replay_rejects_window_larger_than_sample_coverage() -> None:
+    store = _store()
+    sample_indices = np.arange(store.n_samples, dtype=np.int64)
+    evaluator = compile_evaluator_contract(
+        coerce_evaluator_config({**_block_poisson_config(), "window_blocks": 5})
+    )
+
+    with pytest.raises(ValueError, match="block window"):
         evaluator.run(
             store,
             _execution_policy(),

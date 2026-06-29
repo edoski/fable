@@ -10,7 +10,7 @@ from pydantic import Field
 
 from ..core.config_model import ConfigModel
 from ..core.errors import ConfigResolutionError
-from .models import ProblemSpec, TimestampWindowSpec, WorkflowTask
+from .models import ProblemSpec, RuntimeEvaluationWindowSpec, WorkflowTask
 
 
 class WorkflowSelectionBase(ConfigModel):
@@ -52,7 +52,7 @@ class EvaluateWorkflowSelection(ConfigModel):
     storage_root: Path | None = None
     artifact_id: str | None = None
     corpus_id: str | None = None
-    evaluation_window: TimestampWindowSpec | None = None
+    evaluation_window: RuntimeEvaluationWindowSpec | None = None
     evaluations: str | None = None
     evaluator: str | None = None
     delay_seconds: int | None = Field(default=None, gt=0)
