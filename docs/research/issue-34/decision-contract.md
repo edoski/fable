@@ -216,9 +216,9 @@ checkpoint supply chain, role and range, `C`, `K`, feature, loss, and fitted
 state facts.
 
 One concrete column-pruned Polars reduction derives all approved predictive
-and economic summaries, validation gates, the final ordered testing TSV, and
-requested thesis tables and views. No second reducer or aggregate schema
-survives.
+and economic summaries, validation gates, the final ordered 51-row
+all-or-nothing testing TSV, and requested thesis tables and views. No second
+reducer or aggregate schema survives.
 
 `selected_action_wait_seconds` is zero for `k=0`; otherwise it is
 `timestamp(h+k) - timestamp(h)`. It is an offline descriptive action offset,
@@ -325,7 +325,15 @@ owners.
 
 This ticket coordinates the contract. It does not implement it. Issues 38 and
 44 must specify the clean replacement and create later code-review-sized
-implementation slices. Their handoff includes:
+implementation slices.
+
+This contract intentionally supersedes conflicting active clauses in
+`CONTEXT.md` and ADRs 0001, 0002, 0004, and 0005: request avoidance,
+catalog/root materialization, resolved workflow snapshots, and retained
+follow/provenance/catalog execution. Issue 39 owns the later glossary and ADR
+reconciliation; Issue 34 changes no domain file.
+
+The Issues 38 and 44 handoff includes:
 
 - replace root selectors, `StorageSpec`, resolved snapshots, catalogs, and
   duplicated request storage with the direct paths above;
@@ -353,14 +361,19 @@ discovery, or analysis subsystem or ticket.
 
 ## Lean verification
 
-Keep only focused positive tests of current SPICE-owned behavior:
+Keep only focused tests of current SPICE-owned behavior, invariants, error
+boundaries, and consequential seams:
 
 - strict request and schema hydration;
 - corpus resume, internal finalization, and single-file publication;
 - retained-result constraints, selection, and materialization;
-- native checkpoint association and Mac load;
+- native checkpoint request/fitted-state association through one strict CPU
+  load seam;
 - one hand-computable 13-column write/reload and column-pruned reduction;
 - direct target YAML, generated command, dispatch, and numeric Slurm job ID.
+
+The separately authorized target-hardware phase records one remote-to-Mac
+native checkpoint load observation. It is not a compatibility test harness.
 
 Delete obsolete tests with obsolete code. Add no absence, deletion, transition,
 or compatibility tests. Do not retest Lightning, Polars, Pydantic, `rsync`,
@@ -375,7 +388,8 @@ The approved lean boundary deliberately accepts:
 - canonical corpus reload cannot re-prove stripped parent links or finality;
 - a structurally loadable same-shape checkpoint substitution may remain
   undetected under native package trust;
-- source deployment and host equality are manual facts outside SPICE;
+- manual source deployment remains outside SPICE; host/source equality is
+  neither required nor checked;
 - later score regeneration is semantic, not promised bit-for-bit identical;
 - one operator manually avoids concurrent writers and resolves ambiguous
   acknowledgement.
