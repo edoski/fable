@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from ...config import (
-    AcquireWorkflowSelection,
     EvaluateWorkflowSelection,
     TrainWorkflowSelection,
     TuneWorkflowSelection,
@@ -22,11 +21,9 @@ from ..options import (
     WorkflowBatchSizeOption,
     WorkflowChainOption,
     WorkflowCorpusConsumerOption,
-    WorkflowCorpusOption,
     WorkflowDelaySecondsOption,
     WorkflowDependencyOption,
     WorkflowDetachOption,
-    WorkflowDryRunOption,
     WorkflowEvaluationCorpusOption,
     WorkflowEvaluationWindowDurationOption,
     WorkflowEvaluationWindowStartOption,
@@ -34,9 +31,7 @@ from ..options import (
     WorkflowFeaturesOption,
     WorkflowModelOption,
     WorkflowProblemOption,
-    WorkflowProviderOption,
     WorkflowSplitOption,
-    WorkflowStorageRootWriteOption,
     WorkflowStudyConsumerOption,
     WorkflowStudyOption,
     WorkflowSurfaceOption,
@@ -78,34 +73,6 @@ def _submit_model_workflow(
         target=target,
         dependency=dependency,
         detach=detach,
-    )
-
-
-def acquire_command(
-    surface: WorkflowSurfaceOption = None,
-    chain: WorkflowChainOption = None,
-    corpus: WorkflowCorpusOption = None,
-    problem: WorkflowProblemOption = None,
-    features: WorkflowFeaturesOption = None,
-    provider: WorkflowProviderOption = None,
-    storage_root: WorkflowStorageRootWriteOption = None,
-    dry_run: WorkflowDryRunOption = None,
-) -> None:
-    from ...workflows import acquire
-
-    acquire.run(
-        resolve_workflow_config(
-            AcquireWorkflowSelection(
-                surface=surface,
-                chain=chain,
-                corpus=corpus,
-                problem=problem,
-                features=features,
-                provider=provider,
-                storage_root=storage_root,
-                dry_run=dry_run,
-            )
-        )
     )
 
 

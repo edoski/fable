@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from .commands.benchmark import app as benchmark_app
 from .commands.config import app as config_app
+from .commands.corpus import app as corpus_app
 from .commands.storage import delete_app, refresh_app, show_app
 from .commands.transfer import app as transfer_app
 from .commands.workflows import (
-    acquire_command,
     evaluate_command,
     train_command,
     tune_command,
@@ -17,26 +17,18 @@ from .errors import OperatorTyper
 app = OperatorTyper(
     name="spice",
     help="SPICE workflow CLI.",
-    epilog="Example:\n  spice acquire --surface current_row_fee_dynamics",
+    epilog="Example:\n  spice corpus acquire REQUEST.json --rpc-url URL --poa",
     no_args_is_help=True,
     add_completion=True,
 )
 app.add_typer(benchmark_app, name="benchmark")
 app.add_typer(config_app, name="config")
+app.add_typer(corpus_app, name="corpus")
 app.add_typer(show_app, name="show")
 app.add_typer(delete_app, name="delete")
 app.add_typer(transfer_app, name="transfer")
 app.add_typer(refresh_app, name="refresh")
 
-app.command(
-    "acquire",
-    short_help="Acquire canonical corpora.",
-    help="Acquire one canonical block-range corpus.",
-    epilog=(
-        "Example:\n"
-        "  spice acquire --surface current_row_fee_dynamics --chain avalanche"
-    ),
-)(acquire_command)
 app.command(
     "train",
     short_help="Train a model artifact.",

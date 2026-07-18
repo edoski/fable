@@ -15,12 +15,10 @@ from . import typed_groups as typed
 from .group_catalog import ConfigGroup
 from .groups import load_named_group_payload
 from .models import (
-    AcquireConfig,
     ArtifactConfig,
     ArtifactVariant,
     EvaluateConfig,
     ProblemSpec,
-    ResolvedRpcEndpointConfig,
     StorageSpec,
     StudyConfig,
     TrainConfig,
@@ -37,7 +35,6 @@ from .resolved_workflows import (
     final_evaluate_batch_size,
 )
 from .selections import (
-    AcquireWorkflowSelection,
     EvaluateWorkflowSelection,
     SurfaceWorkflowSelection,
     TrainWorkflowSelection,
@@ -49,7 +46,7 @@ from .surfaces import SurfaceFrame
 ConfigModelT = TypeVar("ConfigModelT", bound=ConfigModel)
 SelectionValueT = TypeVar("SelectionValueT")
 
-ResolvedSelectionConfig = AcquireConfig | TrainConfig | TuneConfig | EvaluateConfig
+ResolvedSelectionConfig = TrainConfig | TuneConfig | EvaluateConfig
 
 
 def load_named_tuning_space(
@@ -101,12 +98,6 @@ def _selected_model_artifact(
 
 @overload
 def resolve_workflow_config(
-    selection: AcquireWorkflowSelection,
-) -> AcquireConfig: ...
-
-
-@overload
-def resolve_workflow_config(
     selection: TrainWorkflowSelection,
 ) -> TrainConfig: ...
 
@@ -129,8 +120,6 @@ def resolve_workflow_config(selection: WorkflowSelection) -> ResolvedSelectionCo
     try:
         if isinstance(selection, EvaluateWorkflowSelection):
             return _resolve_evaluate_config(selection)
-        if isinstance(selection, AcquireWorkflowSelection):
-            return _resolve_acquire_config(selection)
         if isinstance(selection, TrainWorkflowSelection):
             return _resolve_train_config(selection)
         if isinstance(selection, TuneWorkflowSelection):
@@ -231,50 +220,6 @@ def _resolve_model_workflow_fields(
         split=split,
         tuning=tuning,
         tuning_space=tuning_space,
-    )
-
-
-def _resolve_acquire_config(selection: AcquireWorkflowSelection) -> AcquireConfig:
-    frame = _load_surface(selection)
-    corpus = typed.load(
-        typed.CORPUS,
-        _required(_selected(selection.corpus, frame.corpus), "corpus"),
-    )
-    chain = typed.load(
-        typed.CHAIN,
-        _required_value(_selected(selection.chain, frame.chain), "chain"),
-    )
-    storage = _resolve_storage(_surface_storage(selection, frame))
-    problem = _resolve_problem(
-        _required_value(_selected(selection.problem, frame.problem), "problem")
-    )
-    provider = typed.load(
-        typed.PROVIDER,
-        _required(_selected(selection.provider, frame.acquisition.provider), "provider"),
-    )
-    endpoint = provider.endpoint_config_for(chain.name)
-    rpc_endpoint = ResolvedRpcEndpointConfig(
-        provider_name=provider.name,
-        url=endpoint.url,
-        reference=endpoint.reference or endpoint.url,
-        timeout_seconds=provider.transport.timeout_seconds,
-        retry_count=provider.transport.retry_count,
-        backoff_factor=provider.transport.backoff_factor,
-    )
-    if provider.acquisition is None:
-        raise ConfigResolutionError(
-            f"provider {provider.name} must define acquisition settings"
-        )
-    acquisition = provider.acquisition
-    if selection.dry_run is not None:
-        acquisition = _validated_config_update(acquisition, dry_run=selection.dry_run)
-    return AcquireConfig(
-        chain=chain,
-        corpus=corpus,
-        storage=storage,
-        problem=problem,
-        rpc_endpoint=rpc_endpoint,
-        acquisition=acquisition,
     )
 
 

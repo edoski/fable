@@ -6,10 +6,6 @@ from ..core.config_model import ConfigModel
 from .models import ArtifactConfig, ProblemSpec, StorageSpec, StudyConfig
 
 
-class SurfaceAcquisitionFrame(ConfigModel):
-    provider: str
-
-
 class SurfaceTrainingFrame(ConfigModel):
     id: str
     split: str
@@ -27,7 +23,6 @@ class SurfaceFrame(ConfigModel):
     features: str | None = None
     prediction: str
     model: str | None = None
-    acquisition: SurfaceAcquisitionFrame
     training: SurfaceTrainingFrame
     tuning: SurfaceTuningFrame
     evaluations: str | None = None

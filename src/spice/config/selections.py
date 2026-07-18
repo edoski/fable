@@ -21,12 +21,6 @@ class WorkflowSelectionBase(ConfigModel):
     storage_root: Path | None = None
 
 
-class AcquireWorkflowSelection(WorkflowSelectionBase):
-    corpus: str | None = None
-    provider: str | None = None
-    dry_run: bool | None = None
-
-
 class ModelWorkflowSelectionBase(WorkflowSelectionBase):
     evaluations: str | None = None
     model: str | None = None
@@ -60,13 +54,12 @@ class EvaluateWorkflowSelection(ConfigModel):
 
 
 WorkflowSelection: TypeAlias = (
-    AcquireWorkflowSelection
-    | TrainWorkflowSelection
+    TrainWorkflowSelection
     | TuneWorkflowSelection
     | EvaluateWorkflowSelection
 )
 SurfaceWorkflowSelection: TypeAlias = (
-    AcquireWorkflowSelection | TrainWorkflowSelection | TuneWorkflowSelection
+    TrainWorkflowSelection | TuneWorkflowSelection
 )
 
 
@@ -77,7 +70,6 @@ class WorkflowSelectionSpec:
 
 
 _WORKFLOW_SELECTION_SPECS = (
-    WorkflowSelectionSpec(WorkflowTask.ACQUIRE, AcquireWorkflowSelection),
     WorkflowSelectionSpec(WorkflowTask.TRAIN, TrainWorkflowSelection),
     WorkflowSelectionSpec(WorkflowTask.TUNE, TuneWorkflowSelection),
     WorkflowSelectionSpec(WorkflowTask.EVALUATE, EvaluateWorkflowSelection),

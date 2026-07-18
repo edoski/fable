@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from ..config.models import AcquireConfig, EvaluateConfig, TrainConfig, TuneConfig
+from ..config.models import EvaluateConfig, TrainConfig, TuneConfig
 from ..core.rendering import metric_string
 from ..core.reporting import Reporter
-from ..corpus.assembly import CorpusAssemblyResult
 from ..modeling._fit_policy import TrainingEpochProgress
 from ..modeling.pipeline import TrainingRunCallbacks, TrainingSpec
 from ..modeling.results import LoadedEvaluationSummary, LoadedTrainingSummary
@@ -23,47 +22,6 @@ from ..storage.workflow_roots import (
     TunedTrainWorkflowRoots,
     TuneWorkflowRoots,
 )
-
-
-def acquire_workflow_facts(config: AcquireConfig) -> list[tuple[str, str]]:
-    return [
-        ("corpus", config.corpus.name),
-        ("chain", config.chain.name),
-        ("problem", config.problem.id),
-        ("provider", config.rpc_endpoint.provider_name),
-    ]
-
-
-def report_acquire_result(
-    reporter: Reporter,
-    *,
-    result: CorpusAssemblyResult,
-) -> None:
-    if result.mode == "dry_run":
-        reporter.result(
-            "acquire",
-            [
-                ("window", f"{result.requested_window_seconds}s"),
-                ("blocks", str(result.blocks_plan.block_range.count)),
-            ],
-            status="dry_run",
-        )
-        return
-    blocks = result.manifest.blocks
-    reporter.result(
-        "acquire",
-        [
-            ("blocks", blocks.materialization.outcome),
-            ("rows", str(blocks.coverage.rows)),
-        ],
-    )
-
-
-def report_acquire_staging_warning(reporter: Reporter, *, reason: str) -> None:
-    reporter.milestone(
-        f"acquire {reason}; partial staging preserved for resume",
-        level="warning",
-    )
 
 
 def train_workflow_facts(

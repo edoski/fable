@@ -4,12 +4,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
 from sqlalchemy.schema import Table
@@ -51,32 +51,6 @@ class SingletonPayloadStore(Generic[T]):
         if row is None:
             return None
         return self.codec.decode(mapping_payload(row["payload"], label=self.table.name))
-
-
-@dataclass(frozen=True, slots=True)
-class SequencePayloadStore(Generic[T]):
-    table: Table
-    codec: PayloadCodec[T]
-
-    def append(self, conn: Connection, value: T, **extra_columns: object) -> None:
-        conn.execute(
-            self.table.insert().values(
-                payload=self.codec.encode(value),
-                **extra_columns,
-            )
-        )
-
-    def replace(self, conn: Connection, rows: Sequence[dict[str, object]]) -> None:
-        conn.execute(delete(self.table))
-        if rows:
-            conn.execute(self.table.insert(), list(rows))
-
-    def list(self, conn: Connection, *, order_by: Any) -> list[T]:
-        rows = conn.execute(select(self.table.c.payload).order_by(order_by)).mappings().all()
-        values: list[T] = []
-        for row in rows:
-            values.append(self.codec.decode(mapping_payload(row["payload"], label=self.table.name)))
-        return values
 
 
 def mapping_payload(payload: object, *, label: str) -> dict[str, object]:

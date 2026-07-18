@@ -17,7 +17,6 @@ from ...acquisition.errors import (
     TransientAcquisitionError,
     UnsupportedAcquisitionSourceError,
 )
-from ...acquisition.types import BlockPullPlan, BlockRange, TimestampRange
 from ...config.models import ChainSpec, ResolvedRpcEndpointConfig
 from ...corpus.contract import CanonicalBlockRow, RpcBlock, build_canonical_block_row
 from ...corpus.metadata import CorpusAcquisitionSourceRequirements
@@ -81,47 +80,6 @@ class BlockRpcClient:
 
     async def latest_block_header(self) -> BlockHeader:
         return await self._get_latest_block()
-
-    async def find_first_block_at_or_after(self, timestamp: int) -> int:
-        if timestamp < 0:
-            raise ValueError("timestamp must be non-negative")
-
-        latest_block = await self._get_latest_block()
-        if timestamp > latest_block.timestamp:
-            return latest_block.number + 1
-
-        low = 0
-        high = latest_block.number
-        while low < high:
-            middle = (low + high) // 2
-            middle_timestamp = (await self._get_block(middle)).timestamp
-            if middle_timestamp >= timestamp:
-                high = middle
-            else:
-                low = middle + 1
-        return low
-
-    async def resolve_block_range(self, window: TimestampRange) -> BlockRange:
-        return BlockRange(
-            start=await self.find_first_block_at_or_after(window.start),
-            end=await self.find_first_block_at_or_after(window.end),
-        )
-
-    async def plan_window(self, window: TimestampRange) -> BlockPullPlan:
-        return BlockPullPlan(
-            window=window,
-            block_range=await self.resolve_block_range(window),
-        )
-
-    async def estimate_recent_block_interval(self, sample_size: int = 128) -> float:
-        if sample_size <= 1:
-            raise ValueError("sample_size must be greater than 1")
-        latest = await self._get_latest_block()
-        earliest_number = max(0, latest.number - sample_size + 1)
-        earliest = await self._get_block(earliest_number)
-        observed_blocks = max(1, latest.number - earliest.number)
-        observed_seconds = max(1, latest.timestamp - earliest.timestamp)
-        return observed_seconds / observed_blocks
 
     async def get_block_rows(self, start: int, end: int) -> list[CanonicalBlockRow]:
         if end <= start:

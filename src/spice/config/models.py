@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Self
 from urllib.parse import urlparse
 
@@ -20,10 +19,6 @@ from ..core.validation import validate_path_segment
 from ..features import validate_feature_selection
 from ..temporal.compilers import ProblemCompilerConfig
 from ..temporal.execution_policy import ExecutionPolicyConfig
-
-
-class WorkflowTask(StrEnum):
-    ACQUIRE = "acquire"
 
 
 def _validate_http_endpoint_url(value: str, *, label: str) -> str:
@@ -115,33 +110,6 @@ class SequenceConfig(_ConfigModel):
         return self
 
 
-class AcquisitionRpcConfig(_ConfigModel):
-    batch_size: int = Field(gt=0)
-    concurrency: int = Field(gt=0)
-    min_batch_size: int = Field(gt=0)
-    concurrency_rungs: list[int] = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def validate_runtime(self) -> Self:
-        if self.min_batch_size > self.batch_size:
-            raise ValueError("acquisition.rpc.min_batch_size must be <= batch_size")
-        if sorted(self.concurrency_rungs) != self.concurrency_rungs:
-            raise ValueError("acquisition.rpc.concurrency_rungs must be sorted ascending")
-        if len(set(self.concurrency_rungs)) != len(self.concurrency_rungs):
-            raise ValueError("acquisition.rpc.concurrency_rungs must not contain duplicates")
-        if any(value <= 0 for value in self.concurrency_rungs):
-            raise ValueError("acquisition.rpc.concurrency_rungs values must be positive")
-        if self.concurrency not in self.concurrency_rungs:
-            raise ValueError("acquisition.rpc.concurrency must be present in concurrency_rungs")
-        return self
-
-
-class AcquisitionConfig(_ConfigModel):
-    dry_run: bool = False
-    chunk_size: int = Field(gt=0)
-    rpc: AcquisitionRpcConfig
-
-
 class FeaturesConfig(_ConfigModel):
     id: str
     outputs: list[str] = Field(min_length=1)
@@ -173,22 +141,6 @@ def coerce_features_config(payload: object) -> FeaturesConfig:
     )
 
 
-class ProviderEndpointConfig(_ConfigModel):
-    url: str
-    reference: str | None = None
-
-    @field_validator("url")
-    @classmethod
-    def validate_url(cls, value: str) -> str:
-        return _validate_http_endpoint_url(value, label="provider.endpoints.url")
-
-
-class ProviderTransportConfig(_ConfigModel):
-    timeout_seconds: float = Field(gt=0.0)
-    retry_count: int = Field(ge=0)
-    backoff_factor: float = Field(ge=0.0)
-
-
 class ResolvedRpcEndpointConfig(_ConfigModel):
     provider_name: str
     url: str
@@ -206,39 +158,3 @@ class ResolvedRpcEndpointConfig(_ConfigModel):
     @classmethod
     def validate_url(cls, value: str) -> str:
         return _validate_http_endpoint_url(value, label="rpc_endpoint.url")
-
-
-class ProviderSpec(_ConfigModel):
-    name: str
-    transport: ProviderTransportConfig
-    acquisition: AcquisitionConfig | None = None
-    endpoints: dict[str, ProviderEndpointConfig]
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, value: str) -> str:
-        return validate_path_segment(value, label="provider.name")
-
-    @model_validator(mode="after")
-    def validate_chain_coverage(self) -> Self:
-        if not self.endpoints:
-            raise ValueError("provider.endpoints must not be empty")
-        for name in self.endpoints:
-            validate_path_segment(name, label="provider.endpoints key")
-        return self
-
-    def endpoint_config_for(self, chain_name: str) -> ProviderEndpointConfig:
-        try:
-            return self.endpoints[chain_name]
-        except KeyError as exc:
-            raise ConfigResolutionError(
-                f"provider {self.name} does not define endpoint for {chain_name}"
-            ) from exc
-
-
-class AcquireConfig(WorkflowConfig):
-    workflow: WorkflowTask = WorkflowTask.ACQUIRE
-    problem: ProblemSpec
-    features: FeaturesConfig
-    rpc_endpoint: ResolvedRpcEndpointConfig
-    acquisition: AcquisitionConfig

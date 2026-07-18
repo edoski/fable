@@ -95,10 +95,6 @@ WorkflowChainOption = Annotated[
     str | None,
     workflow_selection_option("--chain", metavar="CHAIN", help="Override the target chain."),
 ]
-WorkflowCorpusOption = Annotated[
-    str | None,
-    workflow_selection_option("--corpus", metavar="CORPUS", help="Override the corpus spec."),
-]
 WorkflowProblemOption = Annotated[
     str | None,
     workflow_selection_option("--problem", metavar="PROBLEM", help="Override the problem spec."),
@@ -109,14 +105,6 @@ WorkflowFeaturesOption = Annotated[
         "--features",
         metavar="FEATURES",
         help="Override the features spec.",
-    ),
-]
-WorkflowProviderOption = Annotated[
-    str | None,
-    workflow_selection_option(
-        "--provider",
-        metavar="PROVIDER",
-        help="Override the RPC provider spec.",
     ),
 ]
 WorkflowEvaluatorSpecOption = Annotated[
@@ -209,22 +197,6 @@ WorkflowArtifactConsumerOption = Annotated[
         "--artifact-id",
         metavar="ARTIFACT_ID",
         help="Consume this artifact root.",
-    ),
-]
-WorkflowStorageRootWriteOption = Annotated[
-    Path | None,
-    workflow_output_option(
-        "--storage-root",
-        metavar="PATH",
-        help="Store outputs under a non-default root.",
-    ),
-]
-WorkflowDryRunOption = Annotated[
-    bool | None,
-    typer.Option(
-        "--dry-run/--no-dry-run",
-        help="Skip persistence and RPC side effects.",
-        rich_help_panel="Execution",
     ),
 ]
 WorkflowDependencyOption = Annotated[

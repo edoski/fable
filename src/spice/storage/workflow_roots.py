@@ -14,7 +14,6 @@ from .engine import state_db_path
 from .layout import (
     artifact_root_path,
     corpus_blocks_dir_path,
-    corpus_root_path,
     study_root_path,
 )
 
@@ -60,11 +59,6 @@ class ArtifactRootHandle:
     variant: ArtifactVariant
     study_id: str | None = None
     study_name: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class AcquireWorkflowRoots:
-    corpus: CorpusRootHandle
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,25 +138,6 @@ def artifact_root_handle_from_record(
         variant=ArtifactVariant(record.variant),
         study_id=record.study_id,
         study_name=record.study_name,
-    )
-
-
-def produced_corpus_root_handle(
-    storage_root: Path,
-    *,
-    chain_name: str,
-    corpus_id: str,
-    corpus_name: str,
-) -> CorpusRootHandle:
-    root_path = corpus_root_path(storage_root, chain_name=chain_name, corpus_id=corpus_id)
-    return CorpusRootHandle(
-        storage_root=storage_root,
-        corpus_id=corpus_id,
-        corpus_name=corpus_name,
-        chain_name=chain_name,
-        root_path=root_path,
-        state_db_path=state_db_path(root_path),
-        blocks_dir=corpus_blocks_dir_path(root_path),
     )
 
 

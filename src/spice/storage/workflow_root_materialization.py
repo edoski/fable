@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from ..config.models import AcquireConfig, ArtifactVariant, EvaluateConfig, TrainConfig, TuneConfig
+from ..config.models import ArtifactVariant, EvaluateConfig, TrainConfig, TuneConfig
 from ..core.errors import ConfigResolutionError, SelectorResolutionError
 from .catalog.index import (
     resolve_artifact_record,
@@ -13,10 +13,9 @@ from .catalog.index import (
     resolve_study_record,
 )
 from .identity import artifact_storage_identity_from_config, study_storage_identity_from_config
-from .ids import artifact_storage_id, corpus_storage_id, study_storage_id
+from .ids import artifact_storage_id, study_storage_id
 from .selectors import ArtifactSelector, CorpusSelector, StudySelector
 from .workflow_roots import (
-    AcquireWorkflowRoots,
     ArtifactRootHandle,
     BaselineTrainWorkflowRoots,
     CorpusRootHandle,
@@ -28,7 +27,6 @@ from .workflow_roots import (
     artifact_root_handle_from_record,
     corpus_root_handle_from_record,
     produced_artifact_root_handle,
-    produced_corpus_root_handle,
     produced_study_root_handle,
     study_root_handle_from_record,
 )
@@ -43,7 +41,6 @@ class ConsumedRootFacts:
 
 @dataclass(frozen=True, slots=True)
 class ProducedRootFacts:
-    corpus_id: str | None = None
     study_id: str | None = None
     artifact_id: str | None = None
 
@@ -72,15 +69,6 @@ class _WorkflowRootMaterialization:
     artifact: ArtifactRootHandle | None = None
 
 
-def produced_corpus_id(config: AcquireConfig) -> str:
-    return corpus_storage_id(
-        chain_name=config.chain.name,
-        corpus_name=config.corpus.name,
-        window_start_timestamp=config.corpus_window_start_timestamp,
-        window_end_timestamp=config.corpus_window_end_timestamp,
-    )
-
-
 def produced_study_id(config: TuneConfig) -> str:
     return study_storage_id(
         identity=study_storage_identity_from_config(config, corpus_id=config.corpus_id)
@@ -98,7 +86,7 @@ def produced_artifact_id(config: TrainConfig, *, corpus_id: str) -> str:
 
 
 def materialize_workflow_root_facts(
-    config: AcquireConfig | TrainConfig | TuneConfig | EvaluateConfig,
+    config: TrainConfig | TuneConfig | EvaluateConfig,
     *,
     known_study_corpus_ids: Mapping[str, str] | None = None,
     known_artifact_corpus_ids: Mapping[str, str] | None = None,
@@ -114,36 +102,13 @@ def materialize_workflow_root_facts(
 
 
 def _materialize_workflow_roots(
-    config: AcquireConfig | TrainConfig | TuneConfig | EvaluateConfig,
+    config: TrainConfig | TuneConfig | EvaluateConfig,
     *,
     include_handles: bool,
     known_study_corpus_ids: Mapping[str, str] | None = None,
     known_artifact_corpus_ids: Mapping[str, str] | None = None,
     artifact_source_corpus_id: str | None = None,
 ) -> _WorkflowRootMaterialization:
-    if isinstance(config, AcquireConfig):
-        produced = ProducedRootFacts(corpus_id=produced_corpus_id(config))
-        corpus = (
-            produced_corpus_root_handle(
-                config.storage.root,
-                chain_name=config.chain.name,
-                corpus_id=_required(
-                    produced.corpus_id,
-                    "acquire root identity did not produce corpus_id",
-                ),
-                corpus_name=config.corpus.name,
-            )
-            if include_handles
-            else None
-        )
-        return _WorkflowRootMaterialization(
-            facts=MaterializedWorkflowRootFacts(
-                consumed=ConsumedRootFacts(),
-                produced=produced,
-            ),
-            corpus=corpus,
-        )
-
     if isinstance(config, TuneConfig):
         produced = ProducedRootFacts(study_id=produced_study_id(config))
         corpus = None
@@ -385,16 +350,6 @@ def _required(value: str | None, message: str) -> str:
     if value is None:
         raise ValueError(message)
     return value
-
-
-def materialize_acquire_roots(config: AcquireConfig) -> AcquireWorkflowRoots:
-    materialized = _materialize_workflow_roots(config, include_handles=True)
-    corpus = materialized.corpus
-    if corpus is None:
-        raise ValueError("acquire root identity did not produce corpus root")
-    return AcquireWorkflowRoots(
-        corpus=corpus,
-    )
 
 
 def materialize_tune_roots(config: TuneConfig) -> TuneWorkflowRoots:

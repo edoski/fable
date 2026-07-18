@@ -7,7 +7,6 @@ from math import ceil
 
 from ..config.models import ChainSpec
 from ..corpus.metadata import CorpusAcquisitionSourceRequirements
-from ..corpus.planning import CORE_CORPUS_SOURCE_COLUMNS
 from ..features import CompiledFeatureContract, compile_feature_contract
 from ..modeling.artifacts import LoadedTrainingArtifact, load_training_artifact
 from ..modeling.dataset_builders import SequenceRuntimeMetadata
@@ -19,6 +18,8 @@ from ..storage.workflow_roots import artifact_root_handle_from_record
 from ..temporal.compilers.observed_time_window import ObservedTimeWindowRuntimeMetadata
 from ..temporal.contracts import CompiledProblemContract, compile_problem_contract
 from .config import SEPOLIA_CHAIN_ID, ServingConfig
+
+_CORE_CORPUS_SOURCE_COLUMNS = frozenset({"block_number", "timestamp", "chain_id"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +110,7 @@ def load_serving_runtime(config: ServingConfig) -> ServingRuntime:
         prediction_contract=prediction_contract,
         runtime_plan=runtime_plan,
         source_requirements=CorpusAcquisitionSourceRequirements(
-            required_columns=CORE_CORPUS_SOURCE_COLUMNS | required_columns,
+            required_columns=_CORE_CORPUS_SOURCE_COLUMNS | required_columns,
             optional_enrichments=feature_contract.acquisition_enrichments,
             temporal_unit="block",
             ordering_key="block_number",

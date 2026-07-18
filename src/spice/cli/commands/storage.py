@@ -11,7 +11,6 @@ import typer
 from ...core.errors import SpiceOperatorError
 from ...storage.operator import (
     ArtifactInspectionDetail,
-    DatasetInspectionDetail,
     StorageDeleteCommand,
     StorageDeleteCompleted,
     StorageDeleteFailure,
@@ -60,10 +59,6 @@ refresh_app = OperatorTyper(
 )
 
 
-DatasetDetailOption = Annotated[
-    DatasetInspectionDetail | None,
-    typer.Option("--detail", metavar="DETAIL", help="Show one detail table: runs."),
-]
 StudyDetailOption = Annotated[
     StudyInspectionDetail | None,
     typer.Option(
@@ -237,14 +232,13 @@ def show_dataset_command(
     chain: ChainFilterOption = None,
     corpus: CorpusFilterOption = None,
     storage_root: StorageRootReadOption = None,
-    detail: DatasetDetailOption = None,
 ) -> None:
     selector = _corpus_selector(corpus_id=corpus_id, chain=chain, corpus=corpus)
     _run_show(
         storage_root=storage_root,
         kind="corpus",
         selector=selector,
-        detail=None if detail is None else detail.value,
+        detail=None,
     )
 
 

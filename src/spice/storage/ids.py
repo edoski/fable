@@ -24,22 +24,6 @@ def _stable_id(prefix: str, *parts: str) -> str:
     return f"{prefix}_{digest}"
 
 
-def corpus_storage_id(
-    *,
-    chain_name: str,
-    corpus_name: str,
-    window_start_timestamp: int,
-    window_end_timestamp: int,
-) -> str:
-    return _stable_id(
-        "cor",
-        chain_name,
-        corpus_name,
-        str(window_start_timestamp),
-        str(window_end_timestamp),
-    )
-
-
 def fresh_corpus_request(definition: CorpusDefinition) -> CorpusRequest:
     return CorpusRequest(corpus_id=uuid4(), definition=definition)
 

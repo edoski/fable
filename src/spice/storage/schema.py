@@ -22,14 +22,6 @@ dataset_manifest = Table(
     Column("payload", JSON, nullable=False),
 )
 
-acquire_runs = Table(
-    "acquire_runs",
-    metadata,
-    Column("run_id", Integer, primary_key=True, autoincrement=True),
-    Column("recorded_at", Integer, nullable=False),
-    Column("payload", JSON, nullable=False),
-)
-
 artifact_manifest = Table(
     "artifact_manifest",
     metadata,
@@ -59,7 +51,7 @@ study_manifest = Table(
     Column("payload", JSON, nullable=False),
 )
 
-DATASET_TABLES = (dataset_manifest, acquire_runs)
+DATASET_TABLES = (dataset_manifest,)
 STUDY_TABLES = (study_manifest,)
 ARTIFACT_TABLES = (
     artifact_manifest,

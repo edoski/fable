@@ -38,8 +38,3 @@ def load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus:
     )
     _validate_corpus_candidate(corpus)
     return corpus
-
-
-def write_block_file(path: Path, frame: pl.DataFrame) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    frame.write_parquet(path)

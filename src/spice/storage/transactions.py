@@ -7,19 +7,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from ..core.files import replace_paths_atomic
 from .artifact import record_evaluation_state
 from .catalog.index import ReindexedCatalogRoot, reindex_catalog_root
 from .engine import (
     ARTIFACT_ROOT_KIND,
-    DATASET_ROOT_KIND,
     STUDY_ROOT_KIND,
     RootKind,
     require_root_kind,
     state_db_path,
 )
 from .lifecycle import staged_root, validate_root_destination_path
-from .workflow_roots import ArtifactRootHandle, CorpusRootHandle, StudyRootHandle
+from .workflow_roots import ArtifactRootHandle, StudyRootHandle
 
 EffectT = TypeVar("EffectT")
 
@@ -37,32 +35,6 @@ class FullRootCommit(Generic[EffectT]):
 class RootMutation(Generic[EffectT]):
     result: EffectT
     reindexed: ReindexedCatalogRoot
-
-
-def commit_corpus_acquisition(
-    corpus: CorpusRootHandle,
-    *,
-    blocks_dir: Path | None,
-    state_db: Path,
-) -> ReindexedCatalogRoot:
-    require_root_kind(state_db, DATASET_ROOT_KIND)
-    validate_root_destination_path(
-        corpus.storage_root,
-        destination_root=corpus.root_path,
-        expected_root_kind=DATASET_ROOT_KIND,
-    )
-    promotion_candidates: tuple[tuple[Path, Path | None], ...] = (
-        (corpus.blocks_dir, blocks_dir),
-        (corpus.state_db_path, state_db),
-    )
-    promotions = [
-        (target, source)
-        for target, source in promotion_candidates
-        if source is not None
-    ]
-    if promotions:
-        replace_paths_atomic(promotions, replace=True)
-    return reindex_catalog_root(corpus.storage_root, root_path=corpus.root_path)
 
 
 def _reindex_root_state(

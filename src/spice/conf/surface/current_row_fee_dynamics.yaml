@@ -4,8 +4,6 @@ features: core_fee_dynamics
 problem: current_row_nominal
 model: lstm
 prediction: icdcs_2026
-acquisition:
-  provider: publicnode
 training:
   id: default
   split: default

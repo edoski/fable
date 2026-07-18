@@ -19,7 +19,6 @@ from .models import (
     ChainSpec,
     CorpusSpec,
     EvaluationsSpec,
-    ProviderSpec,
     SplitConfig,
     TrainingConfig,
     coerce_problem_spec,
@@ -38,7 +37,6 @@ class ConfigGroup(StrEnum):
     EXECUTION = "execution"
     MODEL = "model"
     PROBLEM = "problem"
-    PROVIDER = "provider"
     SPLIT = "split"
     SURFACE = "surface"
     TRAINING = "training"
@@ -118,14 +116,6 @@ GROUP_SPECS: tuple[GroupSpec[object], ...] = (
         seed_name="current_row_nominal",
         validate=coerce_problem_spec,
         identity_field="id",
-        seed_from_requested_name=True,
-        public=True,
-    ),
-    GroupSpec(
-        group=ConfigGroup.PROVIDER,
-        seed_name="publicnode",
-        validate=ProviderSpec.model_validate,
-        identity_field="name",
         seed_from_requested_name=True,
         public=True,
     ),

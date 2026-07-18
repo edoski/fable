@@ -40,10 +40,6 @@ SelectorT = TypeVar("SelectorT", bound=StorageSelector)
 RecordT = TypeVar("RecordT", bound=CatalogRecord)
 
 
-class DatasetInspectionDetail(StrEnum):
-    RUNS = "runs"
-
-
 class StudyInspectionDetail(StrEnum):
     TRIALS = "trials"
     CONFIG = "config"
@@ -147,7 +143,7 @@ _SPECS: dict[StorageRootKind, _OperatorSpec[Any, Any]] = {
         kind="corpus",
         selector_type=CorpusSelector,
         record_type=CatalogCorpusRecord,
-        valid_details=frozenset(detail.value for detail in DatasetInspectionDetail),
+        valid_details=frozenset(),
         narrowing_attributes=("chain_name", "corpus_name"),
         list_catalog_records=lambda root, selector: list_dataset_records(
             root,
