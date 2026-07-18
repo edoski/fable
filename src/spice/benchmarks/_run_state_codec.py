@@ -4,10 +4,8 @@
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import TypeVar
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
@@ -48,27 +46,12 @@ _PLAN_RECORD_ADAPTER = TypeAdapter(BenchmarkPlanEntry)
 _SUBMISSION_RECORD_ADAPTER = TypeAdapter(BenchmarkSubmissionRecord)
 
 
-def write_run_metadata(run_dir: Path, metadata: BenchmarkRunMetadata) -> None:
-    write_json(run_dir / METADATA_FILENAME, _model_json_payload(metadata))
-
-
 def load_run_metadata(run_dir: Path) -> BenchmarkRunMetadata:
     return _read_json_model(run_dir / METADATA_FILENAME, _METADATA_ADAPTER)
 
 
-def write_plan_jsonl(run_dir: Path, entries: list[BenchmarkPlanEntry]) -> None:
-    write_jsonl(
-        run_dir / PLAN_FILENAME,
-        [_model_json_payload(entry) for entry in entries],
-    )
-
-
 def load_plan_jsonl(run_dir: Path) -> list[BenchmarkPlanEntry]:
     return _read_jsonl_model(run_dir / PLAN_FILENAME, _PLAN_RECORD_ADAPTER)
-
-
-def append_submission_jsonl(run_dir: Path, record: BenchmarkSubmissionRecord) -> None:
-    append_jsonl(run_dir / SUBMISSION_FILENAME, _model_json_payload(record))
 
 
 def load_submission_jsonl(run_dir: Path) -> dict[str, BenchmarkSubmissionRecord]:
@@ -85,11 +68,6 @@ def collection_snapshot_path(run_dir: Path) -> Path:
     return run_dir / COLLECTION_FILENAME
 
 
-def write_collection_snapshot(run_dir: Path, snapshot: object) -> None:
-    payload = _model_json_payload(cast(BaseModel, snapshot))
-    write_json_atomic(collection_snapshot_path(run_dir), payload)
-
-
 def load_collection_snapshot(run_dir: Path):
     from .result_records import BenchmarkCollectionSnapshot
 
@@ -97,29 +75,6 @@ def load_collection_snapshot(run_dir: Path):
         collection_snapshot_path(run_dir),
         TypeAdapter(BenchmarkCollectionSnapshot),
     )
-
-
-def write_json(path: Path, payload: dict[str, object]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def write_json_atomic(path: Path, payload: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.parent / f".{path.name}.tmp"
-    temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(temp_path, path)
-
-
-def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
-    path.write_text(
-        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
-        encoding="utf-8",
-    )
-
-
-def append_jsonl(path: Path, row: dict[str, object]) -> None:
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, sort_keys=True) + "\n")
 
 
 def _read_json_model(path: Path, adapter: TypeAdapter[RecordT]) -> RecordT:
@@ -145,8 +100,3 @@ def _read_jsonl_model(path: Path, adapter: TypeAdapter[RecordT]) -> list[RecordT
                 f"Invalid benchmark run file {path}:{line_number}: {exc}"
             ) from exc
     return rows
-
-
-def _model_json_payload(model: BaseModel) -> dict[str, object]:
-    payload = model.model_dump(mode="json")
-    return cast(dict[str, object], payload)

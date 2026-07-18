@@ -24,7 +24,6 @@ _ValidateGroupPayload = Callable[[dict[str, object]], ConfigT]
 
 
 class ConfigGroup(StrEnum):
-    BENCHMARK = "benchmark"
     CHAIN = "chain"
     EVALUATOR = "evaluator"
     EVALUATIONS = "evaluations"
@@ -52,17 +51,7 @@ class GroupSpec(Generic[ConfigT]):
         return self.group.value
 
 
-def _mapping_payload(payload: dict[str, object]) -> dict[str, object]:
-    return payload
-
-
 GROUP_SPECS: tuple[GroupSpec[object], ...] = (
-    GroupSpec(
-        group=ConfigGroup.BENCHMARK,
-        seed_name=None,
-        validate=_mapping_payload,
-        public=True,
-    ),
     GroupSpec(
         group=ConfigGroup.TRAINING,
         seed_name="default",
