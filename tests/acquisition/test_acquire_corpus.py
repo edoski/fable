@@ -153,7 +153,12 @@ def test_acquire_resumes_complete_chunks_and_publishes_one_corpus(
 
     with pytest.raises(ExceptionGroup):
         asyncio.run(
-            acquire_corpus(request, storage_root=tmp_path, rpc_url="https://rpc.example")
+            acquire_corpus(
+                request,
+                storage_root=tmp_path,
+                rpc_url="https://rpc.example",
+                poa=False,
+            )
         )
 
     hidden = _hidden_path(tmp_path, request)
@@ -164,7 +169,12 @@ def test_acquire_resumes_complete_chunks_and_publishes_one_corpus(
     assert pl.read_parquet(chunks[0])["block_number"].to_list() == list(range(100, 4_196))
 
     asyncio.run(
-        acquire_corpus(request, storage_root=tmp_path, rpc_url="https://rpc.example")
+        acquire_corpus(
+            request,
+            storage_root=tmp_path,
+            rpc_url="https://rpc.example",
+            poa=True,
+        )
     )
 
     corpus = load_corpus(tmp_path, request.corpus_id)
@@ -183,10 +193,8 @@ def test_acquire_resumes_complete_chunks_and_publishes_one_corpus(
     assert not hidden.exists()
     assert all(provider.closed for provider in harness.providers)
     assert all(provider.rpc_url == "https://rpc.example" for provider in harness.providers)
-    assert all(
-        web3.middleware_onion.injections == [(ExtraDataToPOAMiddleware, 0)]
-        for web3 in harness.web3s
-    )
+    assert harness.web3s[0].middleware_onion.injections == []
+    assert harness.web3s[1].middleware_onion.injections == [(ExtraDataToPOAMiddleware, 0)]
     assert min(number for number in resumed.calls if isinstance(number, int)) == 4_196
 
 
@@ -305,7 +313,12 @@ def test_acquire_rejects_mismatch_finality_or_existing_destination(
 
     with pytest.raises(error):
         asyncio.run(
-            acquire_corpus(request, storage_root=tmp_path, rpc_url="https://rpc.example")
+            acquire_corpus(
+                request,
+                storage_root=tmp_path,
+                rpc_url="https://rpc.example",
+                poa=False,
+            )
         )
 
     if case == "destination":

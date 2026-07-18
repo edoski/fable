@@ -65,6 +65,7 @@ async def acquire_corpus(
     *,
     storage_root: Path,
     rpc_url: str,
+    poa: bool,
 ) -> None:
     """Acquire and publish the exact native Corpus requested."""
 
@@ -82,7 +83,8 @@ async def acquire_corpus(
     provider = AsyncHTTPProvider(rpc_url)
     web3 = AsyncWeb3(provider)
     try:
-        web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+        if poa:
+            web3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
         endpoint_chain_id = _integer("endpoint chain_id", await web3.eth.chain_id, minimum=0)
         if endpoint_chain_id != request.definition.chain_id:
             raise ValueError(
