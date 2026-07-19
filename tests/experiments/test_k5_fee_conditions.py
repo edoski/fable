@@ -10,12 +10,12 @@ import pytest
 
 import experiments.k5_fee_conditions as fee_conditions_module
 from experiments.k5_fee_conditions import write_k5_fee_condition_evidence
-from spice.addresses import (
+from fable.addresses import (
     evaluation_directory,
     evaluation_json_path,
     evaluation_observations_path,
 )
-from spice.config import (
+from fable.config import (
     AdamWMethod,
     BaselineSource,
     EvaluateRequest,

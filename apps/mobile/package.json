@@ -1,30 +1,16 @@
 {
-  "name": "spice-mobile-demo",
+  "name": "fable-mobile-demo",
   "version": "0.1.0",
   "private": true,
-  "main": "expo-router/entry",
+  "main": "expo/AppEntry",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@react-native-community/slider": "5.2.0",
-    "ethers": "^6.16.0",
     "expo": "56.0.12",
-    "expo-clipboard": "56.0.4",
-    "expo-linking": "56.0.14",
-    "expo-router": "56.2.11",
-    "expo-secure-store": "56.0.4",
     "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-native": "0.85.3",
-    "react-native-get-random-values": "~1.11.0",
-    "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "^4.18.0",
-    "react-native-web": "0.21.2"
+    "react-native": "0.85.3"
   },
   "devDependencies": {
     "@types/react": "^19.2.6",

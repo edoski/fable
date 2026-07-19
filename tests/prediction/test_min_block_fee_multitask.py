@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 import torch
 
-from spice.config import LossDefinition
-from spice.min_block_fee import (
+from fable.config import LossDefinition
+from fable.min_block_fee import (
     ClassificationLossState,
     MinBlockFeeOutput,
     TargetState,
@@ -54,9 +54,7 @@ def test_target_and_loss_match_hand_derived_fixture() -> None:
     log_four = math.log(4.0)
 
     assert target_state.mean == pytest.approx(1.5 * log_four)
-    assert target_state.standard_deviation == pytest.approx(
-        math.sqrt(5.0) * log_four / 2.0
-    )
+    assert target_state.standard_deviation == pytest.approx(math.sqrt(5.0) * log_four / 2.0)
 
     target_z = standardize_target(raw_minima, target_state)
     expected_z = np.array(
@@ -123,9 +121,7 @@ def test_target_and_loss_match_hand_derived_fixture() -> None:
     expected_unweighted_classification = torch.full((4,), 2.0 * log_three)
     expected_unweighted_regression = torch.tensor([0.0, 0.75, 2.25, 5.25])
     expected_unweighted = expected_unweighted_classification + expected_unweighted_regression
-    expected_corrected_classification = torch.tensor([1.0, 1.0, 2.0, 2.0]) * (
-        log_three / 3.0
-    )
+    expected_corrected_classification = torch.tensor([1.0, 1.0, 2.0, 2.0]) * (log_three / 3.0)
     expected_corrected_regression = torch.tensor([0.0, 0.125, 0.5, 2.0])
 
     torch.testing.assert_close(

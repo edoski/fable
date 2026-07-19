@@ -3,11 +3,10 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "spice"
+name = "fable"
 version = "0.1.0"
-description = "Practical reproduction of the SPICE temporal module baseline."
-readme = "README.md"
-requires-python = ">=3.11"
+description = "Fee Analysis through Blockchain Learning and Estimation."
+requires-python = ">=3.11,<3.12"
 license = { text = "MIT" }
 authors = [
   { name = "Edoardo" }
@@ -15,17 +14,13 @@ authors = [
 dependencies = [
   "numpy>=1.26",
   "polars>=1.5",
-  "torch>=2.5",
+  "torch==2.7.1",
+  "lightning==2.6.5",
+  "torchmetrics==1.9.0",
   "pydantic>=2.12",
   "PyYAML>=6.0",
   "typer>=0.16",
-  "optuna>=4.8",
-  "SQLAlchemy>=2.0",
   "web3>=7.15",
-  "lightning>=2.6.5,<2.7",
-  "scikit-learn>=1.8,<1.9",
-  "fastapi>=0.115",
-  "uvicorn[standard]>=0.32",
 ]
 
 [tool.uv.sources]
@@ -39,21 +34,25 @@ url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
 [project.optional-dependencies]
+serve = [
+  "fastapi>=0.115",
+  "uvicorn>=0.32",
+]
+
+[dependency-groups]
 dev = [
-  "pyright>=1.1",
   "pytest>=8.3",
   "ruff>=0.6",
+  "pyright>=1.1",
   "vulture>=2.16",
 ]
 
 [project.scripts]
-spice = "spice.cli.app:main"
-
-[tool.hatch.build]
-include = ["src/spice/conf/**/*.yaml"]
+fable = "fable.cli.app:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/spice"]
+include = ["src/fable/**/*.py"]
+sources = ["src"]
 
 [tool.ruff]
 line-length = 100

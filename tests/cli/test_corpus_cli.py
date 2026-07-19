@@ -7,8 +7,8 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-import spice.cli.commands.corpus as cli
-from spice.config import CorpusDefinition, CorpusRequest
+import fable.cli.commands.corpus as cli
+from fable.config import CorpusDefinition, CorpusRequest
 
 
 def _app() -> typer.Typer:

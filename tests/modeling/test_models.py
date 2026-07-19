@@ -14,8 +14,8 @@ from pydantic import ValidationError
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
-from spice.addresses import artifact_checkpoint_path
-from spice.config import (
+from fable.addresses import artifact_checkpoint_path
+from fable.config import (
     AdamWMethod,
     BaselineSource,
     CorpusDefinition,
@@ -36,22 +36,22 @@ from spice.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from spice.corpus.contract import Corpus, FinalizedAnchor
-from spice.min_block_fee import (
+from fable.corpus.contract import Corpus, FinalizedAnchor
+from fable.min_block_fee import (
     ClassificationLossState,
     MinBlockFeeOutput,
     TargetState,
     min_block_fee_loss,
 )
-from spice.modeling import (
+from fable.modeling import (
     ArtifactAssociation,
     FitDeployment,
     load_artifact,
     train,
 )
-from spice.modeling import artifacts as modeling_artifacts
-from spice.temporal.features import FeatureState
-from spice.temporal.history import prepare_fit_history
+from fable.modeling import artifacts as modeling_artifacts
+from fable.temporal.features import FeatureState
+from fable.temporal.history import prepare_fit_history
 
 ARTIFACT_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
@@ -255,10 +255,13 @@ def test_artifact_association_is_strict_json_safe_and_request_owned() -> None:
 
     assert set(raw) == {"request", "feature_state", "target_state"}
     assert raw["request"]["artifact_id"] == str(ARTIFACT_ID)
-    assert ArtifactAssociation.model_validate_json(
-        json.dumps(raw, allow_nan=False),
-        strict=True,
-    ) == association
+    assert (
+        ArtifactAssociation.model_validate_json(
+            json.dumps(raw, allow_nan=False),
+            strict=True,
+        )
+        == association
+    )
 
 
 def test_selected_association_uses_exact_method_and_result_index() -> None:
@@ -584,12 +587,8 @@ def test_request_and_deployment_drive_native_lightning_lifecycle(
     monkeypatch.setattr(torch.nn.utils, "clip_grad_norm_", clip_spy)
     scratch = tmp_path / "candidate"
 
-    first = modeling_artifacts._run_candidate(
-        request, method, prepared, scratch, _deployment()
-    )
-    second = modeling_artifacts._run_candidate(
-        request, method, prepared, scratch, _deployment()
-    )
+    first = modeling_artifacts._run_candidate(request, method, prepared, scratch, _deployment())
+    second = modeling_artifacts._run_candidate(request, method, prepared, scratch, _deployment())
 
     assert first.method == method
     assert first.objective == 0.0

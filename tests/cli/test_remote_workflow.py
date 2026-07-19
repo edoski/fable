@@ -9,9 +9,9 @@ from uuid import UUID
 import pytest
 from typer.testing import CliRunner
 
-import spice.cli.commands.remote as remote
-from spice.cli.app import app
-from spice.config import (
+import fable.cli.commands.remote as remote
+from fable.cli.app import app
+from fable.config import (
     AdamWMethod,
     BaselineSource,
     EvaluateRequest,
@@ -25,8 +25,8 @@ from spice.config import (
     TrainRequest,
     WorkflowRequest,
 )
-from spice.evaluation import EvaluationDeployment
-from spice.modeling import FitDeployment
+from fable.evaluation import EvaluationDeployment
+from fable.modeling import FitDeployment
 
 CORPUS_ID = UUID("10000000-0000-4000-8000-000000000001")
 ARTIFACT_ID = UUID("20000000-0000-4000-8000-000000000001")
@@ -191,9 +191,7 @@ def test_remote_workflow_executes_one_strict_envelope(
         deployment: FitDeployment,
     ) -> None:
         events.append("train")
-        calls.append(
-            ("train", (active_request, active_prepared, storage_root, deployment))
-        )
+        calls.append(("train", (active_request, active_prepared, storage_root, deployment)))
 
     def fake_evaluate(
         active_request: EvaluateRequest,

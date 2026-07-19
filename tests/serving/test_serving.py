@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 import torch
 
-from spice import serving
-from spice.config import (
+from fable import serving
+from fable.config import (
     ExperimentSemantics,
     LossDefinition,
     OriginWindow,

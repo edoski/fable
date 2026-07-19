@@ -14,8 +14,8 @@ from torch import nn
 
 import experiments.context_history as context_history_module
 from experiments.context_history import write_context_history_evidence
-from spice.addresses import evaluation_directory, evaluation_json_path
-from spice.config import (
+from fable.addresses import evaluation_directory, evaluation_json_path
+from fable.config import (
     AdamWMethod,
     BaselineSource,
     CorpusDefinition,
@@ -33,10 +33,10 @@ from spice.config import (
     TrainRequest,
     TransformerDefinition,
 )
-from spice.corpus import Corpus, FinalizedAnchor
-from spice.min_block_fee import TargetState
-from spice.modeling.artifacts import ArtifactAssociation
-from spice.temporal.features import FeatureState
+from fable.corpus import Corpus, FinalizedAnchor
+from fable.min_block_fee import TargetState
+from fable.modeling.artifacts import ArtifactAssociation
+from fable.temporal.features import FeatureState
 
 _CHAINS = (1, 137, 43_114)
 _CONTEXTS = (50, 100, 200, 400)
@@ -490,9 +490,7 @@ def test_write_context_history_evidence(
         for metric in _METRICS:
             value = reduction[metric]
             expected_delta = (
-                None
-                if value is None or baseline[metric] is None
-                else value - baseline[metric]
+                None if value is None or baseline[metric] is None else value - baseline[metric]
             )
             assert row[metric] == ("" if value is None else str(value))
             delta_name = f"{metric}_delta_vs_same_chain_c200"

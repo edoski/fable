@@ -14,7 +14,7 @@ import torch
 from pydantic import ValidationError
 from torch import nn
 
-from spice.addresses import (
+from fable.addresses import (
     corpus_blocks_path,
     corpus_directory,
     corpus_json_path,
@@ -22,7 +22,7 @@ from spice.addresses import (
     evaluation_json_path,
     evaluation_observations_path,
 )
-from spice.config import (
+from fable.config import (
     AdamWMethod,
     BaselineSource,
     CorpusDefinition,
@@ -39,16 +39,16 @@ from spice.config import (
     TrainingDefinition,
     TrainRequest,
 )
-from spice.evaluation import EvaluationDeployment, evaluate
-from spice.min_block_fee import (
+from fable.evaluation import EvaluationDeployment, evaluate
+from fable.min_block_fee import (
     ClassificationLossState,
     MinBlockFeeOutput,
     TargetState,
 )
-from spice.modeling.artifacts import ArtifactAssociation
-from spice.temporal.features import FeatureState
+from fable.modeling.artifacts import ArtifactAssociation
+from fable.temporal.features import FeatureState
 
-evaluation_module = importlib.import_module("spice.evaluation.evaluate")
+evaluation_module = importlib.import_module("fable.evaluation.evaluate")
 
 _Weighting = Literal["unweighted", "corrected_inverse_frequency"]
 
@@ -178,9 +178,7 @@ def _association(
 ) -> ArtifactAssociation:
     experiment = experiment or _experiment(weighting)
     classification_state = (
-        None
-        if weighting == "unweighted"
-        else ClassificationLossState(class_support=(5, 10, 20))
+        None if weighting == "unweighted" else ClassificationLossState(class_support=(5, 10, 20))
     )
     if source_kind == "baseline":
         source = BaselineSource(
@@ -337,10 +335,7 @@ def _classification_contributions(weighting: _Weighting) -> list[float]:
     labels = [2, 2, 1, 2, 1]
     weights = {0: 7 / 3, 1: 7 / 6, 2: 7 / 12}
     return [
-        (
-            math.log(sum(math.exp(float(value)) for value in logits))
-            - float(logits[label])
-        )
+        (math.log(sum(math.exp(float(value)) for value in logits)) - float(logits[label]))
         * (1.0 if weighting == "unweighted" else weights[label])
         * 2.0
         for logits, label in zip(_LOGITS.tolist(), labels, strict=True)
@@ -404,9 +399,12 @@ def test_evaluate_publishes_exact_observations_through_one_full_and_tail_path(
     assert loss_sizes == [3, 2]
     assert decode_sizes == [3, 2]
     assert evaluation_json_path(tmp_path, _EVALUATION_ID).read_text() == request.model_dump_json()
-    assert EvaluateRequest.model_validate_json(
-        evaluation_json_path(tmp_path, _EVALUATION_ID).read_text()
-    ) == request
+    assert (
+        EvaluateRequest.model_validate_json(
+            evaluation_json_path(tmp_path, _EVALUATION_ID).read_text()
+        )
+        == request
+    )
 
     observations = pl.read_parquet(evaluation_observations_path(tmp_path, _EVALUATION_ID))
     assert observations.schema == _OBSERVATION_SCHEMA

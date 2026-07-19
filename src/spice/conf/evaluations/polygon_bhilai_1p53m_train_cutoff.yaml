@@ -1,6 +1,0 @@
-id: polygon_bhilai_1p53m_train_cutoff
-items:
-  - id: polygon_bhilai_1p53m_train_cutoff
-    start: "2025-08-09T01:41:10Z"
-    duration_seconds: 3600
-    tags: [train_cutoff, matched_ethereum_lstm_rows]

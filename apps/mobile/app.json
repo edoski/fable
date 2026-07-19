@@ -1,14 +1,13 @@
 {
   "expo": {
-    "name": "SPICE Demo",
-    "slug": "spice-demo",
-    "scheme": "spice-demo",
-    "plugins": ["expo-secure-store"],
+    "name": "FABLE Demo",
+    "slug": "fable-demo",
+    "scheme": "fable-demo",
     "ios": {
-      "bundleIdentifier": "dev.edoski.spice.demo"
+      "bundleIdentifier": "dev.edoski.fable.demo"
     },
     "android": {
-      "package": "dev.edoski.spice.demo"
+      "package": "dev.edoski.fable.demo"
     }
   }
 }

@@ -1,6 +1,0 @@
-id: ethereum_pectra_smoke
-items:
-  - id: two_hour_pectra_smoke
-    start: "2025-05-08T14:00:00Z"
-    duration_seconds: 7200
-    tags: [smoke]

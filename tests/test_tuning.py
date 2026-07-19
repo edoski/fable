@@ -7,8 +7,8 @@ from uuid import UUID
 import pytest
 from pytest import MonkeyPatch
 
-from spice import tuning
-from spice.config import (
+from fable import tuning
+from fable.config import (
     AdamWMethod,
     ExperimentSemantics,
     FitMethod,
@@ -20,10 +20,10 @@ from spice.config import (
     StudyDefinition,
     TuneRequest,
 )
-from spice.corpus import Corpus
-from spice.modeling import FitDeployment
-from spice.study import RetainedResult
-from spice.temporal.history import HistoricalPreparation
+from fable.corpus import Corpus
+from fable.modeling import FitDeployment
+from fable.study import RetainedResult
+from fable.temporal.history import HistoricalPreparation
 
 STUDY_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")

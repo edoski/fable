@@ -9,9 +9,9 @@ import polars as pl
 import pytest
 from torch import nn
 
-import spice.evaluation.report as report_module
-from spice.addresses import evaluation_json_path
-from spice.config import (
+import fable.evaluation.report as report_module
+from fable.addresses import evaluation_json_path
+from fable.config import (
     AdamWMethod,
     BaselineSource,
     CorpusDefinition,
@@ -29,11 +29,11 @@ from spice.config import (
     TrainRequest,
     TransformerDefinition,
 )
-from spice.corpus import Corpus, FinalizedAnchor
-from spice.evaluation import write_sealed_report
-from spice.min_block_fee import ClassificationLossState, TargetState
-from spice.modeling.artifacts import ArtifactAssociation
-from spice.temporal.features import FeatureState
+from fable.corpus import Corpus, FinalizedAnchor
+from fable.evaluation import write_sealed_report
+from fable.min_block_fee import ClassificationLossState, TargetState
+from fable.modeling.artifacts import ArtifactAssociation
+from fable.temporal.features import FeatureState
 
 _EVALUATION_IDS = (
     UUID("10000000-0000-4000-8000-000000000003"),

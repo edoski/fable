@@ -9,10 +9,10 @@ import polars as pl
 import pytest
 from web3.middleware import ExtraDataToPOAMiddleware
 
-import spice.acquisition as acquisition
-from spice.acquisition import acquire_corpus
-from spice.config import CorpusDefinition, CorpusRequest
-from spice.corpus.io import load_corpus
+import fable.acquisition as acquisition
+from fable.acquisition import acquire_corpus
+from fable.config import CorpusDefinition, CorpusRequest
+from fable.corpus.io import load_corpus
 
 
 def _request(*, first: int = 100, last: int = 104) -> CorpusRequest:
@@ -217,9 +217,7 @@ def _stored_hash_failure(root: Path, request: CorpusRequest) -> _FakeEth:
         {
             "block_number": number,
             "block_hash": "A" * 64 if number == first else _hash(number),
-            "parent_hash": (
-                "a" * 64 if number == first + 1 else _hash(number - 1)
-            ),
+            "parent_hash": ("a" * 64 if number == first + 1 else _hash(number - 1)),
             "timestamp": 1_700_000_000 + number,
             "chain_id": request.definition.chain_id,
             "base_fee_per_gas": 1_000_000_000 + number,

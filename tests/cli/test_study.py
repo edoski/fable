@@ -10,11 +10,11 @@ from uuid import UUID
 import pytest
 from typer.testing import CliRunner
 
-import spice.cli.commands.remote as remote
-import spice.cli.commands.study as study
-import spice.execution.submission as submission
-from spice.cli.app import app
-from spice.config import (
+import fable.cli.commands.remote as remote
+import fable.cli.commands.study as study
+import fable.execution.submission as submission
+from fable.cli.app import app
+from fable.config import (
     METHOD_ADAPTER,
     AdamWMethod,
     ExperimentSemantics,
@@ -27,7 +27,7 @@ from spice.config import (
     StudyDefinition,
     TuneRequest,
 )
-from spice.modeling import FitDeployment
+from fable.modeling import FitDeployment
 
 STUDY_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
@@ -113,7 +113,7 @@ REQUEST = TuneRequest(
 def _write_remote(path: Path) -> None:
     path.write_text(
         """ssh: university-alias
-executable: /opt/spice executable
+executable: /opt/fable executable
 storage_root: /remote/storage root
 log_root: /remote/logs
 resources:
@@ -175,7 +175,7 @@ def test_study_run_submits_one_strict_candidate(
     monkeypatch.setattr(Path, "read_bytes", recording_read_bytes)
     monkeypatch.setattr(study, "TuneRequest", RecordingTuneRequest)
     monkeypatch.setattr(study, "METHOD_ADAPTER", RecordingMethodAdapter())
-    monkeypatch.setattr("spice.execution.submission.subprocess.run", fake_run)
+    monkeypatch.setattr("fable.execution.submission.subprocess.run", fake_run)
 
     result = CliRunner().invoke(
         app,
@@ -223,9 +223,9 @@ def test_study_run_submits_one_strict_candidate(
             "#SBATCH --time=17:23:45\n"
             "#SBATCH --output=/remote/logs/%j.out\n"
             "export STORAGE_ROOT='/remote/storage root'\n"
-            "exec '/opt/spice executable' remote candidate <<'SPICE_REQUEST'\n"
+            "exec '/opt/fable executable' remote candidate <<'FABLE_REQUEST'\n"
             f"{envelope_json}\n"
-            "SPICE_REQUEST\n"
+            "FABLE_REQUEST\n"
         ),
         "text": True,
         "stdout": subprocess.PIPE,

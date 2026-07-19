@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import TypeVar, cast
 from uuid import UUID
 
-from spice.addresses import evaluation_json_path
-from spice.config import (
+from fable.addresses import evaluation_json_path
+from fable.config import (
     BaselineSource,
     EvaluateRequest,
     Method,
@@ -19,10 +19,10 @@ from spice.config import (
     SelectedStudySource,
     TrainingDefinition,
 )
-from spice.corpus import Corpus, load_corpus
-from spice.evaluation.reduction import reduce_evaluation
-from spice.modeling.artifacts import ArtifactAssociation, load_artifact
-from spice.study import training_definition_from_method
+from fable.corpus import Corpus, load_corpus
+from fable.evaluation.reduction import reduce_evaluation
+from fable.modeling.artifacts import ArtifactAssociation, load_artifact
+from fable.study import training_definition_from_method
 
 _CHAIN_IDS = (1, 137, 43_114)
 _CONTEXT_BLOCKS = (50, 100, 200, 400)

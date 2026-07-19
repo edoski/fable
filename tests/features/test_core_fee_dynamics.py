@@ -7,7 +7,7 @@ import polars as pl
 import pytest
 from pydantic import ValidationError
 
-from spice.temporal.features import (
+from fable.temporal.features import (
     FeatureState,
     fit_feature_state,
     transform_feature_rows,

@@ -5,8 +5,8 @@ from uuid import UUID
 
 import pytest
 
-from spice.addresses import study_json_path
-from spice.config import (
+from fable.addresses import study_json_path
+from fable.config import (
     AdamWMethod,
     ExperimentSemantics,
     FitMethod,
@@ -31,7 +31,7 @@ from spice.config import (
     TransformerMethodSpace,
     TuneRequest,
 )
-from spice.study import (
+from fable.study import (
     RetainedResult,
     Study,
     apply_method,

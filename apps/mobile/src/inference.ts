@@ -1,6 +1,6 @@
 declare const process: {
   env: {
-    EXPO_PUBLIC_SPICE_BACKEND_URL?: string;
+    EXPO_PUBLIC_FABLE_BACKEND_URL?: string;
   };
 };
 
@@ -30,9 +30,9 @@ export type InferenceResponse = {
 export async function requestInference(
   request: InferenceRequest,
 ): Promise<InferenceResponse> {
-  const backendUrl = process.env.EXPO_PUBLIC_SPICE_BACKEND_URL;
+  const backendUrl = process.env.EXPO_PUBLIC_FABLE_BACKEND_URL;
   if (!backendUrl) {
-    throw new Error("EXPO_PUBLIC_SPICE_BACKEND_URL is required");
+    throw new Error("EXPO_PUBLIC_FABLE_BACKEND_URL is required");
   }
 
   const body = JSON.stringify(request);

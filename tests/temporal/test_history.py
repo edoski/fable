@@ -7,21 +7,19 @@ import torch
 from pydantic import UUID4, TypeAdapter
 from torch.utils.data import DataLoader
 
-from spice.config import (
+from fable.config import (
     CorpusDefinition,
     CorpusRequest,
     ExperimentSemantics,
     LossDefinition,
     OriginWindow,
 )
-from spice.corpus.contract import Corpus, FinalizedAnchor
-from spice.min_block_fee import ClassificationLossState, TargetState
-from spice.temporal.features import FeatureState
-from spice.temporal.history import prepare_fit_history, prepare_historical_window
+from fable.corpus.contract import Corpus, FinalizedAnchor
+from fable.min_block_fee import ClassificationLossState, TargetState
+from fable.temporal.features import FeatureState
+from fable.temporal.history import prepare_fit_history, prepare_historical_window
 
-_CORPUS_ID = TypeAdapter(UUID4).validate_python(
-    "11111111-1111-4111-8111-111111111111"
-)
+_CORPUS_ID = TypeAdapter(UUID4).validate_python("11111111-1111-4111-8111-111111111111")
 _BASE_FEES = np.array(
     [11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2, 7, 6, 5, 4, 4, 9],
     dtype=np.int64,
@@ -99,9 +97,7 @@ def test_fit_history_preserves_exact_geometry_states_views_and_collation() -> No
 
     assert isinstance(preparation.feature_state, FeatureState)
     assert isinstance(preparation.target_state, TargetState)
-    assert preparation.classification_state == ClassificationLossState(
-        class_support=(1, 2, 1)
-    )
+    assert preparation.classification_state == ClassificationLossState(class_support=(1, 2, 1))
 
     support_fees = _BASE_FEES[:6].astype(np.float64)
     support_raw = np.column_stack(
@@ -119,9 +115,7 @@ def test_fit_history_preserves_exact_geometry_states_views_and_collation() -> No
     training_minima = np.array([4, 4, 3, 3], dtype=np.int64)
     logged_minima = np.log(training_minima.astype(np.float64))
     assert preparation.target_state.mean == pytest.approx(logged_minima.mean())
-    assert preparation.target_state.standard_deviation == pytest.approx(
-        logged_minima.std(ddof=0)
-    )
+    assert preparation.target_state.standard_deviation == pytest.approx(logged_minima.std(ddof=0))
 
     assert len(preparation.training) == 4
     assert len(preparation.validation) == 2
@@ -152,13 +146,11 @@ def test_fit_history_preserves_exact_geometry_states_views_and_collation() -> No
     torch.testing.assert_close(first["inputs"], torch.from_numpy(expected_inputs))
     assert int(first["label"]) == 0
     assert float(first["target"]) == pytest.approx(
-        (np.log(4.0) - preparation.target_state.mean)
-        / preparation.target_state.standard_deviation
+        (np.log(4.0) - preparation.target_state.mean) / preparation.target_state.standard_deviation
     )
     assert first["base_fees"].tolist() == [4, 9, 4]
     assert all(
-        first[name].untyped_storage().data_ptr()
-        == repeated[name].untyped_storage().data_ptr()
+        first[name].untyped_storage().data_ptr() == repeated[name].untyped_storage().data_ptr()
         for name in first
     )
 
@@ -167,8 +159,7 @@ def test_fit_history_preserves_exact_geometry_states_views_and_collation() -> No
     assert validation["base_fees"].tolist() == [6, 2, 2]
     assert int(validation["label"]) == 1
     assert float(validation["target"]) == pytest.approx(
-        (np.log(2.0) - preparation.target_state.mean)
-        / preparation.target_state.standard_deviation
+        (np.log(2.0) - preparation.target_state.mean) / preparation.target_state.standard_deviation
     )
 
     testing = prepare_historical_window(

@@ -7,14 +7,12 @@ import polars as pl
 import pytest
 from pydantic import UUID4, TypeAdapter
 
-from spice.addresses import corpus_blocks_path, corpus_json_path
-from spice.config import CorpusDefinition, CorpusRequest
-from spice.corpus import load_corpus
+from fable.addresses import corpus_blocks_path, corpus_json_path
+from fable.config import CorpusDefinition, CorpusRequest
+from fable.corpus import load_corpus
 
 CORPUS_ID = TypeAdapter(UUID4).validate_python("11111111-1111-4111-8111-111111111111")
-OTHER_CORPUS_ID = TypeAdapter(UUID4).validate_python(
-    "22222222-2222-4222-8222-222222222222"
-)
+OTHER_CORPUS_ID = TypeAdapter(UUID4).validate_python("22222222-2222-4222-8222-222222222222")
 BLOCK_SCHEMA = {
     "block_number": pl.Int64,
     "timestamp": pl.Int64,

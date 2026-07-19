@@ -1,6 +1,0 @@
-id: nov9_2025_day
-items:
-  - id: nov9_2025_day
-    start: "2025-11-09T00:00:00Z"
-    duration_seconds: 86400
-    tags: [old_window, comparison]

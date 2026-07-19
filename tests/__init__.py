@@ -1,1 +1,1 @@
-"""Test package for SPICE."""
+"""Test package for FABLE."""

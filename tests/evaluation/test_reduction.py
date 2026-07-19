@@ -9,9 +9,9 @@ import polars as pl
 import pytest
 from torch import nn
 
-import spice.evaluation.reduction as reduction_module
-from spice.addresses import evaluation_directory
-from spice.config import (
+import fable.evaluation.reduction as reduction_module
+from fable.addresses import evaluation_directory
+from fable.config import (
     AdamWMethod,
     BaselineSource,
     EvaluateRequest,
@@ -26,10 +26,10 @@ from spice.config import (
     TrainingDefinition,
     TrainRequest,
 )
-from spice.evaluation import reduce_evaluation
-from spice.min_block_fee import ClassificationLossState, TargetState
-from spice.modeling.artifacts import ArtifactAssociation
-from spice.temporal.features import FeatureState
+from fable.evaluation import reduce_evaluation
+from fable.min_block_fee import ClassificationLossState, TargetState
+from fable.modeling.artifacts import ArtifactAssociation
+from fable.temporal.features import FeatureState
 
 _EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000001")
 _OTHER_EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000002")

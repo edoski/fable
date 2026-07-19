@@ -1,5 +1,0 @@
-id: block_poisson_replay_300
-window_blocks: 300
-repetitions: 200
-arrival_rate_per_block: 0.3
-seed: 2026

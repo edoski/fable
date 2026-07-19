@@ -10,9 +10,9 @@ import pytest
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
-import spice.cli.app as cli
-from spice.cli.app import app
-from spice.config import (
+import fable.cli.app as cli
+from fable.cli.app import app
+from fable.config import (
     WORKFLOW_REQUEST_ADAPTER,
     EvaluateRequest,
     ExperimentSemantics,
@@ -22,7 +22,7 @@ from spice.config import (
     TrainRequest,
     WorkflowRequest,
 )
-from spice.execution import submit
+from fable.execution import submit
 
 CORPUS_ID = UUID("00000000-0000-4000-8000-000000000001")
 ARTIFACT_ID = UUID("00000000-0000-4000-8000-000000000002")
@@ -91,7 +91,7 @@ def _request(workflow: Literal["train", "evaluate"]) -> WorkflowRequest:
     )
 
 
-def _write_remote(path: Path, *, executable: str = "/opt/spice executable") -> None:
+def _write_remote(path: Path, *, executable: str = "/opt/fable executable") -> None:
     path.write_text(
         f"""ssh: university-alias
 executable: {executable}
@@ -142,7 +142,7 @@ def test_submit_sends_one_shared_remote_profile(
         calls.append((argv, kwargs))
         return subprocess.CompletedProcess(argv, 0, stdout=sbatch_output)
 
-    monkeypatch.setattr("spice.execution.submission.subprocess.run", fake_run)
+    monkeypatch.setattr("fable.execution.submission.subprocess.run", fake_run)
 
     result = submit(request)
 
@@ -177,9 +177,9 @@ def test_submit_sends_one_shared_remote_profile(
             "#SBATCH --time=17:23:45\n"
             "#SBATCH --output=/remote/logs/%j.out\n"
             "export STORAGE_ROOT='/remote/storage root'\n"
-            "exec '/opt/spice executable' remote workflow <<'SPICE_REQUEST'\n"
+            "exec '/opt/fable executable' remote workflow <<'FABLE_REQUEST'\n"
             f"{envelope_json}\n"
-            "SPICE_REQUEST\n"
+            "FABLE_REQUEST\n"
         ),
         "text": True,
         "stdout": subprocess.PIPE,
@@ -244,7 +244,7 @@ def test_submit_rejects_owned_invalid_inputs(
     request_path.write_bytes(WORKFLOW_REQUEST_ADAPTER.dump_json(_request("train")))
     _write_remote(
         tmp_path / "REMOTE.yaml",
-        executable="relative/spice" if case == "relative_executable" else "/opt/spice",
+        executable="relative/fable" if case == "relative_executable" else "/opt/fable",
     )
     monkeypatch.chdir(tmp_path)
     calls = 0
@@ -254,7 +254,7 @@ def test_submit_rejects_owned_invalid_inputs(
         calls += 1
         return subprocess.CompletedProcess(argv, 0, stdout="not-a-job\n")
 
-    monkeypatch.setattr("spice.execution.submission.subprocess.run", fake_run)
+    monkeypatch.setattr("fable.execution.submission.subprocess.run", fake_run)
 
     result = CliRunner().invoke(app, ["submit", str(request_path)])
 

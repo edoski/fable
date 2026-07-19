@@ -8,7 +8,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from spice.addresses import (
+from fable.addresses import (
     artifact_checkpoint_path,
     corpus_blocks_path,
     corpus_directory,
@@ -18,7 +18,7 @@ from spice.addresses import (
     evaluation_observations_path,
     study_json_path,
 )
-from spice.config import (
+from fable.config import (
     METHOD_ADAPTER,
     WORKFLOW_REQUEST_ADAPTER,
     AdamWMethod,
@@ -48,7 +48,7 @@ from spice.config import (
     TransformerMethodSpace,
     TuneRequest,
 )
-from spice.requests import (
+from fable.requests import (
     fresh_corpus_request,
     fresh_evaluate_request,
     fresh_train_request,
@@ -332,7 +332,7 @@ def test_four_constructors_mint_once_while_hydration_preserves_ids(monkeypatch) 
         calls += 1
         return next(minted)
 
-    monkeypatch.setattr("spice.requests.uuid4", uuid4_once)
+    monkeypatch.setattr("fable.requests.uuid4", uuid4_once)
     corpus = fresh_corpus_request(CorpusDefinition(chain_id=1, first_block=1, last_block=100))
     model, _, method_space = _branches()[0]
     training = TrainingDefinition(

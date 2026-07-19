@@ -1,6 +1,0 @@
-id: avalanche_octane_1p53m_train_cutoff
-items:
-  - id: avalanche_octane_1p53m_train_cutoff
-    start: "2025-05-04T15:00:52Z"
-    duration_seconds: 3600
-    tags: [train_cutoff, matched_ethereum_lstm_rows]
