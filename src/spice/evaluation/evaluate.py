@@ -21,7 +21,7 @@ from ..temporal.history import HistoricalDataset, prepare_historical_window
 
 _PositiveInt = Annotated[int, Field(strict=True, gt=0)]
 _NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
-_Device = Annotated[str, Field(strict=True, pattern=r"^(cpu|cuda:\d+)$")]
+_DEVICE = torch.device("cuda:0")
 
 _OBSERVATION_SCHEMA = pl.Schema(
     {
@@ -52,7 +52,6 @@ class EvaluationDeployment(BaseModel):
         strict=True,
     )
 
-    device: _Device
     batch_size: _PositiveInt
     num_workers: _NonNegativeInt
     pin_memory: bool
@@ -158,14 +157,13 @@ def _collect_observations(
         prefetch_factor=deployment.prefetch_factor,
         persistent_workers=deployment.persistent_workers,
     )
-    device = torch.device(deployment.device)
-    model.to(device)
+    model.to(_DEVICE)
     cursor = 0
     with torch.inference_mode():
         for batch in loader:
-            inputs = batch["inputs"].to(device)
-            labels = batch["label"].to(device)
-            targets = batch["target"].to(device)
+            inputs = batch["inputs"].to(_DEVICE)
+            labels = batch["label"].to(_DEVICE)
+            targets = batch["target"].to(_DEVICE)
             output = model(inputs)
             loss = min_block_fee_loss(
                 output,

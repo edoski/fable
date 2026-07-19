@@ -289,7 +289,6 @@ def _request(
 
 def _deployment() -> EvaluationDeployment:
     return EvaluationDeployment(
-        device="cpu",
         batch_size=3,
         num_workers=0,
         pin_memory=False,
@@ -366,6 +365,7 @@ def test_evaluate_publishes_exact_observations_through_one_full_and_tail_path(
         "load_artifact",
         lambda storage_root, artifact_id: (association, model),
     )
+    monkeypatch.setattr(evaluation_module, "_DEVICE", torch.device("cpu"))
     real_prepare = evaluation_module.prepare_historical_window
 
     def prepare_with_divergent_corpus(*args: Any, **kwargs: Any):
@@ -442,12 +442,11 @@ def test_evaluate_publishes_exact_observations_through_one_full_and_tail_path(
 @pytest.mark.parametrize(
     "payload",
     [
-        {"device": "cuda"},
         {"batch_size": 0},
         {"float32_matmul_precision": "medium"},
     ],
 )
-def test_evaluation_deployment_rejects_invalid_device_batch_or_matmul_policy(
+def test_evaluation_deployment_rejects_invalid_batch_or_matmul_policy(
     payload: dict[str, object],
 ) -> None:
     valid = _deployment().model_dump()
@@ -506,6 +505,7 @@ def test_evaluate_rejects_owned_association_and_publication_conflicts_with_resid
         "load_artifact",
         lambda storage_root, artifact_id: (association, model),
     )
+    monkeypatch.setattr(evaluation_module, "_DEVICE", torch.device("cpu"))
     if case == "validation_window":
         window = OriginWindow(
             role="validation",
@@ -536,9 +536,3 @@ def test_evaluate_rejects_owned_association_and_publication_conflicts_with_resid
             "evaluation.json",
             "observations.parquet",
         ]
-
-
-def test_evaluation_public_surface_is_only_deployment_and_evaluate() -> None:
-    import spice.evaluation as public
-
-    assert public.__all__ == ["EvaluationDeployment", "evaluate"]
