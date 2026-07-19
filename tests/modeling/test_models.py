@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
+from spice.addresses import artifact_checkpoint_path
 from spice.config import (
     AdamWMethod,
     BaselineSource,
@@ -49,7 +50,6 @@ from spice.modeling import (
     train,
 )
 from spice.modeling import artifacts as modeling_artifacts
-from spice.storage.layout import artifact_checkpoint_path
 from spice.temporal.features import FeatureState
 from spice.temporal.history import prepare_fit_history
 

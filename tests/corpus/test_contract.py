@@ -6,9 +6,9 @@ import polars as pl
 from polars.testing import assert_frame_equal
 from pydantic import UUID4, TypeAdapter
 
+from spice.addresses import corpus_blocks_path, corpus_json_path
 from spice.config import CorpusDefinition, CorpusRequest
 from spice.corpus import Corpus, FinalizedAnchor, load_corpus
-from spice.storage.layout import corpus_blocks_path, corpus_json_path
 
 CORPUS_ID = TypeAdapter(UUID4).validate_python("11111111-1111-4111-8111-111111111111")
 BLOCK_SCHEMA = {

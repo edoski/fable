@@ -7,8 +7,8 @@ from pathlib import Path
 import polars as pl
 from pydantic import UUID4, BaseModel, ConfigDict
 
+from ..addresses import corpus_blocks_path, corpus_json_path
 from ..config import CorpusRequest
-from ..storage.layout import corpus_blocks_path, corpus_json_path
 from .contract import Corpus, FinalizedAnchor
 from .validation import _validate_corpus_candidate
 

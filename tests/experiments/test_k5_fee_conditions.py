@@ -10,6 +10,11 @@ import pytest
 
 import experiments.k5_fee_conditions as fee_conditions_module
 from experiments.k5_fee_conditions import write_k5_fee_condition_evidence
+from spice.addresses import (
+    evaluation_directory,
+    evaluation_json_path,
+    evaluation_observations_path,
+)
 from spice.config import (
     AdamWMethod,
     BaselineSource,
@@ -21,11 +26,6 @@ from spice.config import (
     OriginWindow,
     SelectedStudySource,
     TrainingDefinition,
-)
-from spice.storage.layout import (
-    evaluation_directory,
-    evaluation_json_path,
-    evaluation_observations_path,
 )
 
 _COLUMNS = (

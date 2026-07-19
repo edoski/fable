@@ -7,9 +7,9 @@ from uuid import UUID
 
 import polars as pl
 
+from ..addresses import evaluation_json_path, evaluation_observations_path
 from ..config import BaselineSource, EvaluateRequest
 from ..modeling.artifacts import load_artifact
-from ..storage.layout import evaluation_json_path, evaluation_observations_path
 
 _OBSERVATION_SCHEMA = pl.Schema(
     {

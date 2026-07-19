@@ -10,6 +10,7 @@ import pytest
 from torch import nn
 
 import spice.evaluation.report as report_module
+from spice.addresses import evaluation_json_path
 from spice.config import (
     AdamWMethod,
     BaselineSource,
@@ -32,7 +33,6 @@ from spice.corpus import Corpus, FinalizedAnchor
 from spice.evaluation import write_sealed_report
 from spice.min_block_fee import ClassificationLossState, TargetState
 from spice.modeling.artifacts import ArtifactAssociation
-from spice.storage.layout import evaluation_json_path
 from spice.temporal.features import FeatureState
 
 _EVALUATION_IDS = (

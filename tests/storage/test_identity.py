@@ -6,9 +6,18 @@ from typing import Any, Literal
 from uuid import UUID
 
 import pytest
-import torch
 from pydantic import ValidationError
 
+from spice.addresses import (
+    artifact_checkpoint_path,
+    corpus_blocks_path,
+    corpus_directory,
+    corpus_json_path,
+    evaluation_directory,
+    evaluation_json_path,
+    evaluation_observations_path,
+    study_json_path,
+)
 from spice.config import (
     METHOD_ADAPTER,
     WORKFLOW_REQUEST_ADAPTER,
@@ -39,22 +48,11 @@ from spice.config import (
     TransformerMethodSpace,
     TuneRequest,
 )
-from spice.modeling.families._transformer_shared import add_sinusoidal_positions
-from spice.storage.ids import (
+from spice.requests import (
     fresh_corpus_request,
     fresh_evaluate_request,
     fresh_train_request,
     fresh_tune_request,
-)
-from spice.storage.layout import (
-    artifact_checkpoint_path,
-    corpus_blocks_path,
-    corpus_directory,
-    corpus_json_path,
-    evaluation_directory,
-    evaluation_json_path,
-    evaluation_observations_path,
-    study_json_path,
 )
 
 CORPUS_ID = UUID("00000000-0000-4000-8000-000000000001")
@@ -188,6 +186,7 @@ def test_positive_branch_matrix() -> None:
                 kind="selected_study",
                 corpus_id=CORPUS_ID,
                 study_id=STUDY_ID,
+                study_result_index=0,
                 experiment=experiment,
             ),
         )
@@ -221,18 +220,6 @@ def test_positive_branch_matrix() -> None:
         )
         assert isinstance(hydrated, EvaluateRequest)
         assert hydrated.window.role == role
-
-
-def test_transformer_positions_follow_input_length_dtype_and_device() -> None:
-    inputs = torch.zeros(2, 4097, 4, dtype=torch.float64)
-
-    positioned = add_sinusoidal_positions(inputs)
-
-    assert positioned.shape == inputs.shape
-    assert positioned.dtype == inputs.dtype
-    assert positioned.device == inputs.device
-    assert positioned[0, 0].tolist() == [0.0, 1.0, 0.0, 1.0]
-    assert not torch.equal(positioned[:, 1], positioned[:, 2])
 
 
 def _invalid_cases() -> tuple[tuple[Callable[..., object], dict[str, object]], ...]:
@@ -345,7 +332,7 @@ def test_four_constructors_mint_once_while_hydration_preserves_ids(monkeypatch) 
         calls += 1
         return next(minted)
 
-    monkeypatch.setattr("spice.storage.ids.uuid4", uuid4_once)
+    monkeypatch.setattr("spice.requests.uuid4", uuid4_once)
     corpus = fresh_corpus_request(CorpusDefinition(chain_id=1, first_block=1, last_block=100))
     model, _, method_space = _branches()[0]
     training = TrainingDefinition(

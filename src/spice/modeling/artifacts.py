@@ -18,6 +18,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchmetrics import MeanMetric
 
+from ..addresses import artifact_checkpoint_path
 from ..config import (
     BaselineSource,
     LstmDefinition,
@@ -35,7 +36,6 @@ from ..min_block_fee import (
     TargetState,
     min_block_fee_loss,
 )
-from ..storage.layout import artifact_checkpoint_path
 from ..study import (
     RetainedResult,
     apply_method,

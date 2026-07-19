@@ -14,10 +14,10 @@ from web3 import AsyncWeb3
 from web3.middleware import ExtraDataToPOAMiddleware
 from web3.providers.rpc import AsyncHTTPProvider
 
+from ..addresses import corpus_json_path
 from ..config import CorpusRequest
 from ..corpus.contract import Corpus, FinalizedAnchor
 from ..corpus.validation import _validate_corpus_candidate
-from ..storage.layout import corpus_json_path
 
 _CHECKPOINT_SIZE = 4096
 _CONCURRENCY = 4

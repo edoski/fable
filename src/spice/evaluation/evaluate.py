@@ -12,11 +12,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from torch import nn
 from torch.utils.data import DataLoader
 
+from ..addresses import evaluation_directory
 from ..config import BaselineSource, EvaluateRequest, ExperimentSemantics
 from ..corpus import load_corpus
 from ..min_block_fee import decode_action, min_block_fee_loss
 from ..modeling.artifacts import ArtifactAssociation, load_artifact
-from ..storage.layout import evaluation_directory
 from ..temporal.history import HistoricalDataset, prepare_historical_window
 
 _PositiveInt = Annotated[int, Field(strict=True, gt=0)]

@@ -14,6 +14,7 @@ from torch import nn
 
 import experiments.context_history as context_history_module
 from experiments.context_history import write_context_history_evidence
+from spice.addresses import evaluation_directory, evaluation_json_path
 from spice.config import (
     AdamWMethod,
     BaselineSource,
@@ -35,7 +36,6 @@ from spice.config import (
 from spice.corpus import Corpus, FinalizedAnchor
 from spice.min_block_fee import TargetState
 from spice.modeling.artifacts import ArtifactAssociation
-from spice.storage.layout import evaluation_directory, evaluation_json_path
 from spice.temporal.features import FeatureState
 
 _CHAINS = (1, 137, 43_114)

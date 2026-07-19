@@ -9,10 +9,10 @@ from uuid import UUID
 
 import polars as pl
 
+from ..addresses import evaluation_json_path
 from ..config import BaselineSource, EvaluateRequest, Method, SelectedStudySource
 from ..corpus import Corpus, load_corpus
 from ..modeling.artifacts import load_artifact
-from ..storage.layout import evaluation_json_path
 from ..study import training_definition_from_method
 from .reduction import reduce_evaluation
 

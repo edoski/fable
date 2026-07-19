@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 
+from spice.addresses import study_json_path
 from spice.config import (
     AdamWMethod,
     ExperimentSemantics,
@@ -30,7 +31,6 @@ from spice.config import (
     TransformerMethodSpace,
     TuneRequest,
 )
-from spice.storage.layout import study_json_path
 from spice.study import (
     RetainedResult,
     Study,

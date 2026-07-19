@@ -9,6 +9,7 @@ from typing import Annotated, Self, TypeAlias, assert_never
 
 from pydantic import UUID4, BaseModel, ConfigDict, Field, model_validator
 
+from .addresses import study_json_path
 from .config import (
     ExperimentSemantics,
     LstmDefinition,
@@ -26,7 +27,6 @@ from .config import (
     TransformerMethodSpace,
     TuneRequest,
 )
-from .storage.layout import study_json_path
 
 __all__ = [
     "RetainedResult",

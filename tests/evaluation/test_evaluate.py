@@ -14,6 +14,14 @@ import torch
 from pydantic import ValidationError
 from torch import nn
 
+from spice.addresses import (
+    corpus_blocks_path,
+    corpus_directory,
+    corpus_json_path,
+    evaluation_directory,
+    evaluation_json_path,
+    evaluation_observations_path,
+)
 from spice.config import (
     AdamWMethod,
     BaselineSource,
@@ -38,14 +46,6 @@ from spice.min_block_fee import (
     TargetState,
 )
 from spice.modeling.artifacts import ArtifactAssociation
-from spice.storage.layout import (
-    corpus_blocks_path,
-    corpus_directory,
-    corpus_json_path,
-    evaluation_directory,
-    evaluation_json_path,
-    evaluation_observations_path,
-)
 from spice.temporal.features import FeatureState
 
 evaluation_module = importlib.import_module("spice.evaluation.evaluate")

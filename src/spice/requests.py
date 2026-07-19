@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 from uuid import UUID, uuid4
 
-from ..config import (
+from .config import (
     CorpusDefinition,
     CorpusRequest,
     EvaluateRequest,
@@ -15,13 +14,6 @@ from ..config import (
     TrainRequest,
     TuneRequest,
 )
-
-_DIGEST_LENGTH = 20
-
-
-def _stable_id(prefix: str, *parts: str) -> str:
-    digest = sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:_DIGEST_LENGTH]
-    return f"{prefix}_{digest}"
 
 
 def fresh_corpus_request(definition: CorpusDefinition) -> CorpusRequest:

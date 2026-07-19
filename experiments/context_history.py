@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TypeVar, cast
 from uuid import UUID
 
+from spice.addresses import evaluation_json_path
 from spice.config import (
     BaselineSource,
     EvaluateRequest,
@@ -21,7 +22,6 @@ from spice.config import (
 from spice.corpus import Corpus, load_corpus
 from spice.evaluation.reduction import reduce_evaluation
 from spice.modeling.artifacts import ArtifactAssociation, load_artifact
-from spice.storage.layout import evaluation_json_path
 from spice.study import training_definition_from_method
 
 _CHAIN_IDS = (1, 137, 43_114)

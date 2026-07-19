@@ -10,6 +10,7 @@ import pytest
 from torch import nn
 
 import spice.evaluation.reduction as reduction_module
+from spice.addresses import evaluation_directory
 from spice.config import (
     AdamWMethod,
     BaselineSource,
@@ -28,7 +29,6 @@ from spice.config import (
 from spice.evaluation import reduce_evaluation
 from spice.min_block_fee import ClassificationLossState, TargetState
 from spice.modeling.artifacts import ArtifactAssociation
-from spice.storage.layout import evaluation_directory
 from spice.temporal.features import FeatureState
 
 _EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000001")

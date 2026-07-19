@@ -5,17 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-_CATALOG_DB_FILENAME = "catalog.sqlite"
-CORPORA_ROOT_NAME = "corpora"
-STUDIES_ROOT_NAME = "studies"
-ARTIFACTS_ROOT_NAME = "artifacts"
-STATE_DIR_NAME = ".spice"
-CORPUS_BLOCKS_DIR_NAME = "blocks"
-
-
-def catalog_db_path(storage_root: Path) -> Path:
-    return storage_root / STATE_DIR_NAME / _CATALOG_DB_FILENAME
-
 
 def corpus_directory(storage_root: Path, corpus_id: UUID) -> Path:
     return storage_root / "corpora" / str(corpus_id)

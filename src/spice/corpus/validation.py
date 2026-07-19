@@ -2,34 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Literal
-
-from pydantic import BaseModel, ConfigDict, Field
-
 from .contract import _BLOCK_SCHEMA, Corpus
-
-ValidationStatus = Literal["clean", "error"]
-
-
-class BlockDatasetValidationReport(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    dataset_path: Path
-    expected_start_timestamp: int | None = None
-    expected_end_timestamp: int | None = None
-    row_count: int = 0
-    first_block_number: int | None = None
-    last_block_number: int | None = None
-    first_timestamp: int | None = None
-    last_timestamp: int | None = None
-    chain_id: int | None = None
-    duplicate_count: int = 0
-    gap_count: int = 0
-    below_start_count: int = 0
-    above_end_count: int = 0
-    status: ValidationStatus = "clean"
-    errors: list[str] = Field(default_factory=list)
 
 
 def _validate_corpus_candidate(corpus: Corpus) -> None:
