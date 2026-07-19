@@ -7,11 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Generic, TypeVar
 
-from ..evaluation import coerce_evaluator_config
-from .models import (
-    ChainSpec,
-    EvaluationsSpec,
-)
+from .models import ChainSpec
 
 ConfigT = TypeVar("ConfigT")
 _ValidateGroupPayload = Callable[[dict[str, object]], ConfigT]
@@ -19,8 +15,6 @@ _ValidateGroupPayload = Callable[[dict[str, object]], ConfigT]
 
 class ConfigGroup(StrEnum):
     CHAIN = "chain"
-    EVALUATOR = "evaluator"
-    EVALUATIONS = "evaluations"
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,22 +41,6 @@ GROUP_SPECS: tuple[GroupSpec[object], ...] = (
         seed_name="ethereum",
         validate=ChainSpec.model_validate,
         identity_field="name",
-        seed_from_requested_name=True,
-        public=True,
-    ),
-    GroupSpec(
-        group=ConfigGroup.EVALUATOR,
-        seed_name="poisson_replay",
-        validate=coerce_evaluator_config,
-        identity_field="id",
-        seed_from_requested_name=True,
-        public=True,
-    ),
-    GroupSpec(
-        group=ConfigGroup.EVALUATIONS,
-        seed_name=None,
-        validate=EvaluationsSpec.model_validate,
-        identity_field="id",
         seed_from_requested_name=True,
         public=True,
     ),

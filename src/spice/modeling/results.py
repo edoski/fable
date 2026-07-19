@@ -1,6 +1,4 @@
-# pyright: strict
-
-"""Typed training and evaluation summary envelopes."""
+"""Typed training and historical read-only evaluation summary envelopes."""
 
 from __future__ import annotations
 
@@ -18,12 +16,10 @@ from ..config.models import (
     StudyConfig,
     TrainingConfig,
 )
-from ..evaluation import EvaluationRun, EvaluationSummary, EvaluatorConfig
+from ..evaluation.contracts import EvaluationRun
+from ..evaluation.registry import coerce_evaluator_config
 from ..metrics import MetricDescriptor, MetricSet, WindowMetricSummary
-from ..modeling.dataset_builders import (
-    PreparedInferenceDataset,
-    SequenceRuntimeMetadata,
-)
+from ..modeling.dataset_builders import SequenceRuntimeMetadata
 from ..modeling.families.base import ModelConfig
 from ..semantics import ArtifactSemantics
 from ..temporal.capability import TemporalCapability
@@ -175,13 +171,7 @@ class EvaluationConfigSnapshot:
     _payload: _FrozenJsonObject
 
     @classmethod
-    def from_config(cls, config: EvaluatorConfig) -> EvaluationConfigSnapshot:
-        return cls.from_payload(config.model_dump(mode="json", exclude_none=True))
-
-    @classmethod
     def from_payload(cls, payload: Mapping[str, object]) -> EvaluationConfigSnapshot:
-        from ..evaluation import coerce_evaluator_config
-
         raw_payload = dict(payload)
         config = coerce_evaluator_config(raw_payload)
         normalized = config.model_dump(mode="json", exclude_none=True)
@@ -223,40 +213,6 @@ class LoadedEvaluationSummary:
     recorded_at: int
     manifest: TrainingArtifactManifest
     runtime: EvaluationRuntimeSummary
-
-
-def build_evaluation_runtime_summary(
-    *,
-    prepared: PreparedInferenceDataset,
-    evaluation: EvaluationSummary,
-    delay_seconds: int,
-    evaluator_id: str,
-    evaluation_config: EvaluatorConfig,
-    metric_descriptors: tuple[MetricDescriptor, ...],
-    scenario_window_start_timestamp: int,
-    scenario_window_end_timestamp: int,
-    required_coverage_start_timestamp: int,
-    required_coverage_end_timestamp: int,
-    execution_provenance: EvaluationExecutionProvenance | None = None,
-) -> EvaluationRuntimeSummary:
-    return EvaluationRuntimeSummary(
-        delay_seconds=delay_seconds,
-        evaluator_id=evaluator_id,
-        evaluation_config=EvaluationConfigSnapshot.from_config(evaluation_config),
-        execution_provenance=execution_provenance,
-        metric_descriptors=metric_descriptors,
-        scenario_window_start_timestamp=scenario_window_start_timestamp,
-        scenario_window_end_timestamp=scenario_window_end_timestamp,
-        required_coverage_start_timestamp=required_coverage_start_timestamp,
-        required_coverage_end_timestamp=required_coverage_end_timestamp,
-        n_history_rows=prepared.n_history_rows,
-        n_evaluation_rows=prepared.n_evaluation_rows,
-        sample_count=prepared.sample_count,
-        metrics=evaluation.metrics,
-        window_metrics=dict(evaluation.window_metrics),
-        total_events=evaluation.total_events,
-        runs=list(evaluation.runs),
-    )
 
 
 def _freeze_json_object(payload: Mapping[str, object]) -> _FrozenJsonObject:

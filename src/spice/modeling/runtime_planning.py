@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
 
 import torch
 
-from ._runtime import configure_torch_backends
 from .batch_plan import BatchRuntimeContext
-from .models import TemporalModel
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,19 +47,4 @@ def build_cpu_modeling_runtime_plan(
         ),
         deterministic=deterministic,
         seed=seed,
-    )
-
-
-def prepare_model_for_runtime(
-    model: TemporalModel,
-    plan: ModelingRuntimePlan,
-) -> TemporalModel:
-    model.to(plan.resolved_device)
-    return model
-
-
-def modeling_backend_scope(plan: ModelingRuntimePlan) -> AbstractContextManager[None]:
-    return configure_torch_backends(
-        resolved_device=plan.resolved_device,
-        deterministic=plan.deterministic,
     )

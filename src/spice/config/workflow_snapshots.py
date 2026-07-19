@@ -11,7 +11,8 @@ from pydantic import ValidationError
 
 from ..core.config_model import ConfigModel
 from ..core.errors import ConfigResolutionError
-from ..evaluation import EvaluatorConfig, coerce_evaluator_config
+from ..evaluation.config import EvaluatorConfig
+from ..evaluation.registry import coerce_evaluator_config
 from ..modeling.families.registry import coerce_model_config
 from ..modeling.tuned_config import coerce_tuning_space_config
 from .models import (

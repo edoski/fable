@@ -14,7 +14,7 @@ from ..config.models import (
     coerce_features_config,
     coerce_problem_spec,
 )
-from ..evaluation import EvaluationRun
+from ..evaluation.contracts import EvaluationRun
 from ..metrics import MetricDescriptor, MetricSet, WindowMetricSummary
 from ..modeling.dataset_builders import SequenceRuntimeMetadata
 from ..modeling.families.registry import coerce_model_config
@@ -27,6 +27,7 @@ from ..temporal.input_normalization import ScalerStats
 from .payloads import (
     PayloadCodec,
     PayloadRecord,
+    decode_payload_record,
     mapping_payload,
     payload_record_codec,
 )
@@ -39,10 +40,6 @@ if TYPE_CHECKING:
         TrainingRuntimeSummary,
         TrainingSourceProvenance,
     )
-
-
-def _metric_values_payload(metrics: MetricSet) -> dict[str, float]:
-    return dict(metrics.values)
 
 
 def _study_config_from_name(study_name: object) -> StudyConfig | None:
@@ -59,15 +56,6 @@ class MetricDescriptorPayload(PayloadRecord):
     role: str
     direction: str | None = None
 
-    @classmethod
-    def from_descriptor(cls, descriptor: MetricDescriptor) -> MetricDescriptorPayload:
-        return cls(
-            id=descriptor.id,
-            label=descriptor.label,
-            role=descriptor.role,
-            direction=descriptor.direction,
-        )
-
     def to_descriptor(self) -> MetricDescriptor:
         return MetricDescriptor(
             id=self.id,
@@ -75,10 +63,6 @@ class MetricDescriptorPayload(PayloadRecord):
             role=cast(Any, self.role),
             direction=cast(Any, self.direction),
         )
-
-
-def _metric_descriptor_payload(descriptor: MetricDescriptor) -> MetricDescriptorPayload:
-    return MetricDescriptorPayload.from_descriptor(descriptor)
 
 
 def _metric_descriptor_from_payload(payload: MetricDescriptorPayload) -> MetricDescriptor:
@@ -307,14 +291,6 @@ class EvaluationRunPayload(PayloadRecord):
     metrics: dict[str, float]
     metadata: dict[str, str | int | float]
 
-    @classmethod
-    def from_run(cls, run: EvaluationRun) -> EvaluationRunPayload:
-        return cls(
-            n_events=run.n_events,
-            metrics=dict(run.metrics),
-            metadata={key: _metadata_value(value) for key, value in run.metadata.items()},
-        )
-
     def to_run(self) -> EvaluationRun:
         return EvaluationRun(
             n_events=self.n_events,
@@ -326,13 +302,6 @@ class EvaluationRunPayload(PayloadRecord):
 class WindowMetricSummaryPayload(PayloadRecord):
     mean: float
     std: float
-
-    @classmethod
-    def from_summary(
-        cls,
-        summary: WindowMetricSummary,
-    ) -> WindowMetricSummaryPayload:
-        return cls(mean=summary.mean, std=summary.std)
 
     def to_summary(self) -> WindowMetricSummary:
         return WindowMetricSummary(mean=self.mean, std=self.std)
@@ -363,35 +332,6 @@ class EvaluationSummaryPayload(PayloadRecord):
     window_metrics: dict[str, WindowMetricSummaryPayload]
     total_events: int
     runs: list[EvaluationRunPayload]
-
-    @classmethod
-    def from_runtime(cls, summary: EvaluationRuntimeSummary) -> EvaluationSummaryPayload:
-        return cls(
-            delay_seconds=summary.delay_seconds,
-            evaluator_id=summary.evaluator_id,
-            evaluation_config=summary.evaluation_config.payload(),
-            execution_provenance=_execution_provenance_payload(
-                summary.execution_provenance
-            ),
-            metric_descriptors=[
-                _metric_descriptor_payload(descriptor)
-                for descriptor in summary.metric_descriptors
-            ],
-            scenario_window_start_timestamp=summary.scenario_window_start_timestamp,
-            scenario_window_end_timestamp=summary.scenario_window_end_timestamp,
-            required_coverage_start_timestamp=summary.required_coverage_start_timestamp,
-            required_coverage_end_timestamp=summary.required_coverage_end_timestamp,
-            n_history_rows=summary.n_history_rows,
-            n_evaluation_rows=summary.n_evaluation_rows,
-            sample_count=summary.sample_count,
-            metrics=_metric_values_payload(summary.metrics),
-            window_metrics={
-                metric_id: WindowMetricSummaryPayload.from_summary(window_metric)
-                for metric_id, window_metric in summary.window_metrics.items()
-            },
-            total_events=summary.total_events,
-            runs=[EvaluationRunPayload.from_run(run) for run in summary.runs],
-        )
 
     def to_runtime(self) -> EvaluationRuntimeSummary:
         from ..modeling.results import EvaluationConfigSnapshot, EvaluationRuntimeSummary
@@ -436,35 +376,12 @@ TRAINING_SUMMARY_CODEC: PayloadCodec[TrainingRuntimeSummary] = payload_record_co
     TrainingSummaryPayload.from_runtime,
     TrainingSummaryPayload.to_runtime,
 )
-EVALUATION_SUMMARY_CODEC: PayloadCodec[EvaluationRuntimeSummary] = payload_record_codec(
-    "evaluation summary",
-    EvaluationSummaryPayload,
-    EvaluationSummaryPayload.from_runtime,
-    EvaluationSummaryPayload.to_runtime,
-)
-EVALUATION_RUN_CODEC: PayloadCodec[EvaluationRun] = payload_record_codec(
-    "evaluation run",
-    EvaluationRunPayload,
-    EvaluationRunPayload.from_run,
-    EvaluationRunPayload.to_run,
-)
-
-
-def _execution_provenance_payload(
-    provenance: object,
-) -> EvaluationExecutionProvenancePayload | None:
-    if provenance is None:
-        return None
-    from ..modeling.results import EvaluationExecutionProvenance
-
-    if not isinstance(provenance, EvaluationExecutionProvenance):
-        raise TypeError("evaluation execution provenance has the wrong type")
-    return EvaluationExecutionProvenancePayload(
-        execution_ref=provenance.execution_ref,
-        job_id=provenance.job_id,
-        log_path=provenance.log_path,
-        workflow_task=provenance.workflow_task,
-        target=provenance.target,
+def decode_evaluation_summary(payload: dict[str, object]) -> EvaluationRuntimeSummary:
+    return decode_payload_record(
+        "evaluation summary",
+        EvaluationSummaryPayload,
+        payload,
+        EvaluationSummaryPayload.to_runtime,
     )
 
 
@@ -482,11 +399,3 @@ def _execution_provenance_from_payload(
         workflow_task=payload.workflow_task,
         target=payload.target,
     )
-
-
-def _metadata_value(value: object) -> str | int | float:
-    if isinstance(value, bool):
-        raise TypeError("evaluation run metadata values must be str, int, or float")
-    if isinstance(value, (str, int, float)):
-        return value
-    raise TypeError("evaluation run metadata values must be str, int, or float")

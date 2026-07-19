@@ -1,4 +1,4 @@
-"""Evaluation config models."""
+"""Historical evaluation config values retained for read-only decoding."""
 
 from __future__ import annotations
 

@@ -1,45 +1,31 @@
-# pyright: strict
-
-"""Artifact-root SQLite persistence."""
+"""Artifact-root SQLite read models."""
 
 from __future__ import annotations
 
-import hashlib
-import json
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection, RowMapping
 
 from ..core.errors import MissingStateError, StateLayoutError
 from .artifact_codecs import (
     ARTIFACT_MANIFEST_CODEC,
-    EVALUATION_SUMMARY_CODEC,
     TRAINING_SUMMARY_CODEC,
+    decode_evaluation_summary,
 )
 from .engine import (
     ARTIFACT_ROOT_KIND,
     create_state_engine,
-    ensure_state_db,
     require_root_kind,
     table_exists,
-    touch_meta,
 )
 from .payloads import SingletonPayloadStore, mapping_payload
-from .schema import (
-    ARTIFACT_TABLES,
-    artifact_manifest,
-    evaluation_summary,
-    training_summary,
-)
+from .schema import artifact_manifest, evaluation_summary, training_summary
 
 if TYPE_CHECKING:
-    from ..evaluation import EvaluationRun
+    from ..evaluation.contracts import EvaluationRun
     from ..modeling.results import (
-        EvaluationRuntimeSummary,
         LoadedEvaluationSummary,
         LoadedTrainingSummary,
         TrainingArtifactManifest,
@@ -95,59 +81,6 @@ def load_training_summary(db_path: Path) -> LoadedTrainingSummary | None:
         engine.dispose()
 
 
-def upsert_evaluation_state(
-    db_path: Path,
-    *,
-    summary: EvaluationRuntimeSummary,
-) -> tuple[str, int]:
-    """Persist evaluation runtime summary plus ordered run rows for one artifact root."""
-
-    ensure_state_db(db_path, root_kind=ARTIFACT_ROOT_KIND, tables=ARTIFACT_TABLES)
-    evaluation_storage_id = _evaluation_storage_id(summary)
-    recorded_at = int(time.time())
-    engine = create_state_engine(db_path)
-    try:
-        with engine.begin() as conn:
-            payload = EVALUATION_SUMMARY_CODEC.encode(summary)
-            statement = sqlite_insert(evaluation_summary).values(
-                evaluation_id=evaluation_storage_id,
-                recorded_at=recorded_at,
-                payload=payload,
-            )
-            conn.execute(
-                statement.on_conflict_do_update(
-                    index_elements=[evaluation_summary.c.evaluation_id],
-                    set_={
-                        "recorded_at": recorded_at,
-                        "payload": payload,
-                    },
-                )
-            )
-            touch_meta(conn, root_kind=ARTIFACT_ROOT_KIND)
-    finally:
-        engine.dispose()
-    return evaluation_storage_id, recorded_at
-
-
-def record_evaluation_state(
-    db_path: Path,
-    *,
-    summary: EvaluationRuntimeSummary,
-) -> LoadedEvaluationSummary:
-    """Persist one evaluation summary and return the artifact read model."""
-
-    evaluation_storage_id, recorded_at = upsert_evaluation_state(db_path, summary=summary)
-    manifest = load_artifact_manifest(db_path)
-    from ..modeling.results import LoadedEvaluationSummary
-
-    return LoadedEvaluationSummary(
-        evaluation_storage_id=evaluation_storage_id,
-        recorded_at=recorded_at,
-        manifest=manifest,
-        runtime=summary,
-    )
-
-
 def load_evaluation_summary(
     db_path: Path,
     *,
@@ -193,7 +126,7 @@ def list_evaluation_summaries(db_path: Path) -> list[LoadedEvaluationSummary]:
                 evaluation_storage_id=str(row["evaluation_id"]),
                 recorded_at=int(row["recorded_at"]),
                 manifest=manifest,
-                runtime=EVALUATION_SUMMARY_CODEC.decode(
+                runtime=decode_evaluation_summary(
                     mapping_payload(row["payload"], label="evaluation_summary")
                 ),
             )
@@ -224,25 +157,6 @@ def list_evaluation_runs(
         return list(summaries[0].runtime.runs)
     summary = load_evaluation_summary(db_path, evaluation_storage_id=evaluation_storage_id)
     return [] if summary is None else list(summary.runtime.runs)
-
-
-def _evaluation_storage_id(summary: EvaluationRuntimeSummary) -> str:
-    identity_payload: dict[str, object] = {
-        "delay_seconds": summary.delay_seconds,
-        "evaluator_id": summary.evaluator_id,
-        "evaluation_config": summary.evaluation_config.payload(),
-    }
-    if summary.execution_provenance is not None:
-        identity_payload["execution_provenance"] = {
-            "execution_ref": summary.execution_provenance.execution_ref,
-        }
-    canonical_payload = json.dumps(
-        identity_payload,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    digest = hashlib.sha256(canonical_payload).hexdigest()[:16]
-    return f"{summary.evaluator_id}-{summary.delay_seconds}s-{digest}"
 
 
 def _evaluation_summary_rows(conn: Connection) -> list[RowMapping]:
