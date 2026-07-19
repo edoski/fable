@@ -82,7 +82,6 @@ and prediction training state from the completed fit.
 
 ## Tuning
 
-Tuning Execution uses Optuna. `modeling.tuning_execution` opens or resumes the
-storage-backed study, validates trial counts, samples typed params, applies them to
-the base config, trains each trial through non-persisted trial training, records
-sampled params and best epoch metadata, and returns validation `total_loss`.
+`spice.tuning.run_candidate` loads one Corpus, prepares the request's fit history,
+runs one caller-supplied Method with its explicit deployment, and retains the
+successful result. Candidate choice and Study publication remain separate operations.

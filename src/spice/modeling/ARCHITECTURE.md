@@ -82,7 +82,7 @@ modeling/
   artifacts.py            artifact loading/validation helpers
   artifact_inference.py   artifact validation to inference scoring context
   persisted_training.py   training artifact write path
-  tuning_execution.py     study opening, trial execution, and summary production
+  ../tuning.py            one typed Study candidate execution and retention
 ```
 
 ## Runtime Model
