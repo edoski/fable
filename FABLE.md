@@ -31,7 +31,7 @@ CLI or direct Python call
         +--> evaluation --> observations.parquet
         |
         v
-resolved evaluation facts and caller-chosen TSV evidence
+resolved evaluation facts and transient reductions
 ```
 
 `fable.config` owns frozen Pydantic values and small discriminated unions. `fable.requests` mints fresh UUIDv4 instances. A boundary receiving raw JSON or durable bytes hydrates the owning typed value once; downstream code trusts that value.
@@ -39,7 +39,7 @@ resolved evaluation facts and caller-chosen TSV evidence
 ### Dependency direction
 
 ```text
-CLI / serving / experiment scripts
+CLI / serving / Python callers
                 |
                 v
 execution, acquisition, study, evaluation
@@ -58,8 +58,7 @@ Each owner has one system seam:
 - `min_block_fee` owns target state, classification support, loss, two-head output, and decode.
 - `modeling` owns the three concrete neural definitions, Lightning fitting, and native checkpoint loading.
 - `study` owns bounded candidate membership, ordered retained results, publication, and selected-result materialization.
-- `evaluation` owns canonical observations, resolved evaluation facts, reduction, and sealed report composition.
-- Top-level `experiments` owns the context-history and K=5 fee-condition protocols.
+- `evaluation` owns canonical observations, resolved evaluation facts, and transient reduction.
 
 ### Durable object flow
 
@@ -73,11 +72,11 @@ Each owner has one system seam:
 
 A baseline `TrainRequest` embeds its complete `TrainingDefinition`. A selected-Study request instead names the exact Study UUID and result index while carrying the experiment. Training loads that exact row, reconstructs the definition from its Method, fits through Lightning, and renames the native weights-only best checkpoint to the artifact UUID address. The checkpoint embeds the request, feature and target state, optional classification support, and—only for selected-Study training—the exact result index and Method.
 
-#### Evaluation and derived evidence
+#### Evaluation
 
 `EvaluateRequest` names an artifact, same-source Corpus, validation or testing origin window, and evaluation UUID. Evaluation rebuilds historical examples with persisted state, runs the artifact on CUDA, writes one nonnull ordered observation per origin, and publishes `evaluation.json` with `observations.parquet`.
 
-`resolve_evaluations()` reads explicit evaluation IDs into ordered trusted facts: request, training source and definition, Corpus, lazy observations, transient reduction, and trainable parameter count. Repeated evaluation, artifact, and Corpus IDs share resolution within the call. `reduce_evaluation()` uses the same request, artifact, observation, and reduction authority without loading a Corpus. `write_sealed_report()` and the evidence writers consume resolved evaluations before composing their fixed TSVs.
+`resolve_evaluations()` reads explicit evaluation IDs into ordered trusted facts: request, training source and definition, Corpus, lazy observations, transient reduction, and trainable parameter count. Repeated evaluation, artifact, and Corpus IDs share resolution within the call. `reduce_evaluation()` uses the same request, artifact, observation, and reduction authority without loading a Corpus.
 
 ### Training and inference
 
@@ -204,7 +203,7 @@ Real state is fitted once from all retained training-origin minima with Float64 
 
 Every retained origin must have its complete `K`-block outcome inside its role. If validation begins at parent block `V`, a training origin is eligible only when `h+K < V`. Testing starts only after `validation_last_parent + K`.
 
-Training fits feature state, target state, optional class support, and weights. Validation selects epochs and retained candidate objectives. Testing produces the final report.
+Training fits feature state, target state, optional class support, and weights. Validation selects epochs and retained candidate objectives. Testing measures held-out behavior.
 
 ### 5. Compute one two-head loss
 
@@ -313,7 +312,7 @@ Training alone may fit:
 - class support for corrected inverse-frequency loss;
 - neural weights.
 
-Validation selects the earliest best epoch and supplies candidate objectives. Testing reports only. Changing a method, feature route, loss choice, horizon, context, or other scientific decision after inspecting testing would turn that evidence into selection evidence.
+Validation selects the earliest best epoch and supplies candidate objectives. Testing measures only. Changing a method, feature route, loss choice, horizon, context, or other scientific decision after inspecting testing would turn that measurement into selection evidence.
 
 #### Feature state
 
@@ -503,41 +502,6 @@ full_horizon_elapsed_seconds = timestamp(h+K) - timestamp(h)
 
 The first is zero at `k=0`.
 
-### Derived evidence semantics
-
-#### Sealed testing report
-
-For a testing request, let `T` be its first parent, `E` its last eligible parent, and `L` the Corpus endpoint. The candidate count is `L-T+1`; incomplete maximum-horizon exclusions are `L-E`; elapsed testing time is `timestamp(E)-timestamp(T)`. The sealed TSV is a derived view, not canonical state.
-
-#### Context-history sensitivity
-
-A `C`-block context covers `C-1` timestamp intervals: `timestamp(h)-timestamp(h-C+1)`. Context-cell deltas are signed differences from the same-chain C200 cell. If either captured-opportunity value is null, its delta is null. The C200 rows alone carry the aligned final-K horizon and artifact-ID arrays; other rows encode empty arrays.
-
-#### K=5 fee conditions
-
-The two descriptors are origin-known:
-
-- closed-parent base fee per gas;
-- signed one-block change `ln(fee_h / fee_h-1)`.
-
-For sorted `N` descriptor values, inverse-CDF cutpoint indices are:
-
-```text
-ceil(N/4)-1, ceil(N/2)-1, ceil(3N/4)-1
-```
-
-Cells use `≤q25`, `(q25,q50]`, `(q50,q75]`, and `>q75`. Ties never split. Duplicate cutpoints and resulting empty cells remain. Empty cells encode zero counts and sums, but null medians, ratios, and accuracy.
-
-Each cell computes raw Int64 `B/R/O` and then `S/G/Q` before Float64 casting. Counts and correct classifications must recombine exactly. Independently regrouped floating totals use:
-
-```text
-u = 2^-53
-gamma = ((N+3)u) / (1-(N+3)u)
-abs(C_X - reduction_X) <= 3 gamma A_X
-```
-
-where `A_X` is the full sum of absolute raw contributions. If `A_X=0`, both compared totals must be exactly zero.
-
 ### HPO interpretation
 
 A `TuneRequest` freezes the experiment and one finite typed MethodSpace. An operator submits complete Methods from that set. Each successful fit contributes validation total loss, earliest best epoch, and completed epochs in retention order. Selected training names an exact result index.
@@ -717,11 +681,11 @@ Candidate success appends to `studies/.<study_id>/progress.json`. Existing progr
 
 A selected-Study `TrainRequest` supplies the exact Study UUID and zero-based `study_result_index`. `materialize_selected_training()` loads the canonical Study, verifies Study and Corpus associations, selects that ordered row, and reconstructs its `TrainingDefinition` from the embedded experiment and Method.
 
-The resulting native artifact embeds the same result index and Method for later loading and reporting.
+The resulting native artifact embeds the same result index and Method for later loading and evaluation.
 
 ### Evaluation
 
-Evaluation separates canonical observations, resolved evaluation facts, transient reductions, sealed reports, and experiment-specific evidence. Explicit UUIDs connect durable objects to their trusted derived facts.
+Evaluation separates canonical observations, resolved evaluation facts, and transient reductions. Explicit UUIDs connect durable objects to their trusted derived facts.
 
 #### Canonical evaluation
 
@@ -744,19 +708,6 @@ The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical 1
 `ResolvedEvaluation` carries only the typed request, training source, training definition, Corpus, lazy canonical observations, 43-field reduction, and trainable parameter count. Neural modules and fitted-state internals do not cross this interface. The observation validation requires exact origin coverage, nonnegative origin timestamps, nonnull inputs, action bounds, positive previous/closed/target fees, wait bounds, finite values, and scientific identities.
 
 `reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` uses the same request, artifact, observation, and scientific-reduction core without acquiring a Corpus. Regression target and Smooth-L1 use the artifact's `TargetState` and authored loss. Economic differences begin in raw Int64 before Float64 aggregation. The sole nullable result is captured opportunity when exact total opportunity is zero.
-
-#### Derived report composition
-
-`write_sealed_report(storage_root, evaluation_ids, destination)` accepts a nonempty, duplicate-free tuple of testing evaluation UUIDs. It resolves the tuple once, then joins each reduction with its trusted Corpus, window, training, experiment, and coverage facts in caller order before publishing the 62-column sealed testing TSV through a hidden sibling.
-
-Top-level `experiments` owns two fixed protocols:
-
-- `experiments.context_history.write_context_history_evidence(...)` writes the 71-column context-history sensitivity TSV.
-- `experiments.k5_fee_conditions.write_k5_fee_condition_evidence(...)` writes the 27-column primary K=5 fee-condition TSV.
-
-Those functions own their fixed matrices, order, regrouping, and null rules.
-
-Exact equations and claim limits are in the [theory](#evaluation-estimands); exact signatures and schemas are in the [reference](#evaluation-api).
 
 ## Exact reference
 
@@ -987,7 +938,7 @@ load_artifact(
 
 #### Evaluation object
 
-`evaluation.json` is exactly the `EvaluateRequest`. `observations.parquet` is the canonical schema below. Aggregations and TSVs are derived from this directory.
+`evaluation.json` is exactly the `EvaluateRequest`. `observations.parquet` is the canonical schema below. Reductions are transient views over this directory.
 
 ### CLI
 
@@ -1133,12 +1084,6 @@ resolve_evaluations(
     storage_root: Path,
     evaluation_ids: tuple[UUID, ...],
 ) -> tuple[ResolvedEvaluation, ...]
-
-write_sealed_report(
-    storage_root: Path,
-    evaluation_ids: tuple[UUID, ...],
-    destination: Path,
-) -> None
 ```
 
 #### Canonical observations
@@ -1212,193 +1157,6 @@ Destination: none. `reduce_evaluation()` returns a one-row DataFrame. Status: de
 | 43 | `mean_full_horizon_elapsed_seconds` | Float64 |
 
 Fields 15–18 and 38, 40, 42 are sums in their named units; their ratios/means use one eligible origin as the unit. Fee sums are wei/gas represented as Float64 after exact Int64 differences.
-
-#### Sealed testing TSV
-
-Destination: caller-supplied absent path to `write_sealed_report()`. Status: derived, noncanonical TSV; rows follow explicit evaluation-ID order. List fields use compact JSON arrays. Nulls use empty TSV fields. Only `study_id`, `study_result_index`, and `signed_captured_hindsight_opportunity_ratio` may be null under their stated conditions.
-
-| # | Column | TSV type/encoding |
-| ---: | --- | --- |
-| 1 | `evaluation_id` | String |
-| 2 | `artifact_id` | String |
-| 3 | `corpus_id` | String |
-| 4 | `chain_id` | Int64 |
-| 5 | `window_role` | String, exactly testing |
-| 6 | `first_parent_block` | Int64 (`T`) |
-| 7 | `last_parent_block` | Int64 (`E`) |
-| 8 | `corpus_endpoint_block` | Int64 (`L`) |
-| 9 | `testing_candidate_origin_count` | Int64, `L-T+1` |
-| 10 | `testing_incomplete_kmax_outcome_exclusion_count` | Int64, `L-E` |
-| 11 | `testing_elapsed_seconds` | Int64, `timestamp(E)-timestamp(T)` |
-| 12 | `source_kind` | String |
-| 13 | `study_id` | nullable String; empty for baseline |
-| 14 | `study_result_index` | nullable Int64; empty for baseline |
-| 15 | `model_family` | String |
-| 16 | `context_blocks` | Int64 |
-| 17 | `horizon_blocks` | Int64 |
-| 18 | `ordered_features` | compact JSON array of String |
-| 19 | `classification_loss` | String classification-weighting value |
-| 20 | `trainable_parameter_count` | Int64 |
-| 21 | `eligible_origin_count` | Int64 |
-| 22 | `earliest_hindsight_label_correct_count` | Int64 |
-| 23 | `earliest_hindsight_label_cross_entropy_loss_sum` | Float64 |
-| 24 | `hindsight_minimum_base_fee_per_gas_within_k_smooth_l1_loss_sum` | Float64 |
-| 25 | `hindsight_minimum_base_fee_per_gas_within_k_natural_log_absolute_error_sum` | Float64 |
-| 26 | `hindsight_minimum_base_fee_per_gas_within_k_natural_log_squared_error_sum` | Float64 |
-| 27 | `earliest_hindsight_label_cross_entropy_loss` | Float64 |
-| 28 | `hindsight_minimum_base_fee_per_gas_within_k_smooth_l1_loss` | Float64 |
-| 29 | `hindsight_minimum_base_fee_per_gas_within_k_natural_log_mae` | Float64 |
-| 30 | `hindsight_minimum_base_fee_per_gas_within_k_natural_log_mse` | Float64 |
-| 31 | `multitask_total_loss` | Float64 |
-| 32 | `earliest_hindsight_label_accuracy` | Float64 |
-| 33 | `earliest_hindsight_label_macro_f1` | Float64 |
-| 34 | `immediate_k0_base_fee_per_gas_sum` | Float64 |
-| 35 | `finite_target_base_fee_per_gas_savings_sum` | Float64 |
-| 36 | `finite_target_base_fee_per_gas_hindsight_opportunity_sum` | Float64 |
-| 37 | `finite_target_base_fee_per_gas_hindsight_regret_sum` | Float64 |
-| 38 | `finite_target_base_fee_per_gas_savings_ratio_vs_immediate_k0` | Float64 |
-| 39 | `finite_target_base_fee_per_gas_hindsight_opportunity_ratio_vs_immediate_k0` | Float64 |
-| 40 | `finite_target_base_fee_per_gas_hindsight_regret_ratio_vs_immediate_k0` | Float64 |
-| 41 | `signed_captured_hindsight_opportunity_ratio` | nullable Float64; empty iff exact `sum(G)==0` |
-| 42 | `target_base_fee_per_gas_savings_fraction_vs_immediate_k0_sum` | Float64 |
-| 43 | `target_base_fee_per_gas_savings_fraction_vs_immediate_k0_defined_origin_count` | Int64 |
-| 44 | `target_base_fee_per_gas_savings_fraction_vs_immediate_k0_zero_denominator_exclusion_count` | Int64 |
-| 45 | `mean_origin_target_base_fee_per_gas_savings_fraction_vs_immediate_k0` | Float64 |
-| 46 | `selected_target_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k_sum` | Float64 |
-| 47 | `selected_target_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k_defined_origin_count` | Int64 |
-| 48 | `selected_target_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k_zero_denominator_exclusion_count` | Int64 |
-| 49 | `mean_origin_selected_target_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k` | Float64 |
-| 50 | `immediate_k0_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k_sum` | Float64 |
-| 51 | `immediate_k0_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k_defined_origin_count` | Int64 |
-| 52 | `immediate_k0_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k_zero_denominator_exclusion_count` | Int64 |
-| 53 | `mean_origin_immediate_k0_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k` | Float64 |
-| 54 | `harmful_action_count` | Int64 |
-| 55 | `harmful_action_rate` | Float64 |
-| 56 | `selected_action_count_by_k` | compact JSON array of Int64 |
-| 57 | `extra_wait_block_opportunities_vs_immediate_k0_sum` | Float64 |
-| 58 | `mean_extra_wait_block_opportunities_vs_immediate_k0` | Float64 |
-| 59 | `selected_action_wait_seconds_sum` | Float64 |
-| 60 | `mean_selected_action_wait_seconds` | Float64 |
-| 61 | `full_horizon_elapsed_seconds_sum` | Float64 |
-| 62 | `mean_full_horizon_elapsed_seconds` | Float64 |
-
-#### Context-history TSV
-
-Owner: `experiments.context_history.write_context_history_evidence`. Destination: caller-supplied absent path. Status: derived, noncanonical TSV. Rows follow the function's exact caller/coordinate order. Tuple/list values use compact JSON arrays; non-C200 rows encode fields 70–71 as `[]`. Only captured opportunity and its delta may be null, encoded as an empty field; null propagates when either compared captured value is null. Every `_delta_vs_same_chain_c200` is current value minus the same-chain C200 value.
-
-| # | Column | TSV type/encoding |
-| ---: | --- | --- |
-| 1 | `evaluation_id` | String |
-| 2 | `artifact_id` | String |
-| 3 | `corpus_id` | String |
-| 4 | `chain_id` | Int64 |
-| 5 | `model_family` | String |
-| 6 | `context_blocks` | Int64 |
-| 7 | `horizon_blocks` | Int64 |
-| 8 | `ordered_features` | compact JSON array of String |
-| 9 | `classification_loss` | String |
-| 10 | `training_first_parent_block` | Int64 |
-| 11 | `training_last_parent_block` | Int64 |
-| 12 | `training_origin_count` | Int64 |
-| 13 | `training_examples_per_epoch` | Int64 |
-| 14 | `training_minibatches_per_epoch` | Int64 |
-| 15 | `training_optimizer_updates_per_epoch` | Int64 |
-| 16 | `training_context_span_seconds_minimum` | Int64 |
-| 17 | `training_context_span_seconds_median` | Float64 |
-| 18 | `training_context_span_seconds_mean` | Float64 |
-| 19 | `training_context_span_seconds_maximum` | Int64 |
-| 20 | `validation_first_parent_block` | Int64 |
-| 21 | `validation_last_parent_block` | Int64 |
-| 22 | `validation_origin_count` | Int64 |
-| 23 | `validation_context_span_seconds_minimum` | Int64 |
-| 24 | `validation_context_span_seconds_median` | Float64 |
-| 25 | `validation_context_span_seconds_mean` | Float64 |
-| 26 | `validation_context_span_seconds_maximum` | Int64 |
-| 27 | `testing_first_parent_block` | Int64 |
-| 28 | `testing_last_parent_block` | Int64 |
-| 29 | `testing_origin_count` | Int64 |
-| 30 | `testing_context_span_seconds_minimum` | Int64 |
-| 31 | `testing_context_span_seconds_median` | Float64 |
-| 32 | `testing_context_span_seconds_mean` | Float64 |
-| 33 | `testing_context_span_seconds_maximum` | Int64 |
-| 34 | `earliest_hindsight_label_cross_entropy_loss` | Float64 |
-| 35 | `earliest_hindsight_label_cross_entropy_loss_delta_vs_same_chain_c200` | Float64 |
-| 36 | `hindsight_minimum_base_fee_per_gas_within_k_smooth_l1_loss` | Float64 |
-| 37 | `hindsight_minimum_base_fee_per_gas_within_k_smooth_l1_loss_delta_vs_same_chain_c200` | Float64 |
-| 38 | `hindsight_minimum_base_fee_per_gas_within_k_natural_log_mae` | Float64 |
-| 39 | `hindsight_minimum_base_fee_per_gas_within_k_natural_log_mae_delta_vs_same_chain_c200` | Float64 |
-| 40 | `hindsight_minimum_base_fee_per_gas_within_k_natural_log_mse` | Float64 |
-| 41 | `hindsight_minimum_base_fee_per_gas_within_k_natural_log_mse_delta_vs_same_chain_c200` | Float64 |
-| 42 | `multitask_total_loss` | Float64 |
-| 43 | `multitask_total_loss_delta_vs_same_chain_c200` | Float64 |
-| 44 | `earliest_hindsight_label_accuracy` | Float64 |
-| 45 | `earliest_hindsight_label_accuracy_delta_vs_same_chain_c200` | Float64 |
-| 46 | `earliest_hindsight_label_macro_f1` | Float64 |
-| 47 | `earliest_hindsight_label_macro_f1_delta_vs_same_chain_c200` | Float64 |
-| 48 | `finite_target_base_fee_per_gas_savings_ratio_vs_immediate_k0` | Float64 |
-| 49 | `finite_target_base_fee_per_gas_savings_ratio_vs_immediate_k0_delta_vs_same_chain_c200` | Float64 |
-| 50 | `finite_target_base_fee_per_gas_hindsight_opportunity_ratio_vs_immediate_k0` | Float64 |
-| 51 | `finite_target_base_fee_per_gas_hindsight_opportunity_ratio_vs_immediate_k0_delta_vs_same_chain_c200` | Float64 |
-| 52 | `finite_target_base_fee_per_gas_hindsight_regret_ratio_vs_immediate_k0` | Float64 |
-| 53 | `finite_target_base_fee_per_gas_hindsight_regret_ratio_vs_immediate_k0_delta_vs_same_chain_c200` | Float64 |
-| 54 | `signed_captured_hindsight_opportunity_ratio` | nullable Float64 |
-| 55 | `signed_captured_hindsight_opportunity_ratio_delta_vs_same_chain_c200` | nullable Float64 |
-| 56 | `mean_origin_target_base_fee_per_gas_savings_fraction_vs_immediate_k0` | Float64 |
-| 57 | `mean_origin_target_base_fee_per_gas_savings_fraction_vs_immediate_k0_delta_vs_same_chain_c200` | Float64 |
-| 58 | `mean_origin_selected_target_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k` | Float64 |
-| 59 | `mean_origin_selected_target_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k_delta_vs_same_chain_c200` | Float64 |
-| 60 | `mean_origin_immediate_k0_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k` | Float64 |
-| 61 | `mean_origin_immediate_k0_base_fee_per_gas_increase_fraction_vs_hindsight_best_within_k_delta_vs_same_chain_c200` | Float64 |
-| 62 | `harmful_action_rate` | Float64 |
-| 63 | `harmful_action_rate_delta_vs_same_chain_c200` | Float64 |
-| 64 | `mean_extra_wait_block_opportunities_vs_immediate_k0` | Float64 |
-| 65 | `mean_extra_wait_block_opportunities_vs_immediate_k0_delta_vs_same_chain_c200` | Float64 |
-| 66 | `mean_selected_action_wait_seconds` | Float64 |
-| 67 | `mean_selected_action_wait_seconds_delta_vs_same_chain_c200` | Float64 |
-| 68 | `mean_full_horizon_elapsed_seconds` | Float64 |
-| 69 | `mean_full_horizon_elapsed_seconds_delta_vs_same_chain_c200` | Float64 |
-| 70 | `final_k_horizon_blocks` | compact JSON array of Int64 |
-| 71 | `final_k_artifact_ids` | compact JSON array of String |
-
-Each `C`-row span covers `C-1` timestamp intervals.
-
-#### Primary K=5 fee-condition TSV
-
-Owner: `experiments.k5_fee_conditions.write_k5_fee_condition_evidence`. Destination: caller-supplied absent path. Status: derived, noncanonical TSV. It writes 24 rows in exact caller-chain order: two descriptors × four quartile cells for each required input evaluation. Nulls are empty fields.
-
-Only the active descriptor's cutpoints and median are populated. Empty cells have zero counts and Float64 sums, but null medians, ratios, and accuracy.
-
-| # | Column | TSV type/encoding |
-| ---: | --- | --- |
-| 1 | `evaluation_id` | String |
-| 2 | `artifact_id` | String |
-| 3 | `corpus_id` | String |
-| 4 | `chain_id` | Int64 |
-| 5 | `first_parent_block` | Int64 |
-| 6 | `last_parent_block` | Int64 |
-| 7 | `horizon_blocks` | Int64, fixed K=5 by protocol |
-| 8 | `descriptor` | String |
-| 9 | `quartile` | Int64, 1–4 |
-| 10 | `closed_parent_base_fee_per_gas_cutpoint_25` | nullable Int64 |
-| 11 | `closed_parent_base_fee_per_gas_cutpoint_50` | nullable Int64 |
-| 12 | `closed_parent_base_fee_per_gas_cutpoint_75` | nullable Int64 |
-| 13 | `signed_one_block_base_fee_log_change_cutpoint_25` | nullable Float64 |
-| 14 | `signed_one_block_base_fee_log_change_cutpoint_50` | nullable Float64 |
-| 15 | `signed_one_block_base_fee_log_change_cutpoint_75` | nullable Float64 |
-| 16 | `closed_parent_base_fee_per_gas_cell_median` | nullable Float64 |
-| 17 | `signed_one_block_base_fee_log_change_cell_median` | nullable Float64 |
-| 18 | `condition_origin_count` | Int64 |
-| 19 | `earliest_hindsight_label_correct_count` | Int64 |
-| 20 | `immediate_k0_base_fee_per_gas_sum` | Float64 |
-| 21 | `finite_target_base_fee_per_gas_savings_sum` | Float64 |
-| 22 | `finite_target_base_fee_per_gas_hindsight_opportunity_sum` | Float64 |
-| 23 | `finite_target_base_fee_per_gas_hindsight_regret_sum` | Float64 |
-| 24 | `finite_target_base_fee_per_gas_savings_ratio_vs_immediate_k0` | nullable Float64 |
-| 25 | `finite_target_base_fee_per_gas_hindsight_opportunity_ratio_vs_immediate_k0` | nullable Float64 |
-| 26 | `finite_target_base_fee_per_gas_hindsight_regret_ratio_vs_immediate_k0` | nullable Float64 |
-| 27 | `earliest_hindsight_label_accuracy` | nullable Float64 |
-
-The descriptors are closed-parent base fee per gas and signed `ln(fee_h/fee_h-1)`. Cutpoints use inverse-CDF indices `ceil(N/4)-1`, `ceil(N/2)-1`, and `ceil(3N/4)-1`; ties are never split, and duplicate cutpoints/empty cells remain. Raw Int64 `B/R/O` produces `S/G/Q` before Float64 casting. Counts recombine exactly; floating sums use the gamma-bound specified in the [theory](#k5-fee-conditions).
 
 ## Limitations and sources
 
