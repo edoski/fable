@@ -317,13 +317,12 @@ def _period_geometry(
     context_blocks: int,
     role: str,
 ) -> dict[str, int | float]:
-    definition = corpus.request.definition
-    first_offset = window.first_parent_block - definition.first_block
-    oldest_offset = first_offset - context_blocks + 1
     count = _origin_count(window)
-
-    timestamps = corpus.blocks["timestamp"]
-    spans = timestamps.slice(first_offset, count) - timestamps.slice(oldest_offset, count)
+    timestamps = corpus.blocks.select_range(
+        window.first_parent_block - context_blocks + 1,
+        window.last_parent_block,
+    ).to_polars()["timestamp"]
+    spans = timestamps.slice(context_blocks - 1, count) - timestamps.slice(0, count)
     return {
         f"{role}_first_parent_block": window.first_parent_block,
         f"{role}_last_parent_block": window.last_parent_block,

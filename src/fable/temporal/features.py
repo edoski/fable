@@ -10,6 +10,8 @@ import polars as pl
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ..corpus import BlockFrame
+
 _FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
 _PositiveFiniteFloat = Annotated[float, Field(gt=0.0, allow_inf_nan=False)]
 
@@ -36,13 +38,14 @@ class FeatureState(BaseModel):
 
 
 def fit_feature_state(
-    training_support: pl.DataFrame,
+    training_support: BlockFrame,
     *,
     ordered_features: tuple[str, ...],
 ) -> FeatureState:
-    raw = _raw_feature_rows(training_support, ordered_features=ordered_features)
-    if raw.shape[0] == 0:
-        raise ValueError("training_support must be non-empty")
+    raw = _raw_feature_rows(
+        training_support.to_polars(),
+        ordered_features=ordered_features,
+    )
     if not np.isfinite(raw).all():
         raise ValueError("training_support must produce finite raw features")
 
@@ -55,7 +58,7 @@ def fit_feature_state(
 
 
 def transform_feature_rows(
-    blocks: pl.DataFrame,
+    blocks: BlockFrame,
     *,
     ordered_features: tuple[str, ...],
     state: FeatureState,
@@ -63,7 +66,7 @@ def transform_feature_rows(
     if len(state.means) != len(ordered_features):
         raise ValueError("state width must equal ordered_features width")
 
-    raw = _raw_feature_rows(blocks, ordered_features=ordered_features)
+    raw = _raw_feature_rows(blocks.to_polars(), ordered_features=ordered_features)
     means = np.asarray(state.means, dtype=np.float64)
     standard_deviations = np.asarray(state.standard_deviations, dtype=np.float64)
     with np.errstate(over="ignore", invalid="ignore"):
@@ -94,27 +97,19 @@ def _validate_feature_uniqueness(ordered_features: tuple[str, ...]) -> None:
 def _feature_values(blocks: pl.DataFrame, feature_name: str) -> NDArray[np.float64]:
     if feature_name == "log_base_fee_per_gas":
         base_fees = _float_column(blocks, "base_fee_per_gas")
-        if np.any(base_fees <= 0.0):
-            raise ValueError("base_fee_per_gas must be positive")
         with np.errstate(divide="ignore", invalid="ignore"):
             return np.log(base_fees)
     if feature_name == "gas_utilization":
         gas_limits = _float_column(blocks, "gas_limit")
-        if np.any(gas_limits <= 0.0):
-            raise ValueError("gas_limit must be positive")
         return _float_column(blocks, "gas_used") / gas_limits
     if feature_name == "log_exact_forming_base_fee_per_gas":
         return _forming_base_fee_logs(blocks)
     if feature_name == "log_gas_limit":
         gas_limits = _float_column(blocks, "gas_limit")
-        if np.any(gas_limits <= 0.0):
-            raise ValueError("gas_limit must be positive")
         with np.errstate(divide="ignore", invalid="ignore"):
             return np.log(gas_limits)
     if feature_name == "log1p_tx_count":
         tx_counts = _float_column(blocks, "tx_count")
-        if np.any(tx_counts <= -1.0):
-            raise ValueError("tx_count must be greater than -1")
         with np.errstate(divide="ignore", invalid="ignore"):
             return np.log1p(tx_counts)
     if feature_name == "hour_sin":
@@ -154,8 +149,6 @@ def _forming_base_fee_log(
     gas_used: int,
     gas_limit: int,
 ) -> float:
-    if base_fee_per_gas <= 0:
-        raise ValueError("base_fee_per_gas must be positive")
     child_base_fee = _forming_child_base_fee(base_fee_per_gas, gas_used, gas_limit)
     if child_base_fee <= 0:
         raise ValueError("forming base fee must be positive")

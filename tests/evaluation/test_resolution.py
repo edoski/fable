@@ -28,7 +28,7 @@ from fable.config import (
     TrainingDefinition,
     TrainRequest,
 )
-from fable.corpus import Corpus, FinalizedAnchor
+from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
 from fable.evaluation import reduce_evaluation, resolve_evaluations
 from fable.min_block_fee import ClassificationLossState, TargetState
 from fable.modeling import ArtifactAssociation
@@ -569,13 +569,27 @@ def test_resolve_evaluations_preserves_order_and_shares_durable_loads(
     _publish_evaluation(tmp_path, second_request, _observations())
     association = _association("baseline", "unweighted")
     artifact_calls = _stub_artifact(monkeypatch, association)
+    definition = CorpusDefinition(chain_id=1, first_block=1, last_block=30)
     corpus = Corpus(
         request=CorpusRequest(
             corpus_id=_CORPUS_ID,
-            definition=CorpusDefinition(chain_id=1, first_block=1, last_block=30),
+            definition=definition,
         ),
         finalized_anchor=FinalizedAnchor(block_number=30, block_hash="a" * 64),
-        blocks=pl.DataFrame(),
+        blocks=BlockFrame(
+            pl.DataFrame(
+                {
+                    "block_number": range(1, 31),
+                    "timestamp": range(1, 31),
+                    "chain_id": [1] * 30,
+                    "base_fee_per_gas": [1] * 30,
+                    "gas_used": [0] * 30,
+                    "gas_limit": [1] * 30,
+                    "tx_count": [0] * 30,
+                }
+            ),
+            definition,
+        ),
     )
     corpus_calls: list[tuple[Path, UUID]] = []
 

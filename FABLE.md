@@ -53,7 +53,7 @@ strict config values and canonical addresses
 
 Each owner has one system seam:
 
-- `corpus` owns canonical completed block data and exact validation.
+- `corpus` owns canonical `BlockFrame` row truth and completed Corpus association.
 - `temporal` owns causal feature state, fixed-block context/outcome geometry, and lazy historical examples.
 - `min_block_fee` owns target state, classification support, loss, two-head output, and decode.
 - `modeling` owns the three concrete neural definitions, Lightning fitting, and native checkpoint loading.
@@ -590,7 +590,9 @@ Block and parent hashes are proof-only acquisition facts. The completed parquet 
 
 #### Publication
 
-Checkpoint rows stream into one canonical parquet file. The exact Corpus candidate is reloaded and validated for schema, nonnull domains, row count, requested endpoints, contiguity, chain ID, timestamp order, and finalized coverage. Publication then removes checkpoint metadata and renames the hidden sibling to the canonical directory.
+Checkpoint rows stream into one canonical parquet file. The exact Corpus candidate is reloaded: `BlockFrame` validates schema, nonnull domains, row count, requested range, chain ID, timestamp order, and fee/gas/transaction domains; `Corpus` validates request association and finalized coverage. Publication then removes checkpoint metadata and renames the hidden sibling to the canonical directory.
+
+`BlockFrame(frame, definition)` is the public canonical-row boundary. Its `definition` identifies the exact owned range, `select_range(first_block, last_block)` returns an inclusive trusted subrange, and `to_polars()` returns an isolated native frame. Construction and native access isolate caller mutation. Range selection is positional after the full frame has been validated; it does not rescan rows. The value carries neither hashes nor finality provenance.
 
 ### Temporal preparation
 
@@ -645,7 +647,7 @@ Role boundaries are complete-outcome boundaries. The training last parent plus `
 
 #### Live interface
 
-Serving freezes one latest closed head `h`, reads exactly `C-1` predecessors, validates the same seven row fields, transforms the ordered features with the artifact's `FeatureState`, and constructs float32 `[1,C,F]`. Historical preparation owns outcomes, labels, and target values.
+Serving freezes one latest closed head `h`, reads exactly `C-1` predecessors, decodes untrusted RPC quantities, constructs one live `BlockFrame`, transforms the ordered features with the artifact's `FeatureState`, and constructs float32 `[1,C,F]`. Historical preparation owns outcomes, labels, and target values.
 
 The artifact fixes `C`, `K`, feature order, and fitted states. Decoding returns `k`, and serving reports `h+1+k` as the target block coordinate.
 
@@ -940,6 +942,8 @@ Direct loader:
 ```python
 load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus
 ```
+
+`Corpus.blocks` is a `BlockFrame` whose definition equals the request definition. The finalized anchor covers its last block. These in-memory ownership facts do not change the durable JSON or Parquet formats above.
 
 #### Study object
 

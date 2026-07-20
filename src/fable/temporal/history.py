@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-import polars as pl
 import torch
 from numpy.typing import NDArray
 from torch.utils.data import Dataset
@@ -97,8 +96,7 @@ def prepare_fit_history(
     _require_complete_support(corpus, experiment, training_window)
     _require_complete_support(corpus, experiment, validation_window)
 
-    training_support = _slice_blocks(
-        corpus,
+    training_support = corpus.blocks.select_range(
         training_window.first_parent_block - experiment.context_blocks + 1,
         training_window.last_parent_block,
     )
@@ -190,11 +188,6 @@ def _require_complete_support(
         raise ValueError("Corpus must provide complete context and outcome support")
 
 
-def _slice_blocks(corpus: Corpus, first_block: int, last_block: int) -> pl.DataFrame:
-    start = first_block - corpus.request.definition.first_block
-    return corpus.blocks.slice(start, last_block - first_block + 1)
-
-
 def _build_backing(
     corpus: Corpus,
     *,
@@ -203,20 +196,21 @@ def _build_backing(
     ordered_features: tuple[str, ...],
     feature_state: FeatureState,
 ) -> _HistoricalBacking:
-    blocks = _slice_blocks(corpus, first_block, last_block)
+    blocks = corpus.blocks.select_range(first_block, last_block)
     inputs = transform_feature_rows(
         blocks,
         ordered_features=ordered_features,
         state=feature_state,
     )
+    frame = blocks.to_polars()
     base_fees = np.array(
-        blocks["base_fee_per_gas"].to_numpy(),
+        frame["base_fee_per_gas"].to_numpy(),
         dtype=np.int64,
         copy=True,
         order="C",
     )
     block_numbers = np.array(
-        blocks["block_number"].to_numpy(),
+        frame["block_number"].to_numpy(),
         dtype=np.int64,
         copy=True,
         order="C",

@@ -177,16 +177,7 @@ def test_acquire_resumes_complete_chunks_and_publishes_one_corpus(
     corpus = load_corpus(tmp_path, request.corpus_id)
     assert corpus.request == request
     assert corpus.finalized_anchor.block_number == 4_203
-    assert corpus.blocks["block_number"].to_list() == list(range(100, 4_202))
-    assert corpus.blocks.columns == [
-        "block_number",
-        "timestamp",
-        "chain_id",
-        "base_fee_per_gas",
-        "gas_used",
-        "gas_limit",
-        "tx_count",
-    ]
+    assert corpus.blocks.to_polars()["block_number"].to_list() == list(range(100, 4_202))
     assert not hidden.exists()
     assert all(provider.closed for provider in harness.providers)
     assert all(provider.rpc_url == "https://rpc.example" for provider in harness.providers)
@@ -202,7 +193,11 @@ def _ordinary_failure(_: Path, request: CorpusRequest) -> _FakeEth:
     return _FakeEth(finalized_number=request.definition.last_block + 2)
 
 
-def _stored_hash_failure(root: Path, request: CorpusRequest) -> _FakeEth:
+def _stored_chunk_failure(
+    root: Path,
+    request: CorpusRequest,
+    changes: dict[str, object],
+) -> _FakeEth:
     hidden = _hidden_path(root, request)
     chunks = hidden / "chunks"
     chunks.mkdir(parents=True)
@@ -213,8 +208,8 @@ def _stored_hash_failure(root: Path, request: CorpusRequest) -> _FakeEth:
     rows = [
         {
             "block_number": number,
-            "block_hash": "A" * 64 if number == first else _hash(number),
-            "parent_hash": ("a" * 64 if number == first + 1 else _hash(number - 1)),
+            "block_hash": _hash(number),
+            "parent_hash": _hash(number - 1),
             "timestamp": 1_700_000_000 + number,
             "chain_id": request.definition.chain_id,
             "base_fee_per_gas": 1_000_000_000 + number,
@@ -224,8 +219,27 @@ def _stored_hash_failure(root: Path, request: CorpusRequest) -> _FakeEth:
         }
         for number in range(first, last + 1)
     ]
+    rows[0].update(changes)
     pl.DataFrame(rows).write_parquet(chunks / f"{first:020d}-{last:020d}.parquet")
     return _ordinary_failure(root, request)
+
+
+def _stored_hash_failure(root: Path, request: CorpusRequest) -> _FakeEth:
+    return _stored_chunk_failure(root, request, {"block_hash": "A" * 64})
+
+
+def _stored_canonical_failure(root: Path, request: CorpusRequest) -> _FakeEth:
+    return _stored_chunk_failure(root, request, {"base_fee_per_gas": 0})
+
+
+def _block_failure(block_number: int, **changes: object) -> FailureSetup:
+    def setup(_: Path, request: CorpusRequest) -> _FakeEth:
+        return _FakeEth(
+            block_changes={block_number: changes},
+            finalized_number=request.definition.last_block + 2,
+        )
+
+    return setup
 
 
 @pytest.mark.parametrize(
@@ -235,39 +249,16 @@ def _stored_hash_failure(root: Path, request: CorpusRequest) -> _FakeEth:
         ("request", _ordinary_failure, ValueError),
         ("chunk_name", _ordinary_failure, ValueError),
         ("stored_hash", _stored_hash_failure, ValueError),
+        ("stored_canonical", _stored_canonical_failure, ValueError),
         ("chain", lambda _root, request: _FakeEth(chain_id=2), ValueError),
-        (
-            "number",
-            lambda _root, request: _FakeEth(
-                block_changes={102: {"number": 103}},
-                finalized_number=request.definition.last_block + 2,
-            ),
-            ValueError,
-        ),
-        (
-            "parent",
-            lambda _root, request: _FakeEth(
-                block_changes={104: {"parentHash": b"\xff" * 32}},
-                finalized_number=request.definition.last_block + 2,
-            ),
-            ValueError,
-        ),
-        (
-            "timestamp",
-            lambda _root, request: _FakeEth(
-                block_changes={104: {"timestamp": 1}},
-                finalized_number=request.definition.last_block + 2,
-            ),
-            ValueError,
-        ),
-        (
-            "ancestry",
-            lambda _root, request: _FakeEth(
-                block_changes={105: {"parentHash": b"\xff" * 32}},
-                finalized_number=request.definition.last_block + 2,
-            ),
-            ValueError,
-        ),
+        ("number", _block_failure(102, number=103), ValueError),
+        ("parent", _block_failure(104, parentHash=b"\xff" * 32), ValueError),
+        ("timestamp", _block_failure(104, timestamp=1), ValueError),
+        ("base_fee", _block_failure(102, baseFeePerGas=0), ValueError),
+        ("gas_limit", _block_failure(102, gasLimit=0), ValueError),
+        ("gas_used", _block_failure(102, gasUsed=30_000_001), ValueError),
+        ("transactions", _block_failure(102, transactions=object()), TypeError),
+        ("ancestry", _block_failure(105, parentHash=b"\xff" * 32), ValueError),
         (
             "anchor",
             lambda _root, request: _FakeEth(
@@ -321,7 +312,7 @@ def test_acquire_rejects_mismatch_finality_or_existing_destination(
         assert not hidden.exists()
         assert harness.providers == []
         return
-    if case in {"request", "chunk_name", "stored_hash"}:
+    if case in {"request", "chunk_name", "stored_hash", "stored_canonical"}:
         assert harness.providers == []
     else:
         assert harness.providers[0].closed

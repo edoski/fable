@@ -7,43 +7,21 @@ import json
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TypedDict
 
 import polars as pl
 from web3 import AsyncWeb3
 from web3.middleware import ExtraDataToPOAMiddleware
 from web3.providers.rpc import AsyncHTTPProvider
 
-from .addresses import corpus_json_path
-from .config import CorpusRequest
+from .addresses import corpus_blocks_path, corpus_json_path
+from .config import CorpusDefinition, CorpusRequest
+from .corpus.blocks import BlockFrame
 from .corpus.contract import Corpus, FinalizedAnchor
-from .corpus.validation import _validate_corpus_candidate
 
 _CHECKPOINT_SIZE = 4096
 _CONCURRENCY = 4
 
-_CHUNK_SCHEMA = pl.Schema(
-    {
-        "block_number": pl.Int64,
-        "block_hash": pl.String,
-        "parent_hash": pl.String,
-        "timestamp": pl.Int64,
-        "chain_id": pl.Int64,
-        "base_fee_per_gas": pl.Int64,
-        "gas_used": pl.Int64,
-        "gas_limit": pl.Int64,
-        "tx_count": pl.Int64,
-    }
-)
-_BLOCK_COLUMNS = (
-    "block_number",
-    "timestamp",
-    "chain_id",
-    "base_fee_per_gas",
-    "gas_used",
-    "gas_limit",
-    "tx_count",
-)
 _CHUNK_NAME = re.compile(r"(\d+)-(\d+)\.parquet\Z")
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -120,9 +98,9 @@ async def acquire_corpus(
     finally:
         await provider.disconnect()
 
-    blocks_path = hidden / "blocks.parquet"
+    blocks_path = hidden / corpus_blocks_path(storage_root, request.corpus_id).name
     _stream_blocks(chunk_paths, blocks_path)
-    corpus_path = hidden / "corpus.json"
+    corpus_path = hidden / corpus_json_path(storage_root, request.corpus_id).name
     corpus_path.write_text(
         json.dumps(
             {
@@ -136,12 +114,11 @@ async def acquire_corpus(
         ),
         encoding="utf-8",
     )
-    candidate = Corpus(
+    Corpus(
         request=request,
         finalized_anchor=anchor,
-        blocks=pl.read_parquet(blocks_path),
+        blocks=BlockFrame(pl.read_parquet(blocks_path), request.definition),
     )
-    _validate_corpus_candidate(candidate)
 
     for chunk_path in chunk_paths:
         chunk_path.unlink()
@@ -276,55 +253,41 @@ def _validate_chunk(
     previous_hash: str | None,
     previous_timestamp: int | None,
 ) -> tuple[str, int]:
-    if frame.schema != _CHUNK_SCHEMA:
-        raise ValueError(
-            f"Checkpoint chunk schema must be exactly {_CHUNK_SCHEMA}, got {frame.schema}"
-        )
-    if any(frame[column].null_count() for column in frame.columns):
-        raise ValueError("Checkpoint chunks must not contain null values")
-    if frame.height != last_block - first_block + 1:
-        raise ValueError("Checkpoint chunk row count does not match its deterministic range")
-
-    rows = cast(list[_BlockRow], frame.to_dicts())
-    for number, row in zip(
-        range(first_block, last_block + 1),
-        rows,
-        strict=True,
+    if frame.columns[1:3] != ["block_hash", "parent_hash"] or (
+        frame.schema.get("block_hash") != pl.String or frame.schema.get("parent_hash") != pl.String
     ):
-        staged_number = row["block_number"]
-        _integer("block number", staged_number, minimum=0)
-        if staged_number != number:
-            raise ValueError(
-                f"Checkpoint block order mismatch: expected {number}, got {staged_number}"
-            )
-        chain_id = row["chain_id"]
-        _integer("chain_id", chain_id, minimum=0)
-        if chain_id != request.definition.chain_id:
-            raise ValueError(f"Checkpoint chain_id mismatch at block {number}")
-        timestamp = row["timestamp"]
-        _integer("timestamp", timestamp, minimum=0)
-        block_hash = _stored_hash("block hash", row["block_hash"])
-        parent_hash = _stored_hash("parent hash", row["parent_hash"])
-        _integer("base_fee_per_gas", row["base_fee_per_gas"], minimum=1)
-        gas_used = row["gas_used"]
-        _integer("gas_used", gas_used, minimum=0)
-        gas_limit = row["gas_limit"]
-        _integer("gas_limit", gas_limit, minimum=1)
-        _integer("tx_count", row["tx_count"], minimum=0)
-        if gas_used > gas_limit:
-            raise ValueError(f"gas_used exceeds gas_limit at block {number}")
-        if previous_hash is not None and parent_hash != previous_hash:
-            raise ValueError(f"Checkpoint parent link mismatch at block {number}")
-        if previous_timestamp is not None and timestamp < previous_timestamp:
-            raise ValueError(f"Checkpoint timestamp decreases at block {number}")
-        previous_hash = block_hash
-        previous_timestamp = timestamp
-    last_row = rows[-1]
-    return last_row["block_hash"], last_row["timestamp"]
+        raise ValueError("Checkpoint proof columns must be ordered non-null strings")
+    if frame["block_hash"].null_count() or frame["parent_hash"].null_count():
+        raise ValueError("Checkpoint proof columns must be ordered non-null strings")
+
+    definition = CorpusDefinition(
+        chain_id=request.definition.chain_id,
+        first_block=first_block,
+        last_block=last_block,
+    )
+    canonical = BlockFrame(frame.drop("block_hash", "parent_hash"), definition).to_polars()
+    block_hashes = frame["block_hash"]
+    parent_hashes = frame["parent_hash"]
+    if (
+        not block_hashes.str.contains(r"^[0-9a-f]{64}$").all()
+        or not parent_hashes.str.contains(r"^[0-9a-f]{64}$").all()
+    ):
+        raise ValueError("Checkpoint hashes must be exactly 64 lowercase hexadecimal characters")
+    if previous_hash is not None and parent_hashes[0] != previous_hash:
+        raise ValueError(f"Checkpoint parent link mismatch at block {first_block}")
+    if (
+        frame.height > 1
+        and not (parent_hashes.slice(1) == block_hashes.slice(0, frame.height - 1)).all()
+    ):
+        raise ValueError("Checkpoint parent links must match within the chunk")
+    first_timestamp = int(canonical["timestamp"][0])
+    if previous_timestamp is not None and first_timestamp < previous_timestamp:
+        raise ValueError(f"Checkpoint timestamp decreases at block {first_block}")
+    return str(block_hashes[-1]), int(canonical["timestamp"][-1])
 
 
 def _write_chunk(path: Path, rows: list[_BlockRow]) -> None:
-    frame = pl.DataFrame(rows, schema=_CHUNK_SCHEMA, orient="row")
+    frame = pl.DataFrame(rows, orient="row")
     temporary = path.with_name(f".{path.name}.tmp")
     try:
         frame.write_parquet(temporary)
@@ -439,10 +402,9 @@ def _last_link(chunk_paths: list[Path]) -> tuple[str, str]:
 
 
 def _stream_blocks(chunk_paths: list[Path], destination: Path) -> None:
-    pl.concat([pl.scan_parquet(path) for path in chunk_paths]).select(_BLOCK_COLUMNS).sink_parquet(
-        destination,
-        maintain_order=True,
-    )
+    pl.concat([pl.scan_parquet(path) for path in chunk_paths]).drop(
+        "block_hash", "parent_hash"
+    ).sink_parquet(destination, maintain_order=True)
 
 
 __all__ = ["acquire_corpus"]

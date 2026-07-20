@@ -11,7 +11,7 @@ from polars.testing import assert_frame_equal
 
 from fable.addresses import corpus_blocks_path, corpus_json_path
 from fable.config import CorpusDefinition, CorpusRequest
-from fable.corpus import FinalizedAnchor, load_corpus
+from fable.corpus import BlockFrame, Corpus, FinalizedAnchor, load_corpus
 
 CORPUS_ID = UUID("11111111-1111-4111-8111-111111111111")
 OTHER_CORPUS_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -73,7 +73,7 @@ def test_load_corpus_reads_one_valid_canonical_pair(tmp_path) -> None:
 
     assert corpus.request == _request()
     assert corpus.finalized_anchor == FinalizedAnchor(block_number=103, block_hash="a" * 64)
-    assert_frame_equal(corpus.blocks, blocks)
+    assert_frame_equal(corpus.blocks.to_polars(), blocks)
 
 
 def _invalidate(
@@ -91,69 +91,8 @@ def _invalidate(
         anchor["block_hash"] = "A" * 64
     elif case == "anchor_relation":
         anchor["block_number"] = 101
-    elif case == "column_names":
-        blocks = blocks.rename({"tx_count": "transactions"})
-    elif case == "column_order":
-        blocks = blocks.select(
-            "timestamp",
-            "block_number",
-            "chain_id",
-            "base_fee_per_gas",
-            "gas_used",
-            "gas_limit",
-            "tx_count",
-        )
-    elif case == "column_dtype":
-        blocks = blocks.with_columns(pl.col("tx_count").cast(pl.Int32))
-    elif case == "column_null":
-        blocks = blocks.with_columns(
-            pl.when(pl.col("block_number") == 101)
-            .then(None)
-            .otherwise(pl.col("tx_count"))
-            .alias("tx_count")
-        )
-    elif case == "row_count":
-        blocks = blocks.head(2)
-    elif case == "inclusive_range":
-        blocks = blocks.with_columns((pl.col("block_number") + 1).alias("block_number"))
-    elif case == "contiguity":
-        blocks = blocks.with_columns(
-            pl.when(pl.col("block_number") == 101)
-            .then(102)
-            .otherwise(pl.col("block_number"))
-            .alias("block_number")
-        )
-    elif case == "chain":
-        blocks = blocks.with_columns(
-            pl.when(pl.col("block_number") == 101)
-            .then(2)
-            .otherwise(pl.col("chain_id"))
-            .alias("chain_id")
-        )
-    elif case == "negative_timestamp":
-        blocks = blocks.with_columns(
-            pl.when(pl.col("block_number") == 100)
-            .then(-1)
-            .otherwise(pl.col("timestamp"))
-            .alias("timestamp")
-        )
-    elif case == "decreasing_timestamp":
-        blocks = blocks.with_columns(
-            pl.when(pl.col("block_number") == 101)
-            .then(999)
-            .otherwise(pl.col("timestamp"))
-            .alias("timestamp")
-        )
-    elif case == "base_fee":
+    elif case == "corrupt_blocks":
         blocks = blocks.with_columns(pl.lit(0, dtype=pl.Int64).alias("base_fee_per_gas"))
-    elif case == "gas_limit":
-        blocks = blocks.with_columns(pl.lit(0, dtype=pl.Int64).alias("gas_limit"))
-    elif case == "negative_gas_used":
-        blocks = blocks.with_columns(pl.lit(-1, dtype=pl.Int64).alias("gas_used"))
-    elif case == "gas_used_above_limit":
-        blocks = blocks.with_columns((pl.col("gas_limit") + 1).alias("gas_used"))
-    elif case == "tx_count":
-        blocks = blocks.with_columns(pl.lit(-1, dtype=pl.Int64).alias("tx_count"))
     else:
         raise AssertionError(f"unknown invalid case: {case}")
     return blocks
@@ -166,21 +105,7 @@ def _invalidate(
         "uuid_association",
         "anchor_shape",
         "anchor_relation",
-        "column_names",
-        "column_order",
-        "column_dtype",
-        "column_null",
-        "row_count",
-        "inclusive_range",
-        "contiguity",
-        "chain",
-        "negative_timestamp",
-        "decreasing_timestamp",
-        "base_fee",
-        "gas_limit",
-        "negative_gas_used",
-        "gas_used_above_limit",
-        "tx_count",
+        "corrupt_blocks",
     ),
 )
 def test_load_corpus_rejects_invalid_canonical_facts(tmp_path, case: str) -> None:
@@ -190,3 +115,17 @@ def test_load_corpus_rejects_invalid_canonical_facts(tmp_path, case: str) -> Non
 
     with pytest.raises(ValueError):
         load_corpus(tmp_path, CORPUS_ID)
+
+
+def test_corpus_requires_block_definition_to_match_request() -> None:
+    blocks = BlockFrame(_valid_blocks(), _request().definition)
+    other_request = _request().model_copy(
+        update={"definition": CorpusDefinition(chain_id=1, first_block=99, last_block=101)}
+    )
+
+    with pytest.raises(ValueError, match="definition must match"):
+        Corpus(
+            request=other_request,
+            finalized_anchor=FinalizedAnchor(block_number=103, block_hash="a" * 64),
+            blocks=blocks,
+        )

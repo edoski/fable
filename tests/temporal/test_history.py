@@ -14,7 +14,7 @@ from fable.config import (
     LossDefinition,
     OriginWindow,
 )
-from fable.corpus.contract import Corpus, FinalizedAnchor
+from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
 from fable.min_block_fee import ClassificationLossState
 from fable.temporal.history import prepare_fit_history, prepare_historical_window
 
@@ -23,15 +23,6 @@ _BASE_FEES = np.array(
     [11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2, 7, 6, 5, 4, 4, 9],
     dtype=np.int64,
 )
-_BLOCK_SCHEMA = {
-    "block_number": pl.Int64,
-    "timestamp": pl.Int64,
-    "chain_id": pl.Int64,
-    "base_fee_per_gas": pl.Int64,
-    "gas_used": pl.Int64,
-    "gas_limit": pl.Int64,
-    "tx_count": pl.Int64,
-}
 
 
 def _corpus(first_block: int = 10, last_block: int = 29) -> Corpus:
@@ -46,22 +37,22 @@ def _corpus(first_block: int = 10, last_block: int = 29) -> Corpus:
             "gas_limit": np.full(blocks.size, 100, dtype=np.int64),
             "tx_count": 20 + np.arange(blocks.size, dtype=np.int64),
         },
-        schema=_BLOCK_SCHEMA,
     ).filter(pl.col("block_number").is_between(first_block, last_block))
-    return Corpus(
-        request=CorpusRequest(
-            corpus_id=_CORPUS_ID,
-            definition=CorpusDefinition(
-                chain_id=1,
-                first_block=first_block,
-                last_block=last_block,
-            ),
+    request = CorpusRequest(
+        corpus_id=_CORPUS_ID,
+        definition=CorpusDefinition(
+            chain_id=1,
+            first_block=first_block,
+            last_block=last_block,
         ),
+    )
+    return Corpus(
+        request=request,
         finalized_anchor=FinalizedAnchor(
             block_number=last_block,
             block_hash="a" * 64,
         ),
-        blocks=frame,
+        blocks=BlockFrame(frame, request.definition),
     )
 
 

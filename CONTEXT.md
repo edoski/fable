@@ -12,7 +12,9 @@ FABLE derives from and extends selected temporal work from *SPICE: A Predictive 
 
 **CorpusRequest.** The exact request for one corpus UUID and its `CorpusDefinition`.
 
-**Corpus.** The completed request, finalized anchor, and canonical block rows at the corpus UUID's direct address.
+**BlockFrame.** One isolated, validated seven-column value covering an exact contiguous single-chain `CorpusDefinition`; it establishes canonical row facts and range selection, not finality or provenance.
+
+**Corpus.** The completed request, finalized anchor, and canonical `BlockFrame` at the corpus UUID's direct address.
 
 **TuneRequest.** The complete bounded tuning question for one Study.
 

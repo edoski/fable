@@ -361,20 +361,6 @@ def test_evaluate_publishes_exact_observations_through_one_full_and_tail_path(
         lambda storage_root, artifact_id: (association, model),
     )
     monkeypatch.setattr(evaluation_module, "_DEVICE", torch.device("cpu"))
-    real_prepare = evaluation_module.prepare_historical_window
-
-    def prepare_with_divergent_corpus(*args: Any, **kwargs: Any):
-        dataset = real_prepare(*args, **kwargs)
-        corpus = args[0]
-        row = 25 - corpus.request.definition.first_block
-        corpus.blocks[row, "base_fee_per_gas"] = 999
-        return dataset
-
-    monkeypatch.setattr(
-        evaluation_module,
-        "prepare_historical_window",
-        prepare_with_divergent_corpus,
-    )
     request = _request()
 
     evaluate(request, tmp_path, _deployment())

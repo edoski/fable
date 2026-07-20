@@ -40,7 +40,9 @@ from web3 import AsyncHTTPProvider as _AsyncHTTPProvider
 from web3 import AsyncWeb3 as _AsyncWeb3
 from web3.middleware import ExtraDataToPOAMiddleware as _ExtraDataToPOAMiddleware
 
+from .config import CorpusDefinition as _CorpusDefinition
 from .config import SelectedStudySource as _SelectedStudySource
+from .corpus import BlockFrame as _BlockFrame
 from .min_block_fee import decode_action as _decode_action
 from .modeling import load_artifact as _load_artifact
 from .temporal.features import transform_feature_rows as _transform_feature_rows
@@ -104,19 +106,6 @@ class _ServingState:
     ethereum: _AsyncWeb3
     polygon: _AsyncWeb3
     avalanche: _AsyncWeb3
-
-
-_LIVE_SCHEMA = _pl.Schema(
-    {
-        "block_number": _pl.Int64,
-        "timestamp": _pl.Int64,
-        "chain_id": _pl.Int64,
-        "base_fee_per_gas": _pl.Int64,
-        "gas_used": _pl.Int64,
-        "gas_limit": _pl.Int64,
-        "tx_count": _pl.Int64,
-    }
-)
 
 
 def _load_serving_config() -> _ServingConfig:
@@ -201,29 +190,6 @@ def _live_row(block: object, chain_id: int) -> dict[str, int]:
     }
 
 
-def _validate_live_frame(frame: _pl.DataFrame, *, first_block: int) -> None:
-    expected_numbers = list(range(first_block, first_block + frame.height))
-    if frame["block_number"].to_list() != expected_numbers:
-        raise ValueError("live blocks must be consecutive and ascending")
-    timestamps = frame["timestamp"].to_list()
-    if any(value < 0 for value in timestamps) or any(
-        earlier > later for earlier, later in zip(timestamps, timestamps[1:], strict=False)
-    ):
-        raise ValueError("live timestamps must be nonnegative and nondecreasing")
-    base_fees = frame["base_fee_per_gas"].to_list()
-    gas_used = frame["gas_used"].to_list()
-    gas_limits = frame["gas_limit"].to_list()
-    tx_counts = frame["tx_count"].to_list()
-    if any(value <= 0 for value in base_fees):
-        raise ValueError("live base fees must be positive")
-    if any(limit <= 0 for limit in gas_limits):
-        raise ValueError("live gas limits must be positive")
-    if any(used < 0 or used > limit for used, limit in zip(gas_used, gas_limits, strict=True)):
-        raise ValueError("live gas usage must be within the block gas limit")
-    if any(value < 0 for value in tx_counts):
-        raise ValueError("live transaction counts must be nonnegative")
-
-
 async def _infer(request: _InferenceRequest, state: _ServingState) -> _InferenceResponse:
     client, expected_chain_id, artifact_id = _serving_cell(state, request.chain, request.K)
     association, model = _load_artifact(state.config.storage_root, artifact_id)
@@ -251,11 +217,17 @@ async def _infer(request: _InferenceRequest, state: _ServingState) -> _Inference
         raise ValueError("provider returned the wrong predecessor count")
     rows = [_live_row(block, chain_id) for block in predecessors]
     rows.append(latest)
-    frame = _pl.DataFrame(rows, schema=_LIVE_SCHEMA)
-    _validate_live_frame(frame, first_block=first_block)
+    blocks = _BlockFrame(
+        _pl.DataFrame(rows),
+        _CorpusDefinition(
+            chain_id=chain_id,
+            first_block=first_block,
+            last_block=head_block,
+        ),
+    )
     model_input = _torch.from_numpy(
         _transform_feature_rows(
-            frame,
+            blocks,
             ordered_features=experiment.ordered_features,
             state=association.feature_state,
         )

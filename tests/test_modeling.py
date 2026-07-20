@@ -34,7 +34,7 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.corpus.contract import Corpus, FinalizedAnchor
+from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
 from fable.min_block_fee import (
     ClassificationLossState,
     TargetState,
@@ -121,28 +121,23 @@ def _request() -> TrainRequest:
 
 def _corpus() -> Corpus:
     blocks = np.arange(10, 24, dtype=np.int64)
+    request = _corpus_request()
     return Corpus(
-        request=_corpus_request(),
+        request=request,
         finalized_anchor=FinalizedAnchor(block_number=23, block_hash="a" * 64),
-        blocks=pl.DataFrame(
-            {
-                "block_number": blocks,
-                "timestamp": blocks * 11,
-                "chain_id": np.ones(blocks.size, dtype=np.int64),
-                "base_fee_per_gas": _BASE_FEES,
-                "gas_used": 30 + np.arange(blocks.size, dtype=np.int64),
-                "gas_limit": np.full(blocks.size, 100, dtype=np.int64),
-                "tx_count": 4 + np.arange(blocks.size, dtype=np.int64),
-            },
-            schema={
-                "block_number": pl.Int64,
-                "timestamp": pl.Int64,
-                "chain_id": pl.Int64,
-                "base_fee_per_gas": pl.Int64,
-                "gas_used": pl.Int64,
-                "gas_limit": pl.Int64,
-                "tx_count": pl.Int64,
-            },
+        blocks=BlockFrame(
+            pl.DataFrame(
+                {
+                    "block_number": blocks,
+                    "timestamp": blocks * 11,
+                    "chain_id": np.ones(blocks.size, dtype=np.int64),
+                    "base_fee_per_gas": _BASE_FEES,
+                    "gas_used": 30 + np.arange(blocks.size, dtype=np.int64),
+                    "gas_limit": np.full(blocks.size, 100, dtype=np.int64),
+                    "tx_count": 4 + np.arange(blocks.size, dtype=np.int64),
+                }
+            ),
+            request.definition,
         ),
     )
 

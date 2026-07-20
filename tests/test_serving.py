@@ -379,7 +379,7 @@ async def test_serves_one_selected_artifact_context_and_closes_clients(
         assert ethereum.eth.block_calls == ["latest", 10, 11]
         assert len(transform_calls) == 1
         blocks, ordered_features, feature_state = transform_calls[0]
-        assert blocks.to_dict(as_series=False) == {
+        assert blocks.to_polars().to_dict(as_series=False) == {
             "block_number": [10, 11, 12],
             "timestamp": [1010, 1011, 1012],
             "chain_id": [1, 1, 1],
@@ -427,6 +427,7 @@ async def test_request_is_strict_and_forbids_extra_fields(
         ("source", "SelectedStudySource"),
         ("horizon", "request K must match"),
         ("chain", "chain ID mismatch"),
+        ("live", "base_fee_per_gas"),
     ],
 )
 @_run_async
@@ -448,6 +449,20 @@ async def test_rejects_artifact_and_chain_mismatches(
     monkeypatch.setattr(serving, "_load_artifact", lambda *_: (association, _FakeModel()))
     if failure == "chain":
         monkeypatch.setitem(_CHAIN_IDS, "https://ethereum.example", 2)
+    if failure == "live":
+        get_block = _FakeEth.get_block
+
+        async def malformed_live_block(
+            eth: _FakeEth,
+            number: int | str,
+            full_transactions: bool,
+        ) -> dict[str, object]:
+            block = await get_block(eth, number, full_transactions)
+            if number == "latest":
+                block["baseFeePerGas"] = 0
+            return block
+
+        monkeypatch.setattr(_FakeEth, "get_block", malformed_live_block)
     app = serving.create_app()
 
     with pytest.raises(ValueError, match=message):

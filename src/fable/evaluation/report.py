@@ -70,12 +70,11 @@ def write_sealed_report(
         first_parent_block = request.window.first_parent_block
         last_parent_block = request.window.last_parent_block
         corpus_endpoint_block = corpus_definition.last_block
-        timestamp_column = corpus.blocks["timestamp"]
-        first_offset = first_parent_block - corpus_definition.first_block
-        last_offset = last_parent_block - corpus_definition.first_block
-        testing_elapsed_seconds = int(timestamp_column[last_offset]) - int(
-            timestamp_column[first_offset]
-        )
+        timestamps = corpus.blocks.select_range(
+            first_parent_block,
+            last_parent_block,
+        ).to_polars()["timestamp"]
+        testing_elapsed_seconds = int(timestamps[-1]) - int(timestamps[0])
         experiment = definition.experiment
 
         context = pl.DataFrame(

@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 
 from ..addresses import evaluation_directory
 from ..config import BaselineSource, EvaluateRequest, ExperimentSemantics
-from ..corpus import load_corpus
+from ..corpus import BlockFrame, load_corpus
 from ..min_block_fee import decode_action, min_block_fee_loss
 from ..modeling import ArtifactAssociation, load_artifact
 from ..temporal.history import HistoricalDataset, prepare_historical_window
@@ -97,8 +97,10 @@ def evaluate(
 
     _configure_execution(deployment)
     observations = _collect_observations(
-        corpus.blocks,
-        corpus.request.definition.first_block,
+        corpus.blocks.select_range(
+            request.window.first_parent_block - 1,
+            request.window.last_parent_block + experiment.horizon_blocks,
+        ),
         dataset,
         experiment,
         association,
@@ -130,14 +132,15 @@ def _configure_execution(deployment: EvaluationDeployment) -> None:
 
 
 def _collect_observations(
-    blocks: pl.DataFrame,
-    first_block: int,
+    blocks: BlockFrame,
     dataset: HistoricalDataset,
     experiment: ExperimentSemantics,
     association: ArtifactAssociation,
     model: nn.Module,
     deployment: EvaluationDeployment,
 ) -> pl.DataFrame:
+    frame = blocks.to_polars()
+    first_block = blocks.definition.first_block
     count = len(dataset)
     origin_blocks = np.empty(count, dtype=np.int64)
     selected_actions = np.empty(count, dtype=np.int64)
@@ -195,8 +198,8 @@ def _collect_observations(
             hindsight_fees[destination] = outcomes[rows, cpu_labels]
             cursor += size
 
-    base_fees = cast(np.ndarray, blocks["base_fee_per_gas"].to_numpy())
-    timestamps = cast(np.ndarray, blocks["timestamp"].to_numpy())
+    base_fees = cast(np.ndarray, frame["base_fee_per_gas"].to_numpy())
+    timestamps = cast(np.ndarray, frame["timestamp"].to_numpy())
     origin_rows = origin_blocks - first_block
     return pl.DataFrame(
         {

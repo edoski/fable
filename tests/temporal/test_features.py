@@ -6,6 +6,8 @@ import numpy as np
 import polars as pl
 import pytest
 
+from fable.config import CorpusDefinition
+from fable.corpus import BlockFrame
 from fable.temporal.features import (
     FeatureState,
     fit_feature_state,
@@ -15,20 +17,27 @@ from fable.temporal.features import (
 
 def _blocks(
     *,
-    base_fees: list[float | int],
+    base_fees: list[int],
     gas_used: list[int],
     gas_limits: list[int],
     tx_counts: list[int],
     timestamps: list[int],
-) -> pl.DataFrame:
-    return pl.DataFrame(
+) -> BlockFrame:
+    count = len(base_fees)
+    frame = pl.DataFrame(
         {
+            "block_number": range(count),
+            "timestamp": timestamps,
+            "chain_id": [1] * count,
             "base_fee_per_gas": base_fees,
             "gas_used": gas_used,
             "gas_limit": gas_limits,
             "tx_count": tx_counts,
-            "timestamp": timestamps,
         }
+    )
+    return BlockFrame(
+        frame,
+        CorpusDefinition(chain_id=1, first_block=0, last_block=count - 1),
     )
 
 
@@ -172,7 +181,7 @@ def test_requested_feature_formulas_fit_in_order_and_transform_held_out_rows() -
     )
 
 
-def _valid_blocks() -> pl.DataFrame:
+def _valid_blocks() -> BlockFrame:
     return _blocks(
         base_fees=[10, 20],
         gas_used=[1, 3],
@@ -183,7 +192,7 @@ def _valid_blocks() -> pl.DataFrame:
 
 
 def _fit(
-    blocks: pl.DataFrame,
+    blocks: BlockFrame,
     *,
     ordered_features: tuple[str, ...] = ("log_base_fee_per_gas", "gas_utilization"),
 ) -> FeatureState:
@@ -209,34 +218,6 @@ def _fit(
         pytest.param(
             lambda: _fit(
                 _blocks(
-                    base_fees=[0, 1],
-                    gas_used=[1, 3],
-                    gas_limits=[2, 4],
-                    tx_counts=[0, 1],
-                    timestamps=[0, 1],
-                ),
-                ordered_features=("log_base_fee_per_gas",),
-            ),
-            "base_fee_per_gas must be positive",
-            id="base-fee-domain",
-        ),
-        pytest.param(
-            lambda: _fit(
-                _blocks(
-                    base_fees=[10, 20],
-                    gas_used=[0, 3],
-                    gas_limits=[0, 4],
-                    tx_counts=[0, 1],
-                    timestamps=[0, 1],
-                ),
-                ordered_features=("gas_utilization",),
-            ),
-            "gas_limit must be positive",
-            id="utilization-domain",
-        ),
-        pytest.param(
-            lambda: _fit(
-                _blocks(
                     base_fees=[10, 20],
                     gas_used=[0, 1],
                     gas_limits=[1, 1],
@@ -247,56 +228,6 @@ def _fit(
             ),
             "gas_target must be positive",
             id="forming-fee-domain",
-        ),
-        pytest.param(
-            lambda: _fit(
-                _blocks(
-                    base_fees=[10, 20],
-                    gas_used=[0, 3],
-                    gas_limits=[0, 4],
-                    tx_counts=[0, 1],
-                    timestamps=[0, 1],
-                ),
-                ordered_features=("log_gas_limit",),
-            ),
-            "gas_limit must be positive",
-            id="gas-limit-domain",
-        ),
-        pytest.param(
-            lambda: _fit(
-                _blocks(
-                    base_fees=[10, 20],
-                    gas_used=[1, 3],
-                    gas_limits=[2, 4],
-                    tx_counts=[-1, 1],
-                    timestamps=[0, 1],
-                ),
-                ordered_features=("log1p_tx_count",),
-            ),
-            "tx_count must be greater than -1",
-            id="transaction-count-domain",
-        ),
-        pytest.param(
-            lambda: _fit(
-                _valid_blocks().clear(),
-                ordered_features=("log_base_fee_per_gas",),
-            ),
-            "non-empty",
-            id="empty-fit",
-        ),
-        pytest.param(
-            lambda: _fit(
-                _blocks(
-                    base_fees=[float("inf"), 1.0],
-                    gas_used=[1, 3],
-                    gas_limits=[2, 4],
-                    tx_counts=[0, 1],
-                    timestamps=[0, 1],
-                ),
-                ordered_features=("log_base_fee_per_gas",),
-            ),
-            "finite raw",
-            id="nonfinite-fit",
         ),
         pytest.param(
             lambda: FeatureState(means=(0.0,), standard_deviations=(1.0, 2.0)),

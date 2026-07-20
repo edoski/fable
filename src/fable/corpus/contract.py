@@ -1,11 +1,13 @@
-"""Canonical Corpus values and block schema."""
+"""Canonical Corpus values."""
 
 from __future__ import annotations
 
-import polars as pl
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..config import CorpusRequest
+from .blocks import BlockFrame
 
 
 class FinalizedAnchor(BaseModel):
@@ -31,17 +33,12 @@ class Corpus(BaseModel):
 
     request: CorpusRequest
     finalized_anchor: FinalizedAnchor
-    blocks: pl.DataFrame
+    blocks: BlockFrame
 
-
-_BLOCK_SCHEMA = pl.Schema(
-    {
-        "block_number": pl.Int64,
-        "timestamp": pl.Int64,
-        "chain_id": pl.Int64,
-        "base_fee_per_gas": pl.Int64,
-        "gas_used": pl.Int64,
-        "gas_limit": pl.Int64,
-        "tx_count": pl.Int64,
-    }
-)
+    @model_validator(mode="after")
+    def validate_ownership(self) -> Self:
+        if self.blocks.definition != self.request.definition:
+            raise ValueError("BlockFrame definition must match the Corpus request")
+        if self.finalized_anchor.block_number < self.request.definition.last_block:
+            raise ValueError("Finalized anchor precedes the requested last block")
+        return self

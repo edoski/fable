@@ -9,8 +9,8 @@ from pydantic import UUID4, BaseModel, ConfigDict
 
 from ..addresses import corpus_blocks_path, corpus_json_path
 from ..config import CorpusRequest
+from .blocks import BlockFrame
 from .contract import Corpus, FinalizedAnchor
-from .validation import _validate_corpus_candidate
 
 
 class _CorpusDocument(BaseModel):
@@ -34,7 +34,9 @@ def load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus:
     corpus = Corpus(
         request=document.request,
         finalized_anchor=document.finalized_anchor,
-        blocks=pl.read_parquet(corpus_blocks_path(storage_root, corpus_id)),
+        blocks=BlockFrame(
+            pl.read_parquet(corpus_blocks_path(storage_root, corpus_id)),
+            document.request.definition,
+        ),
     )
-    _validate_corpus_candidate(corpus)
     return corpus

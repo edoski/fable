@@ -29,7 +29,7 @@ from fable.config import (
     TrainRequest,
     TransformerDefinition,
 )
-from fable.corpus import Corpus, FinalizedAnchor
+from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
 from fable.evaluation import ResolvedEvaluation, write_sealed_report
 from fable.min_block_fee import ClassificationLossState, TargetState
 from fable.modeling import ArtifactAssociation
@@ -310,38 +310,33 @@ def _association(
 def _corpus(corpus_id: UUID, *, chain_id: int, first_block: int) -> Corpus:
     block_numbers = list(range(first_block, first_block + 15))
     timestamps = [1_000_000 + offset * offset + offset for offset in range(15)]
-    return Corpus(
-        request=CorpusRequest(
-            corpus_id=corpus_id,
-            definition=CorpusDefinition(
-                chain_id=chain_id,
-                first_block=first_block,
-                last_block=first_block + 14,
-            ),
+    request = CorpusRequest(
+        corpus_id=corpus_id,
+        definition=CorpusDefinition(
+            chain_id=chain_id,
+            first_block=first_block,
+            last_block=first_block + 14,
         ),
+    )
+    return Corpus(
+        request=request,
         finalized_anchor=FinalizedAnchor(
             block_number=first_block + 14,
             block_hash="a" * 64,
         ),
-        blocks=pl.DataFrame(
-            {
-                "block_number": block_numbers,
-                "timestamp": timestamps,
-                "chain_id": [chain_id] * 15,
-                "base_fee_per_gas": [100 + offset for offset in range(15)],
-                "gas_used": [50] * 15,
-                "gas_limit": [100] * 15,
-                "tx_count": [10] * 15,
-            },
-            schema={
-                "block_number": pl.Int64,
-                "timestamp": pl.Int64,
-                "chain_id": pl.Int64,
-                "base_fee_per_gas": pl.Int64,
-                "gas_used": pl.Int64,
-                "gas_limit": pl.Int64,
-                "tx_count": pl.Int64,
-            },
+        blocks=BlockFrame(
+            pl.DataFrame(
+                {
+                    "block_number": block_numbers,
+                    "timestamp": timestamps,
+                    "chain_id": [chain_id] * 15,
+                    "base_fee_per_gas": [100 + offset for offset in range(15)],
+                    "gas_used": [50] * 15,
+                    "gas_limit": [100] * 15,
+                    "tx_count": [10] * 15,
+                }
+            ),
+            request.definition,
         ),
     )
 
