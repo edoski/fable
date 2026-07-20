@@ -58,16 +58,15 @@ def _write_config(root: Path) -> dict[tuple[str, int], UUID]:
             start=1,
         )
     }
-    lines = [
-        f"storage_root: {root / 'storage'}",
-        "ethereum_rpc_url: https://ethereum.example",
-        "polygon_rpc_url: https://polygon.example",
-        "avalanche_rpc_url: https://avalanche.example",
-    ]
-    lines.extend(
-        f"{chain}_k{horizon}_artifact_id: {artifact_id}"
-        for (chain, horizon), artifact_id in artifact_ids.items()
-    )
+    lines = [f"storage_root: {root / 'storage'}"]
+    for chain in ("ethereum", "polygon", "avalanche"):
+        lines.extend(
+            [f"{chain}:", f"  rpc_url: https://{chain}.example"]
+            + [
+                f"  k{horizon}_artifact_id: {artifact_ids[(chain, horizon)]}"
+                for horizon in (2, 3, 4, 5)
+            ]
+        )
     (root / "SERVING.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return artifact_ids
 
@@ -81,8 +80,8 @@ def _experiment(*, context_blocks: int = 3, horizon_blocks: int = 2) -> Experime
         ),
         validation_window=OriginWindow(
             role="validation",
-            first_parent_block=8,
-            last_parent_block=10,
+            first_parent_block=10,
+            last_parent_block=12,
         ),
         context_blocks=context_blocks,
         horizon_blocks=horizon_blocks,
@@ -311,9 +310,9 @@ async def test_serves_one_selected_artifact_context_and_closes_clients(
     artifact_ids = _write_config(tmp_path)
     monkeypatch.chdir(tmp_path)
     _install_web3(monkeypatch)
-    artifact_id = artifact_ids[("ethereum", 2)]
+    artifact_id = artifact_ids[("avalanche", 5)]
     model = _FakeModel()
-    association = _association(artifact_id)
+    association = _association(artifact_id, horizon_blocks=5)
     transformed = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
     load_calls: list[tuple[Path, UUID]] = []
     transform_calls: list[tuple[Any, tuple[str, ...], object]] = []
@@ -364,7 +363,7 @@ async def test_serves_one_selected_artifact_context_and_closes_clients(
             [(serving._ExtraDataToPOAMiddleware, 0)],
         ]
 
-        status, body = await _post(app, {"chain": "ethereum", "K": 2})
+        status, body = await _post(app, {"chain": "avalanche", "K": 5})
 
         assert status == 200
         assert body == {
@@ -374,15 +373,15 @@ async def test_serves_one_selected_artifact_context_and_closes_clients(
         }
         assert config_loads == 1
         assert load_calls == [(tmp_path / "storage", artifact_id)]
-        ethereum = _FakeWeb3.instances[0]
-        assert ethereum.eth.chain_id_calls == 1
-        assert ethereum.eth.block_calls == ["latest", 10, 11]
+        avalanche = _FakeWeb3.instances[2]
+        assert avalanche.eth.chain_id_calls == 1
+        assert avalanche.eth.block_calls == ["latest", 10, 11]
         assert len(transform_calls) == 1
         blocks, ordered_features, feature_state = transform_calls[0]
         assert blocks.to_polars().to_dict(as_series=False) == {
             "block_number": [10, 11, 12],
             "timestamp": [1010, 1011, 1012],
-            "chain_id": [1, 1, 1],
+            "chain_id": [43114, 43114, 43114],
             "base_fee_per_gas": [30, 31, 32],
             "gas_used": [50, 50, 50],
             "gas_limit": [100, 100, 100],

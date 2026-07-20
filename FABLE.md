@@ -1054,26 +1054,10 @@ The generated script requests one node/task, writes `%j.out` under `log_root`, e
 
 The serving factory is `fable.serving:create_app`; its display title is `FABLE Inference API`. It reads cwd-local `SERVING.yaml` once during application lifespan and uses its values literally.
 
-Exact strict serving fields:
-
-| # | Field | Rule |
-| ---: | --- | --- |
-| 1 | `storage_root` | absolute path |
-| 2 | `ethereum_rpc_url` | nonempty string |
-| 3 | `polygon_rpc_url` | nonempty string |
-| 4 | `avalanche_rpc_url` | nonempty string |
-| 5 | `ethereum_k2_artifact_id` | UUIDv4 |
-| 6 | `ethereum_k3_artifact_id` | UUIDv4 |
-| 7 | `ethereum_k4_artifact_id` | UUIDv4 |
-| 8 | `ethereum_k5_artifact_id` | UUIDv4 |
-| 9 | `polygon_k2_artifact_id` | UUIDv4 |
-| 10 | `polygon_k3_artifact_id` | UUIDv4 |
-| 11 | `polygon_k4_artifact_id` | UUIDv4 |
-| 12 | `polygon_k5_artifact_id` | UUIDv4 |
-| 13 | `avalanche_k2_artifact_id` | UUIDv4 |
-| 14 | `avalanche_k3_artifact_id` | UUIDv4 |
-| 15 | `avalanche_k4_artifact_id` | UUIDv4 |
-| 16 | `avalanche_k5_artifact_id` | UUIDv4 |
+The strict serving root contains an absolute `storage_root` and exactly three records:
+`ethereum`, `polygon`, and `avalanche`. Each chain record contains a nonempty `rpc_url` and
+exactly four UUIDv4 fields: `k2_artifact_id`, `k3_artifact_id`, `k4_artifact_id`, and
+`k5_artifact_id`. All fields are required; extra fields are rejected at both levels.
 
 Serving expects Ethereum chain ID `1`, Polygon `137`, and Avalanche C-Chain `43114`; the Polygon and Avalanche clients install the PoA extra-data middleware.
 

@@ -53,6 +53,29 @@ _NonEmptyString = _Annotated[str, _Field(min_length=1)]
 _NonNegativeInt = _Annotated[int, _Field(strict=True, ge=0)]
 
 
+class _ChainConfig(_BaseModel):
+    model_config = _ConfigDict(
+        extra="forbid",
+        frozen=True,
+        revalidate_instances="always",
+        strict=True,
+    )
+
+    rpc_url: _NonEmptyString
+    k2_artifact_id: _UUID4
+    k3_artifact_id: _UUID4
+    k4_artifact_id: _UUID4
+    k5_artifact_id: _UUID4
+
+    def artifact_id(self, horizon: _Horizon) -> _UUID:
+        return (
+            self.k2_artifact_id,
+            self.k3_artifact_id,
+            self.k4_artifact_id,
+            self.k5_artifact_id,
+        )[horizon - 2]
+
+
 class _ServingConfig(_BaseModel):
     model_config = _ConfigDict(
         extra="forbid",
@@ -62,21 +85,9 @@ class _ServingConfig(_BaseModel):
     )
 
     storage_root: _Path
-    ethereum_rpc_url: _NonEmptyString
-    polygon_rpc_url: _NonEmptyString
-    avalanche_rpc_url: _NonEmptyString
-    ethereum_k2_artifact_id: _UUID4
-    ethereum_k3_artifact_id: _UUID4
-    ethereum_k4_artifact_id: _UUID4
-    ethereum_k5_artifact_id: _UUID4
-    polygon_k2_artifact_id: _UUID4
-    polygon_k3_artifact_id: _UUID4
-    polygon_k4_artifact_id: _UUID4
-    polygon_k5_artifact_id: _UUID4
-    avalanche_k2_artifact_id: _UUID4
-    avalanche_k3_artifact_id: _UUID4
-    avalanche_k4_artifact_id: _UUID4
-    avalanche_k5_artifact_id: _UUID4
+    ethereum: _ChainConfig
+    polygon: _ChainConfig
+    avalanche: _ChainConfig
 
     @_model_validator(mode="after")
     def validate_storage_root(self) -> _Self:
@@ -116,9 +127,9 @@ def _load_serving_config() -> _ServingConfig:
 @_asynccontextmanager
 async def _lifespan(app: _FastAPI) -> _AsyncIterator[None]:
     config = _load_serving_config()
-    ethereum = _AsyncWeb3(_AsyncHTTPProvider(config.ethereum_rpc_url))
-    polygon = _AsyncWeb3(_AsyncHTTPProvider(config.polygon_rpc_url))
-    avalanche = _AsyncWeb3(_AsyncHTTPProvider(config.avalanche_rpc_url))
+    ethereum = _AsyncWeb3(_AsyncHTTPProvider(config.ethereum.rpc_url))
+    polygon = _AsyncWeb3(_AsyncHTTPProvider(config.polygon.rpc_url))
+    avalanche = _AsyncWeb3(_AsyncHTTPProvider(config.avalanche.rpc_url))
     polygon.middleware_onion.inject(_ExtraDataToPOAMiddleware, layer=0)
     avalanche.middleware_onion.inject(_ExtraDataToPOAMiddleware, layer=0)
     app.state._serving = _ServingState(
@@ -142,33 +153,11 @@ def _serving_cell(
 ) -> tuple[_AsyncWeb3, int, _UUID]:
     match chain:
         case "ethereum":
-            client = state.ethereum
-            chain_id = 1
-            artifact_ids = (
-                state.config.ethereum_k2_artifact_id,
-                state.config.ethereum_k3_artifact_id,
-                state.config.ethereum_k4_artifact_id,
-                state.config.ethereum_k5_artifact_id,
-            )
+            return state.ethereum, 1, state.config.ethereum.artifact_id(horizon)
         case "polygon":
-            client = state.polygon
-            chain_id = 137
-            artifact_ids = (
-                state.config.polygon_k2_artifact_id,
-                state.config.polygon_k3_artifact_id,
-                state.config.polygon_k4_artifact_id,
-                state.config.polygon_k5_artifact_id,
-            )
+            return state.polygon, 137, state.config.polygon.artifact_id(horizon)
         case "avalanche":
-            client = state.avalanche
-            chain_id = 43114
-            artifact_ids = (
-                state.config.avalanche_k2_artifact_id,
-                state.config.avalanche_k3_artifact_id,
-                state.config.avalanche_k4_artifact_id,
-                state.config.avalanche_k5_artifact_id,
-            )
-    return client, chain_id, artifact_ids[horizon - 2]
+            return state.avalanche, 43114, state.config.avalanche.artifact_id(horizon)
 
 
 def _quantity(value: object) -> int:
