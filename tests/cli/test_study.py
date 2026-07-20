@@ -197,16 +197,6 @@ class _InputBuffer:
         return self._payload
 
 
-class _Environment:
-    def __init__(self, root: Path, events: list[str]) -> None:
-        self._root = root
-        self._events = events
-
-    def __getitem__(self, key: str) -> str:
-        self._events.append(f"environment:{key}")
-        return str(self._root)
-
-
 @pytest.mark.parametrize("owner_fails", [False, True])
 def test_remote_candidate_forwards_input(
     owner_fails: bool,
@@ -240,11 +230,7 @@ def test_remote_candidate_forwards_input(
         "sys",
         SimpleNamespace(stdin=SimpleNamespace(buffer=_InputBuffer(payload, events))),
     )
-    monkeypatch.setattr(
-        remote,
-        "os",
-        SimpleNamespace(environ=_Environment(STORAGE_ROOT, events)),
-    )
+    monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
     monkeypatch.setattr(remote, "run_candidate", fake_run_candidate)
 
     result = CliRunner().invoke(app, ["remote", "candidate"])
@@ -255,7 +241,6 @@ def test_remote_candidate_forwards_input(
     assert result.output == ""
     assert events == [
         "stdin",
-        "environment:STORAGE_ROOT",
         "run_candidate",
     ]
     assert calls == [(STORAGE_ROOT, REQUEST, METHOD, FIT_DEPLOYMENT)]
@@ -286,11 +271,7 @@ def test_study_finalize_publishes_after_owned_validation(
         events.append("publish_study")
         calls.append((root, active_study_id))
 
-    monkeypatch.setattr(
-        study,
-        "os",
-        SimpleNamespace(environ=_Environment(storage_root, events)),
-    )
+    monkeypatch.setenv("STORAGE_ROOT", str(storage_root))
     monkeypatch.setattr(study, "publish_study", fake_publish_study)
 
     result = CliRunner().invoke(app, ["study", "finalize", str(study_id)])
@@ -298,10 +279,9 @@ def test_study_finalize_publishes_after_owned_validation(
     assert result.exit_code == (1 if error else 0)
     assert result.output == ""
     if error is None:
-        assert events == ["environment:STORAGE_ROOT", "publish_study"]
+        assert events == ["publish_study"]
         assert calls == [(storage_root, study_id)]
     else:
         assert isinstance(result.exception, ValueError)
         assert str(result.exception) == error
-        expected_events = [] if study_id.version != 4 else ["environment:STORAGE_ROOT"]
-        assert events == expected_events
+        assert events == []

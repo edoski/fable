@@ -11,7 +11,6 @@ from dataclasses import dataclass as _dataclass
 from pathlib import Path as _Path
 from typing import Annotated as _Annotated
 from typing import Literal as _Literal
-from typing import Self as _Self
 from typing import SupportsInt as _SupportsInt
 from typing import cast as _cast
 from uuid import UUID as _UUID
@@ -33,9 +32,6 @@ from pydantic import (
 from pydantic import (
     Field as _Field,
 )
-from pydantic import (
-    model_validator as _model_validator,
-)
 from web3 import AsyncHTTPProvider as _AsyncHTTPProvider
 from web3 import AsyncWeb3 as _AsyncWeb3
 from web3.middleware import ExtraDataToPOAMiddleware as _ExtraDataToPOAMiddleware
@@ -43,6 +39,7 @@ from web3.middleware import ExtraDataToPOAMiddleware as _ExtraDataToPOAMiddlewar
 from .config import CorpusDefinition as _CorpusDefinition
 from .config import SelectedStudySource as _SelectedStudySource
 from .corpus import BlockFrame as _BlockFrame
+from .environment import resolve_storage_root as _resolve_storage_root
 from .min_block_fee import decode_action as _decode_action
 from .modeling import load_artifact as _load_artifact
 from .temporal.features import transform_feature_rows as _transform_feature_rows
@@ -84,16 +81,9 @@ class _ServingConfig(_BaseModel):
         strict=True,
     )
 
-    storage_root: _Path
     ethereum: _ChainConfig
     polygon: _ChainConfig
     avalanche: _ChainConfig
-
-    @_model_validator(mode="after")
-    def validate_storage_root(self) -> _Self:
-        if not self.storage_root.is_absolute():
-            raise ValueError("storage_root must be absolute")
-        return self
 
 
 class _InferenceRequest(_BaseModel):
@@ -113,6 +103,7 @@ class _InferenceResponse(_BaseModel):
 
 @_dataclass(frozen=True, slots=True)
 class _ServingState:
+    storage_root: _Path
     config: _ServingConfig
     ethereum: _AsyncWeb3
     polygon: _AsyncWeb3
@@ -126,6 +117,7 @@ def _load_serving_config() -> _ServingConfig:
 
 @_asynccontextmanager
 async def _lifespan(app: _FastAPI) -> _AsyncIterator[None]:
+    storage_root = _resolve_storage_root()
     config = _load_serving_config()
     ethereum = _AsyncWeb3(_AsyncHTTPProvider(config.ethereum.rpc_url))
     polygon = _AsyncWeb3(_AsyncHTTPProvider(config.polygon.rpc_url))
@@ -133,6 +125,7 @@ async def _lifespan(app: _FastAPI) -> _AsyncIterator[None]:
     polygon.middleware_onion.inject(_ExtraDataToPOAMiddleware, layer=0)
     avalanche.middleware_onion.inject(_ExtraDataToPOAMiddleware, layer=0)
     app.state._serving = _ServingState(
+        storage_root=storage_root,
         config=config,
         ethereum=ethereum,
         polygon=polygon,
@@ -181,7 +174,7 @@ def _live_row(block: object, chain_id: int) -> dict[str, int]:
 
 async def _infer(request: _InferenceRequest, state: _ServingState) -> _InferenceResponse:
     client, expected_chain_id, artifact_id = _serving_cell(state, request.chain, request.K)
-    association, model = _load_artifact(state.config.storage_root, artifact_id)
+    association, model = _load_artifact(state.storage_root, artifact_id)
     source = association.request.source
     if not isinstance(source, _SelectedStudySource):
         raise ValueError("serving artifacts must contain a SelectedStudySource")

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import sys
-from pathlib import Path
 
 import typer
 
 from ...config import BaselineSource, TrainRequest
 from ...corpus import load_corpus
+from ...environment import resolve_storage_root
 from ...evaluation import EvaluationDeployment, evaluate
 from ...execution import (
     _CandidateProcessInput,
@@ -29,7 +28,7 @@ def workflow_command() -> None:
         sys.stdin.buffer.read(),
         strict=True,
     )
-    storage_root = Path(os.environ["STORAGE_ROOT"])
+    storage_root = resolve_storage_root()
     request = envelope.request
     profile = envelope.deployment
 
@@ -53,7 +52,7 @@ def candidate_command() -> None:
         sys.stdin.buffer.read(),
         strict=True,
     )
-    storage_root = Path(os.environ["STORAGE_ROOT"])
+    storage_root = resolve_storage_root()
     run_candidate(
         storage_root,
         candidate.request,

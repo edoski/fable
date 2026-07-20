@@ -58,7 +58,7 @@ def _write_config(root: Path) -> dict[tuple[str, int], UUID]:
             start=1,
         )
     }
-    lines = [f"storage_root: {root / 'storage'}"]
+    lines: list[str] = []
     for chain in ("ethereum", "polygon", "avalanche"):
         lines.extend(
             [f"{chain}:", f"  rpc_url: https://{chain}.example"]
@@ -307,6 +307,7 @@ async def test_serves_one_selected_artifact_context_and_closes_clients(
 ) -> None:
     artifact_ids = _write_config(tmp_path)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
     _install_web3(monkeypatch)
     artifact_id = artifact_ids[("avalanche", 5)]
     model = _FakeModel()
@@ -401,6 +402,7 @@ async def test_request_is_strict_and_forbids_extra_fields(
 ) -> None:
     _write_config(tmp_path)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
     _install_web3(monkeypatch)
     monkeypatch.setattr(
         serving,
@@ -436,6 +438,7 @@ async def test_rejects_artifact_and_chain_mismatches(
 ) -> None:
     artifact_ids = _write_config(tmp_path)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
     _install_web3(monkeypatch)
     artifact_id = artifact_ids[("ethereum", 2)]
     association = _association(
@@ -474,6 +477,7 @@ async def test_artifact_load_failure_propagates(
 ) -> None:
     _write_config(tmp_path)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
     _install_web3(monkeypatch)
 
     failure = RuntimeError("checkpoint owner failed")

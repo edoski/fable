@@ -141,15 +141,6 @@ class _InputBuffer:
         return self._payload
 
 
-class _Environment:
-    def __init__(self, events: list[str]) -> None:
-        self._events = events
-
-    def __getitem__(self, key: str) -> str:
-        self._events.append(f"environment:{key}")
-        return str(STORAGE_ROOT)
-
-
 @pytest.mark.parametrize(
     ("kind", "expected_experiment"),
     [
@@ -205,11 +196,7 @@ def test_remote_workflow_executes_one_envelope(
         "sys",
         SimpleNamespace(stdin=SimpleNamespace(buffer=_InputBuffer(payload, events))),
     )
-    monkeypatch.setattr(
-        remote,
-        "os",
-        SimpleNamespace(environ=_Environment(events)),
-    )
+    monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
     monkeypatch.setattr(remote, "load_corpus", fake_load_corpus)
     monkeypatch.setattr(remote, "prepare_fit_history", fake_prepare_fit_history)
     monkeypatch.setattr(remote, "train", fake_train)
@@ -222,7 +209,6 @@ def test_remote_workflow_executes_one_envelope(
     if expected_experiment is None:
         assert events == [
             "stdin",
-            "environment:STORAGE_ROOT",
             "evaluate",
         ]
         assert calls == [
@@ -261,7 +247,6 @@ def test_remote_workflow_executes_one_envelope(
     )
     assert events == [
         "stdin",
-        "environment:STORAGE_ROOT",
         "load_corpus",
         "prepare_fit_history",
         "train",
@@ -287,11 +272,7 @@ def test_remote_workflow_propagates_owner_failure_silently(
         "sys",
         SimpleNamespace(stdin=SimpleNamespace(buffer=_InputBuffer(payload, []))),
     )
-    monkeypatch.setattr(
-        remote,
-        "os",
-        SimpleNamespace(environ={"STORAGE_ROOT": str(STORAGE_ROOT)}),
-    )
+    monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
     monkeypatch.setattr(remote, "evaluate", fail_evaluate)
 
     result = CliRunner().invoke(app, ["remote", "workflow"])

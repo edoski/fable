@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -10,6 +9,7 @@ from uuid import UUID
 import typer
 
 from ...config import METHOD_ADAPTER, TuneRequest
+from ...environment import resolve_storage_root
 from ...execution import _submit_candidate
 from ...study import publish_study
 
@@ -33,8 +33,4 @@ def finalize_command(
     if study_id.version != 4:
         raise ValueError("STUDY_ID must be a UUIDv4")
 
-    storage_root = Path(os.environ["STORAGE_ROOT"])
-    if not storage_root.is_absolute():
-        raise ValueError("STORAGE_ROOT must be an absolute path")
-
-    publish_study(storage_root, study_id)
+    publish_study(resolve_storage_root(), study_id)

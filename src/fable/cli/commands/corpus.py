@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 from typing import Annotated
 
@@ -11,6 +10,7 @@ import typer
 
 from ...acquisition import acquire_corpus
 from ...config import CorpusRequest
+from ...environment import resolve_storage_root
 
 app = typer.Typer(
     help="Create one native Corpus.",
@@ -26,9 +26,7 @@ def acquire(
     poa: Annotated[bool, typer.Option("--poa/--no-poa")],
 ) -> None:
     request = CorpusRequest.model_validate_json(request_path.read_bytes())
-    storage_root = Path(os.environ["STORAGE_ROOT"])
-    if not storage_root.is_absolute():
-        raise ValueError("STORAGE_ROOT must be an absolute path")
+    storage_root = resolve_storage_root()
     asyncio.run(
         acquire_corpus(
             request,
