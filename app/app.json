@@ -8,6 +8,9 @@
     },
     "android": {
       "package": "dev.edoski.fable.demo"
-    }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

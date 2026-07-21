@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   title: { color: colors.ink, fontSize: 30, fontWeight: "800" },
   subtitle: { color: colors.muted, fontSize: 16, marginTop: -16 },
   section: { gap: 11 },
-  sectionTitle: { color: colors.ink, fontSize: 17, fontWeight: "750" },
+  sectionTitle: { color: colors.ink, fontSize: 17, fontWeight: "700" },
   networkRow: { flexDirection: "row", gap: 9 },
   networkCard: {
     alignItems: "center",
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   primaryButtonDisabled: { opacity: 0.65 },
-  primaryButtonText: { color: colors.surface, fontSize: 16, fontWeight: "750" },
+  primaryButtonText: { color: colors.surface, fontSize: 16, fontWeight: "700" },
   recommendation: {
     alignItems: "center",
     backgroundColor: colors.surface,
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     width: 56,
   },
   recommendationCopy: { flex: 1, gap: 4 },
-  eyebrow: { color: colors.muted, fontSize: 13, fontWeight: "650" },
+  eyebrow: { color: colors.muted, fontSize: 13, fontWeight: "600" },
   recommendationText: { color: colors.ink, fontSize: 28, fontWeight: "800" },
   timeline: { flexDirection: "row", gap: 5 },
   timelineCell: {
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
   timelineCellActive: { backgroundColor: colors.tealSoft, borderColor: colors.teal },
   timelineLabel: { color: colors.ink, fontSize: 11, fontWeight: "700" },
   timelineBlock: { color: colors.muted, fontSize: 8 },
-  timelineOffset: { color: colors.ink, fontSize: 13, fontWeight: "750" },
+  timelineOffset: { color: colors.ink, fontSize: 13, fontWeight: "700" },
   timelineOffsetActive: { color: colors.teal },
   targetLabel: { color: "transparent", fontSize: 7, fontWeight: "800" },
   targetLabelActive: { color: colors.teal },
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 14,
   },
-  detailsTitle: { color: colors.ink, fontSize: 15, fontWeight: "750", paddingVertical: 14 },
+  detailsTitle: { color: colors.ink, fontSize: 15, fontWeight: "700", paddingVertical: 14 },
   detailRow: {
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -428,5 +428,5 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   detailLabel: { color: colors.muted, fontSize: 13 },
-  detailValue: { color: colors.ink, fontSize: 13, fontWeight: "650" },
+  detailValue: { color: colors.ink, fontSize: 13, fontWeight: "600" },
 });

@@ -1,104 +1,188 @@
-import { useState, useEffect, useCallback } from "react";
-import { NavigationContainer } from "@react-navigation/native";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Ionicons } from "@expo/vector-icons";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { StatusBar, StyleSheet, View } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
-import { InferenceScreen, type InferenceState } from "./src/screens/InferenceScreen";
+import { AppHeader, type ServiceStatus } from "./src/components/AppHeader";
+import { BottomTabs, type AppTab } from "./src/components/BottomTabs";
+import { createRun, loadRuns, saveRuns, type InferenceRun } from "./src/history";
+import {
+  checkHealth,
+  requestInference,
+  type Chain,
+  type Horizon,
+} from "./src/inference";
 import { AnalyticsScreen } from "./src/screens/AnalyticsScreen";
-import { requestInference, type Chain, type Horizon } from "./src/inference";
-import { loadRuns, saveRuns, createRun, type InferenceRun } from "./src/history";
+import { InferenceScreen, type InferenceState } from "./src/screens/InferenceScreen";
+import { colors } from "./src/theme";
 
-const Tab = createBottomTabNavigator();
+const HEALTH_INTERVAL_MS = 30_000;
+const MAX_RUNS = 100;
 
 export default function App() {
+  const [tab, setTab] = useState<AppTab>("inference");
   const [chain, setChain] = useState<Chain>("ethereum");
   const [horizon, setHorizon] = useState<Horizon>(5);
-  const [state, setState] = useState<InferenceState>({ status: "idle" });
-  
+  const [inference, setInference] = useState<InferenceState>({ status: "idle" });
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus>("checking");
   const [runs, setRuns] = useState<InferenceRun[]>([]);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const inferenceController = useRef<AbortController | null>(null);
+  const runsRef = useRef<InferenceRun[]>([]);
+
+  const publishRuns = useCallback((nextRuns: InferenceRun[]) => {
+    runsRef.current = nextRuns;
+    setRuns(nextRuns);
+  }, []);
 
   useEffect(() => {
+    let active = true;
     loadRuns()
-      .then(setRuns)
-      .catch((err) => setStorageError(err instanceof Error ? err.message : String(err)));
-  }, []);
-
-  const handleRun = useCallback(async () => {
-    setState({ status: "loading" });
-    try {
-      const result = await requestInference({ chain, K: horizon });
-      setState({ status: "success", result });
-      
-      const newRun = createRun({ chain, K: horizon }, result);
-      setRuns((prev) => {
-        const next = [newRun, ...prev];
-        saveRuns(next).catch((err) => setStorageError(err instanceof Error ? err.message : String(err)));
-        return next;
+      .then(async (storedRuns) => {
+        if (active) {
+          const currentRuns = runsRef.current;
+          const currentIds = new Set(currentRuns.map((run) => run.id));
+          const mergedRuns = [
+            ...currentRuns,
+            ...storedRuns.filter((run) => !currentIds.has(run.id)),
+          ].slice(0, MAX_RUNS);
+          publishRuns(mergedRuns);
+          if (currentRuns.length > 0) {
+            await saveRuns(mergedRuns);
+          }
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setStorageError(error instanceof Error ? error.message : String(error));
+        }
       });
-    } catch (err) {
-      setState({ status: "error", message: err instanceof Error ? err.message : String(err) });
+    return () => {
+      active = false;
+    };
+  }, [publishRuns]);
+
+  useEffect(() => {
+    let active = true;
+    let controller: AbortController | null = null;
+
+    async function probe(checking: boolean) {
+      controller?.abort();
+      controller = new AbortController();
+      if (checking) {
+        setServiceStatus("checking");
+      }
+      try {
+        await checkHealth(chain, controller.signal);
+        if (active) {
+          setServiceStatus("live");
+        }
+      } catch (error) {
+        if (active && !(error instanceof Error && error.name === "AbortError")) {
+          setServiceStatus("offline");
+        }
+      }
     }
-  }, [chain, horizon]);
 
-  const handleRunAgain = useCallback(() => {
-    setState({ status: "idle" });
+    void probe(true);
+    const interval = setInterval(() => void probe(false), HEALTH_INTERVAL_MS);
+    return () => {
+      active = false;
+      controller?.abort();
+      clearInterval(interval);
+    };
+  }, [chain]);
+
+  useEffect(
+    () => () => {
+      inferenceController.current?.abort();
+    },
+    [],
+  );
+
+  const selectChain = useCallback((nextChain: Chain) => {
+    inferenceController.current?.abort();
+    setChain(nextChain);
+    setInference({ status: "idle" });
   }, []);
 
-  const handleChainChange = useCallback((c: Chain) => {
-    setChain(c);
-    setState({ status: "idle" });
+  const selectHorizon = useCallback((nextHorizon: Horizon) => {
+    inferenceController.current?.abort();
+    setHorizon(nextHorizon);
+    setInference({ status: "idle" });
   }, []);
 
-  const handleHorizonChange = useCallback((h: Horizon) => {
-    setHorizon(h);
-    setState({ status: "idle" });
-  }, []);
+  const runInference = useCallback(async () => {
+    inferenceController.current?.abort();
+    const controller = new AbortController();
+    inferenceController.current = controller;
+    setInference({ status: "loading" });
+    const request = { chain, K: horizon } as const;
+    try {
+      const result = await requestInference(request, controller.signal);
+      const run = createRun(request, result);
+      const nextRuns = [run, ...runsRef.current].slice(0, MAX_RUNS);
+      setInference({ status: "success", result });
+      publishRuns(nextRuns);
+      setStorageError(null);
+      try {
+        await saveRuns(nextRuns);
+      } catch (error) {
+        setStorageError(error instanceof Error ? error.message : String(error));
+      }
+    } catch (error) {
+      if (!(error instanceof Error && error.name === "AbortError")) {
+        setInference({
+          status: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } finally {
+      if (inferenceController.current === controller) {
+        inferenceController.current = null;
+      }
+    }
+  }, [chain, horizon, publishRuns]);
 
   return (
-    <NavigationContainer>
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          headerShown: false,
-          tabBarIcon: ({ focused, color, size }) => {
-            let iconName: keyof typeof Ionicons.glyphMap = "play";
-            if (route.name === "Inference") {
-              iconName = focused ? "play" : "play-outline";
-            } else if (route.name === "Analytics") {
-              iconName = focused ? "bar-chart" : "bar-chart-outline";
-            }
-            return <Ionicons name={iconName} size={size} color={color} />;
-          },
-          tabBarActiveTintColor: "#1f6feb",
-          tabBarInactiveTintColor: "gray",
-        })}
-      >
-        <Tab.Screen name="Inference">
-          {() => (
+    <SafeAreaProvider>
+      <StatusBar backgroundColor={colors.navy} barStyle="light-content" />
+      <View style={styles.app}>
+        <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
+          <AppHeader status={serviceStatus} />
+        </SafeAreaView>
+        <View style={styles.content}>
+          {tab === "inference" ? (
             <InferenceScreen
               chain={chain}
               horizon={horizon}
-              state={state}
-              onChainChange={handleChainChange}
-              onHorizonChange={handleHorizonChange}
-              onRun={handleRun}
-              onRunAgain={handleRunAgain}
+              onChainChange={selectChain}
+              onHorizonChange={selectHorizon}
+              onRun={() => void runInference()}
+              onRunAgain={() => setInference({ status: "idle" })}
+              state={inference}
             />
-          )}
-        </Tab.Screen>
-        <Tab.Screen name="Analytics">
-          {() => (
+          ) : (
             <AnalyticsScreen
-              runs={runs}
               chain={chain}
               horizon={horizon}
+              onChainChange={selectChain}
+              onHorizonChange={selectHorizon}
+              runs={runs}
               storageError={storageError}
-              onChainChange={handleChainChange}
-              onHorizonChange={handleHorizonChange}
             />
           )}
-        </Tab.Screen>
-      </Tab.Navigator>
-    </NavigationContainer>
+        </View>
+        <SafeAreaView edges={["bottom"]} style={styles.tabSafeArea}>
+          <BottomTabs onSelect={setTab} selected={tab} />
+        </SafeAreaView>
+      </View>
+    </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  app: { backgroundColor: colors.background, flex: 1 },
+  headerSafeArea: { backgroundColor: colors.navy },
+  content: { flex: 1 },
+  tabSafeArea: { backgroundColor: colors.surface },
+});

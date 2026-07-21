@@ -281,9 +281,9 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   chartHeader: { alignItems: "center", flexDirection: "row", gap: 10, justifyContent: "space-between" },
-  chartTitle: { color: colors.ink, flex: 1, fontSize: 15, fontWeight: "750" },
+  chartTitle: { color: colors.ink, flex: 1, fontSize: 15, fontWeight: "700" },
   graphPicker: { maxWidth: 142, minWidth: 118 },
-  sectionTitle: { color: colors.ink, fontSize: 20, fontWeight: "750", marginBottom: -8 },
+  sectionTitle: { color: colors.ink, fontSize: 20, fontWeight: "700", marginBottom: -8 },
   runList: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -317,7 +317,14 @@ const styles = StyleSheet.create({
   emptyRunsTitle: { color: colors.ink, fontSize: 15, fontWeight: "700" },
   emptyRunsText: { color: colors.muted, fontSize: 12, textAlign: "center" },
   dialogRoot: { flex: 1, justifyContent: "flex-end" },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7, 20, 38, 0.58)" },
+  backdrop: {
+    backgroundColor: "rgba(7, 20, 38, 0.58)",
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
   dialog: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
@@ -347,7 +354,7 @@ const styles = StyleSheet.create({
   },
   selectionItem: { flex: 1, gap: 3 },
   detailStrong: { color: colors.ink, fontSize: 14, fontWeight: "700" },
-  groupTitle: { color: colors.blue, fontSize: 15, fontWeight: "750" },
+  groupTitle: { color: colors.blue, fontSize: 15, fontWeight: "700" },
   detailsCard: {
     borderColor: colors.border,
     borderRadius: radii.medium,
@@ -364,7 +371,7 @@ const styles = StyleSheet.create({
   },
   detailRowLast: { borderBottomWidth: 0 },
   detailLabel: { color: colors.muted, fontSize: 12 },
-  detailValue: { color: colors.ink, fontSize: 12, fontWeight: "650" },
+  detailValue: { color: colors.ink, fontSize: 12, fontWeight: "600" },
   disclaimer: { color: colors.muted, fontSize: 11, lineHeight: 16 },
   closeButton: {
     alignItems: "center",
@@ -373,5 +380,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 50,
   },
-  closeButtonText: { color: colors.surface, fontSize: 15, fontWeight: "750" },
+  closeButtonText: { color: colors.surface, fontSize: 15, fontWeight: "700" },
 });

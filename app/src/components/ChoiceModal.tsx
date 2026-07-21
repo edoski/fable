@@ -78,9 +78,16 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 14,
   },
-  pickerLabel: { color: colors.ink, flex: 1, fontSize: 14, fontWeight: "650" },
+  pickerLabel: { color: colors.ink, flex: 1, fontSize: 14, fontWeight: "600" },
   modalRoot: { flex: 1, justifyContent: "flex-end" },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7, 20, 38, 0.48)" },
+  backdrop: {
+    backgroundColor: "rgba(7, 20, 38, 0.48)",
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
   sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
@@ -98,7 +105,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     width: 48,
   },
-  title: { color: colors.ink, fontSize: 20, fontWeight: "750", marginBottom: 4 },
+  title: { color: colors.ink, fontSize: 20, fontWeight: "700", marginBottom: 4 },
   option: {
     alignItems: "center",
     borderColor: colors.border,
