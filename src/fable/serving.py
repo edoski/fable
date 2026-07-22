@@ -50,6 +50,7 @@ _Chain = _Literal["ethereum", "polygon", "avalanche"]
 _Horizon = _Literal[2, 3, 4, 5]
 _NonEmptyString = _Annotated[str, _Field(min_length=1)]
 _NonNegativeInt = _Annotated[int, _Field(strict=True, ge=0)]
+_PositiveInt = _Annotated[int, _Field(strict=True, gt=0)]
 _PositiveFiniteFloat = _Annotated[float, _Field(strict=True, gt=0.0, allow_inf_nan=False)]
 
 
@@ -110,6 +111,24 @@ class _HealthResponse(_BaseModel):
 
     chain: _Chain
     head_block: _NonNegativeInt
+
+
+class _SnapshotResponse(_BaseModel):
+    model_config = _ConfigDict(extra="forbid", strict=True)
+
+    chain: _Chain
+    head_block: _NonNegativeInt
+    current_base_fee_per_gas: _PositiveInt
+
+
+class _OutcomeResponse(_BaseModel):
+    model_config = _ConfigDict(extra="forbid", strict=True)
+
+    chain: _Chain
+    immediate_block: _NonNegativeInt
+    selected_block: _NonNegativeInt
+    immediate_base_fee_per_gas: _PositiveInt
+    selected_base_fee_per_gas: _PositiveInt
 
 
 @_dataclass(frozen=True, slots=True)
@@ -200,6 +219,51 @@ async def _health(chain: _Chain, state: _ServingState) -> _HealthResponse:
     return _HealthResponse(chain=chain, head_block=latest["block_number"])
 
 
+async def _snapshot(chain: _Chain, state: _ServingState) -> _SnapshotResponse:
+    client, expected_chain_id, _ = _chain_cell(state, chain)
+    chain_id = await client.eth.chain_id
+    if chain_id != expected_chain_id:
+        raise ValueError("provider chain ID mismatch")
+    latest = _live_row(await client.eth.get_block("latest", False), chain_id)
+    return _SnapshotResponse(
+        chain=chain,
+        head_block=latest["block_number"],
+        current_base_fee_per_gas=latest["base_fee_per_gas"],
+    )
+
+
+async def _outcome(
+    chain: _Chain,
+    immediate_block: int,
+    selected_block: int,
+    state: _ServingState,
+) -> _OutcomeResponse:
+    if immediate_block < 0 or selected_block < immediate_block:
+        raise ValueError("outcome block range is invalid")
+    client, expected_chain_id, _ = _chain_cell(state, chain)
+    chain_id = await client.eth.chain_id
+    if chain_id != expected_chain_id:
+        raise ValueError("provider chain ID mismatch")
+    block_numbers = tuple(dict.fromkeys((immediate_block, selected_block)))
+    async with client.batch_requests() as batch:
+        for block_number in block_numbers:
+            batch.add(client.eth.get_block(block_number, False))
+        blocks = await batch.async_execute()
+    if len(blocks) != len(block_numbers):
+        raise ValueError("provider returned the wrong outcome block count")
+    fees = {
+        block_number: _live_row(block, chain_id)["base_fee_per_gas"]
+        for block_number, block in zip(block_numbers, blocks, strict=True)
+    }
+    return _OutcomeResponse(
+        chain=chain,
+        immediate_block=immediate_block,
+        selected_block=selected_block,
+        immediate_base_fee_per_gas=fees[immediate_block],
+        selected_base_fee_per_gas=fees[selected_block],
+    )
+
+
 async def _infer(request: _InferenceRequest, state: _ServingState) -> _InferenceResponse:
     client, expected_chain_id, artifact_id = _serving_cell(state, request.chain, request.K)
     association, model = _load_artifact(state.storage_root, artifact_id)
@@ -284,6 +348,24 @@ def create_app() -> _FastAPI:
     @app.get("/health", response_model=_HealthResponse)
     async def health(chain: _Chain, request: _Request) -> _HealthResponse:
         return await _health(chain, _cast(_ServingState, request.app.state._serving))
+
+    @app.get("/snapshot", response_model=_SnapshotResponse)
+    async def snapshot(chain: _Chain, request: _Request) -> _SnapshotResponse:
+        return await _snapshot(chain, _cast(_ServingState, request.app.state._serving))
+
+    @app.get("/outcome", response_model=_OutcomeResponse)
+    async def outcome(
+        chain: _Chain,
+        immediate_block: int,
+        selected_block: int,
+        request: _Request,
+    ) -> _OutcomeResponse:
+        return await _outcome(
+            chain,
+            immediate_block,
+            selected_block,
+            _cast(_ServingState, request.app.state._serving),
+        )
 
     return app
 

@@ -474,6 +474,70 @@ async def test_health_reports_selected_live_chain_without_loading_an_artifact(
 
 
 @_run_async
+async def test_snapshot_reports_current_chain_state_without_loading_an_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_config(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
+    _install_web3(monkeypatch)
+    monkeypatch.setattr(
+        serving,
+        "_load_artifact",
+        lambda *_: pytest.fail("snapshot must not load artifacts"),
+    )
+    app = serving.create_app()
+
+    async with app.router.lifespan_context(app):
+        status, body = await _get(app, "/snapshot", b"chain=ethereum")
+
+    assert status == 200
+    assert body == {
+        "chain": "ethereum",
+        "head_block": 12,
+        "current_base_fee_per_gas": 32,
+    }
+    assert _FakeWeb3.instances[0].eth.chain_id_calls == 1
+    assert _FakeWeb3.instances[0].eth.block_calls == ["latest"]
+
+
+@_run_async
+async def test_outcome_reports_realized_base_fee_savings_inputs_without_loading_an_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_config(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
+    _install_web3(monkeypatch)
+    monkeypatch.setattr(
+        serving,
+        "_load_artifact",
+        lambda *_: pytest.fail("outcome must not load artifacts"),
+    )
+    app = serving.create_app()
+
+    async with app.router.lifespan_context(app):
+        status, body = await _get(
+            app,
+            "/outcome",
+            b"chain=avalanche&immediate_block=13&selected_block=15",
+        )
+
+    assert status == 200
+    assert body == {
+        "chain": "avalanche",
+        "immediate_block": 13,
+        "selected_block": 15,
+        "immediate_base_fee_per_gas": 33,
+        "selected_base_fee_per_gas": 35,
+    }
+    assert _FakeWeb3.instances[2].eth.chain_id_calls == 1
+    assert _FakeWeb3.instances[2].eth.block_calls == [13, 15]
+
+
+@_run_async
 async def test_request_is_strict_and_forbids_extra_fields(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

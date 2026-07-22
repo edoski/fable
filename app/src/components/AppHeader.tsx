@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 
+import { CHAIN_DETAILS, type Chain } from "../inference";
 import { colors } from "../theme";
 
 export type ServiceStatus = "checking" | "live" | "offline";
@@ -10,18 +11,24 @@ const STATUS = {
   offline: { color: colors.red, label: "OFFLINE" },
 } as const;
 
-export function AppHeader({ status }: { status: ServiceStatus }) {
+export function AppHeader({
+  chain,
+  status,
+}: {
+  chain: Chain;
+  status: ServiceStatus;
+}) {
   const presentation = STATUS[status];
+  const network = CHAIN_DETAILS[chain];
   return (
     <View style={styles.header}>
       <Text style={styles.brand}>FABLE</Text>
       <View
-        accessibilityLabel={`Inference service ${presentation.label.toLowerCase()}`}
+        accessibilityLabel={`${network.label} inference service ${presentation.label.toLowerCase()}`}
         accessibilityRole="text"
         style={styles.status}
       >
         <View style={[styles.dot, { backgroundColor: presentation.color }]} />
-        <Text style={styles.statusText}>{presentation.label}</Text>
       </View>
     </View>
   );
@@ -36,8 +43,12 @@ const styles = StyleSheet.create({
     minHeight: 58,
     paddingHorizontal: 20,
   },
-  brand: { color: colors.surface, fontSize: 21, fontWeight: "800", letterSpacing: 1.5 },
-  status: { alignItems: "center", flexDirection: "row", gap: 8 },
+  brand: {
+    color: colors.surface,
+    fontSize: 21,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+  },
+  status: { alignItems: "center", justifyContent: "center" },
   dot: { borderRadius: 6, height: 10, width: 10 },
-  statusText: { color: colors.surface, fontSize: 13, fontWeight: "800", letterSpacing: 0.7 },
 });

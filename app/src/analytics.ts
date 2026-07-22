@@ -2,38 +2,87 @@ import type { Horizon } from "./inference";
 import type { InferenceRun } from "./history";
 
 export const GRAPH_OPTIONS = [
-  { value: "offsets", label: "Action offsets" },
-  { value: "fees", label: "Predicted fees" },
-  { value: "runs", label: "Runs over time" },
+  { value: "waits", label: "Recommended wait distribution" },
+  { value: "savings", label: "Average savings by wait" },
+  { value: "fees", label: "Base fee (lower is better)" },
 ] as const;
 
 export type GraphKind = (typeof GRAPH_OPTIONS)[number]["value"];
 
-export type ChartDatum = {
+type ChartDatum = {
   label: string;
-  value: number;
-  displayValue: string;
+  value: number | null;
 };
 
-export type RunSummary = {
-  totalRuns: number;
-  immediatePercent: number | null;
+type FeeComparisonDatum = {
+  label: string;
+  immediate: number;
+  fable: number;
+};
+
+type RunSummary = {
   averageOffset: number | null;
+  averageSavingsPercent: number | null;
+  winPercent: number | null;
 };
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 export function summarizeRuns(runs: readonly InferenceRun[]): RunSummary {
   if (runs.length === 0) {
-    return { totalRuns: 0, immediatePercent: null, averageOffset: null };
+    return {
+      averageOffset: null,
+      averageSavingsPercent: null,
+      winPercent: null,
+    };
   }
-  const immediate = runs.filter((run) => run.selected_action_k === 0).length;
   const offsets = runs.reduce((total, run) => total + run.selected_action_k, 0);
+  const savings = runs.flatMap((run) => {
+    const value = realizedSavingsPercent(run);
+    return value === null ? [] : [value];
+  });
+  const waitedSavings = runs.flatMap((run) => {
+    const value = realizedSavingsPercent(run);
+    return run.selected_action_k === 0 || value === null ? [] : [value];
+  });
   return {
-    totalRuns: runs.length,
-    immediatePercent: (immediate / runs.length) * 100,
     averageOffset: offsets / runs.length,
+    averageSavingsPercent:
+      savings.length === 0
+        ? null
+        : savings.reduce((total, value) => total + value, 0) / savings.length,
+    winPercent:
+      waitedSavings.length === 0
+        ? null
+        : (waitedSavings.filter((value) => value > 0).length /
+            waitedSavings.length) *
+          100,
   };
+}
+
+export function realizedSavingsPercent(run: InferenceRun): number | null {
+  if (run.outcome === undefined) {
+    return null;
+  }
+  return (
+    ((run.outcome.immediate_base_fee_per_gas -
+      run.outcome.selected_base_fee_per_gas) /
+      run.outcome.immediate_base_fee_per_gas) *
+    100
+  );
 }
 
 function shortTime(value: string): string {
@@ -64,34 +113,76 @@ export function formatGwei(value: number): string {
   return `${gwei.toFixed(2)} Gwei`;
 }
 
-export function chartData(
-  kind: GraphKind,
+export function recommendedWaitData(
   runs: readonly InferenceRun[],
   horizon: Horizon,
 ): ChartDatum[] {
-  if (kind === "offsets") {
-    return Array.from({ length: horizon }, (_, offset) => {
-      const count = runs.filter((run) => run.selected_action_k === offset).length;
-      return { label: String(offset), value: count, displayValue: String(count) };
-    });
+  if (runs.length === 0) {
+    return [];
   }
-  if (kind === "fees") {
-    return runs
-      .slice(0, 7)
-      .reverse()
-      .map((run) => {
-        const gwei = run.predicted_minimum_base_fee_per_gas / 1_000_000_000;
-        return { label: shortTime(run.ran_at), value: gwei, displayValue: gwei.toFixed(1) };
-      });
-  }
+  return Array.from({ length: horizon }, (_, offset) => ({
+    label: String(offset),
+    value: runs.filter((run) => run.selected_action_k === offset).length,
+  }));
+}
 
-  const byDate = new Map<string, number>();
-  for (const run of runs) {
-    const label = shortDate(run.ran_at);
-    byDate.set(label, (byDate.get(label) ?? 0) + 1);
+export function savingsByWaitData(
+  runs: readonly InferenceRun[],
+  horizon: Horizon,
+): ChartDatum[] {
+  if (runs.length === 0) {
+    return [];
   }
-  return [...byDate.entries()]
-    .slice(0, 7)
-    .reverse()
-    .map(([label, count]) => ({ label, value: count, displayValue: String(count) }));
+  return Array.from({ length: horizon }, (_, offset) => {
+    const savings = runs.flatMap((run) => {
+      if (run.selected_action_k !== offset) {
+        return [];
+      }
+      const value = realizedSavingsPercent(run);
+      return value === null ? [] : [value];
+    });
+    return {
+      label: String(offset),
+      value:
+        savings.length === 0
+          ? null
+          : savings.reduce((total, value) => total + value, 0) /
+            savings.length,
+    };
+  });
+}
+
+export function feeComparisonData(
+  runs: readonly InferenceRun[],
+  horizon: Horizon,
+): FeeComparisonDatum[] {
+  return Array.from({ length: horizon }, (_, offset) => {
+    const outcomes = runs.flatMap((run) =>
+      run.selected_action_k === offset && run.outcome !== undefined
+        ? [run.outcome]
+        : [],
+    );
+    if (outcomes.length === 0) {
+      return [];
+    }
+    return [
+      {
+        label: String(offset),
+        immediate:
+          outcomes.reduce(
+            (total, outcome) => total + outcome.immediate_base_fee_per_gas,
+            0,
+          ) /
+          outcomes.length /
+          1_000_000_000,
+        fable:
+          outcomes.reduce(
+            (total, outcome) => total + outcome.selected_base_fee_per_gas,
+            0,
+          ) /
+          outcomes.length /
+          1_000_000_000,
+      },
+    ];
+  }).flat();
 }

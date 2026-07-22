@@ -29,13 +29,17 @@ export function BottomTabs({
             onPress={() => onSelect(tab.value)}
             style={styles.tab}
           >
-            <View style={[styles.indicator, active && styles.indicatorActive]} />
+            <View
+              style={[styles.indicator, active && styles.indicatorActive]}
+            />
             <Ionicons
               color={active ? colors.blue : colors.muted}
               name={tab.icon}
               size={23}
             />
-            <Text style={[styles.label, active && styles.labelActive]}>{tab.label}</Text>
+            <Text style={[styles.label, active && styles.labelActive]}>
+              {tab.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -49,10 +53,15 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
-    minHeight: 68,
+    minHeight: 52,
   },
   tab: { alignItems: "center", flex: 1, gap: 3, justifyContent: "center" },
-  indicator: { backgroundColor: "transparent", borderRadius: 2, height: 3, width: 76 },
+  indicator: {
+    backgroundColor: "transparent",
+    borderRadius: 2,
+    height: 3,
+    width: 76,
+  },
   indicatorActive: { backgroundColor: colors.blue },
   label: { color: colors.muted, fontSize: 12, fontWeight: "600" },
   labelActive: { color: colors.blue },

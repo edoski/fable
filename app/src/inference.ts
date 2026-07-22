@@ -10,10 +10,7 @@ export type Chain = (typeof CHAINS)[number];
 export const HORIZONS = [2, 3, 4, 5] as const;
 export type Horizon = (typeof HORIZONS)[number];
 
-export const CHAIN_DETAILS: Record<
-  Chain,
-  { label: string }
-> = {
+export const CHAIN_DETAILS: Record<Chain, { label: string }> = {
   ethereum: { label: "Ethereum" },
   polygon: { label: "Polygon" },
   avalanche: { label: "Avalanche" },
@@ -31,9 +28,18 @@ export type InferenceResponse = {
   predicted_minimum_base_fee_per_gas: number;
 };
 
-export type HealthResponse = {
+export type ChainSnapshot = {
   chain: Chain;
   head_block: number;
+  current_base_fee_per_gas: number;
+};
+
+export type InferenceOutcome = {
+  chain: Chain;
+  immediate_block: number;
+  selected_block: number;
+  immediate_base_fee_per_gas: number;
+  selected_base_fee_per_gas: number;
 };
 
 function backendUrl(): string {
@@ -93,7 +99,10 @@ export async function requestInference(
     }),
   );
   const headBlock = requireInteger(value.head_block, "head_block");
-  const selectedAction = requireInteger(value.selected_action_k, "selected_action_k");
+  const selectedAction = requireInteger(
+    value.selected_action_k,
+    "selected_action_k",
+  );
   const targetBlock = requireInteger(value.target_block, "target_block");
   const predictedMinimum = value.predicted_minimum_base_fee_per_gas;
   if (
@@ -101,9 +110,14 @@ export async function requestInference(
     !Number.isFinite(predictedMinimum) ||
     predictedMinimum <= 0
   ) {
-    throw new Error("predicted_minimum_base_fee_per_gas must be positive and finite");
+    throw new Error(
+      "predicted_minimum_base_fee_per_gas must be positive and finite",
+    );
   }
-  if (selectedAction >= request.K || targetBlock !== headBlock + 1 + selectedAction) {
+  if (
+    selectedAction >= request.K ||
+    targetBlock !== headBlock + 1 + selectedAction
+  ) {
     throw new Error("Server returned invalid inference geometry");
   }
   return {
@@ -114,12 +128,78 @@ export async function requestInference(
   };
 }
 
-export async function checkHealth(chain: Chain, signal?: AbortSignal): Promise<HealthResponse> {
+export async function requestChainSnapshot(
+  chain: Chain,
+  signal?: AbortSignal,
+): Promise<ChainSnapshot> {
   const value = requireObject(
-    await requestJson(`/health?chain=${encodeURIComponent(chain)}`, { method: "GET", signal }),
+    await requestJson(`/snapshot?chain=${encodeURIComponent(chain)}`, {
+      method: "GET",
+      signal,
+    }),
   );
   if (value.chain !== chain) {
-    throw new Error("Health response chain does not match the request");
+    throw new Error("Snapshot chain does not match the request");
   }
-  return { chain, head_block: requireInteger(value.head_block, "head_block") };
+  const currentBaseFee = requireInteger(
+    value.current_base_fee_per_gas,
+    "current_base_fee_per_gas",
+  );
+  if (currentBaseFee === 0) {
+    throw new Error("current_base_fee_per_gas must be positive");
+  }
+  return {
+    chain,
+    head_block: requireInteger(value.head_block, "head_block"),
+    current_base_fee_per_gas: currentBaseFee,
+  };
+}
+
+export async function requestInferenceOutcome(
+  chain: Chain,
+  immediateBlock: number,
+  selectedBlock: number,
+  signal?: AbortSignal,
+): Promise<InferenceOutcome> {
+  const query = new URLSearchParams({
+    chain,
+    immediate_block: String(immediateBlock),
+    selected_block: String(selectedBlock),
+  });
+  const value = requireObject(
+    await requestJson(`/outcome?${query}`, { method: "GET", signal }),
+  );
+  const returnedImmediateBlock = requireInteger(
+    value.immediate_block,
+    "immediate_block",
+  );
+  const returnedSelectedBlock = requireInteger(
+    value.selected_block,
+    "selected_block",
+  );
+  const immediateBaseFee = requireInteger(
+    value.immediate_base_fee_per_gas,
+    "immediate_base_fee_per_gas",
+  );
+  const selectedBaseFee = requireInteger(
+    value.selected_base_fee_per_gas,
+    "selected_base_fee_per_gas",
+  );
+  if (
+    value.chain !== chain ||
+    returnedImmediateBlock !== immediateBlock ||
+    returnedSelectedBlock !== selectedBlock
+  ) {
+    throw new Error("Outcome does not match the requested run");
+  }
+  if (immediateBaseFee === 0 || selectedBaseFee === 0) {
+    throw new Error("Outcome base fees must be positive");
+  }
+  return {
+    chain,
+    immediate_block: returnedImmediateBlock,
+    selected_block: returnedSelectedBlock,
+    immediate_base_fee_per_gas: immediateBaseFee,
+    selected_base_fee_per_gas: selectedBaseFee,
+  };
 }
