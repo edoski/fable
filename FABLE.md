@@ -876,6 +876,12 @@ load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus
 
 Each `experiments/{feature_ablation,c_study,hpo,k_study}/<UUID>.json` contains the matching UUIDv4 `experiment_id` and a nonempty ordered `entries` tuple. Each entry has a nonempty `cell` label and at least one canonical `artifact_id`, `study_id`, or `evaluation_id` UUIDv4. Manifests group canonical references only; they do not duplicate metrics, results, or scientific definitions.
 
+`experiments/feature_ablation.py prepare STORAGE_ROOT` authors the frozen 45-cell request
+bundle under `experiments/feature_ablation/.<experiment_id>/`. The ordinary Study CLI submits
+its cells. After all canonical Studies exist, `select STORAGE_ROOT EXPERIMENT_ID` reports the
+validation-selected feature set per chain, publishes the canonical manifest, and removes the
+temporary bundle. The script does not submit jobs or persist copied metrics.
+
 #### Study object
 
 `studies/<study_id>.json` is a strict `Study`:
