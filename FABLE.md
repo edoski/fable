@@ -1026,8 +1026,10 @@ app/assets/models/
 ```
 
 The manifest stores ExecuTorch version, chain IDs, each chain's shared context and ordered feature
-state, and each model's artifact UUID and target state. Metro binds the twelve stable `.pte` paths
-statically; there is no download path, alternate runtime, or remote inference fallback.
+state, and each model's artifact UUID and target state. The app trusts this exporter-owned,
+build-time bundle and performs direct typed catalog lookups; it does not parse or revalidate the
+manifest at runtime. Metro binds the twelve stable `.pte` paths statically; there is no download
+path, alternate runtime, or remote inference fallback.
 
 The private Expo app manifest is fixed at:
 
@@ -1057,10 +1059,10 @@ direct RPC when the selected chain reaches the target block. Analytics derives e
 chart, count, and row from the same `(chain,K)` subset.
 
 The code and non-asset tests implement this contract. A real `MOBILE.yaml` and generated bundle do
-not yet exist because the twelve final artifact UUIDs do not exist. Runtime acceptance remains
-deferred: export and host-check all twelve cells, bundle them, then execute all twelve in an Expo
-custom native iOS simulator build while measuring parity, latency, and memory. A physical iPhone
-is not an acceptance gate.
+not yet exist because the twelve final artifact UUIDs do not exist. Simulator parity remains
+unrun. After all twelve real files exist, execute every `(chain,K)` cell in a custom native iOS
+simulator build and compare its outputs, selected action, and decoded fee with the Python oracle
+within the exporter's existing tolerances.
 
 ### Execution runtime
 

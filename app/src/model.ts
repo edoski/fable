@@ -9,18 +9,8 @@ import type {
 } from "react-native-executorch";
 import { ExpoResourceFetcher } from "react-native-executorch-expo-resource-fetcher";
 
-import {
-  FEATURE_NAMES,
-  type ChainManifest,
-  type FeatureManifest,
-  type FeatureName,
-} from "./features";
-import {
-  CHAINS,
-  HORIZONS,
-  type Chain,
-  type Horizon,
-} from "./domain";
+import type { ChainManifest } from "./features";
+import type { Chain, Horizon } from "./domain";
 
 export type TargetManifest = {
   mean: number;
@@ -96,71 +86,38 @@ type LoadedModel = {
   module: NativeModule;
 };
 
-const EXECUTORCH_VERSION = "1.2.0";
-const CHAIN_IDS: Record<Chain, number> = {
-  ethereum: 1,
-  polygon: 137,
-  avalanche: 43_114,
-};
-const UUID_V4 =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const BUNDLED_MODEL_SOURCES = {
-  ethereum: {
-    2: () => require("../assets/models/ethereum-k2.pte"),
-    3: () => require("../assets/models/ethereum-k3.pte"),
-    4: () => require("../assets/models/ethereum-k4.pte"),
-    5: () => require("../assets/models/ethereum-k5.pte"),
-  },
-  polygon: {
-    2: () => require("../assets/models/polygon-k2.pte"),
-    3: () => require("../assets/models/polygon-k3.pte"),
-    4: () => require("../assets/models/polygon-k4.pte"),
-    5: () => require("../assets/models/polygon-k5.pte"),
-  },
-  avalanche: {
-    2: () => require("../assets/models/avalanche-k2.pte"),
-    3: () => require("../assets/models/avalanche-k3.pte"),
-    4: () => require("../assets/models/avalanche-k4.pte"),
-    5: () => require("../assets/models/avalanche-k5.pte"),
-  },
-} as const;
-
 initExecutorch({ resourceFetcher: ExpoResourceFetcher });
 
 export function createDefaultModelCatalog(): ModelCatalog {
   return createModelCatalog(
-    require("../assets/models/manifest.json"),
+    require("../assets/models/manifest.json") as MobileManifest,
     {
       ethereum: {
-        2: BUNDLED_MODEL_SOURCES.ethereum[2](),
-        3: BUNDLED_MODEL_SOURCES.ethereum[3](),
-        4: BUNDLED_MODEL_SOURCES.ethereum[4](),
-        5: BUNDLED_MODEL_SOURCES.ethereum[5](),
+        2: require("../assets/models/ethereum-k2.pte"),
+        3: require("../assets/models/ethereum-k3.pte"),
+        4: require("../assets/models/ethereum-k4.pte"),
+        5: require("../assets/models/ethereum-k5.pte"),
       },
       polygon: {
-        2: BUNDLED_MODEL_SOURCES.polygon[2](),
-        3: BUNDLED_MODEL_SOURCES.polygon[3](),
-        4: BUNDLED_MODEL_SOURCES.polygon[4](),
-        5: BUNDLED_MODEL_SOURCES.polygon[5](),
+        2: require("../assets/models/polygon-k2.pte"),
+        3: require("../assets/models/polygon-k3.pte"),
+        4: require("../assets/models/polygon-k4.pte"),
+        5: require("../assets/models/polygon-k5.pte"),
       },
       avalanche: {
-        2: BUNDLED_MODEL_SOURCES.avalanche[2](),
-        3: BUNDLED_MODEL_SOURCES.avalanche[3](),
-        4: BUNDLED_MODEL_SOURCES.avalanche[4](),
-        5: BUNDLED_MODEL_SOURCES.avalanche[5](),
+        2: require("../assets/models/avalanche-k2.pte"),
+        3: require("../assets/models/avalanche-k3.pte"),
+        4: require("../assets/models/avalanche-k4.pte"),
+        5: require("../assets/models/avalanche-k5.pte"),
       },
     },
   );
 }
 
 export function createModelCatalog(
-  manifestValue: unknown,
-  resourceValue: unknown,
+  manifest: MobileManifest,
+  resources: ModelResourceTable,
 ): ModelCatalog {
-  const manifest = parseManifest(manifestValue);
-  const resources = parseResources(resourceValue);
-
   return {
     chainManifest(chain) {
       return manifest.chains[chain];
@@ -291,233 +248,6 @@ export function createModelRuntime(
   }
 
   return { prepare, execute, dispose };
-}
-
-function parseManifest(value: unknown): MobileManifest {
-  const manifest = exactObject(
-    value,
-    ["executorch_version", "chains"],
-    "manifest",
-  );
-  if (manifest.executorch_version !== EXECUTORCH_VERSION) {
-    throw new Error(
-      `manifest executorch_version must be ${EXECUTORCH_VERSION}`,
-    );
-  }
-  const chains = exactObject(
-    manifest.chains,
-    CHAINS,
-    "manifest chains",
-  );
-  const parsed = {} as Record<Chain, MobileChainManifest>;
-  const artifactIds = new Set<string>();
-  for (const chain of CHAINS) {
-    parsed[chain] = parseChainManifest(
-      chains[chain],
-      chain,
-      artifactIds,
-    );
-  }
-  return {
-    executorch_version: EXECUTORCH_VERSION,
-    chains: parsed,
-  };
-}
-
-function parseChainManifest(
-  value: unknown,
-  chain: Chain,
-  artifactIds: Set<string>,
-): MobileChainManifest {
-  const manifest = exactObject(
-    value,
-    ["chain_id", "context_blocks", "features", "models"],
-    `${chain} manifest`,
-  );
-  if (manifest.chain_id !== CHAIN_IDS[chain]) {
-    throw new Error(
-      `${chain} chain_id must be ${CHAIN_IDS[chain]}`,
-    );
-  }
-  const contextBlocks = positiveSafeInteger(
-    manifest.context_blocks,
-    `${chain} context_blocks`,
-  );
-  if (!Array.isArray(manifest.features) || manifest.features.length === 0) {
-    throw new Error(`${chain} features must be a nonempty array`);
-  }
-  const features = manifest.features.map((feature, index) =>
-    parseFeature(feature, chain, index),
-  );
-  const names = new Set(features.map((feature) => feature.name));
-  if (names.size !== features.length) {
-    throw new Error(`${chain} feature names must be unique`);
-  }
-  if (
-    chain !== "ethereum" &&
-    names.has("log_exact_forming_base_fee_per_gas")
-  ) {
-    throw new Error(
-      "log_exact_forming_base_fee_per_gas is Ethereum-only",
-    );
-  }
-
-  const modelValues = exactObject(
-    manifest.models,
-    HORIZONS.map(String),
-    `${chain} models`,
-  );
-  const models = {} as Record<Horizon, ModelManifest>;
-  for (const K of HORIZONS) {
-    models[K] = parseModel(
-      modelValues[String(K)],
-      `${chain} K=${K}`,
-      artifactIds,
-    );
-  }
-  return {
-    chain_id: CHAIN_IDS[chain],
-    context_blocks: contextBlocks,
-    features,
-    models,
-  };
-}
-
-function parseFeature(
-  value: unknown,
-  chain: Chain,
-  index: number,
-): FeatureManifest {
-  const feature = exactObject(
-    value,
-    ["name", "mean", "standard_deviation"],
-    `${chain} feature ${index}`,
-  );
-  if (
-    typeof feature.name !== "string" ||
-    !FEATURE_NAMES.includes(feature.name as FeatureName)
-  ) {
-    throw new Error(`${chain} feature ${index} has an unsupported name`);
-  }
-  return {
-    name: feature.name as FeatureName,
-    mean: finiteNumber(feature.mean, `${chain} feature ${index} mean`),
-    standard_deviation: positiveFiniteNumber(
-      feature.standard_deviation,
-      `${chain} feature ${index} standard_deviation`,
-    ),
-  };
-}
-
-function parseModel(
-  value: unknown,
-  label: string,
-  artifactIds: Set<string>,
-): ModelManifest {
-  const model = exactObject(value, ["artifact_id", "target"], label);
-  if (
-    typeof model.artifact_id !== "string" ||
-    !UUID_V4.test(model.artifact_id)
-  ) {
-    throw new Error(`${label} artifact_id must be a UUIDv4`);
-  }
-  if (artifactIds.has(model.artifact_id)) {
-    throw new Error("manifest artifact IDs must be unique");
-  }
-  artifactIds.add(model.artifact_id);
-  const target = exactObject(
-    model.target,
-    ["mean", "standard_deviation"],
-    `${label} target`,
-  );
-  return {
-    artifact_id: model.artifact_id,
-    target: {
-      mean: finiteNumber(target.mean, `${label} target mean`),
-      standard_deviation: positiveFiniteNumber(
-        target.standard_deviation,
-        `${label} target standard_deviation`,
-      ),
-    },
-  };
-}
-
-function parseResources(value: unknown): ModelResourceTable {
-  const resources = exactObject(
-    value,
-    CHAINS,
-    "model resources",
-  );
-  const parsed = {} as ModelResourceTable;
-  for (const chain of CHAINS) {
-    const cells = exactObject(
-      resources[chain],
-      HORIZONS.map(String),
-      `${chain} model resources`,
-    );
-    parsed[chain] = {} as Record<Horizon, number>;
-    for (const K of HORIZONS) {
-      const source = cells[String(K)];
-      if (
-        typeof source !== "number" ||
-        !Number.isSafeInteger(source) ||
-        source < 0
-      ) {
-        throw new Error(
-          `${chain} K=${K} resource must be a static Metro asset`,
-        );
-      }
-      parsed[chain][K] = source;
-    }
-  }
-  return parsed;
-}
-
-function exactObject(
-  value: unknown,
-  keys: readonly string[],
-  label: string,
-): Record<string, unknown> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value)
-  ) {
-    throw new Error(`${label} must be an object`);
-  }
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
-  if (
-    actual.length !== expected.length ||
-    actual.some((key, index) => key !== expected[index])
-  ) {
-    throw new Error(`${label} must contain exactly ${expected.join(", ")}`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function positiveSafeInteger(value: unknown, label: string): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isSafeInteger(value) ||
-    value <= 0
-  ) {
-    throw new Error(`${label} must be a positive safe integer`);
-  }
-  return value;
-}
-
-function finiteNumber(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${label} must be finite`);
-  }
-  return value;
-}
-
-function positiveFiniteNumber(value: unknown, label: string): number {
-  const number = finiteNumber(value, label);
-  if (number <= 0) throw new Error(`${label} must be positive`);
-  return number;
 }
 
 function selectionKey(selection: ModelSelection): string {

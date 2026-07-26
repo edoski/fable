@@ -45,8 +45,7 @@ The twelve final artifact UUIDs do not exist, so the repository intentionally ha
 - no placeholder `.pte` files.
 
 Therefore no claim is made that a final FABLE model exports, bundles, loads, or matches the Python
-model in the simulator. Host parity, bundle size, simulator latency, and simulator memory are also
-unknown.
+model in the simulator.
 
 ## Developer flow
 
@@ -55,19 +54,10 @@ The current asset-generation and custom native build instructions are owned by t
 
 ## Deferred real-artifact acceptance
 
-Acceptance requires:
-
-1. Create the real complete `MOBILE.yaml` from the twelve final artifact UUIDs.
-2. Export the bundle and record host parity plus individual and total model sizes.
-3. Bundle the generated assets into an Expo custom native iOS simulator build.
-4. Execute all twelve `(chain,K)` cells against fixed parity inputs.
-5. Compare both outputs, selected action, and decoded fee with the Python oracle.
-6. Record cold load, warm inference latency, and peak memory for every cell.
-7. Exercise live RPC synchronization, a saved run, pending outcome resolution, and chain-plus-`K`
-   analytics.
-
-The iOS simulator is the required thesis-demo target. Physical-iPhone and Android checks are
-optional portability work, not acceptance gates.
+Once the exporter produces the trusted manifest and all twelve real `.pte` files, execute every
+`(chain,K)` cell against fixed parity inputs in a custom native iOS simulator build. Compare both
+outputs, the selected action, and decoded fee with the Python oracle within the exporter's existing
+tolerances.
 
 Until these steps pass, documentation must describe the mobile path as implemented code under an
 unfulfilled generated-asset prerequisite, not as a validated runtime result.

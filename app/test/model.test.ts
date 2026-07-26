@@ -123,7 +123,7 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 describe("model catalog", () => {
-  it("validates the exporter contract and selects the exact cell", () => {
+  it("selects the exact typed manifest and resource cell", () => {
     const { manifest, resources } = bundle();
     const catalog = createModelCatalog(manifest, resources);
 
@@ -135,45 +135,6 @@ describe("model catalog", () => {
       chainManifest: manifest.chains.polygon,
       modelManifest: manifest.chains.polygon.models[4],
     });
-  });
-
-  it("rejects incomplete, mismatched, or non-static catalogs", () => {
-    const invalidManifests: unknown[] = [];
-
-    const extra = structuredClone(bundle().manifest) as MobileManifest & {
-      extra?: boolean;
-    };
-    extra.extra = true;
-    invalidManifests.push(extra);
-
-    const missingModel = structuredClone(bundle().manifest);
-    delete (missingModel.chains.ethereum.models as Partial<
-      typeof missingModel.chains.ethereum.models
-    >)[5];
-    invalidManifests.push(missingModel);
-
-    const wrongChain = structuredClone(bundle().manifest);
-    wrongChain.chains.polygon.chain_id = 1;
-    invalidManifests.push(wrongChain);
-
-    const invalidTarget = structuredClone(bundle().manifest);
-    invalidTarget.chains.avalanche.models[3].target.standard_deviation = 0;
-    invalidManifests.push(invalidTarget);
-
-    for (const manifest of invalidManifests) {
-      expect(() =>
-        createModelCatalog(manifest, bundle().resources),
-      ).toThrow();
-    }
-
-    const resources = structuredClone(bundle().resources) as Record<
-      string,
-      Record<number, number | string>
-    >;
-    resources.ethereum[2] = "https://models.invalid/ethereum-k2.pte";
-    expect(() =>
-      createModelCatalog(bundle().manifest, resources),
-    ).toThrow("static Metro asset");
   });
 });
 
