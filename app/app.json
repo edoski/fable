@@ -10,7 +10,18 @@
       "package": "dev.edoski.fable.demo"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "17.0"
+          },
+          "android": {
+            "minSdkVersion": 33
+          }
+        }
+      ]
     ]
   }
 }
