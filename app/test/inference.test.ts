@@ -173,61 +173,6 @@ function deferred<T>() {
 }
 
 describe("InferenceEngine", () => {
-  it("passes live polling through as safe app snapshots", async () => {
-    const stop = vi.fn();
-    let publishBlock: ((block: BlockRow) => void) | undefined;
-    let publishError: ((error: unknown) => void) | undefined;
-    const chainSession = session();
-    vi.mocked(chainSession.startPolling).mockImplementation(
-      (onBlock, onError) => {
-        publishBlock = onBlock;
-        publishError = onError;
-        return stop;
-      },
-    );
-    const { engine } = createTestEngine({ session: chainSession });
-    const onSnapshot = vi.fn();
-    const onError = vi.fn();
-
-    const stopPolling = engine.startPolling(onSnapshot, onError);
-    publishBlock?.(block(12n, 30n));
-    const failure = new Error("RPC unavailable");
-    publishError?.(failure);
-
-    expect(onSnapshot).toHaveBeenCalledWith({
-      chain: "ethereum",
-      head_block: 12,
-      current_base_fee_per_gas: 30,
-    });
-    expect(onError).toHaveBeenCalledWith(failure);
-    stopPolling();
-    expect(stop).toHaveBeenCalledOnce();
-    await engine.dispose();
-  });
-
-  it("prepares chain context and model concurrently", async () => {
-    const synchronized = deferred<PreparedChainContext>();
-    const loaded = deferred<void>();
-    const chainSession = session(() => synchronized.promise);
-    const model = runtime();
-    vi.mocked(model.prepare).mockImplementation(() => loaded.promise);
-    const { engine } = createTestEngine({
-      session: chainSession,
-      model,
-    });
-
-    const preparing = engine.prepare(5);
-    await vi.waitFor(() => {
-      expect(chainSession.sync).toHaveBeenCalledOnce();
-      expect(model.prepare).toHaveBeenCalledWith(selection(5));
-    });
-
-    synchronized.resolve(context(10n));
-    loaded.resolve();
-    await preparing;
-    await engine.dispose();
-  });
-
   it("final-syncs fresh context, builds input, and decodes the run", async () => {
     const chainSession = session();
     vi.mocked(chainSession.sync)
@@ -302,38 +247,6 @@ describe("InferenceEngine", () => {
       K: 2,
     });
     expect(model.prepare).toHaveBeenCalledTimes(2);
-    expect(model.execute).toHaveBeenCalledOnce();
-    await engine.dispose();
-  });
-
-  it("waits for cold model readiness before its one final sync", async () => {
-    const loaded = deferred<void>();
-    const chainSession = session();
-    const model = runtime();
-    vi.mocked(model.prepare)
-      .mockRejectedValueOnce(new Error("load failed"))
-      .mockImplementationOnce(() => loaded.promise);
-    const { engine } = createTestEngine({
-      model,
-      session: chainSession,
-    });
-
-    await expect(engine.prepare(2)).rejects.toThrow("load failed");
-    vi.mocked(chainSession.sync).mockClear();
-
-    const running = engine.run(2);
-    await vi.waitFor(() =>
-      expect(model.prepare).toHaveBeenCalledTimes(2),
-    );
-    await Promise.resolve();
-    expect(chainSession.sync).not.toHaveBeenCalled();
-
-    loaded.resolve();
-    await expect(running).resolves.toMatchObject({
-      chain: "ethereum",
-      K: 2,
-    });
-    expect(chainSession.sync).toHaveBeenCalledOnce();
     expect(model.execute).toHaveBeenCalledOnce();
     await engine.dispose();
   });

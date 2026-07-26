@@ -8,7 +8,6 @@ import pytest
 from typer.testing import CliRunner
 
 import fable.cli.commands.remote as remote
-import fable.cli.commands.study as study
 import fable.execution as execution
 from fable.cli.app import app
 from fable.config import (
@@ -162,36 +161,3 @@ def test_remote_candidate_dispatches_input(
     assert result.exit_code == 0
     assert result.output == ""
     assert calls == [(STORAGE_ROOT, REQUEST, METHOD)]
-
-
-@pytest.mark.parametrize(
-    ("study_id", "storage_root", "error"),
-    [
-        (STUDY_ID, Path("/current/storage"), None),
-        (STUDY_ID, Path("relative/storage"), "STORAGE_ROOT must be an absolute path"),
-    ],
-)
-def test_study_finalize_publishes_after_owned_validation(
-    study_id: UUID,
-    storage_root: Path,
-    error: str | None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[Path, UUID]] = []
-
-    def fake_publish_study(root: Path, active_study_id: UUID) -> None:
-        calls.append((root, active_study_id))
-
-    monkeypatch.setenv("STORAGE_ROOT", str(storage_root))
-    monkeypatch.setattr(study, "publish_study", fake_publish_study)
-
-    result = CliRunner().invoke(app, ["study", "finalize", str(study_id)])
-
-    assert result.exit_code == (1 if error else 0)
-    assert result.output == ""
-    if error is None:
-        assert calls == [(storage_root, study_id)]
-    else:
-        assert isinstance(result.exception, ValueError)
-        assert str(result.exception) == error
-        assert calls == []

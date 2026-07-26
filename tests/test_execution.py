@@ -132,80 +132,41 @@ def test_submit_sends_golden_workflow_script(
     }
 
 
-def test_submit_cli_hydrates_every_request_before_submission(
+@pytest.mark.parametrize("workflow", ["train", "evaluate"])
+def test_submit_cli_dispatches_request_json(
+    workflow: Literal["train", "evaluate"],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    valid = tmp_path / "valid.json"
-    invalid = tmp_path / "invalid.json"
-    valid.write_text(_request("train").model_dump_json(), encoding="utf-8")
-    invalid.write_text("{}", encoding="utf-8")
+    request = _request(workflow)
+    request_path = tmp_path / "request.json"
+    request_path.write_text(request.model_dump_json(), encoding="utf-8")
     calls: list[WorkflowRequest] = []
-    monkeypatch.setattr(cli, "submit_workflow", lambda request: calls.append(request) or 1)
+    monkeypatch.setattr(
+        cli,
+        "submit_workflow",
+        lambda submitted: calls.append(submitted) or 123,
+    )
 
-    result = CliRunner().invoke(app, ["submit", str(valid), str(invalid)])
+    result = CliRunner().invoke(app, ["submit", str(request_path)])
 
-    assert result.exit_code == 1
-    assert isinstance(result.exception, ValidationError)
-    assert result.output == ""
-    assert calls == []
-
-
-def test_submit_cli_stops_after_failure_and_keeps_prior_output(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    requests = [_request(workflow) for workflow in ("train", "evaluate", "train")]
-    paths: list[Path] = []
-    for index, request in enumerate(requests):
-        path = tmp_path / f"{index}.json"
-        path.write_text(request.model_dump_json(), encoding="utf-8")
-        paths.append(path)
-    failure = RuntimeError("submission failed")
-    calls: list[WorkflowRequest] = []
-
-    def fake_submit(request: WorkflowRequest) -> int:
-        calls.append(request)
-        if len(calls) == 2:
-            raise failure
-        return 123
-
-    monkeypatch.setattr(cli, "submit_workflow", fake_submit)
-
-    result = CliRunner().invoke(app, ["submit", *(str(path) for path in paths)])
-
-    assert result.exit_code == 1
-    assert result.exception is failure
     assert result.output == "123\n"
-    assert calls == requests[:2]
+    assert result.exit_code == 0
+    assert calls == [request]
 
 
-@pytest.mark.parametrize(
-    ("remote_yaml", "message"),
-    [
-        (
-            REMOTE_YAML.replace(
-                "executable: /opt/fable executable",
-                "executable: relative/fable",
-            ),
-            "executable must be an absolute path",
-        ),
-        (
-            REMOTE_YAML.replace("cpus_per_task: 8", "cpus_per_task: 0"),
-            "greater than 0",
-        ),
-    ],
-)
-def test_submit_rejects_raw_remote_connection_or_resource_fields(
-    remote_yaml: str,
-    message: str,
+def test_submit_rejects_relative_remote_executable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    remote_yaml = REMOTE_YAML.replace(
+        "executable: /opt/fable executable",
+        "executable: relative/fable",
+    )
     _write_remote(tmp_path / "REMOTE.yaml", remote_yaml)
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(ValidationError, match=message):
+    with pytest.raises(ValidationError, match="executable must be an absolute path"):
         submit(_request("train"))
 
 

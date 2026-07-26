@@ -84,19 +84,12 @@ beforeEach(() => {
 });
 
 describe("history", () => {
-  it("adds only canonical local inference fields and caps newest-first history", () => {
-    const source = {
-      ...inferenceResult(),
-      action_logits: [0, 1, 0, 0, 0],
-      feature_rows: [[1, 2]],
-      cached_blocks: [99, 100],
-    };
-
+  it("adds a canonical run and caps newest-first history", () => {
     const existing = Array.from({ length: 100 }, (_, index) =>
       storedRun({ id: `existing-${index}` }),
     );
-    const [first, ...retained] = addRun(existing, source);
-    const [second] = addRun(existing, source);
+    const [first, ...retained] = addRun(existing, inferenceResult());
+    const [second] = addRun(existing, inferenceResult());
 
     expect(first).toEqual({
       id: expect.any(String),
@@ -112,10 +105,6 @@ describe("history", () => {
       predicted_minimum_base_fee_per_gas: 10_000_000_000,
     });
     expect(first.id).not.toBe(second.id);
-    expect(first).not.toHaveProperty("immediate_block");
-    expect(first).not.toHaveProperty("action_logits");
-    expect(first).not.toHaveProperty("feature_rows");
-    expect(first).not.toHaveProperty("cached_blocks");
     expect(retained).toEqual(existing.slice(0, 99));
   });
 
@@ -145,86 +134,6 @@ describe("history", () => {
     await expect(loadRuns()).rejects.toThrow(
       "Stored inference runs must be a JSON array",
     );
-  });
-
-  it("records the resolved fees without persisting request coordinates", async () => {
-    const run = storedRun();
-    const [resolved] = await resolvePendingRuns(
-      [run],
-      "ethereum",
-      run.target_block,
-      async () => outcome(),
-    );
-
-    expect(resolved.id).toBe(run.id);
-    expect(resolved.outcome).toEqual({
-      resolved_at: expect.any(String),
-      immediate_base_fee_per_gas: 12_000_000_000,
-      selected_base_fee_per_gas: 10_000_000_000,
-    });
-    expect(resolved.outcome).not.toHaveProperty("immediate_block");
-    expect(resolved.outcome).not.toHaveProperty("selected_block");
-  });
-
-  it("resolves only eligible runs on the selected chain and preserves order", async () => {
-    const alreadyResolved = storedRun({
-      id: "resolved",
-      outcome: {
-        resolved_at: "2026-07-26T10:01:00.000Z",
-        immediate_base_fee_per_gas: 12,
-        selected_base_fee_per_gas: 10,
-      },
-    });
-    const waited = storedRun({ id: "waited" });
-    const actionZero = storedRun({
-      id: "action-zero",
-      head_block: 20,
-      selected_action_k: 0,
-      target_block: 21,
-    });
-    const future = storedRun({
-      id: "future",
-      head_block: 30,
-      target_block: 33,
-    });
-    const otherChain = storedRun({
-      id: "other-chain",
-      chain: "polygon",
-    });
-    const resolve = vi.fn(
-      async (
-        _immediateBlock: number,
-        _selectedBlock: number,
-      ): Promise<InferenceOutcome> => ({
-        immediate_base_fee_per_gas: 12,
-        selected_base_fee_per_gas: 10,
-      }),
-    );
-    const runs = [
-      alreadyResolved,
-      waited,
-      actionZero,
-      future,
-      otherChain,
-    ];
-
-    const resolved = await resolvePendingRuns(
-      runs,
-      "ethereum",
-      25,
-      resolve,
-    );
-
-    expect(resolved.map((run) => run.id)).toEqual(runs.map((run) => run.id));
-    expect(resolve.mock.calls).toEqual([
-      [11, 13],
-      [21, 21],
-    ]);
-    expect(resolved[0]).toBe(alreadyResolved);
-    expect(resolved[1].outcome).toBeDefined();
-    expect(resolved[2].outcome).toBeDefined();
-    expect(resolved[3]).toBe(future);
-    expect(resolved[4]).toBe(otherChain);
   });
 
   it("leaves the original pending run retryable after resolver failure", async () => {

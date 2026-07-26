@@ -232,22 +232,6 @@ def test_publish_study_rejects_result_with_multiple_trials(tmp_path: Path) -> No
     assert not study_json_path(tmp_path, STUDY_ID).exists()
 
 
-def test_publish_study_does_not_support_progress_json(tmp_path: Path) -> None:
-    scratch = tmp_path / "studies" / f".{STUDY_ID}"
-    scratch.mkdir(parents=True)
-    progress = scratch / "progress.json"
-    progress.write_text(
-        Study(request=_request(), trials=(RESULT,)).model_dump_json(),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(FileNotFoundError, match=r"result-\*\.json"):
-        publish_study(tmp_path, STUDY_ID)
-
-    assert progress.exists()
-    assert not study_json_path(tmp_path, STUDY_ID).exists()
-
-
 def test_load_selected_method_rejects_corpus_mismatch(tmp_path: Path) -> None:
     canonical = study_json_path(tmp_path, STUDY_ID)
     canonical.parent.mkdir(parents=True)

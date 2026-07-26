@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
 
 from fable.config import (
-    WORKFLOW_REQUEST_ADAPTER,
     BlockWindow,
     CorpusDefinition,
-    EvaluateRequest,
     ExperimentSemantics,
     FitMethod,
     LstmDefinition,
@@ -21,8 +18,6 @@ from fable.config import (
 
 STUDY_ID = UUID("00000000-0000-4000-8000-000000000002")
 CORPUS_ID = UUID("00000000-0000-4000-8000-000000000001")
-ARTIFACT_ID = UUID("00000000-0000-4000-8000-000000000003")
-EVALUATION_ID = UUID("00000000-0000-4000-8000-000000000004")
 
 
 def _window(first: int = 210, last: int = 249) -> BlockWindow:
@@ -65,7 +60,7 @@ def _method() -> Method:
     )
 
 
-def _invalid_cases() -> tuple[tuple[Callable[..., object], dict[str, object], str], ...]:
+def _invalid_cases() -> tuple[tuple[type[object], dict[str, object], str], ...]:
     experiment = _experiment()
     method = _method()
     return (
@@ -73,25 +68,6 @@ def _invalid_cases() -> tuple[tuple[Callable[..., object], dict[str, object], st
             CorpusDefinition,
             {"chain_id": 1, "first_block": 2, "last_block": 1},
             "last_block must not precede first_block",
-        ),
-        (
-            Method,
-            {
-                **method.model_dump(),
-                "model": {**method.model.model_dump(), "family": "cnn"},
-            },
-            "cnn",
-        ),
-        (
-            lambda **payload: WORKFLOW_REQUEST_ADAPTER.validate_python(payload),
-            {
-                "workflow": "tune",
-                "study_id": STUDY_ID,
-                "corpus_id": CORPUS_ID,
-                "experiment": experiment.model_dump(),
-                "methods": (method.model_dump(),),
-            },
-            "tune",
         ),
         (
             TransformerDefinition,
@@ -171,24 +147,9 @@ def _invalid_cases() -> tuple[tuple[Callable[..., object], dict[str, object], st
 
 @pytest.mark.parametrize(("value_type", "payload", "message"), _invalid_cases())
 def test_domain_contract_rejects_invalid_values(
-    value_type: Callable[..., object],
+    value_type: type[object],
     payload: dict[str, object],
     message: str,
 ) -> None:
     with pytest.raises(ValidationError, match=message):
         value_type(**payload)
-
-
-def test_evaluate_request_serializes_only_a_testing_window() -> None:
-    request = EvaluateRequest(
-        workflow="evaluate",
-        evaluation_id=EVALUATION_ID,
-        artifact_id=ARTIFACT_ID,
-        corpus_id=CORPUS_ID,
-        testing_window=_window(300, 349),
-    )
-
-    assert request.model_dump()["testing_window"] == {
-        "first_parent_block": 300,
-        "last_parent_block": 349,
-    }

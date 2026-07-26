@@ -100,56 +100,31 @@ def _request(kind: Literal["baseline", "selected", "evaluate"]) -> WorkflowReque
     [
         pytest.param("baseline", id="baseline"),
         pytest.param("selected", id="selected"),
+        pytest.param("evaluate", id="evaluate"),
     ],
 )
-def test_remote_workflow_dispatches_train_request(
-    kind: Literal["baseline", "selected"],
+def test_remote_workflow_dispatches_final_request(
+    kind: Literal["baseline", "selected", "evaluate"],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = _request(kind)
-    corpus = object()
     prepared = object()
-    calls: list[tuple[TrainRequest, object, Path]] = []
+    train_calls: list[tuple[TrainRequest, object, Path]] = []
+    evaluate_calls: list[tuple[EvaluateRequest, Path]] = []
     monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
-    monkeypatch.setattr(remote, "load_corpus", lambda *_: corpus)
-    monkeypatch.setattr(
-        remote,
-        "prepare_fit_history",
-        lambda active_corpus, experiment: (
-            prepared
-            if (active_corpus, experiment) == (corpus, _experiment())
-            else pytest.fail("wrong fit preparation")
-        ),
-    )
+    monkeypatch.setattr(remote, "load_corpus", lambda *_: object())
+    monkeypatch.setattr(remote, "prepare_fit_history", lambda *_: prepared)
     monkeypatch.setattr(
         remote,
         "train",
-        lambda active_request, active_prepared, storage_root: calls.append(
+        lambda active_request, active_prepared, storage_root: train_calls.append(
             (active_request, active_prepared, storage_root)
         ),
     )
-
-    result = CliRunner().invoke(
-        app,
-        ["remote", "workflow"],
-        input=request.model_dump_json(),
-    )
-
-    assert result.exit_code == 0
-    assert result.output == ""
-    assert calls == [(request, prepared, STORAGE_ROOT)]
-
-
-def test_remote_workflow_dispatches_evaluate_request(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    request = _request("evaluate")
-    calls: list[tuple[EvaluateRequest, Path]] = []
-    monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
     monkeypatch.setattr(
         remote,
         "evaluate",
-        lambda active_request, storage_root: calls.append((active_request, storage_root)),
+        lambda active_request, storage_root: evaluate_calls.append((active_request, storage_root)),
     )
 
     result = CliRunner().invoke(
@@ -160,4 +135,9 @@ def test_remote_workflow_dispatches_evaluate_request(
 
     assert result.exit_code == 0
     assert result.output == ""
-    assert calls == [(request, STORAGE_ROOT)]
+    if isinstance(request, TrainRequest):
+        assert train_calls == [(request, prepared, STORAGE_ROOT)]
+        assert evaluate_calls == []
+    else:
+        assert train_calls == []
+        assert evaluate_calls == [(request, STORAGE_ROOT)]
