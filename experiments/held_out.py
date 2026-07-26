@@ -166,6 +166,8 @@ def main() -> None:
     arguments = parser.parse_args()
 
     if arguments.command == "prepare":
+        if arguments.experiment_id is not None and arguments.experiment_id.version != 4:
+            raise ValueError("experiment_id must be a UUIDv4")
         prepare(
             arguments.storage_root,
             arguments.hpo_experiment_id,

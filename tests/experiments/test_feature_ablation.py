@@ -24,22 +24,23 @@ def _run(*arguments: object) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _rows(storage_root: Path) -> list[dict[str, str]]:
-    path = storage_root / "experiments" / "feature_ablation" / f".{_EXPERIMENT_ID}" / "cells.tsv"
+def _rows(storage_root: Path, experiment_id: UUID) -> list[dict[str, str]]:
+    path = storage_root / "experiments" / "feature_ablation" / f".{experiment_id}" / "cells.tsv"
     with path.open(newline="", encoding="utf-8") as source:
         return list(csv.DictReader(source, delimiter="\t"))
 
 
 def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> None:
-    result = _run("prepare", tmp_path, "--experiment-id", _EXPERIMENT_ID)
+    result = _run("prepare", tmp_path)
+    experiment_id = UUID(result.stdout.strip())
 
-    rows = _rows(tmp_path)
+    rows = _rows(tmp_path, experiment_id)
     requests = [
         TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in rows
     ]
 
-    assert result.stdout.strip() == str(_EXPERIMENT_ID)
+    assert experiment_id.version == 4
     assert len(rows) == 45
     assert [row["cell"] for row in rows[:5]] == [
         "ethereum.lstm.B",
@@ -91,7 +92,7 @@ def test_select_publishes_all_studies_and_reports_chain_winners(tmp_path: Path) 
         "polygon": {"B+T+P": 0.5},
         "avalanche": {"B+S+P": 0.25},
     }
-    for row in _rows(tmp_path):
+    for row in _rows(tmp_path, _EXPERIMENT_ID):
         chain, _, feature_set = row["cell"].split(".")
         request = TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         objective = objectives.get(chain, {}).get(feature_set, 2.0)

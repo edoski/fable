@@ -30,8 +30,6 @@ _ROOT = Path(__file__).parents[2]
 _SCRIPT = _ROOT / "experiments" / "k_study.py"
 _HELD_OUT_SCRIPT = _ROOT / "experiments" / "held_out.py"
 _HPO_EXPERIMENT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-_K_EXPERIMENT_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
-_HELD_OUT_EXPERIMENT_ID = UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
 _CORPUS_ID = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
 _METHOD = Method(
     model=LstmDefinition(
@@ -134,10 +132,9 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
         "prepare",
         tmp_path,
         _HPO_EXPERIMENT_ID,
-        "--experiment-id",
-        _K_EXPERIMENT_ID,
     )
-    bundle = tmp_path / "experiments" / "k_study" / f".{_K_EXPERIMENT_ID}"
+    experiment_id = UUID(result.stdout.strip())
+    bundle = tmp_path / "experiments" / "k_study" / f".{experiment_id}"
     rows = _rows(bundle / "cells.tsv")
     requests = [
         TrainRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
@@ -147,7 +144,7 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
         request.source for request in requests if isinstance(request.source, SelectedStudySource)
     ]
 
-    assert result.stdout.strip() == str(_K_EXPERIMENT_ID)
+    assert experiment_id.version == 4
     assert len(rows) == 81
     assert [row["cell"] for row in rows[:9]] == [
         "ethereum.lstm.K2",
@@ -180,10 +177,10 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
         directory = tmp_path / "artifacts" / row["artifact_id"]
         directory.mkdir(parents=True)
         (directory / "model.ckpt").touch()
-    _run(_SCRIPT, "close", tmp_path, _K_EXPERIMENT_ID)
+    _run(_SCRIPT, "close", tmp_path, experiment_id)
 
     manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "k_study" / f"{_K_EXPERIMENT_ID}.json").read_bytes(),
+        (tmp_path / "experiments" / "k_study" / f"{experiment_id}.json").read_bytes(),
         strict=True,
     )
     assert len(manifest.entries) == 81
@@ -206,22 +203,22 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     corpus_path = tmp_path / "corpora" / str(_CORPUS_ID) / "corpus.json"
     corpus_path.parent.mkdir(parents=True)
     corpus_path.write_text(json.dumps(corpus), encoding="utf-8")
-    _run(
+    held_out_result = _run(
         _HELD_OUT_SCRIPT,
         "prepare",
         tmp_path,
         _HPO_EXPERIMENT_ID,
-        _K_EXPERIMENT_ID,
-        "--experiment-id",
-        _HELD_OUT_EXPERIMENT_ID,
+        experiment_id,
     )
+    held_out_experiment_id = UUID(held_out_result.stdout.strip())
 
-    held_out = tmp_path / "experiments" / "held_out" / f".{_HELD_OUT_EXPERIMENT_ID}"
+    held_out = tmp_path / "experiments" / "held_out" / f".{held_out_experiment_id}"
     evaluation_rows = _rows(held_out / "cells.tsv")
     evaluation_requests = [
         EvaluateRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in evaluation_rows
     ]
+    assert held_out_experiment_id.version == 4
     assert len(evaluation_rows) == 81
     assert evaluation_requests[0].testing_window == BlockWindow(
         first_parent_block=704,
@@ -233,9 +230,9 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     )
     for row in evaluation_rows:
         (tmp_path / "evaluations" / row["evaluation_id"]).mkdir(parents=True)
-    _run(_HELD_OUT_SCRIPT, "close", tmp_path, _HELD_OUT_EXPERIMENT_ID)
+    _run(_HELD_OUT_SCRIPT, "close", tmp_path, held_out_experiment_id)
     held_out_manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "held_out" / f"{_HELD_OUT_EXPERIMENT_ID}.json").read_bytes(),
+        (tmp_path / "experiments" / "held_out" / f"{held_out_experiment_id}.json").read_bytes(),
         strict=True,
     )
     assert len(held_out_manifest.entries) == 81

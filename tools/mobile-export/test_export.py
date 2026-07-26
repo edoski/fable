@@ -286,6 +286,30 @@ def test_export_bundle_cleans_scratch_after_export_failure(
     assert list(tmp_path.glob(".models.*")) == []
 
 
+def test_export_bundle_refuses_output_directory_created_during_export(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    roster_path = tmp_path / "MOBILE.yaml"
+    artifact_ids = _write_roster(roster_path)
+    _install_artifact_fakes(monkeypatch, artifact_ids)
+    output = tmp_path / "models"
+
+    def export_model(cell: mobile_export._Cell, destination: Path) -> None:
+        del cell
+        destination.write_bytes(b"pte")
+        output.mkdir(exist_ok=True)
+
+    monkeypatch.setattr(mobile_export, "_export_model", export_model)
+
+    with pytest.raises(FileExistsError):
+        mobile_export.export_bundle(tmp_path / "storage", roster_path, output)
+
+    assert output.is_dir()
+    assert list(output.iterdir()) == []
+    assert list(tmp_path.glob(".models.*")) == []
+
+
 class _Output(NamedTuple):
     action_logits: torch.Tensor
     minimum_fee_z: torch.Tensor

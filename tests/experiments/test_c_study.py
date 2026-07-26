@@ -14,7 +14,6 @@ _ROOT = Path(__file__).parents[2]
 _FEATURE_SCRIPT = _ROOT / "experiments" / "feature_ablation.py"
 _C_SCRIPT = _ROOT / "experiments" / "c_study.py"
 _FEATURE_EXPERIMENT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-_C_EXPERIMENT_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 
 
 def _run(script: Path, *arguments: object) -> subprocess.CompletedProcess[str]:
@@ -78,21 +77,21 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
     )
     _run(_FEATURE_SCRIPT, "select", tmp_path, _FEATURE_EXPERIMENT_ID)
 
-    _run(
+    result = _run(
         _C_SCRIPT,
         "prepare",
         tmp_path,
         _FEATURE_EXPERIMENT_ID,
-        "--experiment-id",
-        _C_EXPERIMENT_ID,
     )
-    bundle = tmp_path / "experiments" / "c_study" / f".{_C_EXPERIMENT_ID}"
+    experiment_id = UUID(result.stdout.strip())
+    bundle = tmp_path / "experiments" / "c_study" / f".{experiment_id}"
     rows = _rows(bundle / "cells.tsv")
     requests = [
         TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in rows
     ]
 
+    assert experiment_id.version == 4
     assert len(rows) == 45
     assert [row["cell"] for row in rows[:5]] == [
         "ethereum.lstm.C25",
@@ -129,7 +128,7 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
             ("avalanche", "C200"): 0.25,
         },
     )
-    result = _run(_C_SCRIPT, "select", tmp_path, _C_EXPERIMENT_ID)
+    result = _run(_C_SCRIPT, "select", tmp_path, experiment_id)
 
     assert result.stdout.splitlines() == [
         "ethereum\t50\t0.25",
@@ -137,7 +136,7 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
         "avalanche\t200\t0.25",
     ]
     manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "c_study" / f"{_C_EXPERIMENT_ID}.json").read_bytes(),
+        (tmp_path / "experiments" / "c_study" / f"{experiment_id}.json").read_bytes(),
         strict=True,
     )
     assert len(manifest.entries) == 45

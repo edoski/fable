@@ -16,7 +16,6 @@ _C_SCRIPT = _ROOT / "experiments" / "c_study.py"
 _HPO_SCRIPT = _ROOT / "experiments" / "hpo.py"
 _FEATURE_EXPERIMENT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 _C_EXPERIMENT_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
-_HPO_EXPERIMENT_ID = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
 
 
 def _run(script: Path, *arguments: object) -> subprocess.CompletedProcess[str]:
@@ -81,15 +80,14 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
     _publish_studies(tmp_path, _rows(c_bundle / "cells.tsv"), 1.0)
     _run(_C_SCRIPT, "select", tmp_path, _C_EXPERIMENT_ID)
 
-    _run(
+    result = _run(
         _HPO_SCRIPT,
         "prepare",
         tmp_path,
         _C_EXPERIMENT_ID,
-        "--experiment-id",
-        _HPO_EXPERIMENT_ID,
     )
-    bundle = tmp_path / "experiments" / "hpo" / f".{_HPO_EXPERIMENT_ID}"
+    experiment_id = UUID(result.stdout.strip())
+    bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
     rows = _rows(bundle / "candidates.tsv")
     requests = {
         row["cell"]: TuneRequest.model_validate_json(
@@ -99,6 +97,7 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
         for row in rows
     }
 
+    assert experiment_id.version == 4
     assert len(rows) == 81
     assert len(requests) == 9
     assert [row["cell"] for row in rows[:9]] == ["ethereum.lstm"] * 9
@@ -126,7 +125,7 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
     }
 
     _publish_studies(tmp_path, rows, 0.5)
-    result = _run(_HPO_SCRIPT, "select", tmp_path, _HPO_EXPERIMENT_ID)
+    result = _run(_HPO_SCRIPT, "select", tmp_path, experiment_id)
 
     assert result.stdout.splitlines() == [
         "ethereum.lstm\t0\t0.5",
@@ -140,7 +139,7 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
         "avalanche.transformer_lstm\t0\t0.5",
     ]
     manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "hpo" / f"{_HPO_EXPERIMENT_ID}.json").read_bytes(),
+        (tmp_path / "experiments" / "hpo" / f"{experiment_id}.json").read_bytes(),
         strict=True,
     )
     assert len(manifest.entries) == 9

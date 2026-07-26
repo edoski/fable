@@ -307,8 +307,6 @@ def export_bundle(
 ) -> None:
     _require_versions()
     roster = _load_roster(roster_path)
-    if output_directory.exists():
-        raise FileExistsError(output_directory)
     cells = _load_cells(storage_root, roster)
 
     output_directory.parent.mkdir(parents=True, exist_ok=True)
@@ -329,6 +327,8 @@ def export_bundle(
             json.dumps(_manifest(cells), indent=2, allow_nan=False) + "\n",
             encoding="utf-8",
         )
+        if output_directory.exists():
+            raise FileExistsError(output_directory)
         scratch.rename(output_directory)
     finally:
         if scratch.exists():
