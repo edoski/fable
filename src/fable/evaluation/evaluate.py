@@ -10,8 +10,9 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+from .. import _runtime
 from ..addresses import evaluation_directory
-from ..config import Deployment, EvaluateRequest
+from ..config import EvaluateRequest
 from ..corpus import load_corpus
 from ..min_block_fee import TargetState, decode_action
 from ..modeling import load_artifact
@@ -24,7 +25,6 @@ _DEVICE = torch.device("cuda:0")
 def evaluate(
     request: EvaluateRequest,
     storage_root: Path,
-    deployment: Deployment,
 ) -> None:
     """Publish canonical observations for one exact artifact/window request."""
 
@@ -55,11 +55,10 @@ def evaluate(
         .to_numpy()
     )
 
-    _configure_execution(deployment)
+    _configure_execution()
     observations = _collect_observations(
         dataset,
         model,
-        deployment,
         target_state=association.target_state,
         outcome_priority_fees_p50=outcome_priority_fees_p50,
         first_outcome_block=first_outcome_block,
@@ -73,22 +72,18 @@ def evaluate(
     scratch.rename(canonical)
 
 
-def _configure_execution(deployment: Deployment) -> None:
-    torch.use_deterministic_algorithms(
-        deployment.deterministic is not False,
-        warn_only=deployment.deterministic == "warn",
-    )
-    torch.backends.cudnn.deterministic = deployment.deterministic is not False
-    torch.backends.cudnn.benchmark = deployment.benchmark
-    torch.set_float32_matmul_precision(deployment.float32_matmul_precision)
-    torch.backends.cuda.matmul.allow_tf32 = deployment.cuda_matmul_allow_tf32
-    torch.backends.cudnn.allow_tf32 = deployment.cudnn_allow_tf32
+def _configure_execution() -> None:
+    torch.use_deterministic_algorithms(_runtime.DETERMINISTIC)
+    torch.backends.cudnn.deterministic = _runtime.DETERMINISTIC
+    torch.backends.cudnn.benchmark = _runtime.BENCHMARK
+    torch.set_float32_matmul_precision(_runtime.FLOAT32_MATMUL_PRECISION)
+    torch.backends.cuda.matmul.allow_tf32 = _runtime.CUDA_MATMUL_ALLOW_TF32
+    torch.backends.cudnn.allow_tf32 = _runtime.CUDNN_ALLOW_TF32
 
 
 def _collect_observations(
     dataset: HistoricalDataset,
     model: nn.Module,
-    deployment: Deployment,
     *,
     target_state: TargetState,
     outcome_priority_fees_p50: np.ndarray,
@@ -107,15 +102,16 @@ def _collect_observations(
         "minimum_base_fee_per_gas": np.empty(count, dtype=np.int64),
     }
 
+    workers = _runtime.NUM_WORKERS
     loader = DataLoader(
         dataset,
-        batch_size=deployment.evaluation_batch_size,
+        batch_size=_runtime.EVALUATION_BATCH_SIZE,
         shuffle=False,
         drop_last=False,
-        num_workers=deployment.num_workers,
-        pin_memory=deployment.pin_memory,
-        prefetch_factor=deployment.prefetch_factor,
-        persistent_workers=deployment.persistent_workers,
+        num_workers=workers,
+        pin_memory=_runtime.PIN_MEMORY,
+        prefetch_factor=_runtime.PREFETCH_FACTOR if workers else None,
+        persistent_workers=_runtime.PERSISTENT_WORKERS if workers else False,
     )
     model.to(_DEVICE)
     cursor = 0

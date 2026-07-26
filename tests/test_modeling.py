@@ -22,7 +22,6 @@ from fable.config import (
     BlockWindow,
     CorpusDefinition,
     CorpusRequest,
-    Deployment,
     ExperimentSemantics,
     FitMethod,
     LstmDefinition,
@@ -49,6 +48,11 @@ _BASE_FEES = np.array(
     [11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2],
     dtype=np.int64,
 )
+
+
+@pytest.fixture(autouse=True)
+def _use_single_process_loaders(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(modeling._runtime, "NUM_WORKERS", 0)
 
 
 def _experiment() -> ExperimentSemantics:
@@ -130,21 +134,6 @@ def _corpus_request() -> CorpusRequest:
     return CorpusRequest(
         corpus_id=CORPUS_ID,
         definition=CorpusDefinition(chain_id=1, first_block=10, last_block=23),
-    )
-
-
-def _deployment() -> Deployment:
-    return Deployment(
-        evaluation_batch_size=3,
-        num_workers=0,
-        pin_memory=False,
-        prefetch_factor=None,
-        persistent_workers=False,
-        deterministic=True,
-        benchmark=False,
-        float32_matmul_precision="highest",
-        cuda_matmul_allow_tf32=False,
-        cudnn_allow_tf32=False,
     )
 
 
@@ -281,17 +270,21 @@ def test_transformer_encoder_layers_have_independent_matrix_initialization() -> 
     )
 
 
-def test_fit_loaders_use_fixed_implementation_batch_size() -> None:
+def test_fit_loaders_use_fixed_runtime_profile() -> None:
     prepared = prepare_fit_history(_corpus(), _experiment())
 
     training, validation = modeling._loaders(
         prepared,
-        _deployment(),
         torch.Generator(device="cpu"),
     )
 
     assert training.batch_size == 64
     assert validation.batch_size == 64
+    assert training.num_workers == validation.num_workers == 0
+    assert training.pin_memory and validation.pin_memory
+    assert training.prefetch_factor is validation.prefetch_factor is None
+    assert not training.persistent_workers
+    assert not validation.persistent_workers
 
 
 def test_epoch_logs_weight_short_batches_in_float64(
@@ -418,7 +411,7 @@ def test_all_three_models_train_load_and_apply_direct_loss(
 
     monkeypatch.setattr(modeling.pl, "Trainer", cpu_trainer)
 
-    train(request, prepared, tmp_path, _deployment())
+    train(request, prepared, tmp_path)
     association, loaded_model = load_artifact(tmp_path, artifact_id)
 
     assert association.request == request
@@ -511,9 +504,9 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
             for epoch, loss in (line.split() for line in lines)
         ]
 
-    first = modeling._fit(association, prepared, scratch, _deployment())
+    first = modeling._fit(association, prepared, scratch)
     first_progress = progress()
-    second = modeling._fit(association, prepared, scratch, _deployment())
+    second = modeling._fit(association, prepared, scratch)
     second_progress = progress()
 
     assert [epoch for epoch, _ in first_progress] == [2]

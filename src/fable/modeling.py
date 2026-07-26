@@ -18,13 +18,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from torch import nn
 from torch.utils.data import DataLoader
 
+from . import _runtime
 from .addresses import (
     artifact_checkpoint_path,
     artifact_directory,
 )
 from .config import (
     BaselineSource,
-    Deployment,
     LstmDefinition,
     Method,
     TrainingDefinition,
@@ -47,7 +47,6 @@ from .temporal.features import FeatureState
 from .temporal.history import HistoricalPreparation
 
 _NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
-_FIT_BATCH_SIZE = 64
 
 
 class _FrozenRecord(BaseModel):
@@ -419,24 +418,24 @@ class _FitOutcome:
     completed_epochs: int
 
 
-def _configure_numerical_policy(deployment: Deployment) -> None:
-    torch.set_float32_matmul_precision(deployment.float32_matmul_precision)
-    torch.backends.cuda.matmul.allow_tf32 = deployment.cuda_matmul_allow_tf32
-    torch.backends.cudnn.allow_tf32 = deployment.cudnn_allow_tf32
+def _configure_numerical_policy() -> None:
+    torch.set_float32_matmul_precision(_runtime.FLOAT32_MATMUL_PRECISION)
+    torch.backends.cuda.matmul.allow_tf32 = _runtime.CUDA_MATMUL_ALLOW_TF32
+    torch.backends.cudnn.allow_tf32 = _runtime.CUDNN_ALLOW_TF32
 
 
 def _loaders(
     prepared: HistoricalPreparation,
-    deployment: Deployment,
     generator: torch.Generator,
 ) -> tuple[DataLoader[dict[str, torch.Tensor]], DataLoader[dict[str, torch.Tensor]]]:
+    workers = _runtime.NUM_WORKERS
     common = {
-        "batch_size": _FIT_BATCH_SIZE,
+        "batch_size": _runtime.FIT_BATCH_SIZE,
         "drop_last": False,
-        "num_workers": deployment.num_workers,
-        "pin_memory": deployment.pin_memory,
-        "prefetch_factor": deployment.prefetch_factor,
-        "persistent_workers": deployment.persistent_workers,
+        "num_workers": workers,
+        "pin_memory": _runtime.PIN_MEMORY,
+        "prefetch_factor": _runtime.PREFETCH_FACTOR if workers else None,
+        "persistent_workers": _runtime.PERSISTENT_WORKERS if workers else False,
     }
     training = DataLoader(
         prepared.training,
@@ -499,11 +498,10 @@ def _fit(
     association: _Association,
     prepared: HistoricalPreparation,
     scratch: Path,
-    deployment: Deployment,
 ) -> _FitOutcome:
     definition = _training_definition(association)
     scratch.mkdir(parents=True, exist_ok=True)
-    _configure_numerical_policy(deployment)
+    _configure_numerical_policy()
     fit = definition.method.fit
     pl.seed_everything(fit.seed, workers=True)
     generator = torch.Generator(device="cpu").manual_seed(fit.seed)
@@ -511,7 +509,6 @@ def _fit(
     module = _FitModule(_json_association(association))
     training_loader, validation_loader = _loaders(
         prepared,
-        deployment,
         generator,
     )
     early_stopping, best, last = _callbacks(scratch, definition)
@@ -524,8 +521,8 @@ def _fit(
         accumulate_grad_batches=fit.accumulation,
         gradient_clip_val=fit.gradient_clip_norm,
         gradient_clip_algorithm="norm",
-        deterministic=deployment.deterministic,
-        benchmark=deployment.benchmark,
+        deterministic=_runtime.DETERMINISTIC,
+        benchmark=_runtime.BENCHMARK,
         num_sanity_val_steps=0,
         logger=False,
         enable_progress_bar=False,
@@ -578,7 +575,6 @@ def train(
     request: TrainRequest,
     prepared: HistoricalPreparation,
     storage_root: Path,
-    deployment: Deployment,
 ) -> None:
     source = request.source
     if isinstance(source, BaselineSource):
@@ -601,7 +597,7 @@ def train(
     if canonical.exists():
         raise FileExistsError(canonical)
     scratch = canonical.parent / f".{request.artifact_id}"
-    outcome = _fit(association, prepared, scratch, deployment)
+    outcome = _fit(association, prepared, scratch)
     _publish_artifact(storage_root, request.artifact_id, scratch, outcome)
 
 
@@ -610,7 +606,6 @@ def _run_candidate(
     method: Method,
     prepared: HistoricalPreparation,
     candidate_scratch: Path,
-    deployment: Deployment,
 ) -> RetainedResult:
     association = _CandidateAssociation(
         request=request,
@@ -618,7 +613,7 @@ def _run_candidate(
         feature_state=prepared.feature_state,
         target_state=prepared.target_state,
     )
-    outcome = _fit(association, prepared, candidate_scratch, deployment)
+    outcome = _fit(association, prepared, candidate_scratch)
     return RetainedResult(
         method=method,
         objective=outcome.objective,

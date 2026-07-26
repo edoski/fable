@@ -1,0 +1,15 @@
+"""Fixed runtime profile owned by the installed executable."""
+
+FIT_BATCH_SIZE = 64
+EVALUATION_BATCH_SIZE = 64
+
+NUM_WORKERS = 4
+PIN_MEMORY = True
+PREFETCH_FACTOR = 2
+PERSISTENT_WORKERS = True
+
+DETERMINISTIC = True
+BENCHMARK = False
+FLOAT32_MATMUL_PRECISION = "high"
+CUDA_MATMUL_ALLOW_TF32 = True
+CUDNN_ALLOW_TF32 = True

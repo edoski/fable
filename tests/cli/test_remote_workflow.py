@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Literal
 from uuid import UUID
 
@@ -14,7 +12,6 @@ from fable.cli.app import app
 from fable.config import (
     BaselineSource,
     BlockWindow,
-    Deployment,
     EvaluateRequest,
     ExperimentSemantics,
     FitMethod,
@@ -31,18 +28,6 @@ ARTIFACT_ID = UUID("20000000-0000-4000-8000-000000000001")
 EVALUATION_ID = UUID("30000000-0000-4000-8000-000000000001")
 STUDY_ID = UUID("40000000-0000-4000-8000-000000000001")
 STORAGE_ROOT = Path("/remote/storage root")
-DEPLOYMENT = {
-    "evaluation_batch_size": 17,
-    "num_workers": 3,
-    "pin_memory": True,
-    "prefetch_factor": 2,
-    "persistent_workers": True,
-    "deterministic": "warn",
-    "benchmark": False,
-    "float32_matmul_precision": "high",
-    "cuda_matmul_allow_tf32": True,
-    "cudnn_allow_tf32": False,
-}
 
 
 def _window(first: int) -> BlockWindow:
@@ -110,148 +95,69 @@ def _request(kind: Literal["baseline", "selected", "evaluate"]) -> WorkflowReque
     return TrainRequest(workflow="train", artifact_id=ARTIFACT_ID, source=source)
 
 
-def _payload(request: WorkflowRequest) -> bytes:
-    return json.dumps(
-        {
-            "request": request.model_dump(mode="json"),
-            "deployment": DEPLOYMENT,
-        },
-        separators=(",", ":"),
-    ).encode()
-
-
-class _InputBuffer:
-    def __init__(self, payload: bytes, events: list[str]) -> None:
-        self._payload = payload
-        self._events = events
-
-    def read(self) -> bytes:
-        self._events.append("stdin")
-        return self._payload
-
-
 @pytest.mark.parametrize(
-    ("kind", "expected_experiment"),
+    "kind",
     [
-        pytest.param("baseline", _experiment(), id="baseline-train"),
-        pytest.param("selected", _experiment(), id="selected-train"),
-        pytest.param("evaluate", None, id="evaluate"),
+        pytest.param("baseline", id="baseline"),
+        pytest.param("selected", id="selected"),
     ],
 )
-def test_remote_workflow_executes_one_envelope(
-    kind: Literal["baseline", "selected", "evaluate"],
-    expected_experiment: ExperimentSemantics | None,
+def test_remote_workflow_dispatches_train_request(
+    kind: Literal["baseline", "selected"],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = _request(kind)
-    payload = _payload(request)
-    events: list[str] = []
-    calls: list[tuple[str, tuple[object, ...]]] = []
     corpus = object()
     prepared = object()
-    envelope = remote._WorkflowEnvelope.model_validate_json(payload, strict=True)
-
-    def fake_load_corpus(storage_root: Path, corpus_id: UUID) -> object:
-        events.append("load_corpus")
-        calls.append(("load_corpus", (storage_root, corpus_id)))
-        return corpus
-
-    def fake_prepare_fit_history(
-        loaded_corpus: object,
-        experiment: ExperimentSemantics,
-    ) -> object:
-        events.append("prepare_fit_history")
-        calls.append(("prepare_fit_history", (loaded_corpus, experiment)))
-        return prepared
-
-    def fake_train(
-        active_request: TrainRequest,
-        active_prepared: object,
-        storage_root: Path,
-        deployment: Deployment,
-    ) -> None:
-        events.append("train")
-        calls.append(("train", (active_request, active_prepared, storage_root, deployment)))
-
-    def fake_evaluate(
-        active_request: EvaluateRequest,
-        storage_root: Path,
-        deployment: Deployment,
-    ) -> None:
-        events.append("evaluate")
-        calls.append(("evaluate", (active_request, storage_root, deployment)))
-
+    calls: list[tuple[TrainRequest, object, Path]] = []
+    monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
+    monkeypatch.setattr(remote, "load_corpus", lambda *_: corpus)
     monkeypatch.setattr(
         remote,
-        "sys",
-        SimpleNamespace(stdin=SimpleNamespace(buffer=_InputBuffer(payload, events))),
+        "prepare_fit_history",
+        lambda active_corpus, experiment: (
+            prepared
+            if (active_corpus, experiment) == (corpus, _experiment())
+            else pytest.fail("wrong fit preparation")
+        ),
     )
     monkeypatch.setattr(
-        remote._WorkflowEnvelope,
-        "model_validate_json",
-        staticmethod(lambda *_args, **_kwargs: envelope),
+        remote,
+        "train",
+        lambda active_request, active_prepared, storage_root: calls.append(
+            (active_request, active_prepared, storage_root)
+        ),
     )
-    monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
-    monkeypatch.setattr(remote, "load_corpus", fake_load_corpus)
-    monkeypatch.setattr(remote, "prepare_fit_history", fake_prepare_fit_history)
-    monkeypatch.setattr(remote, "train", fake_train)
-    monkeypatch.setattr(remote, "evaluate", fake_evaluate)
 
-    result = CliRunner().invoke(app, ["remote", "workflow"])
+    result = CliRunner().invoke(
+        app,
+        ["remote", "workflow"],
+        input=request.model_dump_json(),
+    )
 
     assert result.exit_code == 0
     assert result.output == ""
-    assert calls[-1][1][-1] is envelope.deployment
-    if expected_experiment is None:
-        assert events == [
-            "stdin",
-            "evaluate",
-        ]
-        assert calls == [
-            (
-                "evaluate",
-                (
-                    request,
-                    STORAGE_ROOT,
-                    Deployment.model_validate(DEPLOYMENT),
-                ),
-            )
-        ]
-        return
-
-    expected_deployment = Deployment.model_validate(DEPLOYMENT)
-    assert events == [
-        "stdin",
-        "load_corpus",
-        "prepare_fit_history",
-        "train",
-    ]
-    assert calls == [
-        ("load_corpus", (STORAGE_ROOT, CORPUS_ID)),
-        ("prepare_fit_history", (corpus, expected_experiment)),
-        ("train", (request, prepared, STORAGE_ROOT, expected_deployment)),
-    ]
+    assert calls == [(request, prepared, STORAGE_ROOT)]
 
 
-def test_remote_workflow_propagates_owner_failure_silently(
+def test_remote_workflow_dispatches_evaluate_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    payload = _payload(_request("evaluate"))
-    error = RuntimeError("owner failure")
-
-    def fail_evaluate(*_args: object) -> None:
-        raise error
-
+    request = _request("evaluate")
+    calls: list[tuple[EvaluateRequest, Path]] = []
+    monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
     monkeypatch.setattr(
         remote,
-        "sys",
-        SimpleNamespace(stdin=SimpleNamespace(buffer=_InputBuffer(payload, []))),
+        "evaluate",
+        lambda active_request, storage_root: calls.append((active_request, storage_root)),
     )
-    monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
-    monkeypatch.setattr(remote, "evaluate", fail_evaluate)
 
-    result = CliRunner().invoke(app, ["remote", "workflow"])
+    result = CliRunner().invoke(
+        app,
+        ["remote", "workflow"],
+        input=request.model_dump_json(),
+    )
 
-    assert result.exit_code == 1
-    assert result.exception is error
+    assert result.exit_code == 0
     assert result.output == ""
+    assert calls == [(request, STORAGE_ROOT)]

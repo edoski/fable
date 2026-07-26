@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 from typing import Literal
@@ -26,18 +25,17 @@ CORPUS_ID = UUID("00000000-0000-4000-8000-000000000001")
 ARTIFACT_ID = UUID("00000000-0000-4000-8000-000000000002")
 EVALUATION_ID = UUID("00000000-0000-4000-8000-000000000003")
 STUDY_ID = UUID("00000000-0000-4000-8000-000000000004")
-DEPLOYMENT = {
-    "evaluation_batch_size": 64,
-    "num_workers": 4,
-    "pin_memory": True,
-    "prefetch_factor": 2,
-    "persistent_workers": True,
-    "deterministic": True,
-    "benchmark": False,
-    "float32_matmul_precision": "high",
-    "cuda_matmul_allow_tf32": True,
-    "cudnn_allow_tf32": True,
-}
+REMOTE_YAML = """ssh: university-alias
+executable: /opt/fable executable
+storage_root: /remote/storage root
+log_root: /remote/logs
+resources:
+  partition: thesis-partition
+  gres: gpu:a100:1
+  cpus_per_task: 8
+  memory_gb: 48
+  time_limit: "17:23:45"
+"""
 
 
 def _window(first: int) -> BlockWindow:
@@ -79,62 +77,28 @@ def _request(workflow: Literal["train", "evaluate"]) -> WorkflowRequest:
     )
 
 
-def _write_remote(path: Path, *, executable: str = "/opt/fable executable") -> None:
-    path.write_text(
-        f"""ssh: university-alias
-executable: {executable}
-storage_root: /remote/storage root
-log_root: /remote/logs
-resources:
-  partition: thesis-partition
-  gres: gpu:a100:1
-  cpus_per_task: 8
-  memory_gb: 48
-  time_limit: "17:23:45"
-deployment:
-  evaluation_batch_size: 64
-  num_workers: 4
-  pin_memory: true
-  prefetch_factor: 2
-  persistent_workers: true
-  deterministic: true
-  benchmark: false
-  float32_matmul_precision: high
-  cuda_matmul_allow_tf32: true
-  cudnn_allow_tf32: true
-""",
-        encoding="utf-8",
-    )
+def _write_remote(path: Path, contents: str = REMOTE_YAML) -> None:
+    path.write_text(contents, encoding="utf-8")
 
 
-@pytest.mark.parametrize(
-    ("workflow", "sbatch_output", "job_id"),
-    [
-        ("train", "123\n", 123),
-        ("evaluate", "456;university\n", 456),
-    ],
-)
-def test_submit_sends_one_shared_remote_profile(
-    workflow: Literal["train", "evaluate"],
-    sbatch_output: str,
-    job_id: int,
+def test_submit_sends_golden_workflow_script(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    request = _request(workflow)
+    request = _request("train")
     _write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
     calls: list[tuple[list[str], dict[str, object]]] = []
 
     def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append((argv, kwargs))
-        return subprocess.CompletedProcess(argv, 0, stdout=sbatch_output)
+        return subprocess.CompletedProcess(argv, 0, stdout="456;university\n")
 
     monkeypatch.setattr("fable.execution.subprocess.run", fake_run)
 
     result = submit(request)
 
-    assert result == job_id
+    assert result == 456
     assert len(calls) == 1
     argv, kwargs = calls[0]
     assert argv == [
@@ -146,13 +110,6 @@ def test_submit_sends_one_shared_remote_profile(
         "sbatch",
         "--parsable",
     ]
-    envelope_json = json.dumps(
-        {
-            "request": request.model_dump(mode="json"),
-            "deployment": DEPLOYMENT,
-        },
-        separators=(",", ":"),
-    )
     assert kwargs == {
         "input": (
             "#!/bin/bash\n"
@@ -166,7 +123,7 @@ def test_submit_sends_one_shared_remote_profile(
             "#SBATCH --output=/remote/logs/%j.out\n"
             "export STORAGE_ROOT='/remote/storage root'\n"
             "exec '/opt/fable executable' remote workflow <<'FABLE_REQUEST'\n"
-            f"{envelope_json}\n"
+            f"{request.model_dump_json()}\n"
             "FABLE_REQUEST\n"
         ),
         "text": True,
@@ -224,37 +181,48 @@ def test_submit_cli_stops_after_failure_and_keeps_prior_output(
 
 
 @pytest.mark.parametrize(
-    ("executable", "expected_error", "expected_match", "expected_calls"),
+    ("remote_yaml", "message"),
     [
         (
-            "relative/fable",
-            ValidationError,
+            REMOTE_YAML.replace(
+                "executable: /opt/fable executable",
+                "executable: relative/fable",
+            ),
             "executable must be an absolute path",
-            0,
         ),
-        ("/opt/fable", ValueError, "invalid sbatch --parsable output", 1),
+        (
+            REMOTE_YAML.replace("cpus_per_task: 8", "cpus_per_task: 0"),
+            "greater than 0",
+        ),
     ],
 )
-def test_submit_rejects_owned_invalid_inputs(
-    executable: str,
-    expected_error: type[Exception],
-    expected_match: str,
-    expected_calls: int,
+def test_submit_rejects_raw_remote_connection_or_resource_fields(
+    remote_yaml: str,
+    message: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _write_remote(tmp_path / "REMOTE.yaml", executable=executable)
+    _write_remote(tmp_path / "REMOTE.yaml", remote_yaml)
     monkeypatch.chdir(tmp_path)
-    calls = 0
 
-    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        nonlocal calls
-        calls += 1
-        return subprocess.CompletedProcess(argv, 0, stdout="not-a-job\n")
-
-    monkeypatch.setattr("fable.execution.subprocess.run", fake_run)
-
-    with pytest.raises(expected_error, match=expected_match):
+    with pytest.raises(ValidationError, match=message):
         submit(_request("train"))
 
-    assert calls == expected_calls
+
+def test_submit_rejects_invalid_job_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_remote(tmp_path / "REMOTE.yaml")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "fable.execution.subprocess.run",
+        lambda argv, **_: subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout="not-a-job\n",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="invalid sbatch --parsable output"):
+        submit(_request("train"))

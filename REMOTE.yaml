@@ -8,14 +8,3 @@ resources:
   cpus_per_task: 8
   memory_gb: 48
   time_limit: "3-00:00:00"
-deployment:
-  evaluation_batch_size: 64
-  num_workers: 4
-  pin_memory: true
-  prefetch_factor: 2
-  persistent_workers: true
-  deterministic: true
-  benchmark: false
-  float32_matmul_precision: high
-  cuda_matmul_allow_tf32: true
-  cudnn_allow_tf32: true

@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from .config import Deployment, Method, TuneRequest, WorkflowRequest
+from .config import Method, TuneRequest, WorkflowRequest
 
 _NonEmptyString = Annotated[str, Field(strict=True, min_length=1)]
 _PositiveInt = Annotated[int, Field(strict=True, gt=0)]
@@ -40,7 +40,6 @@ class _Remote(_Record):
     storage_root: _NonEmptyString
     log_root: _NonEmptyString
     resources: _Resources
-    deployment: Deployment
 
     @field_validator("executable", "storage_root", "log_root")
     @classmethod
@@ -50,26 +49,19 @@ class _Remote(_Record):
         return value
 
 
-class _WorkflowEnvelope(_Record):
-    request: WorkflowRequest
-    deployment: Deployment
-
-
 class _CandidateProcessInput(_Record):
     request: TuneRequest
     method: Method
-    deployment: Deployment
 
 
 def submit(request: WorkflowRequest) -> int:
     """Submit one Train or Evaluate request and return its positive Slurm ID."""
 
     remote = _load_remote()
-    envelope_json = _WorkflowEnvelope(
-        request=request,
-        deployment=remote.deployment,
-    ).model_dump_json()
-    return _invoke_sbatch(remote, _render_script(remote, envelope_json, "workflow"))
+    return _invoke_sbatch(
+        remote,
+        _render_script(remote, request.model_dump_json(), "workflow"),
+    )
 
 
 def _submit_candidate(request: TuneRequest, method: Method) -> int:
@@ -77,7 +69,6 @@ def _submit_candidate(request: TuneRequest, method: Method) -> int:
     candidate_json = _CandidateProcessInput(
         request=request,
         method=method,
-        deployment=remote.deployment,
     ).model_dump_json()
     return _invoke_sbatch(remote, _render_script(remote, candidate_json, "candidate"))
 

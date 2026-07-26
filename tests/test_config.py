@@ -10,7 +10,6 @@ from fable.config import (
     WORKFLOW_REQUEST_ADAPTER,
     BlockWindow,
     CorpusDefinition,
-    Deployment,
     EvaluateRequest,
     ExperimentSemantics,
     FitMethod,
@@ -178,35 +177,6 @@ def test_domain_contract_rejects_invalid_values(
 ) -> None:
     with pytest.raises(ValidationError, match=message):
         value_type(**payload)
-
-
-@pytest.mark.parametrize(
-    "invalid",
-    [
-        {"evaluation_batch_size": 0},
-        {"num_workers": "0"},
-        {"unknown": True},
-    ],
-)
-def test_deployment_rejects_invalid_or_coerced_host_facts(
-    invalid: dict[str, object],
-) -> None:
-    payload = {
-        "evaluation_batch_size": 64,
-        "num_workers": 0,
-        "pin_memory": False,
-        "prefetch_factor": None,
-        "persistent_workers": False,
-        "deterministic": True,
-        "benchmark": False,
-        "float32_matmul_precision": "highest",
-        "cuda_matmul_allow_tf32": False,
-        "cudnn_allow_tf32": False,
-    }
-    payload.update(invalid)
-
-    with pytest.raises(ValidationError):
-        Deployment.model_validate(payload)
 
 
 def test_evaluate_request_serializes_only_a_testing_window() -> None:

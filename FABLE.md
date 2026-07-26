@@ -669,7 +669,7 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 
 #### Candidate run
 
-`run_candidate(storage_root, request, method, deployment)` loads the request's Corpus, prepares training history and state, fits the exact Method through native Lightning, and retains one successful result. Method index `i` owns checkpoint scratch at `studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while fit or publication failure preserves it for `last.ckpt` resume.
+`run_candidate(storage_root, request, method)` loads the request's Corpus, prepares training history and state, fits the exact Method through native Lightning, and retains one successful result. Method index `i` owns checkpoint scratch at `studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while fit or publication failure preserves it for `last.ckpt` resume.
 
 `RetainedResult` has four fields:
 
@@ -698,7 +698,7 @@ Evaluation separates canonical self-contained observations from transient metric
 
 #### Canonical evaluation
 
-`evaluate(request, storage_root, deployment)` loads the exact Corpus and native artifact, requires the artifact's source Corpus to equal the evaluation Corpus, prepares the testing origin window with persisted state, and performs CUDA inference.
+`evaluate(request, storage_root)` loads the exact Corpus and native artifact, requires the artifact's source Corpus to equal the evaluation Corpus, prepares the testing origin window with persisted state, and performs CUDA inference.
 
 For every eligible origin the evaluation publisher owns construction of one ordered, nonnull observation containing `h_i`, `hat{k}_i`,
 `k_i*`, `hat{ell}_i`, `B_i(0)`, `P_i(0)`, `B_i(hat{k}_i)`, `P_i(hat{k}_i)`, and `m_i` under the canonical field names. Work is
@@ -973,7 +973,7 @@ fable remote workflow
 fable remote candidate
 ```
 
-Generated Slurm scripts call these leaves with strict JSON envelopes on standard input.
+Generated Slurm scripts call these leaves with strict JSON on standard input.
 
 ### Remote submission
 
@@ -996,18 +996,10 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 |  | `cpus_per_task` | PositiveInt |
 |  | `memory_gb` | PositiveInt, rendered as `--mem=<n>G` |
 |  | `time_limit` | nonempty Slurm time string |
-| `deployment` | `evaluation_batch_size` | PositiveInt |
-|  | `num_workers` | NonNegativeInt |
-|  | `pin_memory` | bool |
-|  | `prefetch_factor` | PositiveInt or null |
-|  | `persistent_workers` | bool |
-|  | `deterministic` | bool or exactly `"warn"` |
-|  | `benchmark` | bool |
-|  | `float32_matmul_precision` | `"highest" | "high"` |
-|  | `cuda_matmul_allow_tf32` | bool |
-|  | `cudnn_allow_tf32` | bool |
 
-The generated script requests one node/task, writes `%j.out` under `log_root`, exports `STORAGE_ROOT`, and executes `fable remote workflow` or `fable remote candidate` with a stdin heredoc. Submission is one `ssh -T -o BatchMode=yes … sbatch --parsable` call.
+The generated script requests one node/task, writes `%j.out` under `log_root`, exports `STORAGE_ROOT`, and executes `fable remote workflow` or `fable remote candidate` with a stdin heredoc. Workflow stdin is the Train or Evaluate request JSON directly. Candidate stdin is the strict record containing the TuneRequest and Method. Submission is one `ssh -T -o BatchMode=yes … sbatch --parsable` call.
+
+The installed executable owns one fixed runtime profile. It must remain unchanged while submitted jobs are queued so every queued request runs under the executable version that defined its loader and Torch policy.
 
 `STORAGE_ROOT` is the neutral implicit environment input to current CLI, remote Python, and mobile
 export paths.
@@ -1070,23 +1062,11 @@ deferred: export and host-check all twelve cells, bundle them, then execute all 
 custom native iOS simulator build while measuring parity, latency, and memory. A physical iPhone
 is not an acceptance gate.
 
+### Execution runtime
+
+The internal installed-executable profile fixes fit and evaluation batch size at 64; four persistent pinned-memory loader workers with prefetch factor 2; deterministic Torch execution without benchmarking; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32 enabled. It is code, not a request, schema, YAML field, or public configuration surface.
+
 ### Evaluation API
-
-`Deployment` is the shared strict process-input record exported from `fable.config`:
-
-```python
-class Deployment:
-    evaluation_batch_size: PositiveInt
-    num_workers: NonNegativeInt
-    pin_memory: bool
-    prefetch_factor: PositiveInt | None
-    persistent_workers: bool
-    deterministic: bool | Literal["warn"]
-    benchmark: bool
-    float32_matmul_precision: Literal["highest", "high"]
-    cuda_matmul_allow_tf32: bool
-    cudnn_allow_tf32: bool
-```
 
 Public exports from `fable.evaluation`:
 
@@ -1094,7 +1074,6 @@ Public exports from `fable.evaluation`:
 evaluate(
     request: EvaluateRequest,
     storage_root: Path,
-    deployment: Deployment,
 ) -> None
 
 reduce_evaluation(

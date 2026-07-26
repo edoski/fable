@@ -6,11 +6,11 @@ import sys
 
 import typer
 
-from ...config import BaselineSource, TrainRequest
+from ...config import WORKFLOW_REQUEST_ADAPTER, BaselineSource, TrainRequest
 from ...corpus import load_corpus
 from ...environment import resolve_storage_root
 from ...evaluation import evaluate
-from ...execution import _CandidateProcessInput, _WorkflowEnvelope
+from ...execution import _CandidateProcessInput
 from ...modeling import train
 from ...temporal.history import prepare_fit_history
 from ...tuning import run_candidate
@@ -20,13 +20,11 @@ app = typer.Typer(add_completion=False)
 
 @app.command("workflow")
 def workflow_command() -> None:
-    envelope = _WorkflowEnvelope.model_validate_json(
+    request = WORKFLOW_REQUEST_ADAPTER.validate_json(
         sys.stdin.buffer.read(),
         strict=True,
     )
     storage_root = resolve_storage_root()
-    request = envelope.request
-    profile = envelope.deployment
 
     if isinstance(request, TrainRequest):
         source = request.source
@@ -37,9 +35,9 @@ def workflow_command() -> None:
         )
         corpus = load_corpus(storage_root, source.corpus_id)
         prepared = prepare_fit_history(corpus, experiment)
-        train(request, prepared, storage_root, profile)
+        train(request, prepared, storage_root)
     else:
-        evaluate(request, storage_root, profile)
+        evaluate(request, storage_root)
 
 
 @app.command("candidate", hidden=True)
@@ -53,5 +51,4 @@ def candidate_command() -> None:
         storage_root,
         candidate.request,
         candidate.method,
-        candidate.deployment,
     )

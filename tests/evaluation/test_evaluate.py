@@ -25,7 +25,6 @@ from fable.config import (
     BlockWindow,
     CorpusDefinition,
     CorpusRequest,
-    Deployment,
     EvaluateRequest,
     ExperimentSemantics,
     FitMethod,
@@ -102,6 +101,11 @@ _OBSERVATION_SCHEMA = pl.Schema(
         "minimum_base_fee_per_gas": pl.Int64,
     }
 )
+
+
+@pytest.fixture(autouse=True)
+def _use_single_process_loader(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(evaluation_module._runtime, "NUM_WORKERS", 0)
 
 
 def _experiment() -> ExperimentSemantics:
@@ -245,21 +249,6 @@ def _request(
     )
 
 
-def _deployment() -> Deployment:
-    return Deployment(
-        evaluation_batch_size=3,
-        num_workers=0,
-        pin_memory=False,
-        prefetch_factor=None,
-        persistent_workers=False,
-        deterministic=False,
-        benchmark=True,
-        float32_matmul_precision="high",
-        cuda_matmul_allow_tf32=True,
-        cudnn_allow_tf32=True,
-    )
-
-
 class _Model(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -271,8 +260,9 @@ class _Model(nn.Module):
     def to(self, *args: Any, **kwargs: Any) -> Self:
         assert torch.device(args[0]) == torch.device("cpu")
         assert torch.get_float32_matmul_precision() == "high"
-        assert not torch.are_deterministic_algorithms_enabled()
-        assert torch.backends.cudnn.benchmark
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.backends.cudnn.deterministic
+        assert not torch.backends.cudnn.benchmark
         assert torch.backends.cuda.matmul.allow_tf32
         assert torch.backends.cudnn.allow_tf32
         self.transfers += 1
@@ -295,7 +285,7 @@ class _Model(nn.Module):
     "source_kind",
     ["baseline", "selected"],
 )
-def test_evaluate_publishes_exact_observations_through_one_full_and_tail_path(
+def test_evaluate_publishes_exact_observations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     source_kind: str,
@@ -311,10 +301,10 @@ def test_evaluate_publishes_exact_observations_through_one_full_and_tail_path(
     monkeypatch.setattr(evaluation_module, "_DEVICE", torch.device("cpu"))
     request = _request()
 
-    evaluate(request, tmp_path, _deployment())
+    evaluate(request, tmp_path)
 
     assert model.transfers == 1
-    assert model.batch_sizes == [3, 2]
+    assert model.batch_sizes == [5]
     assert evaluation_json_path(tmp_path, _EVALUATION_ID).read_text() == request.model_dump_json()
 
     observations = pl.read_parquet(evaluation_observations_path(tmp_path, _EVALUATION_ID))
@@ -358,7 +348,7 @@ def test_evaluate_rejects_owned_association_and_publication_conflicts(
         evaluation_directory(tmp_path, _EVALUATION_ID).mkdir(parents=True)
 
     with pytest.raises(error, match=match):
-        evaluate(request, tmp_path, _deployment())
+        evaluate(request, tmp_path)
 
     if case == "occupied_canonical":
         scratch = tmp_path / "evaluations" / f".{_EVALUATION_ID}"

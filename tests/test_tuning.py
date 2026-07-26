@@ -9,7 +9,6 @@ from pytest import MonkeyPatch
 from fable import tuning
 from fable.config import (
     BlockWindow,
-    Deployment,
     ExperimentSemantics,
     FitMethod,
     LstmDefinition,
@@ -68,18 +67,6 @@ REQUEST = TuneRequest(
 MULTI_METHOD_REQUEST = REQUEST.model_copy(
     update={"methods": (METHOD, OTHER_METHOD)},
 )
-DEPLOYMENT = Deployment(
-    evaluation_batch_size=64,
-    num_workers=0,
-    pin_memory=False,
-    prefetch_factor=None,
-    persistent_workers=False,
-    deterministic=True,
-    benchmark=False,
-    float32_matmul_precision="highest",
-    cuda_matmul_allow_tf32=False,
-    cudnn_allow_tf32=False,
-)
 RESULT = RetainedResult(
     method=METHOD,
     objective=0.4,
@@ -111,14 +98,12 @@ def test_run_candidate_publishes_result_and_removes_candidate_scratch(
         method: Method,
         preparation: object,
         scratch: Path,
-        deployment: Deployment,
     ) -> RetainedResult:
         assert scratch.is_dir()
-        assert (request, method, preparation, deployment) == (
+        assert (request, method, preparation) == (
             REQUEST,
             METHOD,
             prepared,
-            DEPLOYMENT,
         )
         return RESULT
 
@@ -126,7 +111,7 @@ def test_run_candidate_publishes_result_and_removes_candidate_scratch(
     monkeypatch.setattr(tuning, "prepare_fit_history", prepare_fit_history)
     monkeypatch.setattr(tuning, "_run_candidate", run_fit)
 
-    tuning.run_candidate(tmp_path, REQUEST, METHOD, DEPLOYMENT)
+    tuning.run_candidate(tmp_path, REQUEST, METHOD)
 
     scratch = tmp_path / "studies" / f".{STUDY_ID}" / "candidate-0"
     result_path = scratch.parent / "result-0.json"
@@ -152,7 +137,6 @@ def test_run_candidate_uses_method_index_scratch(
         active_method: Method,
         preparation: object,
         scratch: Path,
-        deployment: Deployment,
     ) -> RetainedResult:
         expected = tmp_path / "studies" / f".{STUDY_ID}" / f"candidate-{method_index}"
         assert scratch == expected
@@ -163,7 +147,7 @@ def test_run_candidate_uses_method_index_scratch(
     monkeypatch.setattr(tuning, "_run_candidate", run_fit)
     monkeypatch.setattr(tuning, "retain_result", lambda *_: None)
 
-    tuning.run_candidate(tmp_path, MULTI_METHOD_REQUEST, method, DEPLOYMENT)
+    tuning.run_candidate(tmp_path, MULTI_METHOD_REQUEST, method)
 
 
 @pytest.mark.parametrize("failure", ["fit", "retention"])
@@ -190,6 +174,6 @@ def test_run_candidate_preserves_scratch_after_failure(
     monkeypatch.setattr(tuning, "retain_result", retain_result)
 
     with pytest.raises(RuntimeError, match=f"{failure} failed"):
-        tuning.run_candidate(tmp_path, REQUEST, METHOD, DEPLOYMENT)
+        tuning.run_candidate(tmp_path, REQUEST, METHOD)
 
     assert (scratch / "last.ckpt").read_bytes() == b"checkpoint"

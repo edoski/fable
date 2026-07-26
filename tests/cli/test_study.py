@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
@@ -14,7 +13,6 @@ import fable.execution as execution
 from fable.cli.app import app
 from fable.config import (
     BlockWindow,
-    Deployment,
     ExperimentSemantics,
     FitMethod,
     LstmDefinition,
@@ -25,19 +23,6 @@ from fable.config import (
 STUDY_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
 STORAGE_ROOT = Path("/remote/storage root")
-DEPLOYMENT = {
-    "evaluation_batch_size": 64,
-    "num_workers": 4,
-    "pin_memory": True,
-    "prefetch_factor": 2,
-    "persistent_workers": True,
-    "deterministic": True,
-    "benchmark": False,
-    "float32_matmul_precision": "high",
-    "cuda_matmul_allow_tf32": True,
-    "cudnn_allow_tf32": True,
-}
-DEPLOYMENT_RECORD = Deployment.model_validate(DEPLOYMENT)
 
 
 def _window(first: int) -> BlockWindow:
@@ -94,23 +79,12 @@ resources:
   cpus_per_task: 8
   memory_gb: 48
   time_limit: "17:23:45"
-deployment:
-  evaluation_batch_size: 64
-  num_workers: 4
-  pin_memory: true
-  prefetch_factor: 2
-  persistent_workers: true
-  deterministic: true
-  benchmark: false
-  float32_matmul_precision: high
-  cuda_matmul_allow_tf32: true
-  cudnn_allow_tf32: true
 """,
         encoding="utf-8",
     )
 
 
-def test_study_run_hydrates_and_submits_one_candidate(
+def test_study_run_sends_golden_candidate_script(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -135,77 +109,59 @@ def test_study_run_hydrates_and_submits_one_candidate(
 
     assert result.exit_code == 0
     assert result.output == "123\n"
-    envelope_json = json.dumps(
+    candidate_json = json.dumps(
         {
             "request": REQUEST.model_dump(mode="json"),
             "method": METHOD.model_dump(mode="json"),
-            "deployment": DEPLOYMENT,
         },
         separators=(",", ":"),
     )
-    assert scripts[0].splitlines()[-3:] == [
-        "exec '/opt/fable executable' remote candidate <<'FABLE_REQUEST'",
-        envelope_json,
-        "FABLE_REQUEST",
+    assert scripts == [
+        (
+            "#!/bin/bash\n"
+            "#SBATCH --partition=thesis-partition\n"
+            "#SBATCH --nodes=1\n"
+            "#SBATCH --ntasks=1\n"
+            "#SBATCH --gres=gpu:a100:1\n"
+            "#SBATCH --cpus-per-task=8\n"
+            "#SBATCH --mem=48G\n"
+            "#SBATCH --time=17:23:45\n"
+            "#SBATCH --output=/remote/logs/%j.out\n"
+            "export STORAGE_ROOT='/remote/storage root'\n"
+            "exec '/opt/fable executable' remote candidate <<'FABLE_REQUEST'\n"
+            f"{candidate_json}\n"
+            "FABLE_REQUEST\n"
+        )
     ]
 
 
-class _InputBuffer:
-    def __init__(self, payload: bytes) -> None:
-        self._payload = payload
-
-    def read(self) -> bytes:
-        return self._payload
-
-
-@pytest.mark.parametrize("owner_fails", [False, True])
-def test_remote_candidate_forwards_input(
-    owner_fails: bool,
+def test_remote_candidate_dispatches_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = json.dumps(
         {
             "request": REQUEST.model_dump(mode="json"),
             "method": METHOD.model_dump(mode="json"),
-            "deployment": DEPLOYMENT,
         },
         separators=(",", ":"),
-    ).encode()
-    calls: list[tuple[Path, TuneRequest, Method, Deployment]] = []
-    failure = RuntimeError("candidate failed")
-    candidate = remote._CandidateProcessInput.model_validate_json(payload, strict=True)
+    )
+    calls: list[tuple[Path, TuneRequest, Method]] = []
 
     def fake_run_candidate(
         storage_root: Path,
         request: TuneRequest,
         method: Method,
-        deployment: Deployment,
     ) -> None:
-        calls.append((storage_root, request, method, deployment))
-        if owner_fails:
-            raise failure
+        calls.append((storage_root, request, method))
 
-    monkeypatch.setattr(
-        remote,
-        "sys",
-        SimpleNamespace(stdin=SimpleNamespace(buffer=_InputBuffer(payload))),
-    )
-    monkeypatch.setattr(
-        remote._CandidateProcessInput,
-        "model_validate_json",
-        staticmethod(lambda *_args, **_kwargs: candidate),
-    )
     monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
     monkeypatch.setattr(remote, "run_candidate", fake_run_candidate)
 
-    result = CliRunner().invoke(app, ["remote", "candidate"])
+    result = CliRunner().invoke(app, ["remote", "candidate"], input=payload)
 
-    assert result.exit_code == (1 if owner_fails else 0)
-    if owner_fails:
-        assert result.exception is failure
+    assert result.exit_code == 0
     assert result.output == ""
-    assert calls == [(STORAGE_ROOT, REQUEST, METHOD, DEPLOYMENT_RECORD)]
-    assert calls[0][-1] is candidate.deployment
+    assert calls == [(STORAGE_ROOT, REQUEST, METHOD)]
 
 
 @pytest.mark.parametrize(
