@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from fable.config import (
+    WORKFLOW_REQUEST_ADAPTER,
     BlockWindow,
     CorpusDefinition,
     ExperimentSemantics,
@@ -153,3 +154,8 @@ def test_domain_contract_rejects_invalid_values(
 ) -> None:
     with pytest.raises(ValidationError, match=message):
         value_type(**payload)
+
+
+def test_workflow_request_rejects_tune_json() -> None:
+    with pytest.raises(ValidationError, match="tune"):
+        WORKFLOW_REQUEST_ADAPTER.validate_json('{"workflow":"tune"}')
