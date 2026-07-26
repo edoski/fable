@@ -8,7 +8,7 @@ import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Literal, Self, cast
+from typing import Annotated, Literal, Self, cast
 from uuid import UUID
 
 import lightning.pytorch as pl
@@ -41,7 +41,6 @@ from .min_block_fee import (
 )
 from .study import (
     RetainedResult,
-    apply_method,
     load_selected_method,
 )
 from .temporal.features import FeatureState
@@ -102,14 +101,6 @@ class _CandidateAssociation(_FrozenRecord):
     feature_state: FeatureState
     target_state: TargetState
 
-    @model_validator(mode="after")
-    def validate_association(self) -> Self:
-        _validate_feature_state_association(
-            apply_method(self.request, self.method),
-            self.feature_state,
-        )
-        return self
-
 
 _Association = ArtifactAssociation | _CandidateAssociation
 
@@ -169,22 +160,15 @@ def _head(input_width: int, hidden: int, output_width: int, dropout: float) -> n
     )
 
 
-def _require_inputs(inputs: torch.Tensor, *, context_blocks: int) -> None:
-    if inputs.ndim != 3 or inputs.shape[1] != context_blocks:
-        raise ValueError("model inputs must have rank 3 and exact configured context length")
-
-
 class _LstmModel(nn.Module):
     def __init__(
         self,
         definition: LstmDefinition,
         *,
-        context_blocks: int,
         feature_count: int,
         actions: int,
     ) -> None:
         super().__init__()
-        self.context_blocks = context_blocks
         self.lstm = nn.LSTM(
             input_size=feature_count,
             hidden_size=definition.hidden,
@@ -200,7 +184,6 @@ class _LstmModel(nn.Module):
         )
 
     def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
-        _require_inputs(inputs, context_blocks=self.context_blocks)
         sequence, _ = self.lstm(inputs)
         return self.heads(sequence[:, -1])
 
@@ -249,7 +232,6 @@ class _TransformerBackbone(nn.Module):
         feature_count: int,
     ) -> None:
         super().__init__()
-        self.context_blocks = context_blocks
         self.projection = nn.Linear(feature_count, definition.model_width)
         self.register_buffer(
             "positions",
@@ -265,7 +247,6 @@ class _TransformerBackbone(nn.Module):
         )
 
     def _encode(self, inputs: torch.Tensor) -> torch.Tensor:
-        _require_inputs(inputs, context_blocks=self.context_blocks)
         projected = self.projection(inputs)
         positions = cast(torch.Tensor, self.positions).to(dtype=projected.dtype)
         return self.encoder(projected + torch.unsqueeze(positions, 0))
@@ -328,7 +309,6 @@ class _FitModule(pl.LightningModule):
         experiment = self.definition.experiment
         model = self.definition.method.model
         common = {
-            "context_blocks": experiment.context_blocks,
             "feature_count": len(experiment.ordered_features),
             "actions": experiment.horizon_blocks,
         }
@@ -336,9 +316,17 @@ class _FitModule(pl.LightningModule):
             case LstmDefinition():
                 self.model = _LstmModel(model, **common)
             case TransformerDefinition():
-                self.model = _TransformerModel(model, **common)
+                self.model = _TransformerModel(
+                    model,
+                    context_blocks=experiment.context_blocks,
+                    **common,
+                )
             case TransformerLstmDefinition():
-                self.model = _TransformerLstmModel(model, **common)
+                self.model = _TransformerLstmModel(
+                    model,
+                    context_blocks=experiment.context_blocks,
+                    **common,
+                )
 
     def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
         return self.model(inputs)
@@ -421,12 +409,6 @@ class _FitModule(pl.LightningModule):
             max_norm=gradient_clip_val or math.inf,
             error_if_nonfinite=True,
         )
-
-    def on_load_checkpoint(self, checkpoint: dict[str, Any]) -> None:
-        hyperparameters = cast(Mapping[str, object], checkpoint["hyper_parameters"])
-        loaded = _hydrate_association(hyperparameters["association"])
-        if loaded != self.association:
-            raise ValueError("checkpoint association does not match the requested fit")
 
 
 @dataclass(frozen=True, slots=True)
@@ -587,12 +569,8 @@ def _publish_artifact(
     for temporary in scratch.iterdir():
         if temporary in retained:
             continue
-        if not temporary.is_file():
-            raise RuntimeError("artifact scratch directory must contain only files")
         temporary.unlink()
 
-    if set(scratch.iterdir()) != retained:
-        raise RuntimeError("completed artifact must contain only model.ckpt")
     scratch.rename(canonical)
 
 

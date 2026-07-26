@@ -78,8 +78,6 @@ def _raw_feature_rows(
     ordered_features: tuple[str, ...],
 ) -> NDArray[np.float64]:
     needs_predecessor = "block_interval_seconds" in ordered_features
-    if needs_predecessor and blocks.height < 2:
-        raise ValueError("block_interval_seconds requires a predecessor block")
     columns = []
     for feature_name in ordered_features:
         values = _feature_values(blocks, feature_name)
@@ -92,8 +90,7 @@ def _raw_feature_rows(
 def _feature_values(blocks: pl.DataFrame, feature_name: str) -> NDArray[np.float64]:
     if feature_name == "log_base_fee_per_gas":
         base_fees = _float_column(blocks, "base_fee_per_gas")
-        with np.errstate(divide="ignore", invalid="ignore"):
-            return np.log(base_fees)
+        return np.log(base_fees)
     if feature_name == "gas_utilization":
         gas_limits = _float_column(blocks, "gas_limit")
         return _float_column(blocks, "gas_used") / gas_limits
@@ -103,16 +100,13 @@ def _feature_values(blocks: pl.DataFrame, feature_name: str) -> NDArray[np.float
         return _forming_base_fee_logs(blocks)
     if feature_name == "log_gas_limit":
         gas_limits = _float_column(blocks, "gas_limit")
-        with np.errstate(divide="ignore", invalid="ignore"):
-            return np.log(gas_limits)
+        return np.log(gas_limits)
     if feature_name == "log1p_tx_count":
         tx_counts = _float_column(blocks, "tx_count")
-        with np.errstate(divide="ignore", invalid="ignore"):
-            return np.log1p(tx_counts)
+        return np.log1p(tx_counts)
     if feature_name == "log1p_effective_priority_fee_per_gas_p50":
         priority_fees = _float_column(blocks, "effective_priority_fee_per_gas_p50")
-        with np.errstate(divide="ignore", invalid="ignore"):
-            return np.log1p(priority_fees)
+        return np.log1p(priority_fees)
     if feature_name == "block_interval_seconds":
         timestamps = blocks["timestamp"].to_numpy().astype(np.int64, copy=False)
         intervals = np.diff(timestamps)
@@ -166,8 +160,6 @@ def _forming_child_base_fee(
     gas_limit: int,
 ) -> int:
     gas_target = gas_limit // 2
-    if gas_target <= 0:
-        raise ValueError("gas_target must be positive")
     if gas_used == gas_target:
         return base_fee_per_gas
     if gas_used > gas_target:

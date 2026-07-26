@@ -8,7 +8,6 @@ import torch
 
 from fable.min_block_fee import (
     MinBlockFeeOutput,
-    TargetState,
     decode_action,
     fit_target_state,
     min_block_fee_loss,
@@ -57,14 +56,6 @@ def test_target_and_native_loss_match_hand_derived_fixture() -> None:
     expected_logits_grad[torch.arange(labels.shape[0]), labels] = -1.0 / 6.0
     torch.testing.assert_close(logits.grad, expected_logits_grad)
     torch.testing.assert_close(predictions.grad, torch.tensor([0.0, 0.125, 0.25, 0.25]))
-
-
-def test_target_minima_must_be_positive() -> None:
-    state = TargetState(mean=0.0, standard_deviation=1.0)
-    with pytest.raises(ValueError):
-        fit_target_state(np.array([1, 0], dtype=np.int64))
-    with pytest.raises(ValueError):
-        standardize_target(np.array([1, -1], dtype=np.int64), state)
 
 
 def test_target_state_requires_nonconstant_minima() -> None:

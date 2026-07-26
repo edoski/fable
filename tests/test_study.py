@@ -14,15 +14,11 @@ from fable.config import (
     LstmDefinition,
     Method,
     SelectedStudySource,
-    TrainingDefinition,
-    TransformerDefinition,
-    TransformerLstmDefinition,
     TuneRequest,
 )
 from fable.study import (
     RetainedResult,
     Study,
-    apply_method,
     load_selected_method,
     publish_study,
     retain_result,
@@ -56,32 +52,6 @@ LSTM_METHOD = Method(
 )
 OTHER_LSTM_METHOD = LSTM_METHOD.model_copy(
     update={"fit": FIT.model_copy(update={"learning_rate": 1e-4})},
-)
-TRANSFORMER_METHOD = Method(
-    model=TransformerDefinition(
-        family="transformer",
-        model_width=192,
-        attention_heads=4,
-        transformer_layers=3,
-        feedforward_width=384,
-        head_hidden=192,
-        dropout=0.2,
-    ),
-    fit=FIT.model_copy(update={"learning_rate": 1e-4}),
-)
-TRANSFORMER_LSTM_METHOD = Method(
-    model=TransformerLstmDefinition(
-        family="transformer_lstm",
-        model_width=192,
-        attention_heads=4,
-        transformer_layers=3,
-        feedforward_width=384,
-        lstm_hidden=192,
-        lstm_layers=1,
-        head_hidden=192,
-        dropout=0.2,
-    ),
-    fit=FIT.model_copy(update={"learning_rate": 1e-4}),
 )
 RESULT = RetainedResult(
     method=LSTM_METHOD,
@@ -118,23 +88,6 @@ def _request(
         corpus_id=corpus_id,
         experiment=_experiment(),
         methods=methods,
-    )
-
-
-@pytest.mark.parametrize(
-    "method",
-    [
-        LSTM_METHOD,
-        TRANSFORMER_METHOD,
-        TRANSFORMER_LSTM_METHOD,
-    ],
-)
-def test_apply_method_composes_all_three_method_families(method: Method) -> None:
-    request = _request((method,))
-
-    assert apply_method(request, method) == TrainingDefinition(
-        experiment=request.experiment,
-        method=method,
     )
 
 

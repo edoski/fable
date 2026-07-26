@@ -13,14 +13,12 @@ from .addresses import study_json_path
 from .config import (
     Method,
     SelectedStudySource,
-    TrainingDefinition,
     TuneRequest,
 )
 
 __all__ = [
     "RetainedResult",
     "Study",
-    "apply_method",
     "load_selected_method",
     "publish_study",
     "retain_result",
@@ -65,13 +63,6 @@ class Study(_FrozenRecord):
         for result in self.trials:
             _require_method(self.request, result.method)
         return self
-
-
-def apply_method(request: TuneRequest, method: Method) -> TrainingDefinition:
-    """Approve a Method against its TuneRequest and compose its definition."""
-
-    _require_method(request, method)
-    return TrainingDefinition(experiment=request.experiment, method=method)
 
 
 def retain_result(

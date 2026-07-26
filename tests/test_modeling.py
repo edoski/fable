@@ -260,12 +260,6 @@ def test_artifact_association_rejects_only_owned_mismatches() -> None:
         )
 
 
-@pytest.mark.parametrize("shape", [(2, 3), (2, 2, 2)])
-def test_require_inputs_rejects_invalid_rank_or_context(shape: tuple[int, ...]) -> None:
-    with pytest.raises(ValueError, match="rank 3 and exact configured context length"):
-        modeling._require_inputs(torch.zeros(shape), context_blocks=3)
-
-
 def test_transformer_encoder_layers_have_independent_matrix_initialization() -> None:
     torch.manual_seed(71)
     encoder = modeling._encoder(

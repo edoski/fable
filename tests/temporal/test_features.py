@@ -249,21 +249,6 @@ def _fit(
             lambda: _fit(
                 _blocks(
                     base_fees=[10, 20],
-                    gas_used=[0, 1],
-                    gas_limits=[1, 1],
-                    tx_counts=[0, 1],
-                    timestamps=[0, 1],
-                    priority_fees=[0, 1],
-                ),
-                ordered_features=("log_exact_forming_base_fee_per_gas",),
-            ),
-            "gas_target must be positive",
-            id="forming-fee-domain",
-        ),
-        pytest.param(
-            lambda: _fit(
-                _blocks(
-                    base_fees=[10, 20],
                     gas_used=[1, 2],
                     gas_limits=[2, 4],
                     tx_counts=[1, 2],

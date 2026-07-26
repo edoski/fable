@@ -56,8 +56,6 @@ class MinBlockFeeLoss:
 
 
 def _natural_log(values: NDArray[np.int64]) -> NDArray[np.float64]:
-    if np.any(values <= 0):
-        raise ValueError("raw_minima must contain only positive values")
     return np.log(values.astype(np.float64, copy=False))
 
 

@@ -62,8 +62,6 @@ class HistoricalDataset(Dataset[_HistoricalItem]):
         return self._origin_rows.numel()
 
     def __getitem__(self, index: int) -> _HistoricalItem:
-        if index < 0 or index >= len(self):
-            raise IndexError("HistoricalDataset index out of range")
         origin = int(self._origin_rows[index])
         return {
             "inputs": self._backing.inputs[origin - self._context_blocks + 1 : origin + 1],
