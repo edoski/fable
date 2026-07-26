@@ -1,4 +1,5 @@
 import { buildModelInput } from "./features";
+import type { Chain, Horizon } from "./domain";
 import {
   createDefaultModelCatalog,
   createModelRuntime,
@@ -10,23 +11,8 @@ import type {
   ModelRuntime,
   ModelSelection,
 } from "./model";
-import {
-  createChainSession,
-  defaultRpcUrl,
-} from "./rpc";
-import type { ChainSession } from "./rpc";
-
-export const CHAINS = ["ethereum", "polygon", "avalanche"] as const;
-export type Chain = (typeof CHAINS)[number];
-
-export const HORIZONS = [2, 3, 4, 5] as const;
-export type Horizon = (typeof HORIZONS)[number];
-
-export const CHAIN_DETAILS: Record<Chain, { label: string }> = {
-  ethereum: { label: "Ethereum" },
-  polygon: { label: "Polygon" },
-  avalanche: { label: "Avalanche" },
-};
+import { createChainSession } from "./rpc";
+import type { BlockRow, ChainSession } from "./rpc";
 
 export type InferenceResult = {
   chain: Chain;
@@ -48,16 +34,12 @@ export type ChainSnapshot = {
 };
 
 export type InferenceOutcome = {
-  chain: Chain;
-  immediate_block: number;
-  selected_block: number;
   immediate_base_fee_per_gas: number;
   selected_base_fee_per_gas: number;
 };
 
 export type InferenceEngine = {
   prepare(K: Horizon): Promise<void>;
-  snapshot(): Promise<ChainSnapshot>;
   startPolling(
     onSnapshot: (snapshot: ChainSnapshot) => void,
     onError?: (error: unknown) => void,
@@ -118,20 +100,6 @@ export function createInferenceEngine(
     requireCurrent(revision);
   }
 
-  async function snapshot(): Promise<ChainSnapshot> {
-    requireActive();
-    const head = await session.readSnapshot();
-    requireActive();
-    return {
-      chain,
-      head_block: safeBigInt(head.number, "head block"),
-      current_base_fee_per_gas: safeBigInt(
-        head.baseFeePerGas,
-        "current base fee",
-      ),
-    };
-  }
-
   async function run(K: Horizon): Promise<InferenceResult> {
     const revision = beginSelection(K);
     const selection = catalog.select(chain, K);
@@ -156,17 +124,11 @@ export function createInferenceEngine(
     requireCurrent(revision);
 
     const head = context.blocks[context.blocks.length - 1];
-    if (head === undefined || head.number !== context.head) {
-      throw inferenceFailure(
-        "Chain data is incomplete or invalid.",
-        new Error("Synchronized context must end at the exact head"),
-      );
-    }
     let input: Float32Array;
     try {
       input = buildModelInput(
         context.blocks,
-        context.feeHistory,
+        context.p50Rewards,
         selection.chainManifest,
       );
     } catch (error) {
@@ -229,26 +191,11 @@ export function createInferenceEngine(
     selectedBlock: number,
   ): Promise<InferenceOutcome> {
     requireActive();
-    const immediate = safeBlockInput(immediateBlock, "immediate block");
-    const selected = safeBlockInput(selectedBlock, "selected block");
+    const immediate = BigInt(immediateBlock);
+    const selected = BigInt(selectedBlock);
     const outcome = await session.readOutcome(immediate, selected);
     requireActive();
-    if (
-      outcome.immediateBlock !== immediate ||
-      outcome.selectedBlock !== selected
-    ) {
-      throw new Error("Chain outcome does not match the requested blocks");
-    }
     return {
-      chain,
-      immediate_block: safeBigInt(
-        outcome.immediateBlock,
-        "immediate block",
-      ),
-      selected_block: safeBigInt(
-        outcome.selectedBlock,
-        "selected block",
-      ),
       immediate_base_fee_per_gas: safeBigInt(
         outcome.immediateBaseFeePerGas,
         "immediate base fee",
@@ -289,7 +236,6 @@ export function createInferenceEngine(
 
   return {
     prepare,
-    snapshot,
     startPolling,
     run,
     resolveOutcome,
@@ -306,7 +252,6 @@ function defaultDependencies(chain: Chain): InferenceEngineDependencies {
     model: createModelRuntime(),
     session: createChainSession({
       chain,
-      rpcUrl: defaultRpcUrl(chain),
       contextBlocks: manifest.context_blocks,
       orderedFeatures: manifest.features.map((feature) => feature.name),
     }),
@@ -320,28 +265,11 @@ function decodePrediction(
   selectedAction: number;
   predictedFee: number;
 } {
-  if (output.actionLogits.length !== selection.K) {
-    throw new Error(
-      `Model action logits must contain exactly ${selection.K} values`,
-    );
-  }
   let action = 0;
   for (let index = 0; index < output.actionLogits.length; index += 1) {
-    const value = output.actionLogits[index];
-    if (!Number.isFinite(value)) {
-      throw new Error("Model action logits must be finite");
+    if (output.actionLogits[index] > output.actionLogits[action]) {
+      action = index;
     }
-    if (value > output.actionLogits[action]) action = index;
-  }
-  if (
-    !Number.isSafeInteger(action) ||
-    action < 0 ||
-    action >= selection.K
-  ) {
-    throw new Error(`Model action must be between 0 and ${selection.K - 1}`);
-  }
-  if (!Number.isFinite(output.minimumFeeZ)) {
-    throw new Error("Model minimum fee z must be finite");
   }
 
   const target = selection.modelManifest.target;
@@ -361,7 +289,7 @@ function decodePrediction(
 function createInferenceResult(
   chain: Chain,
   selection: ModelSelection,
-  head: Awaited<ReturnType<ChainSession["readSnapshot"]>>,
+  head: BlockRow,
   prediction: ReturnType<typeof decodePrediction>,
 ): InferenceResult {
   const immediateBlock = head.number + 1n;
@@ -388,13 +316,6 @@ function safeBigInt(value: bigint, label: string): number {
     throw new Error(`${label} exceeds the safe integer range`);
   }
   return Number(value);
-}
-
-function safeBlockInput(value: number, label: string): bigint {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`${label} must be a nonnegative safe integer`);
-  }
-  return BigInt(value);
 }
 
 function abortError(message: string): Error {

@@ -1,6 +1,6 @@
 import Svg, { Path } from "react-native-svg";
 
-import type { Chain } from "../inference";
+import type { Chain } from "../domain";
 
 export function NetworkIcon({
   chain,

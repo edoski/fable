@@ -16,12 +16,11 @@ import {
   type FeatureName,
 } from "./features";
 import {
-  SUPPORTED_CHAINS,
-  type SupportedChain,
-} from "./rpc";
-import type { Horizon } from "./inference";
-
-const MODEL_HORIZONS = [2, 3, 4, 5] as const satisfies readonly Horizon[];
+  CHAINS,
+  HORIZONS,
+  type Chain,
+  type Horizon,
+} from "./domain";
 
 export type TargetManifest = {
   mean: number;
@@ -39,16 +38,16 @@ export type MobileChainManifest = ChainManifest & {
 
 export type MobileManifest = {
   executorch_version: string;
-  chains: Record<SupportedChain, MobileChainManifest>;
+  chains: Record<Chain, MobileChainManifest>;
 };
 
 export type ModelResourceTable = Record<
-  SupportedChain,
+  Chain,
   Record<Horizon, number>
 >;
 
 export type ModelSelection = {
-  chain: SupportedChain;
+  chain: Chain;
   K: Horizon;
   source: number;
   chainManifest: MobileChainManifest;
@@ -56,8 +55,8 @@ export type ModelSelection = {
 };
 
 export type ModelCatalog = {
-  chainManifest(chain: SupportedChain): MobileChainManifest;
-  select(chain: SupportedChain, K: Horizon): ModelSelection;
+  chainManifest(chain: Chain): MobileChainManifest;
+  select(chain: Chain, K: Horizon): ModelSelection;
 };
 
 export type ModelOutput = {
@@ -98,7 +97,7 @@ type LoadedModel = {
 };
 
 const EXECUTORCH_VERSION = "1.2.0";
-const CHAIN_IDS: Record<SupportedChain, number> = {
+const CHAIN_IDS: Record<Chain, number> = {
   ethereum: 1,
   polygon: 137,
   avalanche: 43_114,
@@ -250,7 +249,6 @@ export function createModelRuntime(
     selection: ModelSelection,
     input: Float32Array,
   ): Promise<ModelOutput> {
-    validateInput(input, selection.chainManifest);
     requireActive();
     const key = selectionKey(selection);
     desiredKey = key;
@@ -308,12 +306,12 @@ function parseManifest(value: unknown): MobileManifest {
   }
   const chains = exactObject(
     manifest.chains,
-    SUPPORTED_CHAINS,
+    CHAINS,
     "manifest chains",
   );
-  const parsed = {} as Record<SupportedChain, MobileChainManifest>;
+  const parsed = {} as Record<Chain, MobileChainManifest>;
   const artifactIds = new Set<string>();
-  for (const chain of SUPPORTED_CHAINS) {
+  for (const chain of CHAINS) {
     parsed[chain] = parseChainManifest(
       chains[chain],
       chain,
@@ -328,7 +326,7 @@ function parseManifest(value: unknown): MobileManifest {
 
 function parseChainManifest(
   value: unknown,
-  chain: SupportedChain,
+  chain: Chain,
   artifactIds: Set<string>,
 ): MobileChainManifest {
   const manifest = exactObject(
@@ -366,11 +364,11 @@ function parseChainManifest(
 
   const modelValues = exactObject(
     manifest.models,
-    MODEL_HORIZONS.map(String),
+    HORIZONS.map(String),
     `${chain} models`,
   );
   const models = {} as Record<Horizon, ModelManifest>;
-  for (const K of MODEL_HORIZONS) {
+  for (const K of HORIZONS) {
     models[K] = parseModel(
       modelValues[String(K)],
       `${chain} K=${K}`,
@@ -387,7 +385,7 @@ function parseChainManifest(
 
 function parseFeature(
   value: unknown,
-  chain: SupportedChain,
+  chain: Chain,
   index: number,
 ): FeatureManifest {
   const feature = exactObject(
@@ -447,18 +445,18 @@ function parseModel(
 function parseResources(value: unknown): ModelResourceTable {
   const resources = exactObject(
     value,
-    SUPPORTED_CHAINS,
+    CHAINS,
     "model resources",
   );
   const parsed = {} as ModelResourceTable;
-  for (const chain of SUPPORTED_CHAINS) {
+  for (const chain of CHAINS) {
     const cells = exactObject(
       resources[chain],
-      MODEL_HORIZONS.map(String),
+      HORIZONS.map(String),
       `${chain} model resources`,
     );
     parsed[chain] = {} as Record<Horizon, number>;
-    for (const K of MODEL_HORIZONS) {
+    for (const K of HORIZONS) {
       const source = cells[String(K)];
       if (
         typeof source !== "number" ||
@@ -524,24 +522,6 @@ function positiveFiniteNumber(value: unknown, label: string): number {
 
 function selectionKey(selection: ModelSelection): string {
   return `${selection.chain}:${selection.K}:${selection.modelManifest.artifact_id}`;
-}
-
-function validateInput(
-  input: Float32Array,
-  manifest: MobileChainManifest,
-): void {
-  const expected =
-    manifest.context_blocks * manifest.features.length;
-  if (!(input instanceof Float32Array) || input.length !== expected) {
-    throw new Error(
-      `Model input must contain exactly ${expected} float32 values`,
-    );
-  }
-  for (const value of input) {
-    if (!Number.isFinite(value)) {
-      throw new Error("Model input values must be finite");
-    }
-  }
 }
 
 function decodeOutputs(outputs: unknown, K: Horizon): ModelOutput {

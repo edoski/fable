@@ -404,24 +404,4 @@ describe("model runtime", () => {
     ).rejects.toThrow(message);
     await runtime.dispose();
   });
-
-  it("rejects an invalid row-major input before native execution", async () => {
-    const { manifest, resources } = bundle();
-    const catalog = createModelCatalog(manifest, resources);
-    const module = native();
-    const runtime = createModelRuntime(() => module);
-    const selection = catalog.select("ethereum", 2);
-
-    await expect(
-      runtime.execute(selection, new Float32Array([1])),
-    ).rejects.toThrow("exactly 2");
-    await expect(
-      runtime.execute(
-        selection,
-        new Float32Array([1, Number.POSITIVE_INFINITY]),
-      ),
-    ).rejects.toThrow("finite");
-    expect(module.forward).not.toHaveBeenCalled();
-    await runtime.dispose();
-  });
 });

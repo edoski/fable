@@ -1,18 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createEngineLifecycle } from "../src/engineLifecycle";
-
-type Snapshot = {
-  head: number;
-};
-
-type TestEngine = {
-  startPolling(
-    onSnapshot: (snapshot: Snapshot) => void,
-    onError?: (error: unknown) => void,
-  ): () => void;
-  dispose(): Promise<void>;
-};
+import type {
+  ChainSnapshot,
+  InferenceEngine,
+} from "../src/inference";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -22,10 +14,25 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function snapshot(headBlock: number): ChainSnapshot {
+  return {
+    chain: "ethereum",
+    head_block: headBlock,
+    current_base_fee_per_gas: 20,
+  };
+}
+
 function engine(dispose: () => Promise<void> = async () => undefined) {
   const stop = vi.fn();
-  const value: TestEngine = {
+  const value: InferenceEngine = {
+    prepare: vi.fn(async () => undefined),
     startPolling: vi.fn(() => stop),
+    run: vi.fn(async () => {
+      throw new Error("unused");
+    }),
+    resolveOutcome: vi.fn(async () => {
+      throw new Error("unused");
+    }),
     dispose: vi.fn(dispose),
   };
   return {
@@ -38,7 +45,7 @@ function observer() {
   const constructionErrors: unknown[] = [];
   const disposalErrors: unknown[] = [];
   const rpcErrors: unknown[] = [];
-  const snapshots: Snapshot[] = [];
+  const snapshots: ChainSnapshot[] = [];
   const statuses: string[] = [];
   return {
     constructionErrors,
@@ -55,7 +62,7 @@ function observer() {
     onRpcUnavailable(error: unknown) {
       rpcErrors.push(error);
     },
-    onSnapshot(_engine: TestEngine, snapshot: Snapshot) {
+    onSnapshot(_engine: InferenceEngine, snapshot: ChainSnapshot) {
       snapshots.push(snapshot);
     },
     onStatus(status: string) {
@@ -70,7 +77,7 @@ describe("engine lifecycle", () => {
     const first = engine(() => disposing.promise);
     const second = engine();
     const events = observer();
-    const lifecycle = createEngineLifecycle<TestEngine, Snapshot>(events);
+    const lifecycle = createEngineLifecycle(events);
     const firstLease = lifecycle.replace(() => first.value);
     await expect(firstLease).resolves.toBe(first.value);
     const createSecond = vi.fn(() => second.value);
@@ -95,7 +102,7 @@ describe("engine lifecycle", () => {
       throw cleanupError;
     });
     const events = observer();
-    const lifecycle = createEngineLifecycle<TestEngine, Snapshot>(events);
+    const lifecycle = createEngineLifecycle(events);
     await lifecycle.replace(() => first.value);
 
     const secondLease = lifecycle.replace(() => second.value);
@@ -113,7 +120,7 @@ describe("engine lifecycle", () => {
   it("keeps RPC checking on construction failure and changes it only from polling", async () => {
     const constructionError = new Error("catalog invalid");
     const events = observer();
-    const lifecycle = createEngineLifecycle<TestEngine, Snapshot>(events);
+    const lifecycle = createEngineLifecycle(events);
 
     await expect(
       lifecycle.replace(() => {
@@ -124,7 +131,7 @@ describe("engine lifecycle", () => {
     expect(events.constructionErrors).toEqual([constructionError]);
 
     const next = engine();
-    let publishSnapshot: ((snapshot: Snapshot) => void) | undefined;
+    let publishSnapshot: ((snapshot: ChainSnapshot) => void) | undefined;
     let publishError: ((error: unknown) => void) | undefined;
     next.value.startPolling = vi.fn((onSnapshot, onError) => {
       publishSnapshot = onSnapshot;
@@ -135,7 +142,7 @@ describe("engine lifecycle", () => {
     await lease;
     const rpcError = new Error("RPC unavailable");
     publishError?.(rpcError);
-    publishSnapshot?.({ head: 12 });
+    publishSnapshot?.(snapshot(12));
 
     expect(events.statuses).toEqual([
       "checking",
@@ -144,7 +151,7 @@ describe("engine lifecycle", () => {
       "live",
     ]);
     expect(events.rpcErrors).toEqual([rpcError]);
-    expect(events.snapshots).toEqual([{ head: 12 }]);
+    expect(events.snapshots).toEqual([snapshot(12)]);
     await lifecycle.release(lease);
   });
 
@@ -154,10 +161,10 @@ describe("engine lifecycle", () => {
     const skipped = engine();
     const replacement = engine();
     const events = observer();
-    const lifecycle = createEngineLifecycle<TestEngine, Snapshot>(events);
-    let publishFirst: ((snapshot: Snapshot) => void) | undefined;
+    const lifecycle = createEngineLifecycle(events);
+    let publishFirst: ((snapshot: ChainSnapshot) => void) | undefined;
     let failFirst: ((error: unknown) => void) | undefined;
-    let publishReplacement: ((snapshot: Snapshot) => void) | undefined;
+    let publishReplacement: ((snapshot: ChainSnapshot) => void) | undefined;
     first.value.startPolling = vi.fn((onSnapshot, onError) => {
       publishFirst = onSnapshot;
       failFirst = onError;
@@ -186,13 +193,13 @@ describe("engine lifecycle", () => {
     const statuses = [...events.statuses];
     const snapshots = [...events.snapshots];
     failFirst?.(new Error("stale RPC failure"));
-    publishFirst?.({ head: 11 });
+    publishFirst?.(snapshot(11));
     expect(events.statuses).toEqual(statuses);
     expect(events.snapshots).toEqual(snapshots);
 
-    publishReplacement?.({ head: 12 });
+    publishReplacement?.(snapshot(12));
     expect(events.statuses).toEqual([...statuses, "live"]);
-    expect(events.snapshots).toEqual([{ head: 12 }]);
+    expect(events.snapshots).toEqual([snapshot(12)]);
     await lifecycle.release(replacementLease);
   });
 });

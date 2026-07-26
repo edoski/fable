@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { custom } from "viem";
 import type { Hash, Transport } from "viem";
 
-import { createChainSession, defaultRpcUrl } from "../src/rpc";
-import type { SupportedChain } from "../src/rpc";
+import type { Chain } from "../src/domain";
+import { createChainSession } from "../src/rpc";
 
 type RequestArguments = {
   method: string;
@@ -14,7 +14,7 @@ type RpcProvider = {
   request(args: RequestArguments): Promise<unknown>;
 };
 
-const CHAIN_IDS: Record<SupportedChain, number> = {
+const CHAIN_IDS: Record<Chain, number> = {
   ethereum: 1,
   polygon: 137,
   avalanche: 43_114,
@@ -66,7 +66,7 @@ function transport(provider: RpcProvider): Transport {
 }
 
 function session(
-  chain: SupportedChain,
+  chain: Chain,
   rpcTransport: Transport,
   {
     contextBlocks = 3,
@@ -79,7 +79,6 @@ function session(
   return createChainSession(
     {
       chain,
-      rpcUrl: "https://unused.invalid",
       contextBlocks,
       orderedFeatures,
     },
@@ -103,15 +102,7 @@ afterEach(() => {
 });
 
 describe("createChainSession", () => {
-  it("uses the Viem package default RPC URL for every supported chain", () => {
-    expect(supportedRpcUrls()).toEqual({
-      ethereum: "https://ethereum.reth.rs/rpc",
-      polygon: "https://polygon.drpc.org",
-      avalanche: "https://api.avax.network/ext/bc/C/rpc",
-    });
-  });
-
-  it.each(Object.entries(CHAIN_IDS) as [SupportedChain, number][])(
+  it.each(Object.entries(CHAIN_IDS) as [Chain, number][])(
     "verifies the %s chain ID",
     async (chain, chainId) => {
       const methods: string[] = [];
@@ -132,7 +123,7 @@ describe("createChainSession", () => {
 
       const context = await chainSession.sync();
 
-      expect(context.head).toBe(5n);
+      expect(context.blocks.at(-1)?.number).toBe(5n);
       expect(context.blocks.map((block) => block.number)).toEqual([5n]);
       expect(methods.filter((method) => method === "eth_chainId")).toHaveLength(1);
       chainSession.dispose();
@@ -179,7 +170,7 @@ describe("createChainSession", () => {
     await expect(chainSession.sync()).rejects.toThrow();
     const context = await chainSession.sync();
 
-    expect(context.head).toBe(5n);
+    expect(context.blocks.at(-1)?.number).toBe(5n);
     expect(chainIdReads).toBe(2);
     chainSession.dispose();
   });
@@ -374,8 +365,11 @@ describe("createChainSession", () => {
 
     const context = await chainSession.sync();
 
-    expect(context.feeHistory?.oldestBlock).toBe(10n);
-    expect(context.feeHistory?.reward).toHaveLength(3);
+    expect(context.p50Rewards).toEqual([
+      2_000_000_000n,
+      2_000_000_001n,
+      2_000_000_002n,
+    ]);
     expect(feeHistoryParams).toEqual(["0x3", "0xc", [50]]);
     chainSession.dispose();
   });
@@ -692,16 +686,13 @@ describe("createChainSession", () => {
       }),
     );
 
-    const rpcUrl = "https://same-provider.invalid";
     const first = createChainSession({
       chain: "ethereum",
-      rpcUrl,
       contextBlocks: 1,
       orderedFeatures: [],
     });
     const replacement = createChainSession({
       chain: "ethereum",
-      rpcUrl,
       contextBlocks: 1,
       orderedFeatures: [],
     });
@@ -718,7 +709,7 @@ describe("createChainSession", () => {
       name: "AbortError",
     });
     await expect(replacementSynchronization).resolves.toMatchObject({
-      head: 10n,
+      blocks: [expect.objectContaining({ number: 10n })],
     });
     replacement.dispose();
   });
@@ -747,7 +738,6 @@ describe("createChainSession", () => {
     );
     const chainSession = createChainSession({
       chain: "ethereum",
-      rpcUrl: "https://hanging-provider.invalid",
       contextBlocks: 1,
       orderedFeatures: [],
     });
@@ -783,11 +773,3 @@ describe("createChainSession", () => {
     }
   });
 });
-
-function supportedRpcUrls(): Record<SupportedChain, string> {
-  return {
-    ethereum: defaultRpcUrl("ethereum"),
-    polygon: defaultRpcUrl("polygon"),
-    avalanche: defaultRpcUrl("avalanche"),
-  };
-}

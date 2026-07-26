@@ -19,7 +19,6 @@
     "expo-build-properties": "~55.0.16",
     "expo-file-system": "~55.0.24",
     "expo-font": "~55.0.8",
-    "expo-linear-gradient": "~55.0.16",
     "react": "19.2.0",
     "react-native": "0.83.6",
     "react-native-executorch": "0.9.2",

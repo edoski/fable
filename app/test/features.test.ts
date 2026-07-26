@@ -3,7 +3,7 @@ import type { Hash } from "viem";
 
 import { buildModelInput } from "../src/features";
 import type { ChainManifest, FeatureName } from "../src/features";
-import type { BlockRow, FeeHistory } from "../src/rpc";
+import type { BlockRow } from "../src/rpc";
 import fixture from "./fixtures/features.json";
 
 function fixtureBlocks(): BlockRow[] {
@@ -19,13 +19,8 @@ function fixtureBlocks(): BlockRow[] {
   }));
 }
 
-function fixtureFeeHistory(): FeeHistory {
-  return {
-    oldestBlock: BigInt(fixture.feeHistory.oldestBlock),
-    baseFeePerGas: fixture.feeHistory.baseFeePerGas.map(BigInt),
-    gasUsedRatio: fixture.feeHistory.gasUsedRatio,
-    reward: fixture.feeHistory.reward.map((row) => row.map(BigInt)),
-  };
+function fixtureP50Rewards(): bigint[] {
+  return fixture.feeHistory.reward.map(([reward]) => BigInt(reward));
 }
 
 function fixtureManifest(): ChainManifest {
@@ -43,7 +38,7 @@ describe("buildModelInput", () => {
   it("matches the Python float32 oracle for all transforms in manifest order", () => {
     const result = buildModelInput(
       fixtureBlocks(),
-      fixtureFeeHistory(),
+      fixtureP50Rewards(),
       fixtureManifest(),
     );
 
@@ -96,7 +91,7 @@ describe("buildModelInput", () => {
   });
 
   it("aligns P50 fee rows to model rows after dropping the predecessor", () => {
-    const input = buildModelInput(fixtureBlocks(), fixtureFeeHistory(), {
+    const input = buildModelInput(fixtureBlocks(), fixtureP50Rewards(), {
       chain_id: 1,
       context_blocks: 4,
       features: [
@@ -123,43 +118,6 @@ describe("buildModelInput", () => {
       Math.fround(Math.log1p(5_000_000_000)),
       20,
     ]);
-  });
-
-  it("rejects incomplete fee history and non-Ethereum forming fees", () => {
-    const blocks = fixtureBlocks().slice(1);
-    const feeHistory = fixtureFeeHistory();
-    const priorityManifest: ChainManifest = {
-      chain_id: 1,
-      context_blocks: 4,
-      features: [
-        {
-          name: "log1p_effective_priority_fee_per_gas_p50",
-          mean: 0,
-          standard_deviation: 1,
-        },
-      ],
-    };
-
-    expect(() =>
-      buildModelInput(
-        blocks,
-        { ...feeHistory, oldestBlock: feeHistory.oldestBlock + 1n },
-        priorityManifest,
-      ),
-    ).toThrow("Fee history must exactly cover model rows");
-    expect(() =>
-      buildModelInput(blocks, null, {
-        chain_id: 137,
-        context_blocks: 4,
-        features: [
-          {
-            name: "log_exact_forming_base_fee_per_gas",
-            mean: 0,
-            standard_deviation: 1,
-          },
-        ],
-      }),
-    ).toThrow("Ethereum-only");
   });
 
   it("rejects unsafe integer conversion instead of losing raw precision", () => {

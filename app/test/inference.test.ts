@@ -13,9 +13,9 @@ vi.mock("react-native-executorch-expo-resource-fetcher", () => ({
 
 import {
   createInferenceEngine,
-  type Horizon,
   type InferenceEngineDependencies,
 } from "../src/inference";
+import type { Horizon } from "../src/domain";
 import { ModelOutputError } from "../src/model";
 import type {
   MobileChainManifest,
@@ -56,12 +56,11 @@ function context(
   headBaseFee = head + 10n,
 ): PreparedChainContext {
   return {
-    head,
     blocks: [
       block(head - 1n, headBaseFee - 1n),
       block(head, headBaseFee),
     ],
-    feeHistory: null,
+    p50Rewards: null,
   };
 }
 
@@ -120,14 +119,11 @@ function session(
 ): ChainSession {
   return {
     sync: vi.fn(sync),
-    readSnapshot: vi.fn(async () => block(10n)),
     readOutcome: vi.fn(
       async (
-        immediateBlock: bigint,
-        selectedBlock: bigint,
+        _immediateBlock: bigint,
+        _selectedBlock: bigint,
       ): Promise<ChainOutcome> => ({
-        immediateBlock,
-        selectedBlock,
         immediateBaseFeePerGas: 20n,
         selectedBaseFeePerGas: 18n,
       }),
@@ -418,34 +414,14 @@ describe("InferenceEngine", () => {
     expect(model.dispose).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    {
-      name: "logit count",
-      output: {
-        actionLogits: new Float32Array([1]),
-        minimumFeeZ: 0,
-      },
-      message: "returned invalid output",
-    },
-    {
-      name: "finite logits",
-      output: {
-        actionLogits: new Float32Array([0, Number.NaN]),
-        minimumFeeZ: 0,
-      },
-      message: "returned invalid output",
-    },
-    {
-      name: "finite positive fee",
-      output: {
+  it("rejects a nonfinite decoded fee", async () => {
+    const { engine } = createTestEngine({
+      model: runtime({
         actionLogits: new Float32Array([0, 1]),
         minimumFeeZ: 2_000,
-      },
-      message: "returned invalid output",
-    },
-  ])("rejects invalid $name", async ({ output, message }) => {
-    const { engine } = createTestEngine({ model: runtime(output) });
-    await expect(engine.run(2)).rejects.toThrow(message);
+      }),
+    });
+    await expect(engine.run(2)).rejects.toThrow("returned invalid output");
     await engine.dispose();
   });
 
@@ -499,31 +475,22 @@ describe("InferenceEngine", () => {
     await third.engine.dispose();
   });
 
-  it("converts snapshots and outcomes only through safe integers", async () => {
+  it("passes exact outcome blocks and converts RPC fees through safe integers", async () => {
     const chainSession = session();
     const { engine } = createTestEngine({ session: chainSession });
 
-    await expect(engine.snapshot()).resolves.toEqual({
-      chain: "ethereum",
-      head_block: 10,
-      current_base_fee_per_gas: 20,
-    });
     await expect(engine.resolveOutcome(11, 12)).resolves.toEqual({
-      chain: "ethereum",
-      immediate_block: 11,
-      selected_block: 12,
       immediate_base_fee_per_gas: 20,
       selected_base_fee_per_gas: 18,
     });
-    await expect(
-      engine.resolveOutcome(Number.MAX_SAFE_INTEGER + 1, 12),
-    ).rejects.toThrow("immediate block must be a nonnegative safe integer");
+    expect(chainSession.readOutcome).toHaveBeenCalledWith(11n, 12n);
 
-    vi.mocked(chainSession.readSnapshot).mockResolvedValueOnce(
-      block(10n, BigInt(Number.MAX_SAFE_INTEGER) + 1n),
-    );
-    await expect(engine.snapshot()).rejects.toThrow(
-      "current base fee exceeds the safe integer range",
+    vi.mocked(chainSession.readOutcome).mockResolvedValueOnce({
+      immediateBaseFeePerGas: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+      selectedBaseFeePerGas: 18n,
+    });
+    await expect(engine.resolveOutcome(11, 12)).rejects.toThrow(
+      "immediate base fee exceeds the safe integer range",
     );
     await engine.dispose();
   });

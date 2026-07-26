@@ -1,8 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import type { Chain, Horizon } from "./domain";
 import type {
-  Chain,
-  Horizon,
   InferenceEngine,
   InferenceOutcome,
   InferenceResult,
@@ -68,15 +67,6 @@ function recordOutcome(
 ): InferenceRun {
   if (run.outcome !== undefined) {
     return run;
-  }
-  if (outcome.chain !== run.chain) {
-    throw new Error("Outcome chain does not match the run");
-  }
-  if (outcome.immediate_block !== run.head_block + 1) {
-    throw new Error("Outcome immediate block does not match the run");
-  }
-  if (outcome.selected_block !== run.target_block) {
-    throw new Error("Outcome selected block does not match the run");
   }
   return {
     ...run,

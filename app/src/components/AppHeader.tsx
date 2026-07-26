@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import type { RpcStatus } from "../engineLifecycle";
-import { CHAIN_DETAILS, type Chain } from "../inference";
+import { CHAIN_DETAILS, type Chain } from "../domain";
 import { colors } from "../theme";
 
 const STATUS = {

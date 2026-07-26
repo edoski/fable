@@ -1,42 +1,33 @@
+import type {
+  ChainSnapshot,
+  InferenceEngine,
+} from "./inference";
+
 export type RpcStatus = "checking" | "live" | "offline";
 
-export type PollingEngine<Snapshot> = {
-  startPolling(
-    onSnapshot: (snapshot: Snapshot) => void,
-    onError?: (error: unknown) => void,
-  ): () => void;
-  dispose(): Promise<void>;
-};
-
-export type EngineLifecycleObserver<
-  Engine extends PollingEngine<Snapshot>,
-  Snapshot,
-> = {
+export type EngineLifecycleObserver = {
   onConstructionError(error: unknown): void;
   onDisposalError(error: unknown): void;
   onRpcUnavailable(error: unknown): void;
-  onSnapshot(engine: Engine, snapshot: Snapshot): void;
+  onSnapshot(engine: InferenceEngine, snapshot: ChainSnapshot): void;
   onStatus(status: RpcStatus): void;
 };
 
-type EngineRecord<Engine> = {
-  engine: Engine;
+type EngineRecord = {
+  engine: InferenceEngine;
   revision: number;
   stopPolling: () => void;
 };
 
-export type EngineLifecycle<Engine> = {
-  replace(create: () => Engine): Promise<Engine | null>;
-  release(lease: Promise<Engine | null>): Promise<void>;
+export type EngineLifecycle = {
+  replace(create: () => InferenceEngine): Promise<InferenceEngine | null>;
+  release(lease: Promise<InferenceEngine | null>): Promise<void>;
 };
 
-export function createEngineLifecycle<
-  Engine extends PollingEngine<Snapshot>,
-  Snapshot,
->(
-  observer: EngineLifecycleObserver<Engine, Snapshot>,
-): EngineLifecycle<Engine> {
-  let current: EngineRecord<Engine> | null = null;
+export function createEngineLifecycle(
+  observer: EngineLifecycleObserver,
+): EngineLifecycle {
+  let current: EngineRecord | null = null;
   let replacementRevision = 0;
   let transitions: Promise<void> = Promise.resolve();
 
@@ -51,7 +42,7 @@ export function createEngineLifecycle<
     return result;
   }
 
-  async function dispose(record: EngineRecord<Engine>): Promise<void> {
+  async function dispose(record: EngineRecord): Promise<void> {
     try {
       record.stopPolling();
     } catch (error) {
@@ -64,7 +55,9 @@ export function createEngineLifecycle<
     }
   }
 
-  function replace(create: () => Engine): Promise<Engine | null> {
+  function replace(
+    create: () => InferenceEngine,
+  ): Promise<InferenceEngine | null> {
     replacementRevision += 1;
     const revision = replacementRevision;
     observer.onStatus("checking");
@@ -76,7 +69,7 @@ export function createEngineLifecycle<
       }
       if (revision !== replacementRevision) return null;
 
-      let engine: Engine;
+      let engine: InferenceEngine;
       try {
         engine = create();
       } catch (error) {
@@ -84,7 +77,7 @@ export function createEngineLifecycle<
         return null;
       }
 
-      const record: EngineRecord<Engine> = {
+      const record: EngineRecord = {
         engine,
         revision,
         stopPolling: () => undefined,
@@ -123,7 +116,9 @@ export function createEngineLifecycle<
     });
   }
 
-  function release(lease: Promise<Engine | null>): Promise<void> {
+  function release(
+    lease: Promise<InferenceEngine | null>,
+  ): Promise<void> {
     return lease.then((engine) => {
       if (engine === null) return;
       return serialize(async () => {

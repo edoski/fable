@@ -69,13 +69,9 @@ function storedRun(
 }
 
 function outcome(
-  run: InferenceRun,
   overrides: Partial<InferenceOutcome> = {},
 ): InferenceOutcome {
   return {
-    chain: run.chain,
-    immediate_block: run.head_block + 1,
-    selected_block: run.target_block,
     immediate_base_fee_per_gas: 12_000_000_000,
     selected_base_fee_per_gas: 10_000_000_000,
     ...overrides,
@@ -151,13 +147,13 @@ describe("history", () => {
     );
   });
 
-  it("records only an outcome with matching chain and exact blocks", async () => {
+  it("records the resolved fees without persisting request coordinates", async () => {
     const run = storedRun();
     const [resolved] = await resolvePendingRuns(
       [run],
       "ethereum",
       run.target_block,
-      async () => outcome(run),
+      async () => outcome(),
     );
 
     expect(resolved.id).toBe(run.id);
@@ -168,31 +164,6 @@ describe("history", () => {
     });
     expect(resolved.outcome).not.toHaveProperty("immediate_block");
     expect(resolved.outcome).not.toHaveProperty("selected_block");
-
-    await expect(
-      resolvePendingRuns(
-        [run],
-        "ethereum",
-        run.target_block,
-        async () => outcome(run, { chain: "polygon" }),
-      ),
-    ).rejects.toThrow("Outcome chain does not match the run");
-    await expect(
-      resolvePendingRuns(
-        [run],
-        "ethereum",
-        run.target_block,
-        async () => outcome(run, { immediate_block: 12 }),
-      ),
-    ).rejects.toThrow("Outcome immediate block does not match the run");
-    await expect(
-      resolvePendingRuns(
-        [run],
-        "ethereum",
-        run.target_block,
-        async () => outcome(run, { selected_block: 14 }),
-      ),
-    ).rejects.toThrow("Outcome selected block does not match the run");
   });
 
   it("resolves only eligible runs on the selected chain and preserves order", async () => {
@@ -222,12 +193,9 @@ describe("history", () => {
     });
     const resolve = vi.fn(
       async (
-        immediateBlock: number,
-        selectedBlock: number,
+        _immediateBlock: number,
+        _selectedBlock: number,
       ): Promise<InferenceOutcome> => ({
-        chain: "ethereum",
-        immediate_block: immediateBlock,
-        selected_block: selectedBlock,
         immediate_base_fee_per_gas: 12,
         selected_base_fee_per_gas: 10,
       }),
@@ -264,7 +232,7 @@ describe("history", () => {
     const resolve = vi
       .fn()
       .mockRejectedValueOnce(new Error("RPC unavailable"))
-      .mockResolvedValueOnce(outcome(run));
+      .mockResolvedValueOnce(outcome());
 
     await expect(
       resolvePendingRuns([run], "ethereum", run.target_block, resolve),

@@ -16,9 +16,11 @@ import {
   CHAINS,
   CHAIN_DETAILS,
   type Chain,
-  type ChainSnapshot,
   type Horizon,
-  type InferenceResult,
+} from "../domain";
+import type {
+  ChainSnapshot,
+  InferenceResult,
 } from "../inference";
 import { colors, radii } from "../theme";
 
@@ -152,7 +154,6 @@ function PredictionWindow({
       <HorizonSlider
         disabled={disabled}
         onChange={onChange}
-        showTicks={false}
         value={horizon}
       />
     </View>

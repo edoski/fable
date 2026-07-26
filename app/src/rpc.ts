@@ -1,19 +1,8 @@
 import { createPublicClient, http } from "viem";
-import type {
-  FeeHistory as ViemFeeHistory,
-  Hash,
-  Transport,
-} from "viem";
+import type { Hash, Transport } from "viem";
 import { avalanche, mainnet, polygon } from "viem/chains";
 
-export const SUPPORTED_CHAINS = [
-  "ethereum",
-  "polygon",
-  "avalanche",
-] as const;
-
-export type SupportedChain = (typeof SUPPORTED_CHAINS)[number];
-export type FeeHistory = ViemFeeHistory;
+import type { Chain } from "./domain";
 
 export type BlockRow = {
   number: bigint;
@@ -27,28 +16,23 @@ export type BlockRow = {
 };
 
 export type PreparedChainContext = {
-  head: bigint;
   blocks: readonly BlockRow[];
-  feeHistory: FeeHistory | null;
+  p50Rewards: readonly bigint[] | null;
 };
 
 export type ChainOutcome = {
-  immediateBlock: bigint;
-  selectedBlock: bigint;
   immediateBaseFeePerGas: bigint;
   selectedBaseFeePerGas: bigint;
 };
 
 export type ChainSessionConfig = {
-  chain: SupportedChain;
-  rpcUrl: string;
+  chain: Chain;
   contextBlocks: number;
   orderedFeatures: readonly string[];
 };
 
 export type ChainSession = {
   sync(): Promise<PreparedChainContext>;
-  readSnapshot(): Promise<BlockRow>;
   readOutcome(
     immediateBlock: bigint,
     selectedBlock: bigint,
@@ -74,21 +58,15 @@ const PRIORITY_FEE_FEATURE =
 const INTERVAL_FEATURE = "block_interval_seconds";
 const HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
-export function defaultRpcUrl(chain: SupportedChain): string {
-  return CHAIN_DEFINITIONS[chain].rpcUrls.default.http[0];
-}
-
 export function createChainSession(
   config: ChainSessionConfig,
   transportOverride?: Transport,
 ): ChainSession {
-  validateConfig(config);
-
   const controller = new AbortController();
   const definition = CHAIN_DEFINITIONS[config.chain];
   const baseTransport =
     transportOverride ??
-    http(config.rpcUrl, {
+    http(undefined, {
       batch: { batchSize: BLOCK_BATCH_SIZE, wait: 0 },
       fetchFn: fetchWithTimeout,
       retryCount: 0,
@@ -110,7 +88,6 @@ export function createChainSession(
   let blocks: BlockRow[] = [];
   let disposed = false;
   let verified = false;
-  let verification: Promise<void> | null = null;
   let activePollStop: (() => void) | null = null;
   let synchronizations: Promise<void> = Promise.resolve();
 
@@ -122,26 +99,14 @@ export function createChainSession(
     requireActive();
     if (verified) return;
 
-    const current =
-      verification ??
-      (verification = (async () => {
-        const chainId = await client.getChainId();
-        requireActive();
-        if (chainId !== definition.id) {
-          throw new Error(
-            `RPC chain ID ${chainId} does not match expected chain ID ${definition.id}`,
-          );
-        }
-      })());
-    try {
-      await current;
-    } catch (error) {
-      if (verification === current) verification = null;
-      throw error;
-    }
+    const chainId = await client.getChainId();
     requireActive();
+    if (chainId !== definition.id) {
+      throw new Error(
+        `RPC chain ID ${chainId} does not match expected chain ID ${definition.id}`,
+      );
+    }
     verified = true;
-    if (verification === current) verification = null;
   }
 
   async function readBlock(number: bigint): Promise<BlockRow> {
@@ -247,9 +212,9 @@ export function createChainSession(
     return blocks;
   }
 
-  async function readFeeHistory(
+  async function readP50Rewards(
     head: bigint,
-  ): Promise<FeeHistory | null> {
+  ): Promise<readonly bigint[] | null> {
     if (!needsFeeHistory) return null;
 
     const firstBlock = head - BigInt(config.contextBlocks) + 1n;
@@ -274,19 +239,19 @@ export function createChainSession(
         `Fee history must exactly cover blocks ${firstBlock} through ${head}`,
       );
     }
-    return history;
+    return history.reward.map((row) => row[0]);
   }
 
   async function synchronize(): Promise<PreparedChainContext> {
     await verifyChain();
     const head = await client.getBlockNumber();
     requireActive();
-    const [contextBlocks, feeHistory] = await Promise.all([
+    const [contextBlocks, p50Rewards] = await Promise.all([
       synchronizeBlocks(head),
-      readFeeHistory(head),
+      readP50Rewards(head),
     ]);
     requireActive();
-    return { head, blocks: contextBlocks, feeHistory };
+    return { blocks: contextBlocks, p50Rewards };
   }
 
   function sync(): Promise<PreparedChainContext> {
@@ -299,19 +264,10 @@ export function createChainSession(
     return result;
   }
 
-  async function readSnapshot(): Promise<BlockRow> {
-    await verifyChain();
-    const head = await client.getBlockNumber();
-    requireActive();
-    return readBlock(head);
-  }
-
   async function readOutcome(
     immediateBlock: bigint,
     selectedBlock: bigint,
   ): Promise<ChainOutcome> {
-    requireBlockNumber(immediateBlock, "immediateBlock");
-    requireBlockNumber(selectedBlock, "selectedBlock");
     await verifyChain();
 
     let immediate: BlockRow;
@@ -327,8 +283,6 @@ export function createChainSession(
     }
     requireActive();
     return {
-      immediateBlock,
-      selectedBlock,
       immediateBaseFeePerGas: immediate.baseFeePerGas,
       selectedBaseFeePerGas: selected.baseFeePerGas,
     };
@@ -387,23 +341,10 @@ export function createChainSession(
 
   return {
     sync,
-    readSnapshot,
     readOutcome,
     startPolling,
     dispose,
   };
-}
-
-function validateConfig(config: ChainSessionConfig): void {
-  if (config.rpcUrl.trim() === "") {
-    throw new Error("rpcUrl must be nonempty");
-  }
-  if (
-    !Number.isSafeInteger(config.contextBlocks) ||
-    config.contextBlocks <= 0
-  ) {
-    throw new Error("contextBlocks must be a positive safe integer");
-  }
 }
 
 function withSessionSignal(
@@ -474,12 +415,6 @@ function requireBigInt(
     throw new Error(`RPC returned block ${blockNumber} without ${name}`);
   }
   return value;
-}
-
-function requireBlockNumber(value: bigint, name: string): void {
-  if (value < 0n) {
-    throw new Error(`${name} must be nonnegative`);
-  }
 }
 
 function abortError(): Error {

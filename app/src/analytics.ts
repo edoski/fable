@@ -1,4 +1,4 @@
-import type { Chain, Horizon } from "./inference";
+import type { Chain, Horizon } from "./domain";
 import type { InferenceRun, RunOutcome } from "./history";
 
 export const GRAPH_OPTIONS = [

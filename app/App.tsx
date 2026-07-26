@@ -9,6 +9,7 @@ import {
   type EngineLifecycle,
   type RpcStatus,
 } from "./src/engineLifecycle";
+import type { Chain, Horizon } from "./src/domain";
 import {
   addRun,
   loadRuns,
@@ -18,9 +19,7 @@ import {
 } from "./src/history";
 import {
   createInferenceEngine,
-  type Chain,
   type ChainSnapshot,
-  type Horizon,
   type InferenceEngine,
 } from "./src/inference";
 import { AnalyticsScreen } from "./src/screens/AnalyticsScreen";
@@ -33,7 +32,6 @@ import { colors } from "./src/theme";
 type ActiveEngine = {
   chain: Chain;
   engine: InferenceEngine;
-  outcomeHead: number | null;
   outcomesRunning: boolean;
 };
 
@@ -54,12 +52,9 @@ export default function App() {
   const runsRef = useRef<InferenceRun[]>([]);
   const historyWrites = useRef<Promise<void>>(Promise.resolve());
   const mounted = useRef(true);
-  const engineLifecycle = useRef<EngineLifecycle<InferenceEngine> | null>(null);
+  const engineLifecycle = useRef<EngineLifecycle | null>(null);
   if (engineLifecycle.current === null) {
-    engineLifecycle.current = createEngineLifecycle<
-      InferenceEngine,
-      ChainSnapshot
-    >({
+    engineLifecycle.current = createEngineLifecycle({
       onConstructionError() {
         if (!mounted.current) return;
         setInference({
@@ -129,39 +124,25 @@ export default function App() {
   }
 
   function resolveOutcomes(engine: ActiveEngine, headBlock: number): void {
-    if (engine.outcomesRunning) {
-      engine.outcomeHead = Math.max(engine.outcomeHead ?? 0, headBlock);
-      return;
-    }
+    if (engine.outcomesRunning) return;
 
     engine.outcomesRunning = true;
     void (async () => {
-      let head = headBlock;
       try {
-        while (activeEngine.current === engine) {
-          engine.outcomeHead = null;
-          await commitRuns(
-            (current) =>
-              resolvePendingRuns(
-                current,
-                engine.chain,
-                head,
-                engine.engine.resolveOutcome,
-              ),
-            () => activeEngine.current === engine,
-          );
-          if (engine.outcomeHead === null) break;
-          head = engine.outcomeHead;
-        }
+        await commitRuns(
+          (current) =>
+            resolvePendingRuns(
+              current,
+              engine.chain,
+              headBlock,
+              engine.engine.resolveOutcome,
+            ),
+          () => activeEngine.current === engine,
+        );
       } catch {
         // Pending chain outcomes remain retryable on the next successful poll.
       } finally {
         engine.outcomesRunning = false;
-        const queuedHead = engine.outcomeHead;
-        if (activeEngine.current === engine && queuedHead !== null) {
-          engine.outcomeHead = null;
-          resolveOutcomes(engine, queuedHead);
-        }
       }
     })();
   }
@@ -209,7 +190,6 @@ export default function App() {
         activeEngine.current = {
           chain,
           engine,
-          outcomeHead: null,
           outcomesRunning: false,
         };
         setEngineRevision((revision) => revision + 1);

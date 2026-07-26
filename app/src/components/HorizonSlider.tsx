@@ -1,18 +1,16 @@
 import Slider from "@react-native-community/slider";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
-import { HORIZONS, type Horizon } from "../inference";
+import type { Horizon } from "../domain";
 import { colors } from "../theme";
 
 export function HorizonSlider({
   disabled = false,
   onChange,
-  showTicks = true,
   value,
 }: {
   disabled?: boolean;
   onChange: (value: Horizon) => void;
-  showTicks?: boolean;
   value: Horizon;
 }) {
   return (
@@ -36,18 +34,6 @@ export function HorizonSlider({
         thumbTintColor={colors.blue}
         value={value}
       />
-      {showTicks && (
-        <View style={styles.ticks}>
-          {HORIZONS.map((horizon) => (
-            <Text
-              key={horizon}
-              style={[styles.tick, horizon === value && styles.tickActive]}
-            >
-              {horizon}
-            </Text>
-          ))}
-        </View>
-      )}
     </View>
   );
 }
@@ -55,11 +41,4 @@ export function HorizonSlider({
 const styles = StyleSheet.create({
   control: { gap: 1 },
   slider: { height: 28, width: "100%" },
-  ticks: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 7,
-  },
-  tick: { color: colors.muted, fontSize: 10, fontWeight: "600" },
-  tickActive: { color: colors.blue, fontWeight: "800" },
 });

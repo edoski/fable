@@ -27,8 +27,8 @@ import {
 } from "../analytics";
 import { HorizonSlider } from "../components/HorizonSlider";
 import { NetworkIcon } from "../components/NetworkIcon";
+import { CHAINS, CHAIN_DETAILS, type Chain, type Horizon } from "../domain";
 import type { InferenceRun } from "../history";
-import { CHAINS, CHAIN_DETAILS, type Chain, type Horizon } from "../inference";
 import { colors, radii } from "../theme";
 
 function SummaryCard({
@@ -557,7 +557,6 @@ export function AnalyticsScreen({
             <View style={styles.graphSliderCard}>
               <HorizonSlider
                 onChange={setGraphHorizon}
-                showTicks={false}
                 value={graphHorizon}
               />
             </View>
