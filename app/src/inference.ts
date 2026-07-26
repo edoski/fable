@@ -1,17 +1,20 @@
 import { buildModelInput } from "./features";
+import {
+  createDefaultModelCatalog,
+  createModelRuntime,
+  ModelOutputError,
+} from "./model";
 import type {
   ModelCatalog,
   ModelOutput,
   ModelRuntime,
   ModelSelection,
 } from "./model";
+import {
+  createChainSession,
+  defaultRpcUrl,
+} from "./rpc";
 import type { ChainSession } from "./rpc";
-
-declare const process: {
-  env: {
-    EXPO_PUBLIC_FABLE_BACKEND_URL?: string;
-  };
-};
 
 export const CHAINS = ["ethereum", "polygon", "avalanche"] as const;
 export type Chain = (typeof CHAINS)[number];
@@ -25,14 +28,15 @@ export const CHAIN_DETAILS: Record<Chain, { label: string }> = {
   avalanche: { label: "Avalanche" },
 };
 
-export type InferenceRequest = {
+export type InferenceResult = {
   chain: Chain;
   K: Horizon;
-};
-
-export type InferenceResponse = {
+  artifact_id: string;
   head_block: number;
+  head_hash: string;
+  head_base_fee_per_gas: number;
   selected_action_k: number;
+  immediate_block: number;
   target_block: number;
   predicted_minimum_base_fee_per_gas: number;
 };
@@ -51,17 +55,13 @@ export type InferenceOutcome = {
   selected_base_fee_per_gas: number;
 };
 
-export type InferenceResult = InferenceRequest &
-  InferenceResponse & {
-    artifact_id: string;
-    head_hash: string;
-    head_base_fee_per_gas: number;
-    immediate_block: number;
-  };
-
 export type InferenceEngine = {
   prepare(K: Horizon): Promise<void>;
   snapshot(): Promise<ChainSnapshot>;
+  startPolling(
+    onSnapshot: (snapshot: ChainSnapshot) => void,
+    onError?: (error: unknown) => void,
+  ): () => void;
   run(K: Horizon): Promise<InferenceResult>;
   resolveOutcome(
     immediateBlock: number,
@@ -77,12 +77,15 @@ export type InferenceEngineDependencies = {
   session: ChainSession;
 };
 
-export function createInferenceEngine({
-  chain,
-  catalog,
-  model,
-  session,
-}: InferenceEngineDependencies): InferenceEngine {
+export function createInferenceEngine(chain: Chain): InferenceEngine;
+export function createInferenceEngine(
+  dependencies: InferenceEngineDependencies,
+): InferenceEngine;
+export function createInferenceEngine(
+  input: Chain | InferenceEngineDependencies,
+): InferenceEngine {
+  const { chain, catalog, model, session } =
+    typeof input === "string" ? defaultDependencies(input) : input;
   let selectedHorizon: Horizon | null = null;
   let selectionRevision = 0;
   let disposed = false;
@@ -132,23 +135,93 @@ export function createInferenceEngine({
   async function run(K: Horizon): Promise<InferenceResult> {
     const revision = beginSelection(K);
     const selection = catalog.select(chain, K);
-    await model.prepare(selection);
+    try {
+      await model.prepare(selection);
+    } catch (error) {
+      throw inferenceFailure(
+        "Could not load the selected model.",
+        error,
+      );
+    }
     requireCurrent(revision);
-    const context = await session.sync();
+    let context;
+    try {
+      context = await session.sync();
+    } catch (error) {
+      throw inferenceFailure(
+        "Could not read the selected chain.",
+        error,
+      );
+    }
     requireCurrent(revision);
 
     const head = context.blocks[context.blocks.length - 1];
     if (head === undefined || head.number !== context.head) {
-      throw new Error("Synchronized context must end at the exact head");
+      throw inferenceFailure(
+        "Chain data is incomplete or invalid.",
+        new Error("Synchronized context must end at the exact head"),
+      );
     }
-    const input = buildModelInput(
-      context.blocks,
-      context.feeHistory,
-      selection.chainManifest,
-    );
-    const output = await model.execute(selection, input);
+    let input: Float32Array;
+    try {
+      input = buildModelInput(
+        context.blocks,
+        context.feeHistory,
+        selection.chainManifest,
+      );
+    } catch (error) {
+      throw inferenceFailure(
+        "Chain data is incomplete or invalid.",
+        error,
+      );
+    }
+    let output: ModelOutput;
+    try {
+      output = await model.execute(selection, input);
+    } catch (error) {
+      throw inferenceFailure(
+        error instanceof ModelOutputError
+          ? "The selected model returned invalid output."
+          : "Could not run the selected model.",
+        error,
+      );
+    }
     requireCurrent(revision);
-    return decodeRun(chain, selection, head, output);
+    let prediction: ReturnType<typeof decodePrediction>;
+    try {
+      prediction = decodePrediction(selection, output);
+    } catch (error) {
+      throw inferenceFailure(
+        "The selected model returned invalid output.",
+        error,
+      );
+    }
+    try {
+      return createInferenceResult(chain, selection, head, prediction);
+    } catch (error) {
+      throw inferenceFailure(
+        "Chain data is incomplete or invalid.",
+        error,
+      );
+    }
+  }
+
+  function startPolling(
+    onSnapshot: (snapshot: ChainSnapshot) => void,
+    onError?: (error: unknown) => void,
+  ): () => void {
+    requireActive();
+    return session.startPolling((block) => {
+      requireActive();
+      onSnapshot({
+        chain,
+        head_block: safeBigInt(block.number, "head block"),
+        current_base_fee_per_gas: safeBigInt(
+          block.baseFeePerGas,
+          "current base fee",
+        ),
+      });
+    }, onError);
   }
 
   async function resolveOutcome(
@@ -214,87 +287,39 @@ export function createInferenceEngine({
     if (modelResult.status === "rejected") throw modelResult.reason;
   }
 
-  return { prepare, snapshot, run, resolveOutcome, dispose };
+  return {
+    prepare,
+    snapshot,
+    startPolling,
+    run,
+    resolveOutcome,
+    dispose,
+  };
 }
 
-function backendUrl(): string {
-  const value = process.env.EXPO_PUBLIC_FABLE_BACKEND_URL?.replace(/\/+$/, "");
-  if (!value) {
-    throw new Error("EXPO_PUBLIC_FABLE_BACKEND_URL is required");
-  }
-  return value;
-}
-
-async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(backendUrl() + path, init);
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw error;
-    }
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error("Network error: " + message);
-  }
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${body.trim()}`);
-  }
-  try {
-    return JSON.parse(body) as T;
-  } catch {
-    throw new Error("Server returned invalid JSON");
-  }
-}
-
-export async function requestInference(
-  request: InferenceRequest,
-  signal?: AbortSignal,
-): Promise<InferenceResponse> {
-  return requestJson<InferenceResponse>("/inference", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-    signal,
-  });
-}
-
-export async function requestChainSnapshot(
-  chain: Chain,
-  signal?: AbortSignal,
-): Promise<ChainSnapshot> {
-  return requestJson<ChainSnapshot>(
-    `/snapshot?chain=${encodeURIComponent(chain)}`,
-    {
-      method: "GET",
-      signal,
-    },
-  );
-}
-
-export async function requestInferenceOutcome(
-  chain: Chain,
-  immediateBlock: number,
-  selectedBlock: number,
-  signal?: AbortSignal,
-): Promise<InferenceOutcome> {
-  const query = new URLSearchParams({
+function defaultDependencies(chain: Chain): InferenceEngineDependencies {
+  const catalog = createDefaultModelCatalog();
+  const manifest = catalog.chainManifest(chain);
+  return {
     chain,
-    immediate_block: String(immediateBlock),
-    selected_block: String(selectedBlock),
-  });
-  return requestJson<InferenceOutcome>(`/outcome?${query}`, {
-    method: "GET",
-    signal,
-  });
+    catalog,
+    model: createModelRuntime(),
+    session: createChainSession({
+      chain,
+      rpcUrl: defaultRpcUrl(chain),
+      contextBlocks: manifest.context_blocks,
+      orderedFeatures: manifest.features.map((feature) => feature.name),
+    }),
+  };
 }
 
-function decodeRun(
-  chain: Chain,
+function decodePrediction(
   selection: ModelSelection,
-  head: Awaited<ReturnType<ChainSession["readSnapshot"]>>,
   output: ModelOutput,
-): InferenceResult {
+): {
+  selectedAction: number;
+  predictedFee: number;
+} {
   if (output.actionLogits.length !== selection.K) {
     throw new Error(
       `Model action logits must contain exactly ${selection.K} values`,
@@ -327,8 +352,20 @@ function decodeRun(
     throw new Error("Predicted fee must be positive and finite");
   }
 
+  return {
+    selectedAction: action,
+    predictedFee,
+  };
+}
+
+function createInferenceResult(
+  chain: Chain,
+  selection: ModelSelection,
+  head: Awaited<ReturnType<ChainSession["readSnapshot"]>>,
+  prediction: ReturnType<typeof decodePrediction>,
+): InferenceResult {
   const immediateBlock = head.number + 1n;
-  const targetBlock = immediateBlock + BigInt(action);
+  const targetBlock = immediateBlock + BigInt(prediction.selectedAction);
   return {
     chain,
     K: selection.K,
@@ -339,10 +376,10 @@ function decodeRun(
       head.baseFeePerGas,
       "head base fee",
     ),
-    selected_action_k: action,
+    selected_action_k: prediction.selectedAction,
     immediate_block: safeBigInt(immediateBlock, "immediate block"),
     target_block: safeBigInt(targetBlock, "target block"),
-    predicted_minimum_base_fee_per_gas: predictedFee,
+    predicted_minimum_base_fee_per_gas: prediction.predictedFee,
   };
 }
 
@@ -364,4 +401,11 @@ function abortError(message: string): Error {
   const error = new Error(message);
   error.name = "AbortError";
   return error;
+}
+
+function inferenceFailure(message: string, cause: unknown): Error {
+  if (cause instanceof Error && cause.name === "AbortError") {
+    return cause;
+  }
+  return new Error(message, { cause });
 }

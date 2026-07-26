@@ -25,7 +25,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 }));
 
 import {
-  createRun,
+  addRun,
   loadRuns,
   resolvePendingRuns,
   saveRuns,
@@ -88,7 +88,7 @@ beforeEach(() => {
 });
 
 describe("history", () => {
-  it("selects only canonical fields from a local inference result", () => {
+  it("adds only canonical local inference fields and caps newest-first history", () => {
     const source = {
       ...inferenceResult(),
       action_logits: [0, 1, 0, 0, 0],
@@ -96,8 +96,11 @@ describe("history", () => {
       cached_blocks: [99, 100],
     };
 
-    const first = createRun(source);
-    const second = createRun(source);
+    const existing = Array.from({ length: 100 }, (_, index) =>
+      storedRun({ id: `existing-${index}` }),
+    );
+    const [first, ...retained] = addRun(existing, source);
+    const [second] = addRun(existing, source);
 
     expect(first).toEqual({
       id: expect.any(String),
@@ -117,6 +120,7 @@ describe("history", () => {
     expect(first).not.toHaveProperty("action_logits");
     expect(first).not.toHaveProperty("feature_rows");
     expect(first).not.toHaveProperty("cached_blocks");
+    expect(retained).toEqual(existing.slice(0, 99));
   });
 
   it("round-trips one capped ordered array under fable.runs", async () => {

@@ -1,11 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Hash } from "viem";
 
+vi.mock("react-native-executorch", () => ({
+  ExecutorchModule: vi.fn(),
+  ScalarType: { FLOAT: 6 },
+  initExecutorch: vi.fn(),
+}));
+
+vi.mock("react-native-executorch-expo-resource-fetcher", () => ({
+  ExpoResourceFetcher: { name: "expo-resource-fetcher" },
+}));
+
 import {
   createInferenceEngine,
   type Horizon,
   type InferenceEngineDependencies,
 } from "../src/inference";
+import { ModelOutputError } from "../src/model";
 import type {
   MobileChainManifest,
   ModelCatalog,
@@ -166,6 +177,38 @@ function deferred<T>() {
 }
 
 describe("InferenceEngine", () => {
+  it("passes live polling through as safe app snapshots", async () => {
+    const stop = vi.fn();
+    let publishBlock: ((block: BlockRow) => void) | undefined;
+    let publishError: ((error: unknown) => void) | undefined;
+    const chainSession = session();
+    vi.mocked(chainSession.startPolling).mockImplementation(
+      (onBlock, onError) => {
+        publishBlock = onBlock;
+        publishError = onError;
+        return stop;
+      },
+    );
+    const { engine } = createTestEngine({ session: chainSession });
+    const onSnapshot = vi.fn();
+    const onError = vi.fn();
+
+    const stopPolling = engine.startPolling(onSnapshot, onError);
+    publishBlock?.(block(12n, 30n));
+    const failure = new Error("RPC unavailable");
+    publishError?.(failure);
+
+    expect(onSnapshot).toHaveBeenCalledWith({
+      chain: "ethereum",
+      head_block: 12,
+      current_base_fee_per_gas: 30,
+    });
+    expect(onError).toHaveBeenCalledWith(failure);
+    stopPolling();
+    expect(stop).toHaveBeenCalledOnce();
+    await engine.dispose();
+  });
+
   it("prepares chain context and model concurrently", async () => {
     const synchronized = deferred<PreparedChainContext>();
     const loaded = deferred<void>();
@@ -299,6 +342,45 @@ describe("InferenceEngine", () => {
     await engine.dispose();
   });
 
+  it("returns short chain and model failures from the run interface", async () => {
+    const unavailable = session(async () => {
+      throw new Error("HTTP transport details");
+    });
+    const chainFailure = createTestEngine({ session: unavailable });
+    await expect(chainFailure.engine.run(2)).rejects.toThrow(
+      "Could not read the selected chain.",
+    );
+    await chainFailure.engine.dispose();
+
+    const model = runtime();
+    vi.mocked(model.prepare).mockRejectedValue(new Error("native load details"));
+    const modelFailure = createTestEngine({ model });
+    await expect(modelFailure.engine.run(2)).rejects.toThrow(
+      "Could not load the selected model.",
+    );
+    await modelFailure.engine.dispose();
+
+    const execution = runtime();
+    vi.mocked(execution.execute).mockRejectedValue(
+      new Error("native execution details"),
+    );
+    const executionFailure = createTestEngine({ model: execution });
+    await expect(executionFailure.engine.run(2)).rejects.toThrow(
+      "Could not run the selected model.",
+    );
+    await executionFailure.engine.dispose();
+
+    const invalidOutput = runtime();
+    vi.mocked(invalidOutput.execute).mockRejectedValue(
+      new ModelOutputError(new Error("tensor details")),
+    );
+    const outputFailure = createTestEngine({ model: invalidOutput });
+    await expect(outputFailure.engine.run(2)).rejects.toThrow(
+      "The selected model returned invalid output.",
+    );
+    await outputFailure.engine.dispose();
+  });
+
   it("suppresses native work completed after a selection change", async () => {
     const completed = deferred<ModelOutput>();
     const model = runtime();
@@ -343,7 +425,7 @@ describe("InferenceEngine", () => {
         actionLogits: new Float32Array([1]),
         minimumFeeZ: 0,
       },
-      message: "exactly 2",
+      message: "returned invalid output",
     },
     {
       name: "finite logits",
@@ -351,7 +433,7 @@ describe("InferenceEngine", () => {
         actionLogits: new Float32Array([0, Number.NaN]),
         minimumFeeZ: 0,
       },
-      message: "finite",
+      message: "returned invalid output",
     },
     {
       name: "finite positive fee",
@@ -359,7 +441,7 @@ describe("InferenceEngine", () => {
         actionLogits: new Float32Array([0, 1]),
         minimumFeeZ: 2_000,
       },
-      message: "positive and finite",
+      message: "returned invalid output",
     },
   ])("rejects invalid $name", async ({ output, message }) => {
     const { engine } = createTestEngine({ model: runtime(output) });
@@ -371,9 +453,12 @@ describe("InferenceEngine", () => {
     const unsafe = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
     const unsafeHead = session(async () => context(unsafe, 20n));
     const first = createTestEngine({ session: unsafeHead });
-    await expect(first.engine.run(2)).rejects.toThrow(
-      "head block exceeds the safe integer range",
-    );
+    await expect(first.engine.run(2)).rejects.toMatchObject({
+      message: "Chain data is incomplete or invalid.",
+      cause: expect.objectContaining({
+        message: "head block exceeds the safe integer range",
+      }),
+    });
     await first.engine.dispose();
 
     const unsafeBaseFee = session(async () =>
@@ -393,18 +478,24 @@ describe("InferenceEngine", () => {
       catalog: catalog(nonFeeManifest),
       session: unsafeBaseFee,
     });
-    await expect(second.engine.run(2)).rejects.toThrow(
-      "head base fee exceeds the safe integer range",
-    );
+    await expect(second.engine.run(2)).rejects.toMatchObject({
+      message: "Chain data is incomplete or invalid.",
+      cause: expect.objectContaining({
+        message: "head base fee exceeds the safe integer range",
+      }),
+    });
     await second.engine.dispose();
 
     const unsafeImmediate = session(async () =>
       context(BigInt(Number.MAX_SAFE_INTEGER), 20n),
     );
     const third = createTestEngine({ session: unsafeImmediate });
-    await expect(third.engine.run(2)).rejects.toThrow(
-      "immediate block exceeds the safe integer range",
-    );
+    await expect(third.engine.run(2)).rejects.toMatchObject({
+      message: "Chain data is incomplete or invalid.",
+      cause: expect.objectContaining({
+        message: "immediate block exceeds the safe integer range",
+      }),
+    });
     await third.engine.dispose();
   });
 

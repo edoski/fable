@@ -18,14 +18,15 @@ import {
   type Chain,
   type ChainSnapshot,
   type Horizon,
-  type InferenceResponse,
+  type InferenceResult,
 } from "../inference";
 import { colors, radii } from "../theme";
 
 export type InferenceState =
+  | { status: "preparing" }
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "success"; result: InferenceResponse }
+  | { status: "success"; result: InferenceResult }
   | { status: "error"; message: string };
 
 type Props = {
@@ -167,9 +168,6 @@ function ErrorDialog({
   onClose: () => void;
   onRetry: () => void;
 }) {
-  const description = message.startsWith("Network error:")
-    ? "Could not connect to the inference server. Check that the serving module is running."
-    : message;
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible>
       <View style={styles.errorDialogRoot}>
@@ -187,7 +185,7 @@ function ErrorDialog({
             />
           </View>
           <Text style={styles.errorDialogTitle}>Inference failed</Text>
-          <Text style={styles.errorDialogText}>{description}</Text>
+          <Text style={styles.errorDialogText}>{message}</Text>
           <View style={styles.errorActions}>
             <Pressable
               accessibilityRole="button"
@@ -222,6 +220,8 @@ function Setup({
   onRunAgain,
 }: Props) {
   const loading = state.status === "loading";
+  const preparing = state.status === "preparing";
+  const runDisabled = loading || preparing;
   return (
     <>
       <ScrollView
@@ -254,18 +254,22 @@ function Setup({
 
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ disabled: loading }}
-          disabled={loading}
+          accessibilityState={{ disabled: runDisabled }}
+          disabled={runDisabled}
           onPress={onRun}
           style={[
             styles.primaryButton,
             styles.setupButton,
-            loading && styles.primaryButtonDisabled,
+            runDisabled && styles.primaryButtonDisabled,
           ]}
         >
-          {loading && <ActivityIndicator color={colors.surface} />}
+          {runDisabled && <ActivityIndicator color={colors.surface} />}
           <Text style={styles.primaryButtonText}>
-            {loading ? "Generating…" : "Get recommendation"}
+            {preparing
+              ? "Preparing…"
+              : loading
+                ? "Generating…"
+                : "Get recommendation"}
           </Text>
         </Pressable>
       </ScrollView>
@@ -284,7 +288,7 @@ function Timeline({
   result,
   horizon,
 }: {
-  result: InferenceResponse;
+  result: InferenceResult;
   horizon: Horizon;
 }) {
   return (
@@ -332,7 +336,7 @@ function Result({
   horizon,
   result,
   onRunAgain,
-}: Props & { result: InferenceResponse }) {
+}: Props & { result: InferenceResult }) {
   const recommendation =
     result.selected_action_k === 0
       ? "Use the next block"

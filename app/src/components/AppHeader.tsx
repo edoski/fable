@@ -1,9 +1,8 @@
 import { StyleSheet, Text, View } from "react-native";
 
+import type { RpcStatus } from "../engineLifecycle";
 import { CHAIN_DETAILS, type Chain } from "../inference";
 import { colors } from "../theme";
-
-export type ServiceStatus = "checking" | "live" | "offline";
 
 const STATUS = {
   checking: { color: colors.amber, label: "CHECKING" },
@@ -16,7 +15,7 @@ export function AppHeader({
   status,
 }: {
   chain: Chain;
-  status: ServiceStatus;
+  status: RpcStatus;
 }) {
   const presentation = STATUS[status];
   const network = CHAIN_DETAILS[chain];
@@ -24,7 +23,7 @@ export function AppHeader({
     <View style={styles.header}>
       <Text style={styles.brand}>FABLE</Text>
       <View
-        accessibilityLabel={`${network.label} inference service ${presentation.label.toLowerCase()}`}
+        accessibilityLabel={`${network.label} RPC ${presentation.label.toLowerCase()}`}
         accessibilityRole="text"
         style={styles.status}
       >

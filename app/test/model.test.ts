@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it, vi } from "vitest";
 
 const executorch = vi.hoisted(() => ({
@@ -121,6 +124,36 @@ async function flushMicrotasks(): Promise<void> {
     await Promise.resolve();
   }
 }
+
+describe("bundled model catalog", () => {
+  it("owns exactly one manifest and the twelve final static Metro assets", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/model.ts", import.meta.url).href),
+      "utf8",
+    );
+    const expectedModels = ["ethereum", "polygon", "avalanche"].flatMap(
+      (chain) =>
+        [2, 3, 4, 5].map(
+          (K) => `../assets/models/${chain}-k${K}.pte`,
+        ),
+    );
+    const modelRequires = [
+      ...source.matchAll(
+        /require\("(\.\.\/assets\/models\/[^"]+\.pte)"\)/g,
+      ),
+    ].map((match) => match[1]);
+    const manifestRequires = [
+      ...source.matchAll(
+        /require\("(\.\.\/assets\/models\/manifest\.json)"\)/g,
+      ),
+    ].map((match) => match[1]);
+
+    expect(modelRequires).toEqual(expectedModels);
+    expect(manifestRequires).toEqual([
+      "../assets/models/manifest.json",
+    ]);
+  });
+});
 
 describe("model catalog", () => {
   it("validates the exporter contract and selects the exact cell", () => {

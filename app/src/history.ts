@@ -36,7 +36,14 @@ export type OutcomeResolver = InferenceEngine["resolveOutcome"];
 
 let runSequence = 0;
 
-export function createRun(result: InferenceResult): InferenceRun {
+export function addRun(
+  runs: readonly InferenceRun[],
+  result: InferenceResult,
+): InferenceRun[] {
+  return [createRun(result), ...runs].slice(0, MAX_RUNS);
+}
+
+function createRun(result: InferenceResult): InferenceRun {
   const ranAt = new Date().toISOString();
   runSequence += 1;
   return {

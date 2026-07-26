@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { custom } from "viem";
 import type { Hash, Transport } from "viem";
 
-import { createChainSession } from "../src/rpc";
+import { createChainSession, defaultRpcUrl } from "../src/rpc";
 import type { SupportedChain } from "../src/rpc";
 
 type RequestArguments = {
@@ -103,6 +103,14 @@ afterEach(() => {
 });
 
 describe("createChainSession", () => {
+  it("uses the Viem package default RPC URL for every supported chain", () => {
+    expect(supportedRpcUrls()).toEqual({
+      ethereum: "https://ethereum.reth.rs/rpc",
+      polygon: "https://polygon.drpc.org",
+      avalanche: "https://api.avax.network/ext/bc/C/rpc",
+    });
+  });
+
   it.each(Object.entries(CHAIN_IDS) as [SupportedChain, number][])(
     "verifies the %s chain ID",
     async (chain, chainId) => {
@@ -200,6 +208,66 @@ describe("createChainSession", () => {
     expect(cold.blocks.map((block) => block.number)).toEqual([10n, 11n, 12n]);
     expect(warm.blocks.map((block) => block.number)).toEqual([12n, 13n, 14n]);
     expect(reads).toEqual([10n, 11n, 12n, 13n, 14n]);
+    chainSession.dispose();
+  });
+
+  it("serializes concurrent different-head synchronizations", async () => {
+    const heads = [10n, 11n, 12n];
+    let headReads = 0;
+    let blockElevenReads = 0;
+    let releaseBlockEleven:
+      | ((value: ReturnType<typeof rpcBlock>) => void)
+      | undefined;
+    const delayedBlockEleven = new Promise<ReturnType<typeof rpcBlock>>(
+      (resolve) => {
+        releaseBlockEleven = resolve;
+      },
+    );
+    const provider: RpcProvider = {
+      async request(args) {
+        if (args.method === "eth_chainId") return quantity(1n);
+        if (args.method === "eth_blockNumber") {
+          const head = heads[Math.min(headReads, heads.length - 1)];
+          headReads += 1;
+          return quantity(head);
+        }
+        if (args.method === "eth_getBlockByNumber") {
+          const number = blockNumberFrom(args);
+          if (number === 11n) {
+            blockElevenReads += 1;
+            if (blockElevenReads === 1) return delayedBlockEleven;
+          }
+          return rpcBlock(number);
+        }
+        throw new Error(`Unexpected RPC method: ${args.method}`);
+      },
+    };
+    const chainSession = session("ethereum", transport(provider));
+    await chainSession.sync();
+
+    const first = chainSession.sync();
+    await vi.waitFor(() => expect(blockElevenReads).toBe(1));
+    const second = chainSession.sync();
+    await flushMicrotasks();
+
+    expect(headReads).toBe(2);
+    releaseBlockEleven?.(rpcBlock(11n));
+    const [firstContext, secondContext] = await Promise.all([first, second]);
+
+    expect(firstContext.blocks.map((block) => block.number)).toEqual([
+      9n,
+      10n,
+      11n,
+    ]);
+    expect(secondContext.blocks.map((block) => block.number)).toEqual([
+      10n,
+      11n,
+      12n,
+    ]);
+    expect(new Set(secondContext.blocks.map((block) => block.number)).size).toBe(
+      secondContext.blocks.length,
+    );
+    expect(blockElevenReads).toBe(1);
     chainSession.dispose();
   });
 
@@ -478,7 +546,8 @@ describe("createChainSession", () => {
       },
     };
     const chainSession = session("ethereum", transport(provider));
-    const stop = chainSession.startPolling(() => undefined);
+    const publish = vi.fn();
+    const stop = chainSession.startPolling(publish);
 
     await flushMicrotasks();
     expect(headReads).toBe(1);
@@ -491,6 +560,7 @@ describe("createChainSession", () => {
     expect(headReads).toBe(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(headReads).toBe(2);
+    expect(publish).toHaveBeenCalledTimes(2);
 
     stop();
     chainSession.dispose();
@@ -713,3 +783,11 @@ describe("createChainSession", () => {
     }
   });
 });
+
+function supportedRpcUrls(): Record<SupportedChain, string> {
+  return {
+    ethereum: defaultRpcUrl("ethereum"),
+    polygon: defaultRpcUrl("polygon"),
+    avalanche: defaultRpcUrl("avalanche"),
+  };
+}

@@ -65,6 +65,16 @@ export type ModelOutput = {
   minimumFeeZ: number;
 };
 
+export class ModelOutputError extends Error {
+  constructor(error: unknown) {
+    super(
+      error instanceof Error ? error.message : "Invalid model output",
+      { cause: error },
+    );
+    this.name = "ModelOutputError";
+  }
+}
+
 export type ModelRuntime = {
   prepare(selection: ModelSelection): Promise<void>;
   execute(
@@ -96,7 +106,54 @@ const CHAIN_IDS: Record<SupportedChain, number> = {
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const BUNDLED_MODEL_SOURCES = {
+  ethereum: {
+    2: () => require("../assets/models/ethereum-k2.pte"),
+    3: () => require("../assets/models/ethereum-k3.pte"),
+    4: () => require("../assets/models/ethereum-k4.pte"),
+    5: () => require("../assets/models/ethereum-k5.pte"),
+  },
+  polygon: {
+    2: () => require("../assets/models/polygon-k2.pte"),
+    3: () => require("../assets/models/polygon-k3.pte"),
+    4: () => require("../assets/models/polygon-k4.pte"),
+    5: () => require("../assets/models/polygon-k5.pte"),
+  },
+  avalanche: {
+    2: () => require("../assets/models/avalanche-k2.pte"),
+    3: () => require("../assets/models/avalanche-k3.pte"),
+    4: () => require("../assets/models/avalanche-k4.pte"),
+    5: () => require("../assets/models/avalanche-k5.pte"),
+  },
+} as const;
+
 initExecutorch({ resourceFetcher: ExpoResourceFetcher });
+
+export function createDefaultModelCatalog(): ModelCatalog {
+  return createModelCatalog(
+    require("../assets/models/manifest.json"),
+    {
+      ethereum: {
+        2: BUNDLED_MODEL_SOURCES.ethereum[2](),
+        3: BUNDLED_MODEL_SOURCES.ethereum[3](),
+        4: BUNDLED_MODEL_SOURCES.ethereum[4](),
+        5: BUNDLED_MODEL_SOURCES.ethereum[5](),
+      },
+      polygon: {
+        2: BUNDLED_MODEL_SOURCES.polygon[2](),
+        3: BUNDLED_MODEL_SOURCES.polygon[3](),
+        4: BUNDLED_MODEL_SOURCES.polygon[4](),
+        5: BUNDLED_MODEL_SOURCES.polygon[5](),
+      },
+      avalanche: {
+        2: BUNDLED_MODEL_SOURCES.avalanche[2](),
+        3: BUNDLED_MODEL_SOURCES.avalanche[3](),
+        4: BUNDLED_MODEL_SOURCES.avalanche[4](),
+        5: BUNDLED_MODEL_SOURCES.avalanche[5](),
+      },
+    },
+  );
+}
 
 export function createModelCatalog(
   manifestValue: unknown,
@@ -213,7 +270,11 @@ export function createModelRuntime(
       requireDesired(key);
       return result;
     });
-    return decodeOutputs(outputs, selection.K);
+    try {
+      return decodeOutputs(outputs, selection.K);
+    } catch (error) {
+      throw new ModelOutputError(error);
+    }
   }
 
   async function dispose(): Promise<void> {

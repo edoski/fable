@@ -74,6 +74,10 @@ const PRIORITY_FEE_FEATURE =
 const INTERVAL_FEATURE = "block_interval_seconds";
 const HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
+export function defaultRpcUrl(chain: SupportedChain): string {
+  return CHAIN_DEFINITIONS[chain].rpcUrls.default.http[0];
+}
+
 export function createChainSession(
   config: ChainSessionConfig,
   transportOverride?: Transport,
@@ -108,6 +112,7 @@ export function createChainSession(
   let verified = false;
   let verification: Promise<void> | null = null;
   let activePollStop: (() => void) | null = null;
+  let synchronizations: Promise<void> = Promise.resolve();
 
   function requireActive(): void {
     if (disposed) throw abortError();
@@ -272,7 +277,7 @@ export function createChainSession(
     return history;
   }
 
-  async function sync(): Promise<PreparedChainContext> {
+  async function synchronize(): Promise<PreparedChainContext> {
     await verifyChain();
     const head = await client.getBlockNumber();
     requireActive();
@@ -282,6 +287,16 @@ export function createChainSession(
     ]);
     requireActive();
     return { head, blocks: contextBlocks, feeHistory };
+  }
+
+  function sync(): Promise<PreparedChainContext> {
+    requireActive();
+    const result = synchronizations.then(synchronize, synchronize);
+    synchronizations = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   async function readSnapshot(): Promise<BlockRow> {
@@ -328,7 +343,7 @@ export function createChainSession(
 
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let visibleHead: bigint | null = null;
+    let visibleBlock: BlockRow | null = null;
 
     const stop = () => {
       stopped = true;
@@ -341,12 +356,11 @@ export function createChainSession(
         await verifyChain();
         const head = await client.getBlockNumber();
         requireActive();
-        if (head !== visibleHead) {
-          const block = await readBlock(head);
+        if (head !== visibleBlock?.number) {
+          visibleBlock = await readBlock(head);
           requireActive();
-          if (!stopped) onBlock(block);
-          visibleHead = head;
         }
+        if (!stopped) onBlock(visibleBlock);
       } catch (error) {
         if (!stopped && !disposed) onError?.(error);
       } finally {
