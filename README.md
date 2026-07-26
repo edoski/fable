@@ -49,12 +49,40 @@ The [CLI reference](FABLE.md#cli) defines the exact command contracts.
 
 ## Mobile demo
 
-The private Expo app lives in `app` and owns chain acquisition, feature preparation, model inference, history, and outcomes:
+The private Expo 55 app in `app` reads the selected EVM chain directly, prepares features in
+TypeScript, runs a bundled ExecuTorch model on device, and keeps history and resolved outcomes in
+local storage. It has no FABLE inference server or fallback.
+
+The app requires a generated model bundle. Once the twelve final artifact UUIDs exist, create the
+strict three-chain by four-horizon `MOBILE.yaml` roster and export all assets atomically:
+
+```bash
+STORAGE_ROOT=/absolute/storage \
+uv run --project tools/mobile-export --frozen \
+python tools/mobile-export/export.py MOBILE.yaml app/assets/models
+```
+
+Then install dependencies, check the Expo project, and create the custom native development build:
 
 ```bash
 cd app
+npm ci
+npx expo-doctor
+npm run ios
+```
+
+ExecuTorch is a native module, so Expo Go is unsupported. With a compatible development build
+already installed and native configuration unchanged, start Metro for JavaScript or asset
+iteration with:
+
+```bash
 npm start
 ```
+
+The repository does not yet contain `MOBILE.yaml` or generated model assets because the twelve
+final artifacts do not exist. The app cannot be bundled or exercised in the simulator until that
+prerequisite is satisfied. The [acceptance plan](docs/research/on-device-inference.md) separates
+the implemented code from the deferred real-artifact checks.
 
 ## Read next
 

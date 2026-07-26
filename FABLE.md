@@ -1,6 +1,6 @@
 # FABLE
 
-FABLE (Fee Analysis through Blockchain Learning and Estimation) is a closed-parent, fixed-block-horizon system for learning when a future block is likely to minimize base fee per gas. This manual is the canonical detailed account of the product's scientific contract, worked decision, architecture, interfaces, requests, durable objects, commands, operator configuration, serving surface, evaluation schemas, limitations, and sources.
+FABLE (Fee Analysis through Blockchain Learning and Estimation) is a closed-parent, fixed-block-horizon system for learning when a future block is likely to minimize base fee per gas. This manual is the canonical detailed account of the product's scientific contract, worked decision, architecture, interfaces, requests, durable objects, commands, operator configuration, mobile surface, evaluation schemas, limitations, and sources.
 
 FABLE derives from and extends selected temporal work from *SPICE: A Predictive Framework for Cost-Optimization in Multichain Environments*. FABLE is neither SPICE nor a reproduction of SPICE. Domain terms are defined in [CONTEXT.md](CONTEXT.md); durable-object and execution-boundary decisions remain recorded in [docs/adr/](docs/adr/).
 
@@ -38,7 +38,7 @@ transient observation-derived reductions
 ### Dependency direction
 
 ```text
-CLI / serving / Python callers
+CLI / exporter / Python callers
                 |
                 v
 execution, study, evaluation
@@ -80,19 +80,21 @@ A baseline `TrainRequest` embeds its complete `TrainingDefinition`. A selected-S
 
 ### Training and inference
 
-Historical preparation produces lazy datasets over contiguous feature, fee, and block-number backing.
+Historical preparation produces lazy datasets over contiguous feature, fee, and block-number
+backing.
 
 The model union is closed: LSTM, Transformer, or Transformer-LSTM. Every model consumes float32 `[B,C,F]` and returns action logits `[B,K]` plus a scalar standardized minimum-fee prediction `[B]`. The architecture is independent of target construction and evaluation accounting.
 
-Live serving loads cwd-local `SERVING.yaml` once, resolves the artifact storage root from the
-`STORAGE_ROOT` environment variable, selects an exact artifact cell, freezes the latest closed
-head, reads its `C-1` predecessors, applies the checkpoint's ordered feature state, runs one CPU
-batch, and returns the decoded target coordinate and positive finite raw minimum-fee prediction.
+Mobile deployment is a build-time export followed by direct on-device inference. The isolated
+exporter consumes the strict `(chain,K)` artifact roster in `MOBILE.yaml` and publishes all twelve
+XNNPACK `.pte` models plus one manifest only after every cell passes validation and host parity.
+The Expo app reads an EVM chain directly, reproduces the ordered feature transform in TypeScript,
+runs the selected bundled model, decodes the same two heads, and records outcomes locally.
 
 ### External boundaries
 
-Corpus production is external to FABLE. Live serving uses ordinary Web3 RPC clients supplied by
-cwd-local configuration.
+Corpus production is external to FABLE. The mobile app uses Viem to read public EVM JSON-RPC
+endpoints; RPC supplies raw observations and does not perform FABLE inference.
 
 `fable.execution.submit()` is the boundary to native OpenSSH and Slurm execution. [ADR 0007](docs/adr/0007-native-external-execution-boundary.md) records that ownership decision.
 
@@ -268,11 +270,14 @@ minimum_base_fee_per_gas             = 20,000,000,000
 
 Reduction uses this row directly. Base-fee savings is `(25.5-20.0)/25.5 ≈ 0.215686`; P50 fee-inclusive savings is `1-((20.0+4.0)/(25.5+2.0)) ≈ 0.127273`; and the optimality gap is `(20.0-20.0)/20.0 = 0`. The absolute natural-log error is about `0.043998` and the squared error about `0.001936`. No losses, timestamps, waits, horizons, standardized predictions, or derived metrics are stored in the observation.
 
-### 7. Carry the same contract into serving
+### 7. Carry the same contract on device
 
-The checkpoint fixes chain association, `C`, `K`, ordered features, feature state, target state, model definition, and weights. Live serving freezes the latest closed head, fetches exactly `C-1` predecessors, creates `[1,C,F]`, validates the action logits, and decodes the same way.
+The exported manifest and model fix chain association, `C`, `K`, ordered features, feature state,
+target state, model definition, and weights. On Run, the app reads a fresh latest closed head,
+synchronizes the exact context, creates `[1,C,F]`, executes the bundled model, validates both
+outputs, and decodes the action in the same way.
 
-Continuing the teaching values, the API response shape is:
+Continuing the teaching values, the app result shape is:
 
 ```json
 {
@@ -283,7 +288,7 @@ Continuing the teaching values, the API response shape is:
 }
 ```
 
-The last value follows current serving arithmetic: the displayed float32 `0.7` is
+The last value follows current mobile decoding arithmetic: the displayed float32 `0.7` is
 `0.699999988079071` as a Python float, then
 `u * exp(hat{ell}_i) = (1 wei/gas) * exp(23.5 + 0.25 * 0.699999988079071)`.
 
@@ -297,7 +302,7 @@ The manuscript *SPICE: A Predictive Framework for Cost-Optimization in Multichai
 
 FABLE specifies the current closed-parent origins, fixed block-count geometry, causal features,
 raw-integer target selection, training-fitted state, fixed training loss, exhaustive equal-origin
-evaluation, durable objects, and serving semantics.
+evaluation, durable objects, and mobile semantics.
 
 ### Closed-parent causality
 
@@ -605,10 +610,15 @@ Role boundaries are complete-outcome boundaries. The training last parent plus `
 
 #### Live interface
 
-Serving freezes one latest closed head `h`, materializes the same exact eight-column `BlockFrame` used by historical preparation, transforms the ordered features with the artifact's `FeatureState`, and constructs float32 `[1,C,F]`. Historical preparation owns outcomes, labels, and target values. The exact live RPC and app boundary is in [Serving and mobile](#serving-and-mobile).
+The mobile engine reads one latest closed head `h` and synchronizes the exact context from public
+RPC. Its TypeScript transform reproduces the historical path's ordered feature formulas and
+persisted `FeatureState`, then constructs float32 `[1,C,F]`. If
+`block_interval_seconds` is selected, `C+1` raw blocks supply the `C` feature rows. Historical
+preparation remains the parity authority for feature values. The exact build-time bundle and live
+app boundary are in [Mobile deployment](#mobile-deployment).
 
-The artifact fixes `C`, `K`, feature order, and fitted states. Decoding returns `hat{k}_i`, so
-serving reports `h_i+1+hat{k}_i` as the target block coordinate. It de-standardizes `hat{z}_i` to
+The bundled cell fixes `C`, `K`, feature order, and fitted states. Decoding returns `hat{k}_i`, so
+the app reports `h_i+1+hat{k}_i` as the target block coordinate. It de-standardizes `hat{z}_i` to
 `hat{ell}_i` with the artifact's `TargetState` and returns `u * exp(hat{ell}_i)` as the positive
 finite `predicted_minimum_base_fee_per_gas`.
 
@@ -710,7 +720,8 @@ The rolling reduction reads only each named Evaluation's `observations.parquet`.
 
 ## Exact reference
 
-This reference defines FABLE's strict requests, completed objects, direct addresses, commands, operator YAML, serving/mobile surfaces, and evaluation schemas.
+This reference defines FABLE's strict requests, completed objects, direct addresses, commands,
+operator YAML, mobile bundle and runtime surfaces, and evaluation schemas.
 
 ### Scalar conventions
 
@@ -998,38 +1009,33 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 
 The generated script requests one node/task, writes `%j.out` under `log_root`, exports `STORAGE_ROOT`, and executes `fable remote workflow` or `fable remote candidate` with a stdin heredoc. Submission is one `ssh -T -o BatchMode=yes … sbatch --parsable` call.
 
-`STORAGE_ROOT` is the neutral implicit environment input to current CLI and remote Python paths.
-Serving RPC endpoints arrive through cwd-local `SERVING.yaml` values.
+`STORAGE_ROOT` is the neutral implicit environment input to current CLI, remote Python, and mobile
+export paths.
 
-### Serving and mobile
+### Mobile deployment
 
-The serving factory is `fable.serving:create_app`; its display title is `FABLE Inference API`. It reads cwd-local `SERVING.yaml` once during application lifespan and uses its values literally.
+The isolated project in `tools/mobile-export` pins Torch 2.11 and ExecuTorch 1.2 without changing
+FABLE's Torch 2.7.1 scientific environment. It consumes an operator-created `MOBILE.yaml` whose
+root contains exactly `ethereum`, `polygon`, and `avalanche`. Each chain contains exactly
+`k2_artifact_id`, `k3_artifact_id`, `k4_artifact_id`, and `k5_artifact_id`, all distinct UUIDv4
+values. `STORAGE_ROOT` locates the canonical artifacts.
 
-The strict `SERVING.yaml` root contains exactly three records: `ethereum`, `polygon`, and
-`avalanche`. Each chain record contains a nonempty `rpc_url` and exactly four UUIDv4 fields:
-`k2_artifact_id`, `k3_artifact_id`, `k4_artifact_id`, and `k5_artifact_id`. All fields are required;
-extra fields are rejected at both levels. Artifact storage comes from the absolute `STORAGE_ROOT`
-environment variable, not from `SERVING.yaml`.
-
-Serving expects Ethereum chain ID `1`, Polygon `137`, and Avalanche C-Chain `43114`; the Polygon and Avalanche clients install the PoA extra-data middleware.
-
-The strict request is:
-
-```text
-chain: "ethereum" | "polygon" | "avalanche"
-K: 2 | 3 | 4 | 5
-```
-
-`POST /inference` returns three nonnegative integers and one positive finite float:
+For every cell, the exporter verifies artifact identity, source-chain association, `K`, supported
+features, float32 output shape and finiteness, eager-to-XNNPACK host parity, selected action, and
+decoded-fee tolerance. All four horizons for a chain must share `C`, ordered features, and feature
+state. Only after all twelve cells pass does it atomically publish:
 
 ```text
-head_block                                = h_i
-selected_action_k                         = hat{k}_i
-target_block                              = h_i + 1 + hat{k}_i
-predicted_minimum_base_fee_per_gas        = u * exp(hat{ell}_i)
+app/assets/models/
+  manifest.json
+  ethereum-k2.pte ... ethereum-k5.pte
+  polygon-k2.pte  ... polygon-k5.pte
+  avalanche-k2.pte ... avalanche-k5.pte
 ```
 
-OpenAPI and interactive documentation routes are disabled. The server verifies provider chain ID, loads the exact selected-Study artifact, requires request `K` to equal artifact `K`, reads the latest head plus `C-1` predecessors, and makes one `eth_feeHistory(C, h, [50])` request. It builds the canonical eight-column `BlockFrame`, prepares float32 `[1,C,F]`, and runs CPU inference. P50 is carried for schema completeness; the current selected features, response, and app do not use it. App use is deferred.
+The manifest stores ExecuTorch version, chain IDs, each chain's shared context and ordered feature
+state, and each model's artifact UUID and target state. Metro binds the twelve stable `.pte` paths
+statically; there is no download path, alternate runtime, or remote inference fallback.
 
 The private Expo app manifest is fixed at:
 
@@ -1042,8 +1048,27 @@ The private Expo app manifest is fixed at:
 | Android package | `dev.edoski.fable.demo` |
 | entry | `expo/AppEntry` |
 
-Its only backend variable is `EXPO_PUBLIC_FABLE_BACKEND_URL`. It posts the strict request to
-`/inference` and displays all four response fields.
+Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native development
+build; Expo Go cannot load the model runtime. The app uses the default Viem RPC endpoint for the
+selected chain and requires chain IDs `1`, `137`, and `43114`. A self-scheduling one-second poll
+updates visible live conditions without mutating inference context. Run reads a fresh exact head,
+synchronizes and validates the context, prepares features, loads the `(chain,K)` model, and
+performs inference on device.
+
+One chain-scoped engine and one model are retained. A network change aborts and disposes the
+previous engine; a `K` change reuses chain context and selects another bundled model. The result
+contains chain, `K`, artifact UUID, head number and hash, head fee, selected zero-based action,
+immediate and target blocks, and the decoded minimum-fee prediction.
+
+Runs are stored as one capped canonical array under `fable.runs`. Pending outcomes resolve through
+direct RPC when the selected chain reaches the target block. Analytics derives every summary,
+chart, count, and row from the same `(chain,K)` subset.
+
+The code and non-asset tests implement this contract. A real `MOBILE.yaml` and generated bundle do
+not yet exist because the twelve final artifact UUIDs do not exist. Runtime acceptance remains
+deferred: export and host-check all twelve cells, bundle them, then execute all twelve in an Expo
+custom native iOS simulator build while measuring parity, latency, and memory. A physical iPhone
+is not an acceptance gate.
 
 ### Evaluation API
 
