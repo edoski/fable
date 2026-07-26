@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from typing import Annotated, Self, TypeAlias
 
@@ -76,33 +77,61 @@ def apply_method(request: TuneRequest, method: Method) -> TrainingDefinition:
 def retain_result(
     storage_root: Path,
     request: TuneRequest,
+    method_index: int,
     result: RetainedResult,
 ) -> None:
-    progress = _progress_path(storage_root, request.study_id)
-    if progress.exists():
-        current = _load_study(progress)
-        if current.request != request:
-            raise ValueError("retained result request does not match existing progress")
-        study = Study(request=request, trials=(*current.trials, result))
-    else:
-        study = Study(request=request, trials=(result,))
+    if result.method != request.methods[method_index]:
+        raise ValueError("result method does not match request index")
 
-    progress.parent.mkdir(parents=True, exist_ok=True)
-    temporary = progress.with_name(".progress.json.tmp")
-    temporary.write_text(study.model_dump_json(), encoding="utf-8")
-    os.replace(temporary, progress)
+    result_path = _result_path(storage_root, request.study_id, method_index)
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = result_path.with_name(f".{result_path.name}.tmp")
+    temporary.write_text(
+        Study(request=request, trials=(result,)).model_dump_json(),
+        encoding="utf-8",
+    )
+    os.replace(temporary, result_path)
 
 
 def publish_study(storage_root: Path, study_id: UUID4) -> None:
-    progress = _progress_path(storage_root, study_id)
-    study = _load_study(progress)
-    if study.request.study_id != study_id:
-        raise ValueError("progress Study ID does not match requested Study ID")
+    scratch = _study_scratch(storage_root, study_id)
+    result_paths = set(scratch.glob("result-*.json"))
+    if not result_paths:
+        raise FileNotFoundError(scratch / "result-*.json")
+    first = _load_study(min(result_paths))
+    request = first.request
+    if request.study_id != study_id:
+        raise ValueError("result Study ID does not match requested Study ID")
 
     canonical = study_json_path(storage_root, study_id)
     if canonical.exists():
         raise FileExistsError(canonical)
-    progress.rename(canonical)
+
+    expected_paths = tuple(
+        _result_path(storage_root, study_id, index) for index in range(len(request.methods))
+    )
+    if result_paths != set(expected_paths):
+        raise ValueError("result files do not match TuneRequest methods")
+
+    trials: list[RetainedResult] = []
+    for method_index, result_path in enumerate(expected_paths):
+        result_study = _load_study(result_path)
+        if result_study.request != request:
+            raise ValueError("result requests must be identical")
+        if len(result_study.trials) != 1:
+            raise ValueError("each result file must contain exactly one trial")
+        result = result_study.trials[0]
+        if result.method != request.methods[method_index]:
+            raise ValueError("result method does not match request index")
+        trials.append(result)
+
+    hidden = canonical.with_name(f".{canonical.name}")
+    hidden.write_text(
+        Study(request=request, trials=tuple(trials)).model_dump_json(),
+        encoding="utf-8",
+    )
+    hidden.rename(canonical)
+    shutil.rmtree(scratch)
 
 
 def load_selected_method(
@@ -123,8 +152,12 @@ def _require_method(request: TuneRequest, method: Method) -> None:
         raise ValueError("Method is outside the TuneRequest")
 
 
-def _progress_path(storage_root: Path, study_id: UUID4) -> Path:
-    return storage_root / "studies" / f".{study_id}" / "progress.json"
+def _study_scratch(storage_root: Path, study_id: UUID4) -> Path:
+    return storage_root / "studies" / f".{study_id}"
+
+
+def _result_path(storage_root: Path, study_id: UUID4, method_index: int) -> Path:
+    return _study_scratch(storage_root, study_id) / f"result-{method_index}.json"
 
 
 def _load_study(path: Path) -> Study:

@@ -22,9 +22,10 @@ def run_candidate(
 ) -> None:
     corpus = load_corpus(storage_root, request.corpus_id)
     prepared = prepare_fit_history(corpus, request.experiment)
+    method_index = request.methods.index(method)
     study_scratch = storage_root / "studies" / f".{request.study_id}"
-    candidate_scratch = study_scratch / f"candidate-{request.methods.index(method)}"
+    candidate_scratch = study_scratch / f"candidate-{method_index}"
     candidate_scratch.mkdir(parents=True, exist_ok=True)
     result = _run_candidate(request, method, prepared, candidate_scratch, deployment)
-    retain_result(storage_root, request, result)
+    retain_result(storage_root, request, method_index, result)
     shutil.rmtree(candidate_scratch)

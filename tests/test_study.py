@@ -54,6 +54,9 @@ LSTM_METHOD = Method(
     ),
     fit=FIT,
 )
+OTHER_LSTM_METHOD = LSTM_METHOD.model_copy(
+    update={"fit": FIT.model_copy(update={"learning_rate": 1e-4})},
+)
 TRANSFORMER_METHOD = Method(
     model=TransformerDefinition(
         family="transformer",
@@ -135,28 +138,25 @@ def test_apply_method_composes_all_three_method_families(method: Method) -> None
     )
 
 
-def test_retain_publish_and_load_selected_method(tmp_path: Path) -> None:
-    request = _request()
+def test_retain_publish_and_load_selected_method_in_request_order(
+    tmp_path: Path,
+) -> None:
+    request = _request((LSTM_METHOD, OTHER_LSTM_METHOD))
     first = RetainedResult(
         method=LSTM_METHOD,
         objective=-0.4,
         selected_epoch=3,
         completed_epochs=8,
     )
-    duplicate_at_cap = RetainedResult(
-        method=LSTM_METHOD,
-        objective=-0.4,
-        selected_epoch=LSTM_METHOD.fit.max_epochs,
-        completed_epochs=LSTM_METHOD.fit.max_epochs,
+    second = RetainedResult(
+        method=OTHER_LSTM_METHOD,
+        objective=-0.3,
+        selected_epoch=4,
+        completed_epochs=9,
     )
 
-    retain_result(tmp_path, request, first)
-    retain_result(tmp_path, request, duplicate_at_cap)
-    progress = tmp_path / "studies" / f".{STUDY_ID}" / "progress.json"
-    assert Study.model_validate_json(progress.read_bytes(), strict=True) == Study(
-        request=request,
-        trials=(first, duplicate_at_cap),
-    )
+    retain_result(tmp_path, request, 1, second)
+    retain_result(tmp_path, request, 0, first)
 
     publish_study(tmp_path, STUDY_ID)
     source = SelectedStudySource(
@@ -168,9 +168,14 @@ def test_retain_publish_and_load_selected_method(tmp_path: Path) -> None:
     )
 
     selected = load_selected_method(tmp_path, source)
+    canonical = Study.model_validate_json(
+        study_json_path(tmp_path, STUDY_ID).read_bytes(),
+        strict=True,
+    )
 
-    assert not progress.exists()
-    assert selected == LSTM_METHOD
+    assert canonical == Study(request=request, trials=(first, second))
+    assert selected == OTHER_LSTM_METHOD
+    assert not (tmp_path / "studies" / f".{STUDY_ID}").exists()
 
 
 @pytest.mark.parametrize(
@@ -213,11 +218,81 @@ def test_study_rejects_method_outside_request() -> None:
         )
 
 
-def test_retain_result_rejects_conflicting_request(tmp_path: Path) -> None:
-    retain_result(tmp_path, _request(), RESULT)
+def test_publish_study_rejects_missing_result(tmp_path: Path) -> None:
+    request = _request((LSTM_METHOD, OTHER_LSTM_METHOD))
+    retain_result(tmp_path, request, 0, RESULT)
 
-    with pytest.raises(ValueError, match="does not match existing progress"):
-        retain_result(tmp_path, _request(corpus_id=OTHER_CORPUS_ID), RESULT)
+    with pytest.raises(ValueError, match="result files do not match TuneRequest methods"):
+        publish_study(tmp_path, STUDY_ID)
+
+    assert not study_json_path(tmp_path, STUDY_ID).exists()
+
+
+def test_publish_study_rejects_mismatched_result_request(tmp_path: Path) -> None:
+    request = _request((LSTM_METHOD, OTHER_LSTM_METHOD))
+    conflicting = _request(
+        (LSTM_METHOD, OTHER_LSTM_METHOD),
+        corpus_id=OTHER_CORPUS_ID,
+    )
+    second = RetainedResult(
+        method=OTHER_LSTM_METHOD,
+        objective=0.4,
+        selected_epoch=3,
+        completed_epochs=8,
+    )
+    retain_result(tmp_path, request, 0, RESULT)
+    retain_result(tmp_path, conflicting, 1, second)
+
+    with pytest.raises(ValueError, match="result requests must be identical"):
+        publish_study(tmp_path, STUDY_ID)
+
+    assert not study_json_path(tmp_path, STUDY_ID).exists()
+
+
+def test_publish_study_rejects_result_for_wrong_method_index(tmp_path: Path) -> None:
+    request = _request((LSTM_METHOD, OTHER_LSTM_METHOD))
+    retain_result(tmp_path, request, 0, RESULT)
+    scratch = tmp_path / "studies" / f".{STUDY_ID}"
+    (scratch / "result-1.json").write_text(
+        Study(request=request, trials=(RESULT,)).model_dump_json(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="result method does not match request index"):
+        publish_study(tmp_path, STUDY_ID)
+
+    assert not study_json_path(tmp_path, STUDY_ID).exists()
+
+
+def test_publish_study_rejects_result_with_multiple_trials(tmp_path: Path) -> None:
+    request = _request()
+    scratch = tmp_path / "studies" / f".{STUDY_ID}"
+    scratch.mkdir(parents=True)
+    (scratch / "result-0.json").write_text(
+        Study(request=request, trials=(RESULT, RESULT)).model_dump_json(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="exactly one trial"):
+        publish_study(tmp_path, STUDY_ID)
+
+    assert not study_json_path(tmp_path, STUDY_ID).exists()
+
+
+def test_publish_study_does_not_support_progress_json(tmp_path: Path) -> None:
+    scratch = tmp_path / "studies" / f".{STUDY_ID}"
+    scratch.mkdir(parents=True)
+    progress = scratch / "progress.json"
+    progress.write_text(
+        Study(request=_request(), trials=(RESULT,)).model_dump_json(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(FileNotFoundError, match=r"result-\*\.json"):
+        publish_study(tmp_path, STUDY_ID)
+
+    assert progress.exists()
+    assert not study_json_path(tmp_path, STUDY_ID).exists()
 
 
 def test_load_selected_method_rejects_corpus_mismatch(tmp_path: Path) -> None:
@@ -240,8 +315,12 @@ def test_load_selected_method_rejects_corpus_mismatch(tmp_path: Path) -> None:
 
 
 def test_publish_study_rejects_occupied_canonical(tmp_path: Path) -> None:
-    retain_result(tmp_path, _request(), RESULT)
-    study_json_path(tmp_path, STUDY_ID).write_text("occupied", encoding="utf-8")
+    retain_result(tmp_path, _request(), 0, RESULT)
+    canonical = study_json_path(tmp_path, STUDY_ID)
+    canonical.write_text("occupied", encoding="utf-8")
 
     with pytest.raises(FileExistsError):
         publish_study(tmp_path, STUDY_ID)
+
+    assert canonical.read_text(encoding="utf-8") == "occupied"
+    assert (tmp_path / "studies" / f".{STUDY_ID}" / "result-0.json").exists()

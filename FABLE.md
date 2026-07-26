@@ -68,7 +68,7 @@ completed canonical `corpus.json`/`blocks.parquet` pair. Corpus production is ex
 
 #### Study and artifact
 
-`TuneRequest` contains one `ExperimentSemantics` and a finite nonempty tuple of complete Methods from one model family. `run_candidate()` prepares training state, fits one supplied Method, and appends one successful `RetainedResult` to Study scratch. `publish_study()` renames the ordered result set to its canonical JSON file.
+`TuneRequest` contains one `ExperimentSemantics` and a finite nonempty tuple of complete Methods from one model family. `run_candidate()` prepares training state, fits one supplied Method, and publishes its successful `RetainedResult` at the Method's request index. `publish_study()` assembles the complete result set in request order and atomically publishes its canonical JSON file.
 
 A baseline `TrainRequest` embeds its complete `TrainingDefinition`. A selected-Study request instead names the exact Study UUID and result index while carrying the experiment. Training loads that exact row's Method, composes the definition from the source experiment and Method, fits through Lightning, and renames the native weights-only best checkpoint to the artifact UUID address. The checkpoint embeds the request, feature and target state, and—only for selected-Study training—the exact result index and Method.
 
@@ -669,7 +669,7 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 
 #### Candidate run
 
-`run_candidate(storage_root, request, method, deployment)` loads the request's Corpus, prepares training history and state, fits the exact Method through native Lightning, and retains one successful result. Candidate checkpoints stay in Study scratch; training publishes artifacts.
+`run_candidate(storage_root, request, method, deployment)` loads the request's Corpus, prepares training history and state, fits the exact Method through native Lightning, and retains one successful result. Method index `i` owns checkpoint scratch at `studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while fit or publication failure preserves it for `last.ckpt` resume.
 
 `RetainedResult` has four fields:
 
@@ -680,11 +680,11 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 
 The selected epoch cannot exceed completed epochs, and completed epochs cannot exceed the Method maximum.
 
-#### Ordered progress and publication
+#### Indexed results and publication
 
-Candidate success appends to `studies/.<study_id>/progress.json`. Existing progress must contain the identical request. Appends preserve caller completion order and directly replace the progress file through one hidden temporary sibling.
+Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary sibling. Each result file is a one-trial `Study` carrying the full request. The former shared `progress.json` format is unsupported.
 
-`publish_study(storage_root, study_id)` validates progress and renames it to `studies/<study_id>.json`, preserving completion order. An existing canonical Study is an error.
+`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first available result. All files must carry the identical request and exactly one trial whose Method matches that request index. Publication assembles trials in `request.methods` order, writes one hidden final Study, and atomically renames it to `studies/<study_id>.json`. An existing canonical Study is an error. The hidden Study directory is removed only after canonical publication succeeds.
 
 #### Selected training
 

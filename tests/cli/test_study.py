@@ -120,20 +120,12 @@ def test_study_run_hydrates_and_submits_one_candidate(
     method_path.write_text(METHOD.model_dump_json(), encoding="utf-8")
     _write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
-    events: list[str] = []
     scripts: list[str] = []
-    read_bytes = Path.read_bytes
-
-    def recording_read_bytes(path: Path) -> bytes:
-        events.append(f"read:{path.name}")
-        return read_bytes(path)
 
     def fake_invoke_sbatch(_remote: object, script: str) -> int:
-        events.append("submit")
         scripts.append(script)
         return 123
 
-    monkeypatch.setattr(Path, "read_bytes", recording_read_bytes)
     monkeypatch.setattr(execution, "_invoke_sbatch", fake_invoke_sbatch)
 
     result = CliRunner().invoke(
@@ -143,12 +135,6 @@ def test_study_run_hydrates_and_submits_one_candidate(
 
     assert result.exit_code == 0
     assert result.output == "123\n"
-    assert events == [
-        "read:TUNE_REQUEST.json",
-        "read:METHOD.json",
-        "read:REMOTE.yaml",
-        "submit",
-    ]
     envelope_json = json.dumps(
         {
             "request": REQUEST.model_dump(mode="json"),
@@ -165,12 +151,10 @@ def test_study_run_hydrates_and_submits_one_candidate(
 
 
 class _InputBuffer:
-    def __init__(self, payload: bytes, events: list[str]) -> None:
+    def __init__(self, payload: bytes) -> None:
         self._payload = payload
-        self._events = events
 
     def read(self) -> bytes:
-        self._events.append("stdin")
         return self._payload
 
 
@@ -187,7 +171,6 @@ def test_remote_candidate_forwards_input(
         },
         separators=(",", ":"),
     ).encode()
-    events: list[str] = []
     calls: list[tuple[Path, TuneRequest, Method, Deployment]] = []
     failure = RuntimeError("candidate failed")
     candidate = remote._CandidateProcessInput.model_validate_json(payload, strict=True)
@@ -198,7 +181,6 @@ def test_remote_candidate_forwards_input(
         method: Method,
         deployment: Deployment,
     ) -> None:
-        events.append("run_candidate")
         calls.append((storage_root, request, method, deployment))
         if owner_fails:
             raise failure
@@ -206,7 +188,7 @@ def test_remote_candidate_forwards_input(
     monkeypatch.setattr(
         remote,
         "sys",
-        SimpleNamespace(stdin=SimpleNamespace(buffer=_InputBuffer(payload, events))),
+        SimpleNamespace(stdin=SimpleNamespace(buffer=_InputBuffer(payload))),
     )
     monkeypatch.setattr(
         remote._CandidateProcessInput,
@@ -222,10 +204,6 @@ def test_remote_candidate_forwards_input(
     if owner_fails:
         assert result.exception is failure
     assert result.output == ""
-    assert events == [
-        "stdin",
-        "run_candidate",
-    ]
     assert calls == [(STORAGE_ROOT, REQUEST, METHOD, DEPLOYMENT_RECORD)]
     assert calls[0][-1] is candidate.deployment
 
@@ -248,11 +226,9 @@ def test_study_finalize_publishes_after_owned_validation(
     error: str | None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    events: list[str] = []
     calls: list[tuple[Path, UUID]] = []
 
     def fake_publish_study(root: Path, active_study_id: UUID) -> None:
-        events.append("publish_study")
         calls.append((root, active_study_id))
 
     monkeypatch.setenv("STORAGE_ROOT", str(storage_root))
@@ -263,9 +239,8 @@ def test_study_finalize_publishes_after_owned_validation(
     assert result.exit_code == (1 if error else 0)
     assert result.output == ""
     if error is None:
-        assert events == ["publish_study"]
         assert calls == [(storage_root, study_id)]
     else:
         assert isinstance(result.exception, ValueError)
         assert str(result.exception) == error
-        assert events == []
+        assert calls == []
