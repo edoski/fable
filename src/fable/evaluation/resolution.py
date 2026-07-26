@@ -291,4 +291,4 @@ def _economic_metrics(
     }
 
 
-__all__ = ["reduce_evaluation"]
+__all__ = ["reduce_evaluation", "reduce_rolling"]

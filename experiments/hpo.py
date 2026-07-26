@@ -172,9 +172,6 @@ def _selected_context_studies(
 
 
 def prepare(storage_root: Path, c_experiment_id: UUID, experiment_id: UUID) -> None:
-    if experiment_id.version != 4:
-        raise ValueError("experiment_id must be a UUIDv4")
-
     storage_root = storage_root.resolve()
     selected = _selected_context_studies(storage_root, c_experiment_id)
     bundle = _bundle_path(storage_root, experiment_id)

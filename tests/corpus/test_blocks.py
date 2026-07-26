@@ -140,3 +140,16 @@ def test_block_frame_isolates_owned_and_returned_frames_from_mutation() -> None:
     returned[1, "base_fee_per_gas"] = 888
 
     assert blocks.to_polars()["base_fee_per_gas"].to_list() == [100, 101, 102, 103, 104]
+
+
+def test_select_range_isolates_selected_frame_from_mutation() -> None:
+    source = _valid_frame()
+    blocks = BlockFrame(source, _definition())
+    selected = blocks.select_range(101, 103)
+
+    source[1, "base_fee_per_gas"] = 999
+    returned = selected.to_polars()
+    returned[0, "base_fee_per_gas"] = 888
+
+    assert blocks.to_polars()["base_fee_per_gas"].to_list() == [100, 101, 102, 103, 104]
+    assert selected.to_polars()["base_fee_per_gas"].to_list() == [101, 102, 103]

@@ -126,9 +126,6 @@ def _bundle_path(storage_root: Path, experiment_id: UUID) -> Path:
 
 
 def prepare(storage_root: Path, experiment_id: UUID) -> None:
-    if experiment_id.version != 4:
-        raise ValueError("experiment_id must be a UUIDv4")
-
     storage_root = storage_root.resolve()
     bundle = _bundle_path(storage_root, experiment_id)
     requests = bundle / "requests"

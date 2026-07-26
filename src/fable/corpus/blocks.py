@@ -86,7 +86,7 @@ class BlockFrame:
         selected._frame = self._frame.slice(
             first_block - self._definition.first_block,
             last_block - first_block + 1,
-        ).clone()
+        )
         selected._definition = definition
         return selected
 

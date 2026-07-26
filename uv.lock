@@ -122,7 +122,6 @@ dependencies = [
     { name = "pyyaml" },
     { name = "torch", version = "2.7.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'linux'" },
     { name = "torch", version = "2.7.1+cu118", source = { registry = "https://download.pytorch.org/whl/cu118" }, marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "torchmetrics" },
     { name = "typer" },
 ]
 
@@ -143,7 +142,6 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "torch", marker = "platform_machine != 'x86_64' or sys_platform != 'linux'", specifier = "==2.7.1" },
     { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = "==2.7.1", index = "https://download.pytorch.org/whl/cu118" },
-    { name = "torchmetrics", specifier = "==1.9.0" },
     { name = "typer", specifier = ">=0.16" },
 ]
 

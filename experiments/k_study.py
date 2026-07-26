@@ -36,9 +36,6 @@ def _load_study(storage_root: Path, study_id: UUID) -> Study:
 
 
 def prepare(storage_root: Path, hpo_experiment_id: UUID, experiment_id: UUID) -> None:
-    if experiment_id.version != 4:
-        raise ValueError("experiment_id must be a UUIDv4")
-
     storage_root = storage_root.resolve()
     manifest = load_experiment_manifest(
         storage_root,

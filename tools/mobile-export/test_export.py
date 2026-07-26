@@ -88,16 +88,13 @@ def _install_artifact_fakes(
         )
 
     chain_ids = {
-        corpus_id: mobile_export._CHAINS[chain]
-        for chain, corpus_id in _CORPUS_IDS.items()
+        corpus_id: mobile_export._CHAINS[chain] for chain, corpus_id in _CORPUS_IDS.items()
     }
 
     def load_corpus(storage_root: Path, corpus_id: UUID) -> object:
         del storage_root
         return SimpleNamespace(
-            request=SimpleNamespace(
-                definition=SimpleNamespace(chain_id=chain_ids[corpus_id])
-            )
+            request=SimpleNamespace(definition=SimpleNamespace(chain_id=chain_ids[corpus_id]))
         )
 
     monkeypatch.setattr(mobile_export, "load_artifact", load_artifact)
@@ -188,7 +185,7 @@ def test_export_bundle_rejects_incomplete_roster(tmp_path: Path) -> None:
     del raw["polygon"]["k5_artifact_id"]
     roster_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="polygon roster must contain exactly"):
+    with pytest.raises(ValueError, match="k5_artifact_id"):
         mobile_export.export_bundle(
             tmp_path / "storage",
             roster_path,
@@ -228,9 +225,7 @@ def test_export_bundle_rejects_artifact_association_mismatch(
         def load_corpus(storage_root: Path, corpus_id: UUID) -> object:
             if corpus_id == _CORPUS_IDS["ethereum"]:
                 return SimpleNamespace(
-                    request=SimpleNamespace(
-                        definition=SimpleNamespace(chain_id=137)
-                    )
+                    request=SimpleNamespace(definition=SimpleNamespace(chain_id=137))
                 )
             return fake_load_corpus(storage_root, corpus_id)
 

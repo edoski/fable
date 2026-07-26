@@ -13,7 +13,7 @@ import polars as pl
 
 from fable.addresses import corpus_json_path, evaluation_directory, study_json_path
 from fable.config import BlockWindow, CorpusRequest
-from fable.evaluation.resolution import reduce_evaluation, reduce_rolling
+from fable.evaluation import reduce_evaluation, reduce_rolling
 from fable.experiments import (
     ExperimentEntry,
     ExperimentKind,
@@ -50,9 +50,6 @@ def prepare(
     k_experiment_id: UUID,
     experiment_id: UUID,
 ) -> None:
-    if experiment_id.version != 4:
-        raise ValueError("experiment_id must be a UUIDv4")
-
     storage_root = storage_root.resolve()
     hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_experiment_id)

@@ -168,11 +168,6 @@ def test_remote_candidate_dispatches_input(
     ("study_id", "storage_root", "error"),
     [
         (STUDY_ID, Path("/current/storage"), None),
-        (
-            UUID("10000000-0000-1000-8000-000000000001"),
-            Path("/current/storage"),
-            "STUDY_ID must be a UUIDv4",
-        ),
         (STUDY_ID, Path("relative/storage"), "STORAGE_ROOT must be an absolute path"),
     ],
 )

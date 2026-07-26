@@ -9,6 +9,7 @@ import tempfile
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
+from typing import Self
 from uuid import UUID
 
 import torch
@@ -18,6 +19,7 @@ from executorch.backends.xnnpack.partition.xnnpack_partitioner import (  # pyrig
 )
 from executorch.exir import to_edge_transform_and_lower  # pyright: ignore[reportMissingImports]
 from executorch.runtime import Runtime  # pyright: ignore[reportMissingImports]
+from pydantic import UUID4, BaseModel, ConfigDict, model_validator
 from torch import nn
 
 from fable.corpus import Corpus, load_corpus
@@ -44,6 +46,34 @@ _SUPPORTED_FEATURES = frozenset(
         "hour_cos",
     }
 )
+
+
+class _RosterChain(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    k2_artifact_id: UUID4
+    k3_artifact_id: UUID4
+    k4_artifact_id: UUID4
+    k5_artifact_id: UUID4
+
+
+class _Roster(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    ethereum: _RosterChain
+    polygon: _RosterChain
+    avalanche: _RosterChain
+
+    @model_validator(mode="after")
+    def validate_unique_artifacts(self) -> Self:
+        artifact_ids = tuple(
+            getattr(getattr(self, chain), f"k{horizon}_artifact_id")
+            for chain in _CHAINS
+            for horizon in _HORIZONS
+        )
+        if len(set(artifact_ids)) != len(artifact_ids):
+            raise ValueError("roster artifact IDs must be unique")
+        return self
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,39 +112,11 @@ def _require_versions() -> None:
         raise RuntimeError(f"mobile export requires executorch=={_EXECUTORCH_VERSION}")
 
 
-def _parse_artifact_id(raw: object, cell: str) -> UUID:
-    if not isinstance(raw, str):
-        raise ValueError(f"{cell} must contain a UUID string")
-    try:
-        artifact_id = UUID(raw)
-    except ValueError as error:
-        raise ValueError(f"{cell} must contain a valid UUID") from error
-    if artifact_id.version != 4:
-        raise ValueError(f"{cell} must contain a UUIDv4")
-    return artifact_id
-
-
-def _load_roster(roster_path: Path) -> dict[str, dict[int, UUID]]:
-    raw = yaml.safe_load(roster_path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or set(raw) != set(_CHAINS):
-        raise ValueError("roster must contain exactly ethereum, polygon, and avalanche")
-
-    roster: dict[str, dict[int, UUID]] = {}
-    seen: set[UUID] = set()
-    for chain in _CHAINS:
-        chain_raw = raw[chain]
-        expected_keys = {f"k{horizon}_artifact_id" for horizon in _HORIZONS}
-        if not isinstance(chain_raw, dict) or set(chain_raw) != expected_keys:
-            raise ValueError(f"{chain} roster must contain exactly K=2, 3, 4, and 5")
-        roster[chain] = {}
-        for horizon in _HORIZONS:
-            key = f"k{horizon}_artifact_id"
-            artifact_id = _parse_artifact_id(chain_raw[key], f"{chain}.{key}")
-            if artifact_id in seen:
-                raise ValueError("roster artifact IDs must be unique")
-            seen.add(artifact_id)
-            roster[chain][horizon] = artifact_id
-    return roster
+def _load_roster(roster_path: Path) -> _Roster:
+    return _Roster.model_validate_strings(
+        yaml.safe_load(roster_path.read_bytes()),
+        strict=True,
+    )
 
 
 def _feature_contract(
@@ -125,9 +127,7 @@ def _feature_contract(
     names = tuple(experiment.ordered_features)
     unsupported = set(names) - _SUPPORTED_FEATURES
     if unsupported:
-        raise ValueError(
-            f"{chain} artifact contains unsupported features: {sorted(unsupported)}"
-        )
+        raise ValueError(f"{chain} artifact contains unsupported features: {sorted(unsupported)}")
     if chain != "ethereum" and "log_exact_forming_base_fee_per_gas" in names:
         raise ValueError("exact forming base fee is Ethereum-only")
     return _FeatureContract(
@@ -140,7 +140,7 @@ def _feature_contract(
 
 def _load_cells(
     storage_root: Path,
-    roster: dict[str, dict[int, UUID]],
+    roster: _Roster,
 ) -> dict[str, dict[int, _Cell]]:
     corpora: dict[UUID, Corpus] = {}
     cells: dict[str, dict[int, _Cell]] = {}
@@ -148,10 +148,8 @@ def _load_cells(
         cells[chain] = {}
         shared_features: _FeatureContract | None = None
         for horizon in _HORIZONS:
-            artifact_id = roster[chain][horizon]
+            artifact_id = getattr(getattr(roster, chain), f"k{horizon}_artifact_id")
             association, model = load_artifact(storage_root, artifact_id)
-            if association.request.artifact_id != artifact_id:
-                raise ValueError(f"{chain} K={horizon} artifact identity does not match roster")
 
             experiment = association.training_definition.experiment
             if experiment.horizon_blocks != horizon:
@@ -194,27 +192,24 @@ def _example_inputs(features: _FeatureContract) -> tuple[torch.Tensor, torch.Ten
     return zeros, nonzero
 
 
-def _validated_outputs(
+def _validated_native_outputs(
     outputs: object,
     *,
     horizon: int,
-    source: str,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     if not isinstance(outputs, (list, tuple)) or len(outputs) != 2:
-        raise ValueError(f"{source} must return action_logits and minimum_fee_z")
+        raise ValueError("ExecuTorch host must return action_logits and minimum_fee_z")
     action_logits, minimum_fee_z = outputs
-    if not isinstance(action_logits, torch.Tensor) or not isinstance(
-        minimum_fee_z, torch.Tensor
-    ):
-        raise ValueError(f"{source} outputs must be tensors")
+    if not isinstance(action_logits, torch.Tensor) or not isinstance(minimum_fee_z, torch.Tensor):
+        raise ValueError("ExecuTorch host outputs must be tensors")
     if action_logits.shape != (1, horizon):
-        raise ValueError(f"{source} action_logits must have shape [1, {horizon}]")
+        raise ValueError(f"ExecuTorch host action_logits must have shape [1, {horizon}]")
     if minimum_fee_z.shape != (1,):
-        raise ValueError(f"{source} minimum_fee_z must have shape [1]")
+        raise ValueError("ExecuTorch host minimum_fee_z must have shape [1]")
     if action_logits.dtype != torch.float32 or minimum_fee_z.dtype != torch.float32:
-        raise ValueError(f"{source} outputs must be float32")
+        raise ValueError("ExecuTorch host outputs must be float32")
     if not torch.isfinite(action_logits).all() or not torch.isfinite(minimum_fee_z).all():
-        raise ValueError(f"{source} outputs must be finite")
+        raise ValueError("ExecuTorch host outputs must be finite")
     return action_logits, minimum_fee_z
 
 
@@ -234,12 +229,8 @@ def _assert_parity(
     if exported[0].argmax(dim=-1).item() != eager[0].argmax(dim=-1).item():
         raise ValueError("eager and ExecuTorch selected actions do not match")
 
-    eager_fee = math.exp(
-        target_mean + target_standard_deviation * eager[1].item()
-    )
-    exported_fee = math.exp(
-        target_mean + target_standard_deviation * exported[1].item()
-    )
+    eager_fee = math.exp(target_mean + target_standard_deviation * eager[1].item())
+    exported_fee = math.exp(target_mean + target_standard_deviation * exported[1].item())
     if abs(exported_fee - eager_fee) / eager_fee >= 0.001:
         raise ValueError("eager and ExecuTorch decoded fees differ by at least 0.1%")
 
@@ -248,14 +239,7 @@ def _export_model(cell: _Cell, destination: Path) -> None:
     model = _NamedOutputWrapper(cell.model.cpu().float().eval())
     samples = _example_inputs(cell.features)
     with torch.inference_mode():
-        eager_outputs = [
-            _validated_outputs(
-                model(sample),
-                horizon=cell.horizon,
-                source="eager model",
-            )
-            for sample in samples
-        ]
+        eager_outputs = [model(sample) for sample in samples]
 
     exported = torch.export.export(model, (samples[0],), strict=True)
     program = to_edge_transform_and_lower(
@@ -266,10 +250,9 @@ def _export_model(cell: _Cell, destination: Path) -> None:
 
     method = Runtime.get().load_program(destination).load_method("forward")
     for sample, eager in zip(samples, eager_outputs, strict=True):
-        host = _validated_outputs(
+        host = _validated_native_outputs(
             method.execute((sample,)),
             horizon=cell.horizon,
-            source="ExecuTorch host",
         )
         _assert_parity(
             eager,
@@ -305,9 +288,7 @@ def _manifest(cells: dict[str, dict[int, _Cell]]) -> dict[str, object]:
                     "artifact_id": str(chain_cells[horizon].artifact_id),
                     "target": {
                         "mean": chain_cells[horizon].target_mean,
-                        "standard_deviation": (
-                            chain_cells[horizon].target_standard_deviation
-                        ),
+                        "standard_deviation": (chain_cells[horizon].target_standard_deviation),
                     },
                 }
                 for horizon in _HORIZONS
@@ -348,8 +329,6 @@ def export_bundle(
             json.dumps(_manifest(cells), indent=2, allow_nan=False) + "\n",
             encoding="utf-8",
         )
-        if output_directory.exists():
-            raise FileExistsError(output_directory)
         scratch.rename(output_directory)
     finally:
         if scratch.exists():

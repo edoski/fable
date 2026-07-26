@@ -30,7 +30,4 @@ def run_command(
 def finalize_command(
     study_id: Annotated[UUID, typer.Argument(metavar="STUDY_ID")],
 ) -> None:
-    if study_id.version != 4:
-        raise ValueError("STUDY_ID must be a UUIDv4")
-
     publish_study(resolve_storage_root(), study_id)
