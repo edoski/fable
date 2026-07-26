@@ -20,6 +20,7 @@ import {
   formatRunDate,
   recommendedWaitData,
   realizedSavingsPercent,
+  runsForSelection,
   savingsByWaitData,
   summarizeRuns,
   type GraphKind,
@@ -66,12 +67,16 @@ function niceStep(range: number): number {
   return multiplier * magnitude;
 }
 
-function EmptyGraph() {
+function EmptyGraph({ outcomes }: { outcomes: boolean }) {
   return (
     <View style={styles.emptyGraph}>
-      <Text style={styles.emptyGraphTitle}>No outcomes yet</Text>
+      <Text style={styles.emptyGraphTitle}>
+        {outcomes ? "No outcomes yet" : "No runs yet"}
+      </Text>
       <Text style={styles.emptyGraphText}>
-        Resolved inferences will populate this graph.
+        {outcomes
+          ? "Resolved inferences will populate this graph."
+          : "Runs will populate this graph."}
       </Text>
     </View>
   );
@@ -97,7 +102,7 @@ function AnalyticsGraph({
       item.value === null ? [] : [item.value],
     );
     if (values.length === 0) {
-      return <EmptyGraph />;
+      return <EmptyGraph outcomes={kind === "savings"} />;
     }
 
     const rawMinimum = Math.min(0, ...values);
@@ -176,7 +181,7 @@ function AnalyticsGraph({
 
   const data = feeComparisonData(runs, horizon);
   if (data.length === 0) {
-    return <EmptyGraph />;
+    return <EmptyGraph outcomes />;
   }
   const maximumValue = Math.max(
     ...data.flatMap((item) => [item.immediate, item.fable]),
@@ -258,8 +263,11 @@ function runSummary(run: InferenceRun): string {
       ? "Act now"
       : `Wait ${run.selected_action_k} block${run.selected_action_k === 1 ? "" : "s"}`;
   const savings = realizedSavingsPercent(run);
-  if (savings === null) {
+  if (run.outcome === undefined) {
     return `${wait} · Pending`;
+  }
+  if (savings === null) {
+    return `${wait} · Unavailable`;
   }
   const outcome =
     savings >= 0
@@ -339,6 +347,7 @@ function RunDetails({
   if (run === null) {
     return null;
   }
+  const savings = realizedSavingsPercent(run);
   return (
     <Modal animationType="slide" onRequestClose={onClose} transparent visible>
       <View style={styles.dialogRoot}>
@@ -420,7 +429,9 @@ function RunDetails({
               value={
                 run.outcome === undefined
                   ? "Pending"
-                  : formatSavings(realizedSavingsPercent(run) ?? 0)
+                  : savings === null
+                    ? "Unavailable"
+                    : formatSavings(savings)
               }
             />
           </View>
@@ -474,9 +485,8 @@ export function AnalyticsScreen({
   const [selectedRun, setSelectedRun] = useState<InferenceRun | null>(null);
   const carousel = useRef<ScrollView>(null);
   const chartStep = carouselWidth + 12;
-  const networkRuns = runs.filter((run) => run.chain === chain);
-  const graphRuns = networkRuns.filter((run) => run.K === graphHorizon);
-  const summary = summarizeRuns(networkRuns);
+  const graphRuns = runsForSelection(runs, chain, graphHorizon);
+  const summary = summarizeRuns(graphRuns);
   const graphs = GRAPH_OPTIONS;
   const visibleRuns = graphRuns.slice(0, 10);
 
@@ -531,9 +541,9 @@ export function AnalyticsScreen({
             <SummaryCard
               label="Avg wait (blocks)"
               value={
-                summary.averageOffset === null
+                summary.averageWait === null
                   ? "—"
-                  : summary.averageOffset.toFixed(1)
+                  : summary.averageWait.toFixed(1)
               }
             />
           </View>

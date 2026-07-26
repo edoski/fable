@@ -1,5 +1,5 @@
-import type { Horizon } from "./inference";
-import type { InferenceRun } from "./history";
+import type { Chain, Horizon } from "./inference";
+import type { InferenceRun, RunOutcome } from "./history";
 
 export const GRAPH_OPTIONS = [
   { value: "waits", label: "Recommended wait distribution" },
@@ -20,8 +20,8 @@ type FeeComparisonDatum = {
   fable: number;
 };
 
-type RunSummary = {
-  averageOffset: number | null;
+export type RunSummary = {
+  averageWait: number | null;
   averageSavingsPercent: number | null;
   winPercent: number | null;
 };
@@ -41,15 +41,22 @@ const MONTHS = [
   "Dec",
 ];
 
+export function runsForSelection(
+  runs: readonly InferenceRun[],
+  chain: Chain,
+  horizon: Horizon,
+): InferenceRun[] {
+  return runs.filter((run) => run.chain === chain && run.K === horizon);
+}
+
 export function summarizeRuns(runs: readonly InferenceRun[]): RunSummary {
   if (runs.length === 0) {
     return {
-      averageOffset: null,
+      averageWait: null,
       averageSavingsPercent: null,
       winPercent: null,
     };
   }
-  const offsets = runs.reduce((total, run) => total + run.selected_action_k, 0);
   const savings = runs.flatMap((run) => {
     const value = realizedSavingsPercent(run);
     return value === null ? [] : [value];
@@ -59,11 +66,8 @@ export function summarizeRuns(runs: readonly InferenceRun[]): RunSummary {
     return run.selected_action_k === 0 || value === null ? [] : [value];
   });
   return {
-    averageOffset: offsets / runs.length,
-    averageSavingsPercent:
-      savings.length === 0
-        ? null
-        : savings.reduce((total, value) => total + value, 0) / savings.length,
+    averageWait: mean(runs.map((run) => run.selected_action_k)),
+    averageSavingsPercent: mean(savings),
     winPercent:
       waitedSavings.length === 0
         ? null
@@ -74,13 +78,14 @@ export function summarizeRuns(runs: readonly InferenceRun[]): RunSummary {
 }
 
 export function realizedSavingsPercent(run: InferenceRun): number | null {
-  if (run.outcome === undefined) {
+  const outcome = validOutcome(run);
+  if (outcome === null) {
     return null;
   }
   return (
-    ((run.outcome.immediate_base_fee_per_gas -
-      run.outcome.selected_base_fee_per_gas) /
-      run.outcome.immediate_base_fee_per_gas) *
+    ((outcome.immediate_base_fee_per_gas -
+      outcome.selected_base_fee_per_gas) /
+      outcome.immediate_base_fee_per_gas) *
     100
   );
 }
@@ -103,6 +108,9 @@ export function formatRunDate(value: string): string {
 }
 
 export function formatGwei(value: number): string {
+  if (!Number.isFinite(value) || value < 0) {
+    return "—";
+  }
   const gwei = value / 1_000_000_000;
   if (gwei >= 100) {
     return `${gwei.toFixed(0)} Gwei`;
@@ -143,11 +151,7 @@ export function savingsByWaitData(
     });
     return {
       label: String(offset),
-      value:
-        savings.length === 0
-          ? null
-          : savings.reduce((total, value) => total + value, 0) /
-            savings.length,
+      value: mean(savings),
     };
   });
 }
@@ -157,11 +161,12 @@ export function feeComparisonData(
   horizon: Horizon,
 ): FeeComparisonDatum[] {
   return Array.from({ length: horizon }, (_, offset) => {
-    const outcomes = runs.flatMap((run) =>
-      run.selected_action_k === offset && run.outcome !== undefined
-        ? [run.outcome]
-        : [],
-    );
+    const outcomes = runs.flatMap((run) => {
+      const outcome = validOutcome(run);
+      return run.selected_action_k === offset && outcome !== null
+        ? [outcome]
+        : [];
+    });
     if (outcomes.length === 0) {
       return [];
     }
@@ -169,20 +174,40 @@ export function feeComparisonData(
       {
         label: String(offset),
         immediate:
-          outcomes.reduce(
-            (total, outcome) => total + outcome.immediate_base_fee_per_gas,
-            0,
-          ) /
-          outcomes.length /
-          1_000_000_000,
+          (mean(
+            outcomes.map(
+              (outcome) => outcome.immediate_base_fee_per_gas,
+            ),
+          ) ?? 0) / 1_000_000_000,
         fable:
-          outcomes.reduce(
-            (total, outcome) => total + outcome.selected_base_fee_per_gas,
-            0,
-          ) /
-          outcomes.length /
-          1_000_000_000,
+          (mean(
+            outcomes.map((outcome) => outcome.selected_base_fee_per_gas),
+          ) ?? 0) / 1_000_000_000,
       },
     ];
   }).flat();
+}
+
+function validOutcome(run: InferenceRun): RunOutcome | null {
+  const outcome = run.outcome;
+  if (
+    outcome === undefined ||
+    !Number.isFinite(outcome.immediate_base_fee_per_gas) ||
+    outcome.immediate_base_fee_per_gas <= 0 ||
+    !Number.isFinite(outcome.selected_base_fee_per_gas) ||
+    outcome.selected_base_fee_per_gas < 0
+  ) {
+    return null;
+  }
+  return outcome;
+}
+
+function mean(values: readonly number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  return values.reduce(
+    (average, value, index) => average + (value - average) / (index + 1),
+    0,
+  );
 }
