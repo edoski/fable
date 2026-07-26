@@ -1,16 +1,15 @@
 # FABLE (Fee Analysis through Blockchain Learning and Estimation)
 
-FABLE learns from finalized block history to choose a low-base-fee block within a short future [horizon](CONTEXT.md). It compares LSTM, Transformer, and Transformer-LSTM models and can serve a trained model through a small inference API.
+FABLE learns from finalized block history to choose a low-base-fee block within a short future [horizon](CONTEXT.md). It compares LSTM, Transformer, and Transformer-LSTM models.
 
 Its scientific lineage is the temporal experiment in *SPICE: A Predictive Framework for Cost-Optimization in Multichain Environments*: a future minimum-block decision paired with an auxiliary fee prediction. FABLE's current equations and claim limits are documented in the [manual](FABLE.md#scientific-contract). The [glossary](CONTEXT.md) defines its domain terms.
 
 ## Hosts and responsibilities
 
-The repository supports three explicit operating locations:
+The Python system supports two explicit operating locations:
 
 - A workstation consumes prepared block history, creates requests, submits work, publishes tuning results, and computes transient evaluation reductions.
 - A GPU server fits, tunes, and evaluates through Slurm jobs.
-- A Mac runs the CPU inference API used by the Expo mobile demo.
 
 The [manual](FABLE.md#remote-submission) defines remote submission and host configuration.
 
@@ -20,12 +19,6 @@ Python 3.11 and [uv](https://docs.astral.sh/uv/) are required.
 
 ```bash
 uv sync
-```
-
-Install the serving extra on the inference host:
-
-```bash
-uv sync --extra serve
 ```
 
 ## Quick start
@@ -54,21 +47,13 @@ STORAGE_ROOT=/absolute/storage fable study finalize STUDY_ID
 
 The [CLI reference](FABLE.md#cli) defines the exact command contracts.
 
-## Serving and mobile demo
+## Mobile demo
 
-Place cwd-local `SERVING.yaml` beside the serving process, then start the factory:
-
-```bash
-STORAGE_ROOT=/absolute/storage uv run uvicorn fable.serving:create_app --factory
-```
-
-The FABLE Inference API accepts `POST /inference`. The [serving reference](FABLE.md#serving-and-mobile) defines its request, response, and configuration.
-
-The private Expo app lives in `app`. Set its only backend variable to the API origin before starting Expo:
+The private Expo app lives in `app` and owns chain acquisition, feature preparation, model inference, history, and outcomes:
 
 ```bash
 cd app
-EXPO_PUBLIC_FABLE_BACKEND_URL=http://HOST:PORT npm start
+npm start
 ```
 
 ## Read next

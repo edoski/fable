@@ -32,13 +32,6 @@ name = "pytorch-cu118"
 url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
-[project.optional-dependencies]
-serve = [
-  "fastapi>=0.115",
-  "uvicorn>=0.32",
-  "web3>=7.15",
-]
-
 [dependency-groups]
 dev = [
   "pytest>=8.3",
@@ -63,9 +56,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-filterwarnings = [
-  "ignore:websockets\\.legacy is deprecated.*:DeprecationWarning:websockets\\.legacy",
-]
 
 [tool.vulture]
 paths = ["src", "tests"]

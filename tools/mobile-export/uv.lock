@@ -336,7 +336,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", marker = "extra == 'serve'", specifier = ">=0.115" },
     { name = "lightning", specifier = "==2.6.5" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "polars", specifier = ">=1.5" },
@@ -346,10 +345,7 @@ requires-dist = [
     { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = "==2.7.1", index = "https://download.pytorch.org/whl/cu118" },
     { name = "torchmetrics", specifier = "==1.9.0" },
     { name = "typer", specifier = ">=0.16" },
-    { name = "uvicorn", marker = "extra == 'serve'", specifier = ">=0.32" },
-    { name = "web3", marker = "extra == 'serve'", specifier = ">=7.15" },
 ]
-provides-extras = ["serve"]
 
 [package.metadata.requires-dev]
 dev = [
