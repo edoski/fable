@@ -8,7 +8,6 @@ import numpy as np
 import polars as pl
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
 
 from .. import _runtime
 from ..addresses import evaluation_directory
@@ -85,16 +84,10 @@ def _collect_observations(
         name: np.empty(count, dtype=dtype.to_python()) for name, dtype in OBSERVATION_SCHEMA.items()
     }
 
-    workers = _runtime.NUM_WORKERS
-    loader = DataLoader(
+    loader = _runtime.data_loader(
         dataset,
         batch_size=_runtime.EVALUATION_BATCH_SIZE,
         shuffle=False,
-        drop_last=False,
-        num_workers=workers,
-        pin_memory=_runtime.PIN_MEMORY,
-        prefetch_factor=_runtime.PREFETCH_FACTOR if workers else None,
-        persistent_workers=_runtime.PERSISTENT_WORKERS if workers else False,
     )
     model.to(_DEVICE)
     cursor = 0

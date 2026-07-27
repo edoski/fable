@@ -17,7 +17,6 @@ import torch
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from pydantic import TypeAdapter, model_validator
 from torch import nn
-from torch.utils.data import DataLoader
 
 from . import _runtime
 from .addresses import artifact_checkpoint_path
@@ -387,33 +386,6 @@ class _FitOutcome:
     completed_epochs: int
 
 
-def _loaders(
-    prepared: HistoricalPreparation,
-    generator: torch.Generator,
-) -> tuple[DataLoader[dict[str, torch.Tensor]], DataLoader[dict[str, torch.Tensor]]]:
-    workers = _runtime.NUM_WORKERS
-    common = {
-        "batch_size": _runtime.FIT_BATCH_SIZE,
-        "drop_last": False,
-        "num_workers": workers,
-        "pin_memory": _runtime.PIN_MEMORY,
-        "prefetch_factor": _runtime.PREFETCH_FACTOR if workers else None,
-        "persistent_workers": _runtime.PERSISTENT_WORKERS if workers else False,
-    }
-    training = DataLoader(
-        prepared.training,
-        shuffle=True,
-        generator=generator,
-        **common,
-    )
-    validation = DataLoader(
-        prepared.validation,
-        shuffle=False,
-        **common,
-    )
-    return training, validation
-
-
 def _callbacks(
     scratch: Path,
     definition: TrainingDefinition,
@@ -466,9 +438,16 @@ def _fit(
     generator = torch.Generator(device="cpu").manual_seed(fit.seed)
 
     module = _FitModule(_json_association(association))
-    training_loader, validation_loader = _loaders(
-        prepared,
-        generator,
+    training_loader = _runtime.data_loader(
+        prepared.training,
+        batch_size=_runtime.FIT_BATCH_SIZE,
+        shuffle=True,
+        generator=generator,
+    )
+    validation_loader = _runtime.data_loader(
+        prepared.validation,
+        batch_size=_runtime.FIT_BATCH_SIZE,
+        shuffle=False,
     )
     early_stopping, best, last = _callbacks(scratch, definition)
     trainer = pl.Trainer(
