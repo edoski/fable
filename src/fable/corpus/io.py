@@ -19,13 +19,23 @@ class _CorpusDocument(StrictFrozenRecord):
     finalized_anchor: FinalizedAnchor
 
 
-def load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus:
+def _load_corpus_document(storage_root: Path, corpus_id: UUID4) -> _CorpusDocument:
     document = _CorpusDocument.model_validate_json(
-        corpus_json_path(storage_root, corpus_id).read_text(encoding="utf-8")
+        corpus_json_path(storage_root, corpus_id).read_text(encoding="utf-8"),
+        strict=True,
     )
     if document.request.corpus_id != corpus_id:
         raise ValueError("Corpus request UUID does not match the requested corpus")
-    corpus = Corpus(
+    return document
+
+
+def load_corpus_request(storage_root: Path, corpus_id: UUID4) -> CorpusRequest:
+    return _load_corpus_document(storage_root, corpus_id).request
+
+
+def load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus:
+    document = _load_corpus_document(storage_root, corpus_id)
+    return Corpus(
         request=document.request,
         finalized_anchor=document.finalized_anchor,
         blocks=BlockFrame(
@@ -33,4 +43,3 @@ def load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus:
             document.request.definition,
         ),
     )
-    return corpus

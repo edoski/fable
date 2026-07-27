@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -11,8 +10,9 @@ import polars as pl
 import typer
 from bundle import bundle_path, read_cells, write_cells
 
-from fable.addresses import corpus_json_path, evaluation_directory
-from fable.config import BlockWindow, CorpusRequest
+from fable.addresses import evaluation_directory
+from fable.config import BlockWindow
+from fable.corpus import load_corpus_request
 from fable.evaluation import reduce_evaluation, reduce_rolling
 from fable.experiments import (
     ExperimentEntry,
@@ -26,11 +26,6 @@ from fable.study import load_study
 
 _MAX_HORIZON = 200
 _KIND = ExperimentKind.HELD_OUT
-
-
-def _corpus_last_block(storage_root: Path, corpus_id: UUID) -> int:
-    document = json.loads(corpus_json_path(storage_root, corpus_id).read_bytes())
-    return CorpusRequest.model_validate(document["request"]).definition.last_block
 
 
 def prepare(
@@ -56,12 +51,9 @@ def prepare(
         horizon = int(horizon_label.removeprefix("K"))
         study = studies[f"{chain}.{family}"]
         validation_end = study.request.experiment.validation_window.last_parent_block
+        corpus_request = load_corpus_request(storage_root, study.request.corpus_id)
         first_parent = validation_end + _MAX_HORIZON + 1 + max(0, 5 - horizon)
-        last_parent = (
-            _corpus_last_block(storage_root, study.request.corpus_id)
-            - _MAX_HORIZON
-            + max(0, 5 - horizon)
-        )
+        last_parent = corpus_request.definition.last_block - _MAX_HORIZON + max(0, 5 - horizon)
         request = fresh_evaluate_request(
             artifact_id,
             study.request.corpus_id,

@@ -4,27 +4,16 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Self, TypeAlias
 
-from pydantic import UUID4, BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import UUID4, Field, TypeAdapter, model_validator
 
-_PositiveInt: TypeAlias = Annotated[int, Field(strict=True, gt=0)]
-_NonNegativeInt: TypeAlias = Annotated[int, Field(strict=True, ge=0)]
-_PositiveFloat: TypeAlias = Annotated[
-    float,
-    Field(strict=True, gt=0.0, allow_inf_nan=False),
-]
-_NonNegativeFloat: TypeAlias = Annotated[
-    float,
-    Field(strict=True, ge=0.0, allow_inf_nan=False),
-]
-_Dropout: TypeAlias = Annotated[
-    float,
-    Field(strict=True, ge=0.0, lt=1.0, allow_inf_nan=False),
-]
-_FeatureName: TypeAlias = Annotated[str, Field(strict=True, min_length=1)]
+from .records import StrictFrozenRecord
 
-
-class _FrozenRecord(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+_PositiveInt: TypeAlias = Annotated[int, Field(gt=0)]
+_NonNegativeInt: TypeAlias = Annotated[int, Field(ge=0)]
+_PositiveFloat: TypeAlias = Annotated[float, Field(gt=0.0, allow_inf_nan=False)]
+_NonNegativeFloat: TypeAlias = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
+_Dropout: TypeAlias = Annotated[float, Field(ge=0.0, lt=1.0, allow_inf_nan=False)]
+_FeatureName: TypeAlias = Annotated[str, Field(min_length=1)]
 
 
 def _validate_transformer_dimensions(model_width: int, attention_heads: int) -> None:
@@ -39,7 +28,7 @@ def _require_unique(label: str, values: tuple[object, ...]) -> None:
         raise ValueError(f"{label} must not contain duplicates")
 
 
-class CorpusDefinition(_FrozenRecord):
+class CorpusDefinition(StrictFrozenRecord):
     chain_id: _PositiveInt
     first_block: _NonNegativeInt
     last_block: _NonNegativeInt
@@ -51,12 +40,12 @@ class CorpusDefinition(_FrozenRecord):
         return self
 
 
-class CorpusRequest(_FrozenRecord):
+class CorpusRequest(StrictFrozenRecord):
     corpus_id: UUID4
     definition: CorpusDefinition
 
 
-class BlockWindow(_FrozenRecord):
+class BlockWindow(StrictFrozenRecord):
     first_parent_block: _NonNegativeInt
     last_parent_block: _NonNegativeInt
 
@@ -67,7 +56,7 @@ class BlockWindow(_FrozenRecord):
         return self
 
 
-class ExperimentSemantics(_FrozenRecord):
+class ExperimentSemantics(StrictFrozenRecord):
     training_window: BlockWindow
     validation_window: BlockWindow
     context_blocks: _PositiveInt
@@ -85,7 +74,7 @@ class ExperimentSemantics(_FrozenRecord):
         return self
 
 
-class LstmDefinition(_FrozenRecord):
+class LstmDefinition(StrictFrozenRecord):
     family: Literal["lstm"]
     hidden: _PositiveInt
     layers: _PositiveInt
@@ -93,7 +82,7 @@ class LstmDefinition(_FrozenRecord):
     dropout: _Dropout
 
 
-class TransformerDefinition(_FrozenRecord):
+class TransformerDefinition(StrictFrozenRecord):
     family: Literal["transformer"]
     model_width: _PositiveInt
     attention_heads: _PositiveInt
@@ -108,7 +97,7 @@ class TransformerDefinition(_FrozenRecord):
         return self
 
 
-class TransformerLstmDefinition(_FrozenRecord):
+class TransformerLstmDefinition(StrictFrozenRecord):
     family: Literal["transformer_lstm"]
     model_width: _PositiveInt
     attention_heads: _PositiveInt
@@ -131,7 +120,7 @@ ModelDefinition: TypeAlias = Annotated[
 ]
 
 
-class FitMethod(_FrozenRecord):
+class FitMethod(StrictFrozenRecord):
     learning_rate: _PositiveFloat
     weight_decay: _NonNegativeFloat
     accumulation: _PositiveInt
@@ -143,17 +132,17 @@ class FitMethod(_FrozenRecord):
     min_delta: _NonNegativeFloat
 
 
-class Method(_FrozenRecord):
+class Method(StrictFrozenRecord):
     model: ModelDefinition
     fit: FitMethod
 
 
-class TrainingDefinition(_FrozenRecord):
+class TrainingDefinition(StrictFrozenRecord):
     experiment: ExperimentSemantics
     method: Method
 
 
-class BaselineSource(_FrozenRecord):
+class BaselineSource(StrictFrozenRecord):
     kind: Literal["baseline"]
     corpus_id: UUID4
     training_definition: TrainingDefinition
@@ -163,7 +152,7 @@ class BaselineSource(_FrozenRecord):
         return self.training_definition.experiment
 
 
-class SelectedStudySource(_FrozenRecord):
+class SelectedStudySource(StrictFrozenRecord):
     kind: Literal["selected_study"]
     corpus_id: UUID4
     study_id: UUID4
@@ -177,13 +166,13 @@ TrainingSource: TypeAlias = Annotated[
 ]
 
 
-class TrainRequest(_FrozenRecord):
+class TrainRequest(StrictFrozenRecord):
     workflow: Literal["train"]
     artifact_id: UUID4
     source: TrainingSource
 
 
-class TuneRequest(_FrozenRecord):
+class TuneRequest(StrictFrozenRecord):
     workflow: Literal["tune"]
     study_id: UUID4
     corpus_id: UUID4
@@ -198,7 +187,7 @@ class TuneRequest(_FrozenRecord):
         return self
 
 
-class EvaluateRequest(_FrozenRecord):
+class EvaluateRequest(StrictFrozenRecord):
     workflow: Literal["evaluate"]
     evaluation_id: UUID4
     artifact_id: UUID4
