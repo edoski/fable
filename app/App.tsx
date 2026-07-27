@@ -32,6 +32,7 @@ type ActiveEngine = {
   chain: Chain;
   engine: InferenceEngine;
   outcomesRunning: boolean;
+  revision: number;
 };
 
 export default function App() {
@@ -47,6 +48,7 @@ export default function App() {
   const [storageError, setStorageError] = useState<string | null>(null);
   const [engineRevision, setEngineRevision] = useState(0);
   const activeEngine = useRef<ActiveEngine | null>(null);
+  const engineRevisionSequence = useRef(0);
   const selectionRevision = useRef(0);
   const runsRef = useRef<InferenceRun[]>([]);
   const serializeHistory = useRef(createSerialQueue()).current;
@@ -136,10 +138,13 @@ export default function App() {
 
   useEffect(() => {
     const engine = createInferenceEngine(chain);
+    const revision = engineRevisionSequence.current + 1;
+    engineRevisionSequence.current = revision;
     const current: ActiveEngine = {
       chain,
       engine,
       outcomesRunning: false,
+      revision,
     };
     activeEngine.current = current;
     setRpcStatus("checking");
@@ -157,7 +162,7 @@ export default function App() {
       },
       () => onStatus("offline"),
     );
-    setEngineRevision((revision) => revision + 1);
+    setEngineRevision(revision);
 
     return () => {
       selectionRevision.current += 1;
@@ -171,7 +176,13 @@ export default function App() {
 
   useEffect(() => {
     const current = activeEngine.current;
-    if (current === null || current.chain !== chain) return;
+    if (
+      current === null ||
+      current.chain !== chain ||
+      current.revision !== engineRevision
+    ) {
+      return;
+    }
 
     const revision = selectionRevision.current + 1;
     selectionRevision.current = revision;
@@ -197,6 +208,7 @@ export default function App() {
 
   function selectChain(nextChain: Chain) {
     if (nextChain === chain) return;
+    activeEngine.current = null;
     selectionRevision.current += 1;
     setInference({ status: "preparing" });
     setRpcStatus("checking");
