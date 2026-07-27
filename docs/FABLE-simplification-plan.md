@@ -574,11 +574,11 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Final reviewer acceptance
 
-- [ ] Review the documentation slice against the implemented repository, not the pre-implementation plan.
-- [ ] Run the full cumulative Python, exporter, app, type, static, wheel/import, link, and diff matrix.
-- [ ] Confirm every prior slice commit is reachable in order and each prior authoritative review was GREEN.
-- [ ] Confirm the worktree/index contain only the intentional untracked GPU note.
-- [ ] Issue separate Standards and Spec verdicts and final `GREEN LIGHT`.
+- [x] Review the documentation slice against the implemented repository, not the pre-implementation plan.
+- [x] Run the full cumulative Python, exporter, app, type, static, wheel/import, link, and diff matrix.
+- [x] Confirm every prior slice commit is reachable in order and each prior authoritative review was GREEN.
+- [x] Confirm the worktree/index contain only the intentional untracked GPU note.
+- [x] Issue separate Standards and Spec verdicts and final `GREEN LIGHT`.
 
 ## Deferred final-model export and exporter retirement
 
