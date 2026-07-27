@@ -417,50 +417,50 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Shared components and styles
 
-- [ ] Add `DetailRow.tsx` with `label`, formatted string `value`, and optional `last`.
-- [ ] Replace Analytics’ local detail component and Inference’s open-coded rows.
-- [ ] Keep conditional formatting in screens; let `DetailRow` own row markup and final border only.
-- [ ] Add no `DetailList` or component test.
-- [ ] Create one `app/src/styles.ts`.
-- [ ] Move both screen StyleSheets and Horizon slider styles there.
-- [ ] Normalize page, title, section, surface, network-card, button, dialog, detail-row, label, and value roles.
-- [ ] Keep unique graph, timeline, and prediction geometry under distinct names in the same file.
-- [ ] Keep colors in `theme.ts`; remove screen color literals.
-- [ ] Use direct composed styles without override chains or wrapper components.
-- [ ] Accept small visual normalization where duplicates differ.
-- [ ] Remove `NetworkIcon.color`, its fallbacks, and the `graphs` alias.
+- [x] Add `DetailRow.tsx` with `label`, formatted string `value`, and optional `last`.
+- [x] Replace Analytics’ local detail component and Inference’s open-coded rows.
+- [x] Keep conditional formatting in screens; let `DetailRow` own row markup and final border only.
+- [x] Add no `DetailList` or component test.
+- [x] Create one `app/src/styles.ts`.
+- [x] Move both screen StyleSheets and Horizon slider styles there.
+- [x] Normalize page, title, section, surface, network-card, button, dialog, detail-row, label, and value roles.
+- [x] Keep unique graph, timeline, and prediction geometry under distinct names in the same file.
+- [x] Keep colors in `theme.ts`; remove screen color literals.
+- [x] Use direct composed styles without override chains or wrapper components.
+- [x] Accept small visual normalization where duplicates differ.
+- [x] Remove `NetworkIcon.color`, its fallbacks, and the `graphs` alias.
 
 ### Analytics layout
 
-- [ ] Remove the outer horizontal carousel.
-- [ ] Render the three graph cards vertically.
-- [ ] Let Gifted Bar Chart own internal horizontal scrolling.
-- [ ] Remove `adjustToWidth`, window/layout width state, carousel state/ref, snapping, momentum, pagination, explicit width, and derived bar geometry.
-- [ ] Remove default-valued props and duplicate transparent-axis settings.
-- [ ] Keep semantic dark colors, fee-pair colors/spacing, unit labels, negative-label placement, and bounded negative scale.
-- [ ] Replace rotated axes with card titles:
+- [x] Remove the outer horizontal carousel.
+- [x] Render the three graph cards vertically.
+- [x] Let Gifted Bar Chart own internal horizontal scrolling.
+- [x] Remove `adjustToWidth`, window/layout width state, carousel state/ref, snapping, momentum, pagination, explicit width, and derived bar geometry.
+- [x] Remove default-valued props and duplicate transparent-axis settings.
+- [x] Keep semantic dark colors, fee-pair colors/spacing, unit labels, negative-label placement, and bounded negative scale.
+- [x] Replace rotated axes with card titles:
   - `Recommended wait distribution`
   - `Savings by wait (%)`
   - `Base fee by wait (Gwei)`
-- [ ] Split chart algorithms into named private components.
-- [ ] Add no `ChartFrame`.
+- [x] Split chart algorithms into named private components.
+- [x] Add no `ChartFrame`.
 
 ### Horizon and dates
 
-- [ ] Keep Analytics horizon independent and local.
-- [ ] Optionally rename `graphHorizon` to `analyticsHorizon`.
-- [ ] Return `HorizonSlider` without its inert wrapper.
-- [ ] Derive min/max from `HORIZONS` for bounds and accessibility metadata.
-- [ ] Keep slider accessibility, colors, step, and typed callback local to the component.
-- [ ] Replace manual date formatting with one module-level `Intl.DateTimeFormat`.
-- [ ] Use `en-GB`, numeric day, short month, two-digit hour/minute, and `hourCycle: "h23"`.
+- [x] Keep Analytics horizon independent and local.
+- [x] Optionally rename `graphHorizon` to `analyticsHorizon`.
+- [x] Return `HorizonSlider` without its inert wrapper.
+- [x] Derive min/max from `HORIZONS` for bounds and accessibility metadata.
+- [x] Keep slider accessibility, colors, step, and typed callback local to the component.
+- [x] Replace manual date formatting with one module-level `Intl.DateTimeFormat`.
+- [x] Use `en-GB`, numeric day, short month, two-digit hour/minute, and `hourCycle: "h23"`.
 
 ### Implementer checks
 
-- [ ] Run `npm test` and `npm run typecheck` in `app/`.
-- [ ] Run Expo Doctor in `app/`.
-- [ ] Search screens for remaining local StyleSheets, raw color literals, carousel/width state, and deleted props.
-- [ ] Run `git diff --check`.
+- [x] Run `npm test` and `npm run typecheck` in `app/`.
+- [x] Run Expo Doctor in `app/`.
+- [x] Search screens for remaining local StyleSheets, raw color literals, carousel/width state, and deleted props.
+- [x] Run `git diff --check`.
 
 ### Reviewer acceptance
 

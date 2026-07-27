@@ -3,11 +3,9 @@ import type { InferenceRun, RunOutcome } from "./history";
 
 export const GRAPH_OPTIONS = [
   { value: "waits", label: "Recommended wait distribution" },
-  { value: "savings", label: "Average savings by wait" },
-  { value: "fees", label: "Base fee (lower is better)" },
+  { value: "savings", label: "Savings by wait (%)" },
+  { value: "fees", label: "Base fee by wait (Gwei)" },
 ] as const;
-
-export type GraphKind = (typeof GRAPH_OPTIONS)[number]["value"];
 
 type ChartDatum = {
   label: string;
@@ -26,20 +24,13 @@ export type RunSummary = {
   winPercent: number | null;
 };
 
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+const RUN_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  hour: "2-digit",
+  hourCycle: "h23",
+  minute: "2-digit",
+  month: "short",
+});
 
 export function runsForSelection(
   runs: readonly InferenceRun[],
@@ -91,21 +82,8 @@ export function realizedSavingsPercent(run: InferenceRun): number | null {
   );
 }
 
-function shortTime(value: string): string {
-  const date = new Date(value);
-  return `${date.getHours().toString().padStart(2, "0")}:${date
-    .getMinutes()
-    .toString()
-    .padStart(2, "0")}`;
-}
-
-function shortDate(value: string): string {
-  const date = new Date(value);
-  return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
-}
-
 export function formatRunDate(value: string): string {
-  return `${shortDate(value)}, ${shortTime(value)}`;
+  return RUN_DATE_FORMATTER.format(new Date(value));
 }
 
 export function formatGwei(value: number): string {

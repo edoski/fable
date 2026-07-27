@@ -1,17 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   Modal,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
-import {
-  BarChart as GiftedBarChart,
-} from "react-native-gifted-charts";
+import { BarChart as GiftedBarChart } from "react-native-gifted-charts";
 
 import {
   GRAPH_OPTIONS,
@@ -23,12 +19,13 @@ import {
   runsForSelection,
   savingsByWaitData,
   summarizeRuns,
-  type GraphKind,
 } from "../analytics";
+import { DetailRow } from "../components/DetailRow";
 import { HorizonSlider } from "../components/HorizonSlider";
 import { NetworkIcon } from "../components/NetworkIcon";
 import { CHAINS, CHAIN_DETAILS, type Chain, type Horizon } from "../domain";
 import type { InferenceRun } from "../history";
+import { styles } from "../styles";
 import { colors, radii } from "../theme";
 
 function SummaryCard({
@@ -41,7 +38,7 @@ function SummaryCard({
   accent?: boolean;
 }) {
   return (
-    <View style={styles.summaryCard}>
+    <View style={[styles.surface, styles.summaryCard]}>
       <Text style={[styles.summaryValue, accent && styles.summaryValueAccent]}>
         {value}
       </Text>
@@ -56,7 +53,7 @@ function formatSavings(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-const PLOT_HEIGHT = 138;
+const CHART_HEIGHT = 138;
 
 function niceStep(range: number): number {
   const rough = range / 3;
@@ -82,103 +79,129 @@ function EmptyGraph({ outcomes }: { outcomes: boolean }) {
   );
 }
 
-function AnalyticsGraph({
-  kind,
+function chartScale(values: readonly number[]) {
+  const rawMinimum = Math.min(0, ...values);
+  const rawMaximum = Math.max(0, ...values);
+  const step = niceStep(
+    rawMinimum === rawMaximum ? 1 : rawMaximum - rawMinimum,
+  );
+  const minimum = Math.floor(rawMinimum / step) * step;
+  const maximum = Math.max(step, Math.ceil(rawMaximum / step) * step);
+  const positiveSections = Math.round(maximum / step);
+  const negativeSections = Math.round(Math.abs(minimum) / step);
+
+  return {
+    maximum,
+    minimum,
+    negativeSections,
+    positiveSections,
+    step,
+    stepHeight:
+      CHART_HEIGHT / Math.max(positiveSections + negativeSections, 1),
+  };
+}
+
+function RecommendedWaitChart({
   runs,
   horizon,
 }: {
-  kind: GraphKind;
   runs: readonly InferenceRun[];
   horizon: Horizon;
 }) {
-  const { width: screenWidth } = useWindowDimensions();
-
-  if (kind !== "fees") {
-    const data =
-      kind === "waits"
-        ? recommendedWaitData(runs, horizon)
-        : savingsByWaitData(runs, horizon);
-    const values = data.flatMap((item) =>
-      item.value === null ? [] : [item.value],
-    );
-    if (values.length === 0) {
-      return <EmptyGraph outcomes={kind === "savings"} />;
-    }
-
-    const rawMinimum = Math.min(0, ...values);
-    const rawMaximum = Math.max(0, ...values);
-    const step = niceStep(
-      rawMinimum === rawMaximum ? 1 : rawMaximum - rawMinimum,
-    );
-    const minimum = Math.floor(rawMinimum / step) * step;
-    const maximum = Math.max(step, Math.ceil(rawMaximum / step) * step);
-    const positiveSections = Math.round(maximum / step);
-    const negativeSections = Math.round(Math.abs(minimum) / step);
-    const stepHeight =
-      PLOT_HEIGHT / Math.max(positiveSections + negativeSections, 1);
-    const chartWidth = Math.min(screenWidth - 128, 276);
-    const barWidth = Math.min(28, chartWidth / Math.max(data.length * 2, 1));
-    const spacing =
-      data.length < 2
-        ? 0
-        : (chartWidth - barWidth * data.length - 20) / (data.length - 1);
-    const savingsGraph = kind === "savings";
-
-    return (
-      <View style={styles.graph}>
-        <View style={styles.graphPlotRow}>
-          <View style={styles.graphYAxisTitleSlot}>
-            <Text numberOfLines={1} style={styles.graphAxisTitle}>
-              {savingsGraph ? "Avg savings" : "Runs"}
-            </Text>
-          </View>
-          <GiftedBarChart
-            barBorderRadius={radii.small / 2}
-            barWidth={barWidth}
-            data={data.map((item) => ({
-              value: item.value ?? 0,
-              label: item.label,
-              frontColor:
-                item.value !== null && item.value < 0
-                  ? colors.red
-                  : savingsGraph
-                    ? colors.teal
-                    : colors.blue,
-            }))}
-            disablePress
-            disableScroll
-            endSpacing={10}
-            formatYLabel={(label) =>
-              savingsGraph ? `${Number(label).toFixed(0)}%` : label
-            }
-            initialSpacing={10}
-            maxValue={maximum}
-            mostNegativeValue={minimum}
-            negativeStepValue={step}
-            noOfSections={positiveSections}
-            noOfSectionsBelowXAxis={negativeSections}
-            rulesColor={colors.border}
-            rulesThickness={1}
-            spacing={spacing}
-            stepHeight={stepHeight}
-            stepValue={step}
-            width={chartWidth}
-            xAxisColor={colors.muted}
-            xAxisLabelsAtBottom
-            xAxisLabelsHeight={14}
-            xAxisLabelTextStyle={styles.graphAxisText}
-            xAxisThickness={1}
-            yAxisColor="transparent"
-            yAxisLabelWidth={34}
-            yAxisTextStyle={styles.graphAxisText}
-            yAxisThickness={0}
-          />
-        </View>
-        <Text style={styles.graphXAxisTitle}>Wait (blocks)</Text>
-      </View>
-    );
+  const data = recommendedWaitData(runs, horizon);
+  if (data.length === 0) {
+    return <EmptyGraph outcomes={false} />;
   }
+  const scale = chartScale(data.map((item) => item.value ?? 0));
 
+  return (
+    <View style={styles.graph}>
+      <GiftedBarChart
+        barBorderRadius={radii.small / 2}
+        data={data.map((item) => ({
+          frontColor: colors.blue,
+          label: item.label,
+          value: item.value ?? 0,
+        }))}
+        disablePress
+        endSpacing={10}
+        initialSpacing={10}
+        maxValue={scale.maximum}
+        noOfSections={scale.positiveSections}
+        rulesColor={colors.border}
+        stepHeight={scale.stepHeight}
+        stepValue={scale.step}
+        xAxisColor={colors.muted}
+        xAxisLabelsAtBottom
+        xAxisLabelsHeight={14}
+        xAxisLabelTextStyle={styles.graphAxisText}
+        yAxisLabelWidth={34}
+        yAxisTextStyle={styles.graphAxisText}
+        yAxisThickness={0}
+      />
+      <Text style={styles.graphXAxisTitle}>Wait (blocks)</Text>
+    </View>
+  );
+}
+
+function SavingsByWaitChart({
+  runs,
+  horizon,
+}: {
+  runs: readonly InferenceRun[];
+  horizon: Horizon;
+}) {
+  const data = savingsByWaitData(runs, horizon);
+  const values = data.flatMap((item) =>
+    item.value === null ? [] : [item.value],
+  );
+  if (values.length === 0) {
+    return <EmptyGraph outcomes />;
+  }
+  const scale = chartScale(values);
+
+  return (
+    <View style={styles.graph}>
+      <GiftedBarChart
+        barBorderRadius={radii.small / 2}
+        data={data.map((item) => ({
+          frontColor:
+            item.value !== null && item.value < 0 ? colors.red : colors.teal,
+          label: item.label,
+          value: item.value ?? 0,
+        }))}
+        disablePress
+        endSpacing={10}
+        formatYLabel={(label) => `${Number(label).toFixed(0)}%`}
+        initialSpacing={10}
+        maxValue={scale.maximum}
+        mostNegativeValue={scale.minimum}
+        negativeStepValue={scale.step}
+        noOfSections={scale.positiveSections}
+        noOfSectionsBelowXAxis={scale.negativeSections}
+        rulesColor={colors.border}
+        stepHeight={scale.stepHeight}
+        stepValue={scale.step}
+        xAxisColor={colors.muted}
+        xAxisLabelsAtBottom
+        xAxisLabelsHeight={14}
+        xAxisLabelTextStyle={styles.graphAxisText}
+        yAxisLabelWidth={34}
+        yAxisTextStyle={styles.graphAxisText}
+        yAxisThickness={0}
+      />
+      <Text style={styles.graphXAxisTitle}>Wait (blocks)</Text>
+    </View>
+  );
+}
+
+function BaseFeeByWaitChart({
+  runs,
+  horizon,
+}: {
+  runs: readonly InferenceRun[];
+  horizon: Horizon;
+}) {
   const data = feeComparisonData(runs, horizon);
   if (data.length === 0) {
     return <EmptyGraph outcomes />;
@@ -188,70 +211,48 @@ function AnalyticsGraph({
   );
   const step = niceStep(maximumValue);
   const maximum = Math.ceil(maximumValue / step) * step;
-  const chartWidth = Math.min(screenWidth - 136, 266);
-  const barWidth = 18;
-  const pairGap = 4;
-  const pairWidth = barWidth * 2 + pairGap;
-  const groupGap =
-    data.length < 2
-      ? 0
-      : (chartWidth - 20 - pairWidth * data.length) / (data.length - 1);
-  const initialSpacing =
-    data.length === 1 ? (chartWidth - pairWidth) / 2 : 10;
   const sections = Math.round(maximum / step);
 
   return (
     <View style={styles.graph}>
-      <View style={styles.graphPlotRow}>
-        <View style={styles.graphYAxisTitleSlot}>
-          <Text numberOfLines={1} style={styles.graphAxisTitleWide}>
-            Base fee (Gwei)
-          </Text>
-        </View>
-        <GiftedBarChart
-          barBorderRadius={radii.small / 2}
-          barWidth={barWidth}
-          data={data.flatMap((item, index) => [
-            {
-              value: item.immediate,
-              label: item.label,
-              labelWidth: barWidth * 2,
-              frontColor: colors.amberSoft,
-              spacing: pairGap,
-            },
-            {
-              value: item.fable,
-              frontColor: colors.blue,
-              spacing: index === data.length - 1 ? 0 : groupGap,
-            },
-          ])}
-          disablePress
-          disableScroll
-          endSpacing={10}
-          formatYLabel={(label) => {
-            const value = Number(label);
-            return value >= 10 ? value.toFixed(0) : value.toFixed(1);
-          }}
-          initialSpacing={initialSpacing}
-          maxValue={maximum}
-          noOfSections={sections}
-          rulesColor={colors.border}
-          rulesThickness={1}
-          spacing={0}
-          stepHeight={PLOT_HEIGHT / sections}
-          stepValue={step}
-          width={chartWidth}
-          xAxisColor={colors.muted}
-          xAxisLabelsAtBottom
-          xAxisLabelsHeight={14}
-          xAxisLabelTextStyle={styles.graphAxisText}
-          xAxisThickness={1}
-          yAxisColor="transparent"
-          yAxisLabelWidth={34}
-          yAxisTextStyle={styles.graphAxisText}
-          yAxisThickness={0}
-        />
-      </View>
+      <GiftedBarChart
+        barBorderRadius={radii.small / 2}
+        barWidth={18}
+        data={data.flatMap((item, index) => [
+          {
+            frontColor: colors.amberSoft,
+            label: item.label,
+            labelWidth: 36,
+            spacing: 4,
+            value: item.immediate,
+          },
+          {
+            frontColor: colors.blue,
+            spacing: index === data.length - 1 ? 0 : 20,
+            value: item.fable,
+          },
+        ])}
+        disablePress
+        endSpacing={10}
+        formatYLabel={(label) => {
+          const value = Number(label);
+          return value >= 10 ? value.toFixed(0) : value.toFixed(1);
+        }}
+        initialSpacing={10}
+        maxValue={maximum}
+        noOfSections={sections}
+        rulesColor={colors.border}
+        spacing={0}
+        stepHeight={CHART_HEIGHT / sections}
+        stepValue={step}
+        xAxisColor={colors.muted}
+        xAxisLabelsAtBottom
+        xAxisLabelsHeight={14}
+        xAxisLabelTextStyle={styles.graphAxisText}
+        yAxisLabelWidth={34}
+        yAxisTextStyle={styles.graphAxisText}
+        yAxisThickness={0}
+      />
       <Text style={styles.graphXAxisTitle}>Recommended wait (blocks)</Text>
     </View>
   );
@@ -293,7 +294,7 @@ function NetworkPicker({
           onPress={onClose}
           style={styles.backdrop}
         />
-        <View style={styles.networkSheet}>
+        <View style={[styles.dialog, styles.sheet, styles.networkSheet]}>
           <View style={styles.networkSheetHeader}>
             <Text style={styles.networkSheetTitle}>Select network</Text>
             <Pressable
@@ -314,8 +315,9 @@ function NetworkPicker({
                   key={chain}
                   onPress={() => onSelect(chain)}
                   style={[
+                    styles.networkCard,
                     styles.networkOption,
-                    active && styles.networkOptionActive,
+                    active && styles.networkCardActive,
                   ]}
                 >
                   <NetworkIcon chain={chain} size={26} />
@@ -356,7 +358,7 @@ function RunDetails({
           onPress={onClose}
           style={styles.backdrop}
         />
-        <View style={styles.dialog}>
+        <View style={[styles.dialog, styles.sheet, styles.runDialog]}>
           <View style={styles.handle} />
           <View style={styles.dialogHeader}>
             <View>
@@ -386,28 +388,28 @@ function RunDetails({
           </View>
 
           <Text style={styles.groupTitle}>Prediction</Text>
-          <View style={styles.detailsCard}>
-            <Detail
+          <View style={[styles.surface, styles.detailsCard]}>
+            <DetailRow
               label="Head block"
               value={run.head_block.toLocaleString()}
             />
-            <Detail
+            <DetailRow
               label="Action offset"
               value={String(run.selected_action_k)}
             />
-            <Detail
+            <DetailRow
               label="Target block"
               value={run.target_block.toLocaleString()}
             />
-            <Detail
+            <DetailRow
               label="Predicted base fee"
               last
               value={formatGwei(run.predicted_minimum_base_fee_per_gas)}
             />
           </View>
           <Text style={styles.groupTitle}>Outcome</Text>
-          <View style={styles.detailsCard}>
-            <Detail
+          <View style={[styles.surface, styles.detailsCard]}>
+            <DetailRow
               label="Act-now base fee"
               value={
                 run.outcome === undefined
@@ -415,7 +417,7 @@ function RunDetails({
                   : formatGwei(run.outcome.immediate_base_fee_per_gas)
               }
             />
-            <Detail
+            <DetailRow
               label="Selected base fee"
               value={
                 run.outcome === undefined
@@ -423,7 +425,7 @@ function RunDetails({
                   : formatGwei(run.outcome.selected_base_fee_per_gas)
               }
             />
-            <Detail
+            <DetailRow
               label="Realized savings"
               last
               value={
@@ -438,30 +440,13 @@ function RunDetails({
           <Pressable
             accessibilityRole="button"
             onPress={onClose}
-            style={styles.closeButton}
+            style={[styles.button, styles.closeButton]}
           >
-            <Text style={styles.closeButtonText}>Close</Text>
+            <Text style={styles.buttonText}>Close</Text>
           </Pressable>
         </View>
       </View>
     </Modal>
-  );
-}
-
-function Detail({
-  label,
-  value,
-  last = false,
-}: {
-  label: string;
-  value: string;
-  last?: boolean;
-}) {
-  return (
-    <View style={[styles.detailRow, last && styles.detailRowLast]}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
   );
 }
 
@@ -478,16 +463,12 @@ export function AnalyticsScreen({
   onChainChange: (chain: Chain) => void;
   storageError: string | null;
 }) {
-  const [carouselWidth, setCarouselWidth] = useState(0);
-  const [graphIndex, setGraphIndex] = useState(0);
-  const [graphHorizon, setGraphHorizon] = useState<Horizon>(horizon);
+  const [analyticsHorizon, setAnalyticsHorizon] =
+    useState<Horizon>(horizon);
   const [networkPickerOpen, setNetworkPickerOpen] = useState(false);
   const [selectedRun, setSelectedRun] = useState<InferenceRun | null>(null);
-  const carousel = useRef<ScrollView>(null);
-  const chartStep = carouselWidth + 12;
-  const graphRuns = runsForSelection(runs, chain, graphHorizon);
+  const graphRuns = runsForSelection(runs, chain, analyticsHorizon);
   const summary = summarizeRuns(graphRuns);
-  const graphs = GRAPH_OPTIONS;
 
   return (
     <>
@@ -551,100 +532,67 @@ export function AnalyticsScreen({
         <View style={styles.graphSection}>
           <View style={styles.graphFilter}>
             <Text style={styles.sectionTitle}>
-              Prediction window (K = {graphHorizon})
+              Prediction window (K = {analyticsHorizon})
             </Text>
-            <View style={styles.graphSliderCard}>
+            <View style={[styles.surface, styles.graphSliderCard]}>
               <HorizonSlider
-                onChange={setGraphHorizon}
-                value={graphHorizon}
+                onChange={setAnalyticsHorizon}
+                value={analyticsHorizon}
               />
             </View>
           </View>
-          <View
-            onLayout={(event) =>
-              setCarouselWidth(Math.round(event.nativeEvent.layout.width))
-            }
-            style={styles.carouselSection}
-          >
-            <ScrollView
-              accessibilityLabel="Analytics graphs"
-              decelerationRate="fast"
-              disableIntervalMomentum
-              horizontal
-              onMomentumScrollEnd={(event) =>
-                setGraphIndex(
-                  Math.round(event.nativeEvent.contentOffset.x / chartStep),
-                )
-              }
-              ref={carousel}
-              showsHorizontalScrollIndicator={false}
-              snapToAlignment="start"
-              snapToInterval={chartStep}
-              contentContainerStyle={styles.carouselContent}
-              style={styles.carouselViewport}
-            >
-              {carouselWidth > 0 &&
-                graphs.map((graph) => (
-                  <View
-                    key={graph.value}
-                    style={[styles.chartCard, { width: carouselWidth }]}
-                  >
-                    <View style={styles.chartHeader}>
-                      <Text style={styles.chartTitle}>{graph.label}</Text>
-                      {graph.value === "fees" && (
-                        <View style={styles.graphLegend}>
-                          <View
-                            style={[
-                              styles.graphLegendDot,
-                              styles.graphImmediateDot,
-                            ]}
-                          />
-                          <Text style={styles.graphLegendLabel}>Act now</Text>
-                          <View
-                            style={[
-                              styles.graphLegendDot,
-                              styles.graphFableDot,
-                            ]}
-                          />
-                          <Text style={styles.graphLegendLabel}>FABLE</Text>
-                        </View>
-                      )}
+          <View style={styles.chartCards}>
+            {GRAPH_OPTIONS.map((graph) => (
+              <View
+                key={graph.value}
+                style={[styles.surface, styles.chartCard]}
+              >
+                <View style={styles.chartHeader}>
+                  <Text style={styles.chartTitle}>{graph.label}</Text>
+                  {graph.value === "fees" && (
+                    <View style={styles.graphLegend}>
+                      <View
+                        style={[
+                          styles.graphLegendDot,
+                          styles.graphImmediateDot,
+                        ]}
+                      />
+                      <Text style={styles.graphLegendLabel}>Act now</Text>
+                      <View
+                        style={[
+                          styles.graphLegendDot,
+                          styles.graphFableDot,
+                        ]}
+                      />
+                      <Text style={styles.graphLegendLabel}>FABLE</Text>
                     </View>
-                    <AnalyticsGraph
-                      horizon={graphHorizon}
-                      kind={graph.value}
-                      runs={graphRuns}
-                    />
-                  </View>
-                ))}
-            </ScrollView>
-            <View accessibilityRole="tablist" style={styles.carouselDots}>
-              {graphs.map((graph, index) => (
-                <Pressable
-                  accessibilityLabel={`Show ${graph.label}`}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: graphIndex === index }}
-                  hitSlop={8}
-                  key={graph.value}
-                  onPress={() => {
-                    setGraphIndex(index);
-                    carousel.current?.scrollTo({
-                      animated: true,
-                      x: index * chartStep,
-                    });
-                  }}
-                  style={[
-                    styles.carouselDot,
-                    graphIndex === index && styles.carouselDotActive,
-                  ]}
-                />
-              ))}
-            </View>
+                  )}
+                </View>
+                {graph.value === "waits" && (
+                  <RecommendedWaitChart
+                    horizon={analyticsHorizon}
+                    runs={graphRuns}
+                  />
+                )}
+                {graph.value === "savings" && (
+                  <SavingsByWaitChart
+                    horizon={analyticsHorizon}
+                    runs={graphRuns}
+                  />
+                )}
+                {graph.value === "fees" && (
+                  <BaseFeeByWaitChart
+                    horizon={analyticsHorizon}
+                    runs={graphRuns}
+                  />
+                )}
+              </View>
+            ))}
           </View>
         </View>
 
         <Text style={styles.sectionTitle}>Runs ({graphRuns.length})</Text>
-        <View style={styles.runList}>
+        <View style={[styles.surface, styles.runList]}>
           {graphRuns.length === 0 ? (
             <View style={styles.emptyRuns}>
               <Text style={styles.emptyRunsTitle}>No runs yet</Text>
@@ -710,283 +658,3 @@ export function AnalyticsScreen({
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  page: { gap: 20, padding: 18, paddingBottom: 30 },
-  titleRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  title: { color: colors.ink, fontSize: 30, fontWeight: "800" },
-  networkBadge: {
-    alignItems: "center",
-    backgroundColor: colors.blueSoft,
-    borderRadius: 14,
-    flexDirection: "row",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  networkBadgeText: { color: colors.blue, fontSize: 11, fontWeight: "700" },
-  networkSheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    gap: 16,
-    paddingBottom: 30,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-  },
-  networkSheetHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  networkSheetTitle: { color: colors.ink, fontSize: 20, fontWeight: "800" },
-  networkOptions: { flexDirection: "row", gap: 9 },
-  networkOption: {
-    alignItems: "center",
-    backgroundColor: colors.background,
-    borderColor: colors.border,
-    borderRadius: radii.medium,
-    borderWidth: 1,
-    flex: 1,
-    gap: 8,
-    justifyContent: "center",
-    minHeight: 88,
-    padding: 8,
-  },
-  networkOptionActive: {
-    backgroundColor: colors.blueSoft,
-    borderColor: colors.blue,
-  },
-  networkOptionText: { color: colors.muted, fontSize: 11, fontWeight: "700" },
-  networkOptionTextActive: { color: colors.blue },
-  storageError: {
-    backgroundColor: colors.redSoft,
-    borderColor: "#FECACA",
-    borderRadius: radii.medium,
-    borderWidth: 1,
-    padding: 12,
-  },
-  storageErrorText: { color: "#B42318", fontSize: 12 },
-  summarySection: { gap: 10 },
-  summaryCards: { flexDirection: "row", gap: 9 },
-  summaryCard: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radii.medium,
-    borderWidth: 1,
-    flex: 1,
-    gap: 5,
-    justifyContent: "center",
-    minHeight: 98,
-    padding: 8,
-  },
-  summaryLabel: { color: colors.muted, fontSize: 10, textAlign: "center" },
-  summaryValue: { color: colors.blue, fontSize: 20, fontWeight: "800" },
-  summaryValueAccent: { color: colors.teal },
-  graphSection: { gap: 14 },
-  graphFilter: { gap: 10 },
-  graphSliderCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radii.large,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  carouselSection: {
-    alignItems: "center",
-    gap: 10,
-    overflow: "hidden",
-    width: "100%",
-  },
-  carouselViewport: { width: "100%" },
-  carouselContent: { gap: 12 },
-  chartCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radii.large,
-    borderWidth: 1,
-    gap: 14,
-    padding: 14,
-  },
-  chartHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  chartTitle: { color: colors.ink, fontSize: 15, fontWeight: "700" },
-  graph: { gap: 2 },
-  graphPlotRow: { alignItems: "center", flexDirection: "row" },
-  graphYAxisTitleSlot: {
-    alignItems: "center",
-    alignSelf: "stretch",
-    justifyContent: "center",
-    width: 18,
-  },
-  graphAxisTitle: {
-    color: colors.muted,
-    fontSize: 9,
-    fontWeight: "600",
-    textAlign: "center",
-    transform: [{ rotate: "-90deg" }],
-    width: 96,
-  },
-  graphAxisTitleWide: {
-    color: colors.muted,
-    fontSize: 9,
-    fontWeight: "600",
-    textAlign: "center",
-    transform: [{ rotate: "-90deg" }],
-    width: 110,
-  },
-  graphAxisText: { color: colors.muted, fontSize: 9 },
-  graphXAxisTitle: {
-    color: colors.muted,
-    fontSize: 9,
-    fontWeight: "600",
-    marginLeft: 18,
-    marginTop: 3,
-    textAlign: "center",
-  },
-  graphLegend: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 4,
-  },
-  graphLegendDot: { borderRadius: 4, height: 7, marginLeft: 5, width: 7 },
-  graphImmediateDot: { backgroundColor: colors.amberSoft },
-  graphFableDot: { backgroundColor: colors.blue },
-  graphLegendLabel: { color: colors.muted, fontSize: 8 },
-  emptyGraph: {
-    alignItems: "center",
-    height: 184,
-    justifyContent: "center",
-    padding: 24,
-  },
-  emptyGraphTitle: { color: colors.ink, fontSize: 16, fontWeight: "700" },
-  emptyGraphText: {
-    color: colors.muted,
-    fontSize: 13,
-    marginTop: 5,
-    textAlign: "center",
-  },
-  carouselDots: { alignItems: "center", flexDirection: "row", gap: 6 },
-  carouselDot: {
-    backgroundColor: colors.border,
-    borderRadius: 4,
-    height: 7,
-    width: 7,
-  },
-  carouselDotActive: { backgroundColor: colors.blue },
-  sectionTitle: {
-    color: colors.ink,
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  runList: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radii.large,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  runScroller: { maxHeight: 272 },
-  runRow: {
-    alignItems: "center",
-    borderBottomColor: colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    gap: 12,
-    minHeight: 68,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  runRowLast: { borderBottomWidth: 0 },
-  runIcon: {
-    alignItems: "center",
-    backgroundColor: colors.blueSoft,
-    borderRadius: radii.small,
-    height: 38,
-    justifyContent: "center",
-    width: 38,
-  },
-  runCopy: { flex: 1, gap: 2 },
-  runDate: { color: colors.ink, fontSize: 13, fontWeight: "700" },
-  runMeta: { color: colors.muted, fontSize: 12 },
-  emptyRuns: { alignItems: "center", gap: 4, padding: 28 },
-  emptyRunsTitle: { color: colors.ink, fontSize: 15, fontWeight: "700" },
-  emptyRunsText: { color: colors.muted, fontSize: 12, textAlign: "center" },
-  dialogRoot: { flex: 1, justifyContent: "flex-end" },
-  backdrop: {
-    backgroundColor: "rgba(7, 20, 38, 0.58)",
-    bottom: 0,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
-  dialog: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    gap: 14,
-    paddingBottom: 28,
-    paddingHorizontal: 18,
-    paddingTop: 9,
-  },
-  handle: {
-    alignSelf: "center",
-    backgroundColor: colors.border,
-    borderRadius: 3,
-    height: 5,
-    width: 48,
-  },
-  dialogHeader: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  dialogTitle: { color: colors.ink, fontSize: 24, fontWeight: "800" },
-  dialogDate: { color: colors.muted, fontSize: 13, marginTop: 2 },
-  selectionSummary: {
-    backgroundColor: colors.background,
-    borderColor: colors.border,
-    borderRadius: radii.medium,
-    borderWidth: 1,
-    flexDirection: "row",
-    padding: 12,
-  },
-  selectionItem: { flex: 1, gap: 3 },
-  detailStrong: { color: colors.ink, fontSize: 14, fontWeight: "700" },
-  groupTitle: { color: colors.blue, fontSize: 15, fontWeight: "700" },
-  detailsCard: {
-    borderColor: colors.border,
-    borderRadius: radii.medium,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  detailRow: {
-    borderBottomColor: colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  detailRowLast: { borderBottomWidth: 0 },
-  detailLabel: { color: colors.muted, fontSize: 12 },
-  detailValue: { color: colors.ink, fontSize: 12, fontWeight: "600" },
-  closeButton: {
-    alignItems: "center",
-    backgroundColor: colors.blue,
-    borderRadius: radii.medium,
-    justifyContent: "center",
-    minHeight: 50,
-  },
-  closeButtonText: { color: colors.surface, fontSize: 15, fontWeight: "700" },
-});
