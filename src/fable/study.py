@@ -54,9 +54,6 @@ def retain_result(
     method_index: int,
     result: RetainedResult,
 ) -> None:
-    if result.method != request.methods[method_index]:
-        raise ValueError("result method does not match request index")
-
     result_path = _result_path(storage_root, request.study_id, method_index)
     result_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = result_path.with_name(f".{result_path.name}.tmp")

@@ -133,7 +133,7 @@ def test_reduce_evaluation_derives_exact_metrics_from_self_contained_observation
     ("case", "message"),
     [
         ("uuid", "evaluation request ID must match the requested evaluation"),
-        ("window", "observations must cover every testing origin"),
+        ("window", "observation origins must exactly match the ordered testing window"),
         ("schema", "observations must have the canonical ordered schema"),
         ("null", "observations must contain no null values"),
         ("origins", "observation origins must exactly match the ordered testing window"),

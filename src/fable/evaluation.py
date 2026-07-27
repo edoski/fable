@@ -218,9 +218,6 @@ def _load_observations(storage_root: Path, request: EvaluateRequest) -> pl.DataF
         window.last_parent_block + 1,
         dtype=np.int64,
     )
-    if observations.height != expected_origins.size:
-        raise ValueError("observations must cover every testing origin")
-
     origins = observations["origin_block"].to_numpy()
     if not np.array_equal(origins, expected_origins):
         raise ValueError("observation origins must exactly match the ordered testing window")
