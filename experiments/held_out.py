@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import shutil
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import polars as pl
+import typer
 from bundle import bundle_path, read_cells, write_cells
 
 from fable.addresses import corpus_json_path, evaluation_directory
@@ -127,37 +127,12 @@ def rolling(storage_root: Path, experiment_id: UUID) -> None:
     print(reduce_rolling(storage_root, roster).write_csv(None, separator="\t"), end="")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    commands = parser.add_subparsers(dest="command", required=True)
-    prepare_parser = commands.add_parser("prepare")
-    prepare_parser.add_argument("storage_root", type=Path)
-    prepare_parser.add_argument("hpo_experiment_id", type=UUID)
-    prepare_parser.add_argument("k_experiment_id", type=UUID)
-    close_parser = commands.add_parser("close")
-    close_parser.add_argument("storage_root", type=Path)
-    close_parser.add_argument("experiment_id", type=UUID)
-    report_parser = commands.add_parser("report")
-    report_parser.add_argument("storage_root", type=Path)
-    report_parser.add_argument("experiment_id", type=UUID)
-    rolling_parser = commands.add_parser("rolling")
-    rolling_parser.add_argument("storage_root", type=Path)
-    rolling_parser.add_argument("experiment_id", type=UUID)
-    arguments = parser.parse_args()
-
-    if arguments.command == "prepare":
-        prepare(
-            arguments.storage_root,
-            arguments.hpo_experiment_id,
-            arguments.k_experiment_id,
-        )
-    elif arguments.command == "close":
-        close(arguments.storage_root, arguments.experiment_id)
-    elif arguments.command == "report":
-        report(arguments.storage_root, arguments.experiment_id)
-    else:
-        rolling(arguments.storage_root, arguments.experiment_id)
+app = typer.Typer(add_completion=False)
+app.command()(prepare)
+app.command()(close)
+app.command()(report)
+app.command()(rolling)
 
 
 if __name__ == "__main__":
-    main()
+    app()

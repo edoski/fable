@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import argparse
 import shutil
 from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
 
+import typer
 from bundle import bundle_path, read_cells, write_cells
 
 from fable.experiments import (
@@ -137,25 +137,10 @@ def select(storage_root: Path, experiment_id: UUID) -> None:
         print(f"{chain}\t{context}\t{mean:g}")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    commands = parser.add_subparsers(dest="command", required=True)
-    prepare_parser = commands.add_parser("prepare")
-    prepare_parser.add_argument("storage_root", type=Path)
-    prepare_parser.add_argument("feature_experiment_id", type=UUID)
-    select_parser = commands.add_parser("select")
-    select_parser.add_argument("storage_root", type=Path)
-    select_parser.add_argument("experiment_id", type=UUID)
-    arguments = parser.parse_args()
-
-    if arguments.command == "prepare":
-        prepare(
-            arguments.storage_root,
-            arguments.feature_experiment_id,
-        )
-    else:
-        select(arguments.storage_root, arguments.experiment_id)
+app = typer.Typer(add_completion=False)
+app.command()(prepare)
+app.command()(select)
 
 
 if __name__ == "__main__":
-    main()
+    app()

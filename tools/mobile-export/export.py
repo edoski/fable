@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import argparse
 import json
 import math
-import os
 import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 from uuid import UUID
 
 import torch
+import typer
 import yaml
 from executorch.backends.xnnpack.partition.xnnpack_partitioner import (
     XnnpackPartitioner,
@@ -301,21 +301,17 @@ def export_bundle(
             shutil.rmtree(scratch)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("roster_path", type=Path)
-    parser.add_argument("output_directory", type=Path)
-    args = parser.parse_args()
-
-    raw_storage_root = os.environ.get("STORAGE_ROOT")
-    if not raw_storage_root:
-        parser.error("STORAGE_ROOT is required")
+def main(
+    roster_path: Path,
+    output_directory: Path,
+    storage_root: Annotated[Path, typer.Option(envvar="STORAGE_ROOT")],
+) -> None:
     export_bundle(
-        Path(raw_storage_root),
-        args.roster_path,
-        args.output_directory,
+        storage_root,
+        roster_path,
+        output_directory,
     )
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)

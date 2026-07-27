@@ -362,6 +362,7 @@ dependencies = [
     { name = "fable" },
     { name = "pyyaml" },
     { name = "torch" },
+    { name = "typer" },
 ]
 
 [package.dev-dependencies]
@@ -375,6 +376,7 @@ requires-dist = [
     { name = "fable", editable = "../../" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "torch", specifier = "==2.11.0" },
+    { name = "typer", specifier = ">=0.16" },
 ]
 
 [package.metadata.requires-dev]
