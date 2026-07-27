@@ -102,11 +102,6 @@ _OBSERVATION_SCHEMA = pl.Schema(
 )
 
 
-@pytest.fixture(autouse=True)
-def _use_single_process_loader(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(evaluation_module._runtime, "NUM_WORKERS", 0)
-
-
 def _experiment() -> ExperimentSemantics:
     return ExperimentSemantics(
         training_window=BlockWindow(

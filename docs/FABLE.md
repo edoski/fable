@@ -60,7 +60,7 @@ This diagram is generated from the production import direction at this revision.
 - `study` owns bounded candidate membership, ordered retained results, publication, and selected-Method loading.
 - `evaluation` owns canonical self-contained observations and transient reduction.
 
-The closed model union is LSTM, Transformer, or Transformer-LSTM. Historical preparation supplies lazy contiguous CPU-backed examples; each model consumes float32 `[B,C,F]` and returns action logits `[B,K]` plus standardized minimum-fee prediction `[B]`. Architecture stays independent of target construction and evaluation accounting.
+The closed model union is LSTM, Transformer, or Transformer-LSTM. Historical preparation supplies one compact contiguous source for batched origin-index gathering; each model consumes float32 `[B,C,F]` and returns action logits `[B,K]` plus standardized minimum-fee prediction `[B]`. Architecture stays independent of target construction and evaluation accounting.
 
 Corpus production is external. Native OpenSSH and Slurm begin at `fable.execution.submit_workflows()` ([ADR 0007](adr/0007-native-external-execution-boundary.md)). Completed objects own one exact request at direct canonical addresses; UUIDs identify instances and typed associations establish meaning ([ADR 0006](adr/0006-direct-durable-object-authority.md)).
 
@@ -544,7 +544,7 @@ Temporal preparation has two direct paths: historical fixed-block examples and l
 
 `prepare_fit_history(corpus, experiment)` validates complete context/outcome support, fits state from training support only, and returns training and validation `HistoricalDataset` values with `FeatureState` and `TargetState`. `prepare_historical_window(corpus, experiment, window, *, feature_state, target_state)` prepares an exact testing window with persisted state after complete validation outcomes.
 
-Preparation keeps one contiguous CPU backing of float32 feature rows and int64 fees/block numbers, plus per-origin positions, int64 `k_i*` labels, and float32 `z_i` targets. `HistoricalDataset.__getitem__()` slices one `[C,F]` input and `[K]` outcome on demand with scalar label, target, and origin.
+Preparation keeps one contiguous backing of float32 feature rows and int64 fees/block numbers, plus per-origin positions, int64 `k_i*` labels, and float32 `z_i` targets. Historical execution moves that compact state to the execution device once. Each loader batch gathers the required `[C,F]` inputs and `[K]` outcomes by origin index.
 
 The ordered feature tuple is request authority. Raw features are assembled in that order as Float64; training-support population state uses `ddof=0`, rejects constants, and transforms to finite C-contiguous float32. Outcomes remain positive int64 `B_i(k)` values. The [scientific contract](#causal-features) owns formulas, causality, target construction, and complete-outcome role boundaries.
 
@@ -976,7 +976,7 @@ The code and non-asset tests implement this contract, but the twelve final artif
 
 ### Execution runtime
 
-The internal installed-executable profile sets `CUBLAS_WORKSPACE_CONFIG=:4096:8` before GPU work and fixes BF16 mixed-precision fitting, fit batch size 64, and evaluation batch size 512; four persistent pinned-memory loader workers with prefetch factor 2; deterministic Torch execution without benchmarking; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32 enabled for operations that remain float32. It is code, not a request, schema, YAML field, or public configuration surface.
+The internal installed-executable profile sets `CUBLAS_WORKSPACE_CONFIG=:4096:8` before GPU work and fixes BF16 mixed-precision fitting, fit batch size 64, and evaluation batch size 512. Historical execution keeps one contiguous feature and outcome source on the accelerator and gathers each batch by origin index, without materializing every overlapping context window. Torch execution is deterministic without benchmarking, float32 matrix-multiplication precision is `high`, and CUDA matmul and cuDNN TF32 remain enabled for operations that stay float32. This profile is code, not a request, schema, YAML field, or public configuration surface.
 
 ### Evaluation API
 

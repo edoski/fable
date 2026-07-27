@@ -460,17 +460,6 @@ def _fit(
     generator = torch.Generator(device="cpu").manual_seed(fit.seed)
 
     module = _FitModule(_json_association(association))
-    training_loader = _runtime.data_loader(
-        prepared.training,
-        batch_size=_runtime.FIT_BATCH_SIZE,
-        shuffle=True,
-        generator=generator,
-    )
-    validation_loader = _runtime.data_loader(
-        prepared.validation,
-        batch_size=_runtime.FIT_BATCH_SIZE,
-        shuffle=False,
-    )
     early_stopping, best, last = _callbacks(scratch, definition)
     trainer = pl.Trainer(
         accelerator="gpu",
@@ -488,6 +477,16 @@ def _fit(
         enable_progress_bar=False,
         enable_model_summary=False,
         callbacks=[early_stopping, best, last],
+    )
+    prepared = prepared.to(trainer.strategy.root_device)
+    training_loader = prepared.training.loader(
+        batch_size=_runtime.FIT_BATCH_SIZE,
+        shuffle=True,
+        generator=generator,
+    )
+    validation_loader = prepared.validation.loader(
+        batch_size=_runtime.FIT_BATCH_SIZE,
+        shuffle=False,
     )
     last_checkpoint = scratch / "last.ckpt"
     trainer.fit(

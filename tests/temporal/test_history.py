@@ -5,7 +5,6 @@ import polars as pl
 import pytest
 import torch
 from pydantic import UUID4, TypeAdapter
-from torch.utils.data import DataLoader
 
 from fable.config import (
     BlockWindow,
@@ -74,6 +73,8 @@ def _experiment() -> ExperimentSemantics:
 
 def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
     preparation = prepare_fit_history(_corpus(), _experiment())
+    resident = preparation.to(torch.device("cpu"))
+    training = next(iter(resident.training.loader(batch_size=4, shuffle=False)))
 
     support_fees = _BASE_FEES[:6].astype(np.float64)
     support_raw = np.column_stack(
@@ -95,7 +96,7 @@ def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
     assert preparation.target_state.mean == pytest.approx(logged_mean)
     assert preparation.target_state.standard_deviation == pytest.approx(logged_standard_deviation)
 
-    first = preparation.training[0]
+    first = {name: values[0] for name, values in training.items()}
     assert set(first) == {"inputs", "label", "target", "base_fees", "origin_block"}
     assert first["inputs"].shape == (3, 2)
     assert first["inputs"].dtype == torch.float32
@@ -119,11 +120,9 @@ def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
     )
     assert first["base_fees"].tolist() == [4, 9, 4]
 
-    validation = preparation.validation[0]
-    assert [
-        int(preparation.validation[index]["origin_block"])
-        for index in range(len(preparation.validation))
-    ] == [20, 21]
+    validation_batch = next(iter(resident.validation.loader(batch_size=2, shuffle=False)))
+    validation = {name: values[0] for name, values in validation_batch.items()}
+    assert validation_batch["origin_block"].tolist() == [20, 21]
     assert validation["base_fees"].tolist() == [6, 2, 2]
     assert int(validation["label"]) == 1
     assert float(validation["target"]) == pytest.approx(
@@ -140,10 +139,11 @@ def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
         feature_state=preparation.feature_state,
         target_state=preparation.target_state,
     )
-    assert [int(testing[index]["origin_block"]) for index in range(len(testing))] == [25, 26]
-    assert [int(testing[index]["label"]) for index in range(len(testing))] == [1, 0]
+    testing_batch = next(iter(testing.to(torch.device("cpu")).loader(batch_size=2, shuffle=False)))
+    assert testing_batch["origin_block"].tolist() == [25, 26]
+    assert testing_batch["label"].tolist() == [1, 0]
 
-    batches = list(DataLoader(preparation.training, batch_size=3))
+    batches = list(resident.training.loader(batch_size=3, shuffle=False))
     assert [batch["origin_block"].tolist() for batch in batches] == [[12, 13, 14], [15]]
     assert batches[0]["inputs"].shape == (3, 3, 2)
     assert batches[0]["base_fees"].shape == (3, 3)
@@ -186,7 +186,10 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
     raw = np.column_stack((np.log1p(np.arange(1, 7)), np.arange(11, 17))).astype(np.float64)
     expected = ((raw - raw.mean(axis=0)) / raw.std(axis=0, ddof=0)).astype(np.float32)
 
-    torch.testing.assert_close(preparation.training[0]["inputs"], torch.from_numpy(expected[:3]))
+    training = next(
+        iter(preparation.to(torch.device("cpu")).training.loader(batch_size=4, shuffle=False))
+    )
+    torch.testing.assert_close(training["inputs"][0], torch.from_numpy(expected[:3]))
 
     without_predecessor = corpus.model_copy(
         update={
@@ -198,6 +201,25 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
     )
     with pytest.raises(ValueError, match="within the BlockFrame definition"):
         prepare_fit_history(without_predecessor, experiment)
+
+
+def test_seeded_shuffle_preserves_multi_epoch_order() -> None:
+    training = prepare_fit_history(_corpus(), _experiment()).to(torch.device("cpu")).training
+    loader = training.loader(
+        batch_size=3,
+        shuffle=True,
+        generator=torch.Generator().manual_seed(37),
+    )
+    torch.manual_seed(41)
+    global_rng = torch.random.get_rng_state()
+
+    assert [
+        [origin for batch in loader for origin in batch["origin_block"].tolist()] for _ in range(2)
+    ] == [
+        [12, 14, 13, 15],
+        [14, 12, 15, 13],
+    ]
+    assert torch.equal(torch.random.get_rng_state(), global_rng)
 
 
 @pytest.mark.parametrize("corpus", (_corpus(first_block=11), _corpus(last_block=23)))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Annotated, Self
 
@@ -11,7 +12,7 @@ import polars as pl
 import torch
 from numpy.typing import NDArray
 from pydantic import Field, model_validator
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset
 
 from .config import BlockWindow, ExperimentSemantics, FeatureName
 from .corpus import BlockFrame, Corpus
@@ -172,38 +173,80 @@ class _HistoricalBacking:
     base_fees: torch.Tensor
     block_numbers: torch.Tensor
 
+    def to(self, device: torch.device) -> _HistoricalBacking:
+        return _HistoricalBacking(
+            first_block=self.first_block,
+            inputs=self.inputs.to(device),
+            base_fees=self.base_fees.to(device),
+            block_numbers=self.block_numbers.to(device),
+        )
 
-class HistoricalDataset(Dataset[_HistoricalItem]):
-    """Lazy fixed-context dataset backed by contiguous CPU row tensors."""
+
+class HistoricalDataset(Dataset[int]):
+    """Batched history gathered from one contiguous tensor source."""
 
     def __init__(
         self,
         backing: _HistoricalBacking,
-        origin_rows: _IntVector,
-        labels: _IntVector,
-        targets: NDArray[np.float32],
+        origin_rows: torch.Tensor,
+        labels: torch.Tensor,
+        targets: torch.Tensor,
         *,
         context_blocks: int,
         horizon_blocks: int,
     ) -> None:
         self._backing = backing
-        self._origin_rows = torch.from_numpy(origin_rows)
-        self._labels = torch.from_numpy(labels)
-        self._targets = torch.from_numpy(targets)
+        self._origin_rows = origin_rows
+        self._labels = labels
+        self._targets = targets
         self._context_blocks = context_blocks
         self._horizon_blocks = horizon_blocks
 
     def __len__(self) -> int:
         return self._origin_rows.numel()
 
-    def __getitem__(self, index: int) -> _HistoricalItem:
-        origin = int(self._origin_rows[index])
+    def __getitem__(self, index: int) -> int:
+        return index
+
+    def to(self, device: torch.device) -> HistoricalDataset:
+        return self._to(self._backing.to(device), device)
+
+    def loader(
+        self,
+        *,
+        batch_size: int,
+        shuffle: bool,
+        generator: torch.Generator | None = None,
+    ) -> Iterable[_HistoricalItem]:
+        return DataLoader(
+            self,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            generator=generator,
+            collate_fn=self._batch,
+        )
+
+    def _to(self, backing: _HistoricalBacking, device: torch.device) -> HistoricalDataset:
+        return HistoricalDataset(
+            backing,
+            self._origin_rows.to(device),
+            self._labels.to(device),
+            self._targets.to(device),
+            context_blocks=self._context_blocks,
+            horizon_blocks=self._horizon_blocks,
+        )
+
+    def _batch(self, indexes: list[int]) -> _HistoricalItem:
+        positions = torch.tensor(indexes, device=self._origin_rows.device)
+        origins = self._origin_rows[positions]
+        inputs = self._backing.inputs.unfold(0, self._context_blocks, 1).transpose(1, 2)
+        base_fees = self._backing.base_fees.unfold(0, self._horizon_blocks, 1)
         return {
-            "inputs": self._backing.inputs[origin - self._context_blocks + 1 : origin + 1],
-            "label": self._labels[index],
-            "target": self._targets[index],
-            "base_fees": self._backing.base_fees[origin + 1 : origin + 1 + self._horizon_blocks],
-            "origin_block": self._backing.block_numbers[origin],
+            "inputs": inputs[origins - self._context_blocks + 1],
+            "label": self._labels[positions],
+            "target": self._targets[positions],
+            "base_fees": base_fees[origins + 1],
+            "origin_block": self._backing.block_numbers[origins],
         }
 
 
@@ -213,6 +256,15 @@ class HistoricalPreparation:
     validation: HistoricalDataset
     feature_state: FeatureState
     target_state: TargetState
+
+    def to(self, device: torch.device) -> HistoricalPreparation:
+        backing = self.training._backing.to(device)
+        return HistoricalPreparation(
+            training=self.training._to(backing, device),
+            validation=self.validation._to(backing, device),
+            feature_state=self.feature_state,
+            target_state=self.target_state,
+        )
 
 
 def prepare_fit_history(
@@ -370,9 +422,9 @@ def _build_dataset(
     )
     return HistoricalDataset(
         backing,
-        origin_rows,
-        labels,
-        standardize_target(minima, target_state),
+        torch.from_numpy(origin_rows),
+        torch.from_numpy(labels),
+        torch.from_numpy(standardize_target(minima, target_state)),
         context_blocks=experiment.context_blocks,
         horizon_blocks=experiment.horizon_blocks,
     )

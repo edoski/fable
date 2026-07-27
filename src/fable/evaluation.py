@@ -138,8 +138,8 @@ def _collect_observations(
         name: np.empty(count, dtype=dtype.to_python()) for name, dtype in OBSERVATION_SCHEMA.items()
     }
 
-    loader = _runtime.data_loader(
-        dataset,
+    dataset = dataset.to(_DEVICE)
+    loader = dataset.loader(
         batch_size=_runtime.EVALUATION_BATCH_SIZE,
         shuffle=False,
     )
@@ -147,17 +147,18 @@ def _collect_observations(
     cursor = 0
     with torch.inference_mode():
         for batch in loader:
-            output = model(batch["inputs"].to(_DEVICE))
+            output = model(batch["inputs"])
             actions = decode_action(output).cpu().numpy()
-            minimum_actions_batch = batch["label"].numpy()
-            base_fees = batch["base_fees"].numpy()
+            minimum_actions_batch = batch["label"].cpu().numpy()
+            base_fees = batch["base_fees"].cpu().numpy()
 
             rows = np.arange(actions.size, dtype=np.int64)
             immediate_batch = base_fees[:, 0]
             selected_batch = base_fees[rows, actions]
             deadline_batch = base_fees[:, -1]
             minimum_batch = base_fees[rows, minimum_actions_batch]
-            immediate_outcome_rows = batch["origin_block"].numpy() + 1 - first_outcome_block
+            origin_blocks = batch["origin_block"].cpu().numpy()
+            immediate_outcome_rows = origin_blocks + 1 - first_outcome_block
             immediate_priority_fees_p50_batch = outcome_priority_fees_p50[immediate_outcome_rows]
             selected_priority_fees_p50_batch = outcome_priority_fees_p50[
                 immediate_outcome_rows + actions
@@ -173,7 +174,7 @@ def _collect_observations(
 
             size = actions.size
             destination = slice(cursor, cursor + size)
-            columns["origin_block"][destination] = batch["origin_block"].numpy()
+            columns["origin_block"][destination] = origin_blocks
             columns["predicted_action_k"][destination] = actions
             columns["predicted_minimum_log_base_fee"][destination] = predicted_logs_batch
             columns["minimum_action_k"][destination] = minimum_actions_batch
