@@ -13,7 +13,17 @@ _NonNegativeInt: TypeAlias = Annotated[int, Field(ge=0)]
 _PositiveFloat: TypeAlias = Annotated[float, Field(gt=0.0, allow_inf_nan=False)]
 _NonNegativeFloat: TypeAlias = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 _Dropout: TypeAlias = Annotated[float, Field(ge=0.0, lt=1.0, allow_inf_nan=False)]
-_FeatureName: TypeAlias = Annotated[str, Field(min_length=1)]
+FeatureName: TypeAlias = Literal[
+    "log_base_fee_per_gas",
+    "gas_utilization",
+    "log_exact_forming_base_fee_per_gas",
+    "log_gas_limit",
+    "log1p_tx_count",
+    "log1p_effective_priority_fee_per_gas_p50",
+    "block_interval_seconds",
+    "hour_sin",
+    "hour_cos",
+]
 
 
 def _validate_transformer_dimensions(model_width: int, attention_heads: int) -> None:
@@ -61,7 +71,7 @@ class ExperimentSemantics(StrictFrozenRecord):
     validation_window: BlockWindow
     context_blocks: _PositiveInt
     horizon_blocks: _PositiveInt
-    ordered_features: Annotated[tuple[_FeatureName, ...], Field(min_length=1)]
+    ordered_features: Annotated[tuple[FeatureName, ...], Field(min_length=1)]
 
     @model_validator(mode="after")
     def validate_semantics(self) -> Self:

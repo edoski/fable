@@ -76,7 +76,7 @@ def _experiment(*, shift: int = 0) -> ExperimentSemantics:
         ),
         context_blocks=200,
         horizon_blocks=5,
-        ordered_features=("base_fee", "gas_used"),
+        ordered_features=("log_base_fee_per_gas", "gas_utilization"),
     )
 
 

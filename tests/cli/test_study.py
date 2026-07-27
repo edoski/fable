@@ -53,7 +53,7 @@ REQUEST = TuneRequest(
         validation_window=window(210),
         context_blocks=20,
         horizon_blocks=10,
-        ordered_features=("base_fee",),
+        ordered_features=("log_base_fee_per_gas",),
     ),
     methods=(METHOD,),
 )

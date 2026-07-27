@@ -34,7 +34,7 @@ def _experiment() -> ExperimentSemantics:
         validation_window=_window(),
         context_blocks=20,
         horizon_blocks=10,
-        ordered_features=("base_fee", "gas_utilization"),
+        ordered_features=("log_base_fee_per_gas", "gas_utilization"),
     )
 
 
@@ -142,6 +142,14 @@ def _invalid_cases() -> tuple[tuple[type[object], dict[str, object], str], ...]:
                 ),
             },
             "validation_window must follow complete training outcomes",
+        ),
+        (
+            ExperimentSemantics,
+            {
+                **experiment.model_dump(),
+                "ordered_features": ("unsupported",),
+            },
+            "Input should be",
         ),
     )
 

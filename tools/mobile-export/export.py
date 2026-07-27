@@ -20,6 +20,7 @@ from executorch.runtime import Runtime
 from pydantic import UUID4, Field, TypeAdapter
 from torch import nn
 
+from fable.config import FeatureName
 from fable.corpus import Corpus, load_corpus
 from fable.modeling import ArtifactAssociation, load_artifact
 
@@ -32,19 +33,6 @@ _CHAINS: dict[_Chain, int] = {
     "avalanche": 43114,
 }
 _HORIZONS = (2, 3, 4, 5)
-_SUPPORTED_FEATURES = frozenset(
-    {
-        "log_base_fee_per_gas",
-        "gas_utilization",
-        "log_exact_forming_base_fee_per_gas",
-        "log_gas_limit",
-        "log1p_tx_count",
-        "log1p_effective_priority_fee_per_gas_p50",
-        "block_interval_seconds",
-        "hour_sin",
-        "hour_cos",
-    }
-)
 
 _Roster = Annotated[
     dict[_Chain, Annotated[dict[_Horizon, UUID4], Field(min_length=4)]],
@@ -56,7 +44,7 @@ _ROSTER_ADAPTER = TypeAdapter(_Roster)
 @dataclass(frozen=True, slots=True)
 class _FeatureContract:
     context_blocks: int
-    names: tuple[str, ...]
+    names: tuple[FeatureName, ...]
     means: tuple[float, ...]
     standard_deviations: tuple[float, ...]
 
@@ -96,9 +84,6 @@ def _feature_contract(
 ) -> _FeatureContract:
     experiment = association.training_definition.experiment
     names = tuple(experiment.ordered_features)
-    unsupported = set(names) - _SUPPORTED_FEATURES
-    if unsupported:
-        raise ValueError(f"{chain} artifact contains unsupported features: {sorted(unsupported)}")
     if chain != "ethereum" and "log_exact_forming_base_fee_per_gas" in names:
         raise ValueError("exact forming base fee is Ethereum-only")
     return _FeatureContract(

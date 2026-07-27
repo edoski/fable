@@ -14,6 +14,7 @@ from bundle import bundle_path, read_cells, write_cells
 from fable.config import (
     BlockWindow,
     ExperimentSemantics,
+    FeatureName,
     FitMethod,
     LstmDefinition,
     Method,
@@ -102,8 +103,8 @@ _METHODS = (
 )
 
 
-def _ordered_features(chain: str, feature_set: str) -> tuple[str, ...]:
-    state = (
+def _ordered_features(chain: str, feature_set: str) -> tuple[FeatureName, ...]:
+    state: tuple[FeatureName, ...] = (
         (
             "gas_utilization",
             "log_exact_forming_base_fee_per_gas",
@@ -113,7 +114,7 @@ def _ordered_features(chain: str, feature_set: str) -> tuple[str, ...]:
         if chain == "ethereum"
         else ("gas_utilization", "log_gas_limit", "log1p_tx_count")
     )
-    groups = {
+    groups: dict[str, tuple[FeatureName, ...]] = {
         "B": ("log_base_fee_per_gas",),
         "S": state,
         "T": ("block_interval_seconds", "hour_sin", "hour_cos"),

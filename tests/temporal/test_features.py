@@ -6,7 +6,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from fable.config import CorpusDefinition
+from fable.config import CorpusDefinition, FeatureName
 from fable.corpus import BlockFrame
 from fable.temporal.features import (
     FeatureState,
@@ -174,7 +174,10 @@ def _valid_blocks() -> BlockFrame:
 def _fit(
     blocks: BlockFrame,
     *,
-    ordered_features: tuple[str, ...] = ("log_base_fee_per_gas", "gas_utilization"),
+    ordered_features: tuple[FeatureName, ...] = (
+        "log_base_fee_per_gas",
+        "gas_utilization",
+    ),
 ) -> FeatureState:
     return fit_feature_state(blocks, ordered_features=ordered_features)
 
@@ -182,11 +185,6 @@ def _fit(
 @pytest.mark.parametrize(
     ("operation", "match"),
     [
-        pytest.param(
-            lambda: _fit(_valid_blocks(), ordered_features=("unknown",)),
-            "Unsupported feature",
-            id="unsupported-name",
-        ),
         pytest.param(
             lambda: _fit(
                 _blocks(

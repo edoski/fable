@@ -9,7 +9,7 @@ import torch
 from numpy.typing import NDArray
 from torch.utils.data import Dataset
 
-from ..config import BlockWindow, ExperimentSemantics
+from ..config import BlockWindow, ExperimentSemantics, FeatureName
 from ..corpus.contract import Corpus
 from ..min_block_fee import (
     TargetState,
@@ -157,7 +157,7 @@ def _build_backing(
     *,
     first_block: int,
     last_block: int,
-    ordered_features: tuple[str, ...],
+    ordered_features: tuple[FeatureName, ...],
     feature_state: FeatureState,
 ) -> _HistoricalBacking:
     predecessor_blocks = _feature_predecessor_blocks(ordered_features)
@@ -178,7 +178,7 @@ def _build_backing(
     )
 
 
-def _feature_predecessor_blocks(ordered_features: tuple[str, ...]) -> int:
+def _feature_predecessor_blocks(ordered_features: tuple[FeatureName, ...]) -> int:
     return 1 if "block_interval_seconds" in ordered_features else 0
 
 

@@ -9,13 +9,13 @@ import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Literal, Self, cast
+from typing import Literal, Self, cast
 from uuid import UUID
 
 import lightning.pytorch as pl
 import torch
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-from pydantic import Field, TypeAdapter, model_validator
+from pydantic import TypeAdapter, model_validator
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -52,7 +52,6 @@ class ArtifactAssociation(StrictFrozenRecord):
     request: TrainRequest
     feature_state: FeatureState
     target_state: TargetState
-    study_result_index: Annotated[int, Field(strict=True, ge=0)] | None = None
     method: Method | None = None
 
     @property
@@ -69,13 +68,11 @@ class ArtifactAssociation(StrictFrozenRecord):
     def validate_association(self) -> Self:
         source = self.request.source
         if isinstance(source, BaselineSource):
-            if self.study_result_index is not None or self.method is not None:
-                raise ValueError("baseline artifacts cannot contain selected Study fields")
+            if self.method is not None:
+                raise ValueError("baseline artifacts cannot contain a selected Study Method")
         else:
-            if self.study_result_index is None or self.method is None:
-                raise ValueError("selected Study artifacts require result index and Method")
-            if self.study_result_index != source.study_result_index:
-                raise ValueError("artifact Study result index must match the TrainRequest")
+            if self.method is None:
+                raise ValueError("selected Study artifacts require a Method")
         if len(self.feature_state.means) != len(
             self.training_definition.experiment.ordered_features
         ):
@@ -544,7 +541,6 @@ def train(
             request=request,
             feature_state=prepared.feature_state,
             target_state=prepared.target_state,
-            study_result_index=source.study_result_index,
             method=method,
         )
 

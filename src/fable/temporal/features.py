@@ -10,6 +10,7 @@ import polars as pl
 from numpy.typing import NDArray
 from pydantic import Field, model_validator
 
+from ..config import FeatureName
 from ..corpus import BlockFrame
 from ..records import StrictFrozenRecord
 
@@ -34,7 +35,7 @@ class FeatureState(StrictFrozenRecord):
 def fit_feature_state(
     training_support: BlockFrame,
     *,
-    ordered_features: tuple[str, ...],
+    ordered_features: tuple[FeatureName, ...],
 ) -> FeatureState:
     raw = _raw_feature_rows(
         training_support.to_polars(),
@@ -51,7 +52,7 @@ def fit_feature_state(
 def transform_feature_rows(
     blocks: BlockFrame,
     *,
-    ordered_features: tuple[str, ...],
+    ordered_features: tuple[FeatureName, ...],
     state: FeatureState,
 ) -> NDArray[np.float32]:
     raw = _raw_feature_rows(blocks.to_polars(), ordered_features=ordered_features)
@@ -70,7 +71,7 @@ def transform_feature_rows(
 def _raw_feature_rows(
     blocks: pl.DataFrame,
     *,
-    ordered_features: tuple[str, ...],
+    ordered_features: tuple[FeatureName, ...],
 ) -> NDArray[np.float64]:
     needs_predecessor = "block_interval_seconds" in ordered_features
     columns = []
@@ -82,7 +83,7 @@ def _raw_feature_rows(
     return np.ascontiguousarray(np.column_stack(columns), dtype=np.float64)
 
 
-def _feature_values(blocks: pl.DataFrame, feature_name: str) -> NDArray[np.float64]:
+def _feature_values(blocks: pl.DataFrame, feature_name: FeatureName) -> NDArray[np.float64]:
     match feature_name:
         case "log_base_fee_per_gas":
             return np.log(_float_column(blocks, "base_fee_per_gas"))
@@ -108,8 +109,6 @@ def _feature_values(blocks: pl.DataFrame, feature_name: str) -> NDArray[np.float
             return np.sin(_hour_angles(blocks))
         case "hour_cos":
             return np.cos(_hour_angles(blocks))
-        case _:
-            raise ValueError(f"Unsupported feature: {feature_name}")
 
 
 def _hour_angles(blocks: pl.DataFrame) -> NDArray[np.float64]:

@@ -197,7 +197,6 @@ def test_artifact_association_rejects_only_owned_mismatches() -> None:
             request=_request(),
             feature_state=feature_state,
             target_state=target_state,
-            study_result_index=0,
             method=method,
         )
     with pytest.raises(ValidationError, match="feature state width"):

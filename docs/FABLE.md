@@ -662,7 +662,7 @@ Distribution name, import root, and installed executable are `fable`; the static
 |  | `validation_window` | `BlockWindow` |
 |  | `context_blocks` | PositiveInt `C` |
 |  | `horizon_blocks` | PositiveInt `K` |
-|  | `ordered_features` | nonempty unique tuple of nonempty strings |
+|  | `ordered_features` | nonempty unique tuple of supported `FeatureName` literals |
 
 The training last parent plus `K` must be strictly less than the validation first parent.
 
@@ -843,7 +843,6 @@ Each `RetainedResult` has exact ordered fields:
 | `request` | exact `TrainRequest`; embedded artifact UUID must match path |
 | `feature_state` | Float64 means and positive standard deviations, equal feature width |
 | `target_state` | Float64 finite mean and positive standard deviation |
-| `study_result_index` | absent/null for baseline; exact nonnegative source index for selected Study |
 | `method` | absent/null for baseline; exact selected Method for selected Study |
 
 Fitting uses hidden sibling scratch at `artifacts/.<artifact_id>/`. Publication moves the completed best checkpoint to `artifacts/.<artifact_id>.ckpt`, removes scratch, and creates the canonical path with `os.link()`. An occupied target fails without overwrite; cleanup of the hidden checkpoint is best-effort only after the canonical link exists.

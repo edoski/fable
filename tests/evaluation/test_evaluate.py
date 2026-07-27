@@ -188,7 +188,6 @@ def _association(
         ),
         feature_state=FeatureState(means=(0.0,), standard_deviations=(1.0,)),
         target_state=TargetState(mean=10.0, standard_deviation=0.25),
-        study_result_index=2,
         method=method,
     )
 
