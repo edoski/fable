@@ -115,7 +115,7 @@ def _collect_observations(
                 immediate_outcome_rows + actions
             ]
             predicted_logs_batch = target_state.mean + target_state.standard_deviation * (
-                output.minimum_fee_z.cpu().numpy()
+                output.minimum_fee_z.cpu().numpy().astype(np.float64)
             )
             if not np.isfinite(predicted_logs_batch).all():
                 raise ValueError("predicted minimum-log fees must be finite")

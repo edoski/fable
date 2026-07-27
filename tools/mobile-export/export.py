@@ -214,6 +214,8 @@ def _assert_parity(
     except AssertionError as error:
         raise ValueError("eager and ExecuTorch outputs do not match") from error
 
+    if not all(torch.isfinite(output).all() for output in exported):
+        raise ValueError("ExecuTorch outputs must be finite")
     if exported[0].argmax(dim=-1).item() != eager[0].argmax(dim=-1).item():
         raise ValueError("eager and ExecuTorch selected actions do not match")
 

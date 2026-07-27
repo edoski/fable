@@ -365,6 +365,21 @@ class _TinyModel(nn.Module):
         )
 
 
+def test_parity_rejects_matching_nonfinite_outputs() -> None:
+    matching = (
+        torch.tensor([[1.0, 0.0]], dtype=torch.float32),
+        torch.tensor([float("inf")], dtype=torch.float32),
+    )
+
+    with pytest.raises(ValueError, match="ExecuTorch outputs must be finite"):
+        mobile_export._assert_parity(
+            matching,
+            matching,
+            target_mean=1.0,
+            target_standard_deviation=0.5,
+        )
+
+
 def test_real_xnnpack_export_and_host_execution(tmp_path: Path) -> None:
     runtime = mobile_export.Runtime.get()
     assert runtime.backend_registry.is_available("XnnpackBackend")

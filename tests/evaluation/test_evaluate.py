@@ -88,7 +88,7 @@ _LOGITS = torch.tensor(
     ],
     dtype=torch.float32,
 )
-_PREDICTED_Z = torch.tensor([0.5, -0.5, 1.0, 0.0, 2.0], dtype=torch.float32)
+_PREDICTED_Z = torch.tensor([0.1, -0.5, 1.0, 0.0, 2.0], dtype=torch.float32)
 _OBSERVATION_SCHEMA = pl.Schema(
     {
         "origin_block": pl.Int64,
@@ -313,7 +313,7 @@ def test_evaluate_publishes_exact_observations(
     assert observations.schema == _OBSERVATION_SCHEMA
     assert observations.null_count().row(0) == (0,) * len(_OBSERVATION_SCHEMA)
     assert observations.rows() == [
-        (20, 0, 10.125, 2, 60, 11, 60, 11, 50),
+        (20, 0, 10.025000000372529, 2, 60, 11, 60, 11, 50),
         (21, 2, 9.875, 2, 70, 12, 40, 14, 40),
         (22, 1, 10.25, 1, 50, 13, 40, 14, 40),
         (23, 0, 10.0, 2, 40, 14, 40, 14, 30),
