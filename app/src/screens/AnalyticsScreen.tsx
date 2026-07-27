@@ -10,7 +10,6 @@ import {
 import { BarChart as GiftedBarChart } from "react-native-gifted-charts";
 
 import {
-  GRAPH_OPTIONS,
   feeComparisonData,
   formatGwei,
   formatRunDate,
@@ -54,6 +53,20 @@ function formatSavings(value: number): string {
 }
 
 const CHART_HEIGHT = 138;
+const AXIS_PROPS = {
+  barBorderRadius: radii.small / 2,
+  disablePress: true,
+  endSpacing: 10,
+  initialSpacing: 10,
+  rulesColor: colors.border,
+  xAxisColor: colors.muted,
+  xAxisLabelsAtBottom: true,
+  xAxisLabelsHeight: 14,
+  xAxisLabelTextStyle: styles.graphAxisText,
+  yAxisLabelWidth: 34,
+  yAxisTextStyle: styles.graphAxisText,
+  yAxisThickness: 0,
+} as const;
 
 function niceStep(range: number): number {
   const rough = range / 3;
@@ -117,27 +130,16 @@ function RecommendedWaitChart({
   return (
     <View style={styles.graph}>
       <GiftedBarChart
-        barBorderRadius={radii.small / 2}
+        {...AXIS_PROPS}
         data={data.map((item) => ({
           frontColor: colors.blue,
           label: item.label,
           value: item.value ?? 0,
         }))}
-        disablePress
-        endSpacing={10}
-        initialSpacing={10}
         maxValue={scale.maximum}
         noOfSections={scale.positiveSections}
-        rulesColor={colors.border}
         stepHeight={scale.stepHeight}
         stepValue={scale.step}
-        xAxisColor={colors.muted}
-        xAxisLabelsAtBottom
-        xAxisLabelsHeight={14}
-        xAxisLabelTextStyle={styles.graphAxisText}
-        yAxisLabelWidth={34}
-        yAxisTextStyle={styles.graphAxisText}
-        yAxisThickness={0}
       />
       <Text style={styles.graphXAxisTitle}>Wait (blocks)</Text>
     </View>
@@ -163,32 +165,21 @@ function SavingsByWaitChart({
   return (
     <View style={styles.graph}>
       <GiftedBarChart
-        barBorderRadius={radii.small / 2}
+        {...AXIS_PROPS}
         data={data.map((item) => ({
           frontColor:
             item.value !== null && item.value < 0 ? colors.red : colors.teal,
           label: item.label,
           value: item.value ?? 0,
         }))}
-        disablePress
-        endSpacing={10}
         formatYLabel={(label) => `${Number(label).toFixed(0)}%`}
-        initialSpacing={10}
         maxValue={scale.maximum}
         mostNegativeValue={scale.minimum}
         negativeStepValue={scale.step}
         noOfSections={scale.positiveSections}
         noOfSectionsBelowXAxis={scale.negativeSections}
-        rulesColor={colors.border}
         stepHeight={scale.stepHeight}
         stepValue={scale.step}
-        xAxisColor={colors.muted}
-        xAxisLabelsAtBottom
-        xAxisLabelsHeight={14}
-        xAxisLabelTextStyle={styles.graphAxisText}
-        yAxisLabelWidth={34}
-        yAxisTextStyle={styles.graphAxisText}
-        yAxisThickness={0}
       />
       <Text style={styles.graphXAxisTitle}>Wait (blocks)</Text>
     </View>
@@ -206,17 +197,14 @@ function BaseFeeByWaitChart({
   if (data.length === 0) {
     return <EmptyGraph outcomes />;
   }
-  const maximumValue = Math.max(
-    ...data.flatMap((item) => [item.immediate, item.fable]),
+  const scale = chartScale(
+    data.flatMap((item) => [item.immediate, item.fable]),
   );
-  const step = niceStep(maximumValue);
-  const maximum = Math.ceil(maximumValue / step) * step;
-  const sections = Math.round(maximum / step);
 
   return (
     <View style={styles.graph}>
       <GiftedBarChart
-        barBorderRadius={radii.small / 2}
+        {...AXIS_PROPS}
         barWidth={18}
         data={data.flatMap((item, index) => [
           {
@@ -232,31 +220,38 @@ function BaseFeeByWaitChart({
             value: item.fable,
           },
         ])}
-        disablePress
-        endSpacing={10}
         formatYLabel={(label) => {
           const value = Number(label);
           return value >= 10 ? value.toFixed(0) : value.toFixed(1);
         }}
-        initialSpacing={10}
-        maxValue={maximum}
-        noOfSections={sections}
-        rulesColor={colors.border}
+        maxValue={scale.maximum}
+        noOfSections={scale.positiveSections}
         spacing={0}
-        stepHeight={CHART_HEIGHT / sections}
-        stepValue={step}
-        xAxisColor={colors.muted}
-        xAxisLabelsAtBottom
-        xAxisLabelsHeight={14}
-        xAxisLabelTextStyle={styles.graphAxisText}
-        yAxisLabelWidth={34}
-        yAxisTextStyle={styles.graphAxisText}
-        yAxisThickness={0}
+        stepHeight={scale.stepHeight}
+        stepValue={scale.step}
       />
       <Text style={styles.graphXAxisTitle}>Recommended wait (blocks)</Text>
     </View>
   );
 }
+
+const CHARTS = [
+  {
+    title: "Recommended wait distribution",
+    Chart: RecommendedWaitChart,
+    legend: false,
+  },
+  {
+    title: "Savings by wait (%)",
+    Chart: SavingsByWaitChart,
+    legend: false,
+  },
+  {
+    title: "Base fee by wait (Gwei)",
+    Chart: BaseFeeByWaitChart,
+    legend: true,
+  },
+] as const;
 
 function runSummary(run: InferenceRun): string {
   const wait =
@@ -542,14 +537,14 @@ export function AnalyticsScreen({
             </View>
           </View>
           <View style={styles.chartCards}>
-            {GRAPH_OPTIONS.map((graph) => (
+            {CHARTS.map(({ title, Chart, legend }) => (
               <View
-                key={graph.value}
+                key={title}
                 style={[styles.surface, styles.chartCard]}
               >
                 <View style={styles.chartHeader}>
-                  <Text style={styles.chartTitle}>{graph.label}</Text>
-                  {graph.value === "fees" && (
+                  <Text style={styles.chartTitle}>{title}</Text>
+                  {legend && (
                     <View style={styles.graphLegend}>
                       <View
                         style={[
@@ -568,24 +563,7 @@ export function AnalyticsScreen({
                     </View>
                   )}
                 </View>
-                {graph.value === "waits" && (
-                  <RecommendedWaitChart
-                    horizon={analyticsHorizon}
-                    runs={graphRuns}
-                  />
-                )}
-                {graph.value === "savings" && (
-                  <SavingsByWaitChart
-                    horizon={analyticsHorizon}
-                    runs={graphRuns}
-                  />
-                )}
-                {graph.value === "fees" && (
-                  <BaseFeeByWaitChart
-                    horizon={analyticsHorizon}
-                    runs={graphRuns}
-                  />
-                )}
+                <Chart horizon={analyticsHorizon} runs={graphRuns} />
               </View>
             ))}
           </View>

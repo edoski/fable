@@ -1,12 +1,6 @@
 import type { Chain, Horizon } from "./domain";
 import type { InferenceRun, RunOutcome } from "./history";
 
-export const GRAPH_OPTIONS = [
-  { value: "waits", label: "Recommended wait distribution" },
-  { value: "savings", label: "Savings by wait (%)" },
-  { value: "fees", label: "Base fee by wait (Gwei)" },
-] as const;
-
 type ChartDatum = {
   label: string;
   value: number | null;

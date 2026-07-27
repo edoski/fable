@@ -1,11 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import type { Chain, Horizon } from "./domain";
-import type {
-  InferenceEngine,
-  InferenceOutcome,
-  InferenceResult,
-} from "./inference";
+import type { InferenceEngine, InferenceResult } from "./inference";
 
 const STORAGE_KEY = "fable.runs";
 
