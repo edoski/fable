@@ -42,10 +42,6 @@ dev = [
 [project.scripts]
 fable = "fable.cli:app"
 
-[tool.hatch.build.targets.wheel]
-include = ["src/fable/**/*.py"]
-sources = ["src"]
-
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -57,5 +53,6 @@ select = ["E", "F", "I", "UP", "B"]
 testpaths = ["tests"]
 
 [tool.vulture]
-paths = ["src", "tests"]
+paths = ["src", "tests", "experiments", "tools/mobile-export"]
+exclude = [".venv"]
 min_confidence = 90

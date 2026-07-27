@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import csv
 import json
-import subprocess
-import sys
 from pathlib import Path
 from uuid import UUID
 
@@ -25,6 +22,7 @@ from fable.experiments import (
     write_experiment_manifest,
 )
 from fable.study import RetainedResult, Study
+from tests.helpers import read_tsv_rows, run_script
 
 _ROOT = Path(__file__).parents[2]
 _SCRIPT = _ROOT / "experiments" / "k_study.py"
@@ -51,20 +49,6 @@ _METHOD = Method(
         min_delta=0.0,
     ),
 )
-
-
-def _run(script: Path, *arguments: object) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(script), *(str(argument) for argument in arguments)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-
-def _rows(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as source:
-        return list(csv.DictReader(source, delimiter="\t"))
 
 
 def _publish_hpo(storage_root: Path) -> None:
@@ -127,7 +111,7 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
 ) -> None:
     _publish_hpo(tmp_path)
 
-    result = _run(
+    result = run_script(
         _SCRIPT,
         "prepare",
         tmp_path,
@@ -135,7 +119,7 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     )
     experiment_id = UUID(result.stdout.strip())
     bundle = tmp_path / "experiments" / "k_study" / f".{experiment_id}"
-    rows = _rows(bundle / "cells.tsv")
+    rows = read_tsv_rows(bundle / "cells.tsv")
     requests = [
         TrainRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in rows
@@ -177,7 +161,7 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
         checkpoint = tmp_path / "artifacts" / f"{row['artifact_id']}.ckpt"
         checkpoint.parent.mkdir(parents=True, exist_ok=True)
         checkpoint.touch()
-    _run(_SCRIPT, "close", tmp_path, experiment_id)
+    run_script(_SCRIPT, "close", tmp_path, experiment_id)
 
     manifest = ExperimentManifest.model_validate_json(
         (tmp_path / "experiments" / "k_study" / f"{experiment_id}.json").read_bytes(),
@@ -203,7 +187,7 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     corpus_path = tmp_path / "corpora" / str(_CORPUS_ID) / "corpus.json"
     corpus_path.parent.mkdir(parents=True)
     corpus_path.write_text(json.dumps(corpus), encoding="utf-8")
-    held_out_result = _run(
+    held_out_result = run_script(
         _HELD_OUT_SCRIPT,
         "prepare",
         tmp_path,
@@ -213,7 +197,7 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     held_out_experiment_id = UUID(held_out_result.stdout.strip())
 
     held_out = tmp_path / "experiments" / "held_out" / f".{held_out_experiment_id}"
-    evaluation_rows = _rows(held_out / "cells.tsv")
+    evaluation_rows = read_tsv_rows(held_out / "cells.tsv")
     evaluation_requests = [
         EvaluateRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in evaluation_rows
@@ -230,7 +214,7 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     )
     for row in evaluation_rows:
         (tmp_path / "evaluations" / row["evaluation_id"]).mkdir(parents=True)
-    _run(_HELD_OUT_SCRIPT, "close", tmp_path, held_out_experiment_id)
+    run_script(_HELD_OUT_SCRIPT, "close", tmp_path, held_out_experiment_id)
     held_out_manifest = ExperimentManifest.model_validate_json(
         (tmp_path / "experiments" / "held_out" / f"{held_out_experiment_id}.json").read_bytes(),
         strict=True,

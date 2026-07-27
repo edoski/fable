@@ -5,18 +5,17 @@ from typing import Literal
 from uuid import UUID
 
 import pytest
-from typer.testing import CliRunner
 
 import fable.cli as cli
 from fable.cli import app
 from fable.config import (
-    BlockWindow,
     EvaluateRequest,
     ExperimentSemantics,
     SelectedStudySource,
     TrainRequest,
     WorkflowRequest,
 )
+from tests.helpers import dispatch, window
 
 CORPUS_ID = UUID("10000000-0000-4000-8000-000000000001")
 ARTIFACT_ID = UUID("20000000-0000-4000-8000-000000000001")
@@ -25,17 +24,10 @@ STUDY_ID = UUID("40000000-0000-4000-8000-000000000001")
 STORAGE_ROOT = Path("/remote/storage root")
 
 
-def _window(first: int) -> BlockWindow:
-    return BlockWindow(
-        first_parent_block=first,
-        last_parent_block=first + 9,
-    )
-
-
 def _experiment() -> ExperimentSemantics:
     return ExperimentSemantics(
-        training_window=_window(100),
-        validation_window=_window(210),
+        training_window=window(100),
+        validation_window=window(210),
         context_blocks=20,
         horizon_blocks=10,
         ordered_features=("log_base_fee_per_gas",),
@@ -49,7 +41,7 @@ def _request(kind: Literal["selected", "evaluate"]) -> WorkflowRequest:
             evaluation_id=EVALUATION_ID,
             artifact_id=ARTIFACT_ID,
             corpus_id=CORPUS_ID,
-            testing_window=_window(300),
+            testing_window=window(300),
         )
     source = SelectedStudySource(
         kind="selected_study",
@@ -92,9 +84,10 @@ def test_remote_workflow_dispatches_final_request(
         lambda active_request, storage_root: evaluate_calls.append((active_request, storage_root)),
     )
 
-    result = CliRunner().invoke(
+    result = dispatch(
         app,
-        ["remote", "workflow"],
+        "remote",
+        "workflow",
         input=request.model_dump_json(),
     )
 

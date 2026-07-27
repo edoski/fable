@@ -7,12 +7,10 @@ from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
-from typer.testing import CliRunner
 
 import fable.cli as cli
 from fable.cli import app
 from fable.config import (
-    BlockWindow,
     EvaluateRequest,
     ExperimentSemantics,
     SelectedStudySource,
@@ -20,35 +18,16 @@ from fable.config import (
     WorkflowRequest,
 )
 from fable.execution import submit
+from tests.helpers import REMOTE_YAML, dispatch, window, write_remote
 
 CORPUS_ID = UUID("00000000-0000-4000-8000-000000000001")
 ARTIFACT_ID = UUID("00000000-0000-4000-8000-000000000002")
 EVALUATION_ID = UUID("00000000-0000-4000-8000-000000000003")
 STUDY_ID = UUID("00000000-0000-4000-8000-000000000004")
-REMOTE_YAML = """ssh: university-alias
-executable: /opt/fable executable
-storage_root: /remote/storage root
-log_root: /remote/logs
-resources:
-  partition: thesis-partition
-  gres: gpu:a100:1
-  cpus_per_task: 8
-  memory_gb: 48
-  time_limit: "17:23:45"
-"""
-
-
-def _window(first: int) -> BlockWindow:
-    return BlockWindow(
-        first_parent_block=first,
-        last_parent_block=first + 9,
-    )
-
-
 def _experiment() -> ExperimentSemantics:
     return ExperimentSemantics(
-        training_window=_window(100),
-        validation_window=_window(210),
+        training_window=window(100),
+        validation_window=window(210),
         context_blocks=20,
         horizon_blocks=10,
         ordered_features=("base_fee",),
@@ -62,7 +41,7 @@ def _request(workflow: Literal["train", "evaluate"]) -> WorkflowRequest:
             evaluation_id=EVALUATION_ID,
             artifact_id=ARTIFACT_ID,
             corpus_id=CORPUS_ID,
-            testing_window=_window(300),
+            testing_window=window(300),
         )
     return TrainRequest(
         workflow="train",
@@ -77,16 +56,12 @@ def _request(workflow: Literal["train", "evaluate"]) -> WorkflowRequest:
     )
 
 
-def _write_remote(path: Path, contents: str = REMOTE_YAML) -> None:
-    path.write_text(contents, encoding="utf-8")
-
-
 def test_submit_sends_golden_workflow_script(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = _request("train")
-    _write_remote(tmp_path / "REMOTE.yaml")
+    write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
     calls: list[tuple[list[str], dict[str, object]]] = []
 
@@ -148,7 +123,7 @@ def test_submit_cli_dispatches_request_json(
         lambda submitted: calls.append(submitted) or 123,
     )
 
-    result = CliRunner().invoke(app, ["submit", str(request_path)])
+    result = dispatch(app, "submit", str(request_path))
 
     assert result.output == "123\n"
     assert result.exit_code == 0
@@ -163,7 +138,7 @@ def test_submit_rejects_relative_remote_executable(
         "executable: /opt/fable executable",
         "executable: relative/fable",
     )
-    _write_remote(tmp_path / "REMOTE.yaml", remote_yaml)
+    write_remote(tmp_path / "REMOTE.yaml", remote_yaml)
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(ValidationError, match="executable must be an absolute path"):
@@ -174,7 +149,7 @@ def test_submit_rejects_invalid_job_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _write_remote(tmp_path / "REMOTE.yaml")
+    write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         "fable.execution.subprocess.run",

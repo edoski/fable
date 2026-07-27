@@ -40,6 +40,7 @@ from fable.modeling import (
 )
 from fable.temporal.features import FeatureState
 from fable.temporal.history import prepare_fit_history
+from tests.helpers import modeling_method
 
 ARTIFACT_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
@@ -73,26 +74,7 @@ def _experiment() -> ExperimentSemantics:
 def _request() -> TrainRequest:
     definition = TrainingDefinition(
         experiment=_experiment(),
-        method=Method(
-            model=LstmDefinition(
-                family="lstm",
-                hidden=5,
-                layers=1,
-                head_hidden=3,
-                dropout=0.1,
-            ),
-            fit=FitMethod(
-                learning_rate=0.002,
-                weight_decay=0.003,
-                accumulation=2,
-                gradient_clip_norm=0.4,
-                seed=19,
-                max_epochs=4,
-                validate_every_completed_epoch=1,
-                patience=1,
-                min_delta=0.02,
-            ),
-        ),
+        method=modeling_method(),
     )
     return TrainRequest(
         workflow="train",
@@ -208,26 +190,7 @@ def test_artifact_association_rejects_only_owned_mismatches() -> None:
         standard_deviations=(0.5, 0.25),
     )
     target_state = TargetState(mean=3.0, standard_deviation=0.75)
-    method = Method(
-        model=LstmDefinition(
-            family="lstm",
-            hidden=5,
-            layers=1,
-            head_hidden=3,
-            dropout=0.1,
-        ),
-        fit=FitMethod(
-            learning_rate=0.002,
-            weight_decay=0.003,
-            accumulation=2,
-            gradient_clip_norm=0.4,
-            seed=19,
-            max_epochs=4,
-            validate_every_completed_epoch=1,
-            patience=1,
-            min_delta=0.02,
-        ),
-    )
+    method = modeling_method()
 
     with pytest.raises(ValidationError, match="baseline artifacts"):
         ArtifactAssociation(

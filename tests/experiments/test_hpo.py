@@ -1,33 +1,17 @@
 from __future__ import annotations
 
-import csv
-import subprocess
-import sys
 from pathlib import Path
 from uuid import UUID
 
 from fable.config import TuneRequest
 from fable.experiments import ExperimentManifest
 from fable.study import RetainedResult, Study
+from tests.helpers import read_tsv_rows, run_script
 
 _ROOT = Path(__file__).parents[2]
 _FEATURE_SCRIPT = _ROOT / "experiments" / "feature_ablation.py"
 _C_SCRIPT = _ROOT / "experiments" / "c_study.py"
 _HPO_SCRIPT = _ROOT / "experiments" / "hpo.py"
-
-
-def _run(script: Path, *arguments: object) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(script), *(str(argument) for argument in arguments)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-
-def _rows(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as source:
-        return list(csv.DictReader(source, delimiter="\t"))
 
 
 def _publish_studies(
@@ -61,13 +45,15 @@ def _publish_studies(
 def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
     tmp_path: Path,
 ) -> None:
-    feature_experiment_id = UUID(_run(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
+    feature_experiment_id = UUID(
+        run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip()
+    )
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
-    _publish_studies(tmp_path, _rows(feature_bundle / "cells.tsv"), 1.0)
-    _run(_FEATURE_SCRIPT, "select", tmp_path, feature_experiment_id)
+    _publish_studies(tmp_path, read_tsv_rows(feature_bundle / "cells.tsv"), 1.0)
+    run_script(_FEATURE_SCRIPT, "select", tmp_path, feature_experiment_id)
 
     c_experiment_id = UUID(
-        _run(
+        run_script(
             _C_SCRIPT,
             "prepare",
             tmp_path,
@@ -75,10 +61,10 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
         ).stdout.strip()
     )
     c_bundle = tmp_path / "experiments" / "c_study" / f".{c_experiment_id}"
-    _publish_studies(tmp_path, _rows(c_bundle / "cells.tsv"), 1.0)
-    _run(_C_SCRIPT, "select", tmp_path, c_experiment_id)
+    _publish_studies(tmp_path, read_tsv_rows(c_bundle / "cells.tsv"), 1.0)
+    run_script(_C_SCRIPT, "select", tmp_path, c_experiment_id)
 
-    result = _run(
+    result = run_script(
         _HPO_SCRIPT,
         "prepare",
         tmp_path,
@@ -86,7 +72,7 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
     )
     experiment_id = UUID(result.stdout.strip())
     bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
-    rows = _rows(bundle / "cells.tsv")
+    rows = read_tsv_rows(bundle / "cells.tsv")
     requests = {
         row["cell"]: TuneRequest.model_validate_json(
             Path(row["request"]).read_bytes(),
@@ -123,7 +109,7 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
     }
 
     _publish_studies(tmp_path, rows, 0.5)
-    result = _run(_HPO_SCRIPT, "select", tmp_path, experiment_id)
+    result = run_script(_HPO_SCRIPT, "select", tmp_path, experiment_id)
 
     assert result.stdout.splitlines() == [
         "ethereum.lstm\t0\t0.5",

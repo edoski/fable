@@ -11,24 +11,17 @@ import fable.cli as cli
 import fable.execution as execution
 from fable.cli import app
 from fable.config import (
-    BlockWindow,
     ExperimentSemantics,
     FitMethod,
     LstmDefinition,
     Method,
     TuneRequest,
 )
+from tests.helpers import dispatch, window, write_remote
 
 STUDY_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
 STORAGE_ROOT = Path("/remote/storage root")
-
-
-def _window(first: int) -> BlockWindow:
-    return BlockWindow(
-        first_parent_block=first,
-        last_parent_block=first + 9,
-    )
 
 
 METHOD = Method(
@@ -56,31 +49,14 @@ REQUEST = TuneRequest(
     study_id=STUDY_ID,
     corpus_id=CORPUS_ID,
     experiment=ExperimentSemantics(
-        training_window=_window(100),
-        validation_window=_window(210),
+        training_window=window(100),
+        validation_window=window(210),
         context_blocks=20,
         horizon_blocks=10,
         ordered_features=("base_fee",),
     ),
     methods=(METHOD,),
 )
-
-
-def _write_remote(path: Path) -> None:
-    path.write_text(
-        """ssh: university-alias
-executable: /opt/fable executable
-storage_root: /remote/storage root
-log_root: /remote/logs
-resources:
-  partition: thesis-partition
-  gres: gpu:a100:1
-  cpus_per_task: 8
-  memory_gb: 48
-  time_limit: "17:23:45"
-""",
-        encoding="utf-8",
-    )
 
 
 def test_study_run_sends_golden_candidate_script(
@@ -91,7 +67,7 @@ def test_study_run_sends_golden_candidate_script(
     method_path = tmp_path / "METHOD.json"
     request_path.write_text(REQUEST.model_dump_json(), encoding="utf-8")
     method_path.write_text(METHOD.model_dump_json(), encoding="utf-8")
-    _write_remote(tmp_path / "REMOTE.yaml")
+    write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
     scripts: list[str] = []
 
@@ -156,7 +132,7 @@ def test_remote_candidate_dispatches_input(
     monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
     monkeypatch.setattr(cli, "run_candidate", fake_run_candidate)
 
-    result = CliRunner().invoke(app, ["remote", "candidate"], input=payload)
+    result = dispatch(app, "remote", "candidate", input=payload)
 
     assert result.exit_code == 0
     assert result.output == ""

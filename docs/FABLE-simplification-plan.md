@@ -475,38 +475,38 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Shared Python test mechanics
 
-- [ ] Add plain functions in `tests/helpers.py`; add no fixture or god helper.
-- [ ] Share only exact duplication:
+- [x] Add plain functions in `tests/helpers.py`; add no fixture or god helper.
+- [x] Share only exact duplication:
   - subprocess `_run`
   - TSV `_rows`
   - `REMOTE_YAML` and `write_remote`
   - three identical dispatch builders
   - three identical `window(first)` builders
   - the duplicate Method in `test_modeling.py`
-- [ ] Keep scientific Methods, Corpus/block builders, golden arrays, and publication algorithms local.
-- [ ] Import through `tests.helpers`.
-- [ ] Add no pytest `pythonpath` setting.
+- [x] Keep scientific Methods, Corpus/block builders, golden arrays, and publication algorithms local.
+- [x] Import through `tests.helpers`.
+- [x] Add no pytest `pythonpath` setting.
 
 ### Package and static configuration
 
-- [ ] Remove unused SQLite-journal, Mypy, and coverage `.gitignore` entries.
-- [ ] Remove explicit Hatch wheel include/source configuration for conventional `src/fable`.
-- [ ] Extend Vulture paths to `src`, `tests`, `experiments`, and `tools/mobile-export`.
-- [ ] Build the wheel once and verify it contains and imports `fable`.
-- [ ] Delete only tests made obsolete by approved production deletions.
-- [ ] Keep one focused rejection test per live raw parser.
-- [ ] Keep scientific, numerical, atomic-publication, native-runtime, and demonstrated-failure tests.
-- [ ] Add no compatibility, transition, private-call-count, or library-choreography test.
+- [x] Remove unused SQLite-journal, Mypy, and coverage `.gitignore` entries.
+- [x] Remove explicit Hatch wheel include/source configuration for conventional `src/fable`.
+- [x] Extend Vulture paths to `src`, `tests`, `experiments`, and `tools/mobile-export`.
+- [x] Build the wheel once and verify it contains and imports `fable`.
+- [x] Delete only tests made obsolete by approved production deletions.
+- [x] Keep one focused rejection test per live raw parser.
+- [x] Keep scientific, numerical, atomic-publication, native-runtime, and demonstrated-failure tests.
+- [x] Add no compatibility, transition, private-call-count, or library-choreography test.
 
 ### Implementer checks
 
-- [ ] Run `uv build`.
-- [ ] Inspect wheel contents and import `fable` from the built wheel in an isolated temporary environment.
-- [ ] Run `uv run --frozen pytest -q`.
-- [ ] Run `uv run ruff check .`.
-- [ ] Run `uv run pyright`.
-- [ ] Run `uv run vulture` and manually validate every finding.
-- [ ] Run `git diff --check`.
+- [x] Run `uv build`.
+- [x] Inspect wheel contents and import `fable` from the built wheel in an isolated temporary environment.
+- [x] Run `uv run --frozen pytest -q`.
+- [x] Run `uv run ruff check .`.
+- [x] Run `uv run pyright`.
+- [x] Run `uv run vulture` and manually validate every finding.
+- [x] Run `git diff --check`.
 
 ### Reviewer acceptance
 

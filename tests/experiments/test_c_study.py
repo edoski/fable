@@ -1,32 +1,16 @@
 from __future__ import annotations
 
-import csv
-import subprocess
-import sys
 from pathlib import Path
 from uuid import UUID
 
 from fable.config import TuneRequest
 from fable.experiments import ExperimentManifest
 from fable.study import RetainedResult, Study
+from tests.helpers import read_tsv_rows, run_script
 
 _ROOT = Path(__file__).parents[2]
 _FEATURE_SCRIPT = _ROOT / "experiments" / "feature_ablation.py"
 _C_SCRIPT = _ROOT / "experiments" / "c_study.py"
-
-
-def _run(script: Path, *arguments: object) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(script), *(str(argument) for argument in arguments)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-
-def _rows(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as source:
-        return list(csv.DictReader(source, delimiter="\t"))
 
 
 def _publish_studies(
@@ -57,14 +41,14 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
     tmp_path: Path,
 ) -> None:
     feature_experiment_id = UUID(
-        _run(
+        run_script(
             _FEATURE_SCRIPT,
             "prepare",
             tmp_path,
         ).stdout.strip()
     )
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
-    feature_rows = _rows(feature_bundle / "cells.tsv")
+    feature_rows = read_tsv_rows(feature_bundle / "cells.tsv")
     _publish_studies(
         tmp_path,
         feature_rows,
@@ -74,9 +58,9 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
             ("avalanche", "B+S+P"): 0.5,
         },
     )
-    _run(_FEATURE_SCRIPT, "select", tmp_path, feature_experiment_id)
+    run_script(_FEATURE_SCRIPT, "select", tmp_path, feature_experiment_id)
 
-    result = _run(
+    result = run_script(
         _C_SCRIPT,
         "prepare",
         tmp_path,
@@ -84,7 +68,7 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
     )
     experiment_id = UUID(result.stdout.strip())
     bundle = tmp_path / "experiments" / "c_study" / f".{experiment_id}"
-    rows = _rows(bundle / "cells.tsv")
+    rows = read_tsv_rows(bundle / "cells.tsv")
     requests = [
         TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in rows
@@ -127,7 +111,7 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
             ("avalanche", "C200"): 0.25,
         },
     )
-    result = _run(_C_SCRIPT, "select", tmp_path, experiment_id)
+    result = run_script(_C_SCRIPT, "select", tmp_path, experiment_id)
 
     assert result.stdout.splitlines() == [
         "ethereum\t50\t0.25",
