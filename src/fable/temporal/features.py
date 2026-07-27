@@ -102,8 +102,8 @@ def _feature_values(blocks: pl.DataFrame, feature_name: FeatureName) -> NDArray[
         case "block_interval_seconds":
             timestamps = blocks["timestamp"].to_numpy().astype(np.int64, copy=False)
             intervals = np.diff(timestamps)
-            if not (intervals > 0).all():
-                raise ValueError("block_interval_seconds values must be positive")
+            if not (intervals >= 0).all():
+                raise ValueError("block_interval_seconds values must be nonnegative")
             return intervals.astype(np.float64, copy=False)
         case "hour_sin":
             return np.sin(_hour_angles(blocks))

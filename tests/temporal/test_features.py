@@ -130,20 +130,20 @@ def test_requested_feature_formulas_fit_in_order_and_transform_held_out_rows() -
     )
 
 
-def test_fee_and_interval_features_use_their_exact_block_facts() -> None:
+def test_fee_and_nonnegative_interval_features_use_their_exact_block_facts() -> None:
     blocks = _blocks(
         base_fees=[10, 20, 30, 40],
         gas_used=[1, 2, 3, 4],
         gas_limits=[10, 10, 10, 10],
         tx_counts=[1, 2, 3, 4],
-        timestamps=[100, 112, 130, 145],
+        timestamps=[100, 100, 112, 130],
         priority_fees=[0, 9, 99, 999],
     )
     ordered_features = (
         "log1p_effective_priority_fee_per_gas_p50",
         "block_interval_seconds",
     )
-    raw = np.column_stack((np.log1p([9, 99, 999]), [12, 18, 15])).astype(np.float64)
+    raw = np.column_stack((np.log1p([9, 99, 999]), [0, 12, 18])).astype(np.float64)
 
     state = fit_feature_state(blocks, ordered_features=ordered_features)
     transformed = transform_feature_rows(
@@ -200,21 +200,6 @@ def _fit(
             ),
             "Ethereum-only",
             id="forming-fee-chain",
-        ),
-        pytest.param(
-            lambda: _fit(
-                _blocks(
-                    base_fees=[10, 20],
-                    gas_used=[1, 2],
-                    gas_limits=[2, 4],
-                    tx_counts=[1, 2],
-                    timestamps=[1, 1],
-                    priority_fees=[1, 2],
-                ),
-                ordered_features=("block_interval_seconds",),
-            ),
-            "must be positive",
-            id="block-interval",
         ),
         pytest.param(
             lambda: FeatureState(means=(0.0,), standard_deviations=(1.0, 2.0)),
