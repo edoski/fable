@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 import torch
@@ -17,13 +17,16 @@ from executorch.backends.xnnpack.partition.xnnpack_partitioner import (
 )
 from executorch.exir import to_edge_transform_and_lower
 from executorch.runtime import Runtime
-from pydantic import UUID4, ConfigDict, TypeAdapter
+from pydantic import UUID4, Field, TypeAdapter
 from torch import nn
 
 from fable.corpus import Corpus, load_corpus
 from fable.modeling import ArtifactAssociation, load_artifact
 
-_CHAINS = {
+_Chain = Literal["ethereum", "polygon", "avalanche"]
+_Horizon = Annotated[int, Field(ge=2, le=5)]
+
+_CHAINS: dict[_Chain, int] = {
     "ethereum": 1,
     "polygon": 137,
     "avalanche": 43114,
@@ -43,8 +46,11 @@ _SUPPORTED_FEATURES = frozenset(
     }
 )
 
-_Roster = dict[str, dict[int, UUID4]]
-_ROSTER_ADAPTER = TypeAdapter(_Roster, config=ConfigDict(strict=True))
+_Roster = Annotated[
+    dict[_Chain, Annotated[dict[_Horizon, UUID4], Field(min_length=4)]],
+    Field(min_length=3),
+]
+_ROSTER_ADAPTER = TypeAdapter(_Roster)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,23 +83,6 @@ class _NamedOutputWrapper(nn.Module):
 
 def _load_roster(roster_path: Path) -> _Roster:
     raw = yaml.safe_load(roster_path.read_bytes())
-    if (
-        not isinstance(raw, dict)
-        or not all(type(chain) is str for chain in raw)
-        or set(raw) != set(_CHAINS)
-    ):
-        raise ValueError("MOBILE.yaml must contain exactly the three supported chains")
-    for chain in _CHAINS:
-        horizons = raw[chain]
-        if (
-            not isinstance(horizons, dict)
-            or not all(type(horizon) is int for horizon in horizons)
-            or set(horizons) != set(_HORIZONS)
-        ):
-            raise ValueError(f"{chain} must contain exactly integer horizons 2 through 5")
-        if not all(type(artifact_id) is str for artifact_id in horizons.values()):
-            raise ValueError(f"{chain} artifact IDs must be UUIDv4 strings")
-
     roster = _ROSTER_ADAPTER.validate_json(json.dumps(raw), strict=True)
     artifact_ids = tuple(roster[chain][horizon] for chain in _CHAINS for horizon in _HORIZONS)
     if len(set(artifact_ids)) != len(artifact_ids):

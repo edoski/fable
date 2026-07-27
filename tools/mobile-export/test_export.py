@@ -185,7 +185,7 @@ def test_export_bundle_rejects_incomplete_roster(tmp_path: Path) -> None:
     del raw["polygon"][5]
     roster_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="horizons"):
+    with pytest.raises(ValueError, match="at least 4 items"):
         mobile_export.export_bundle(
             tmp_path / "storage",
             roster_path,

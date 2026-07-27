@@ -15,7 +15,7 @@ from uuid import UUID
 import lightning.pytorch as pl
 import torch
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-from pydantic import Field, model_validator
+from pydantic import Field, TypeAdapter, model_validator
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -98,6 +98,7 @@ class _CandidateAssociation(StrictFrozenRecord):
 
 
 _Association = ArtifactAssociation | _CandidateAssociation
+_ASSOCIATION_ADAPTER = TypeAdapter(_Association)
 
 
 def _json_association(association: _Association) -> dict[str, object]:
@@ -106,13 +107,7 @@ def _json_association(association: _Association) -> dict[str, object]:
 
 def _hydrate_association(raw: object) -> _Association:
     encoded = json.dumps(raw, allow_nan=False)
-    match raw:
-        case {"request": {"workflow": "train"}}:
-            return ArtifactAssociation.model_validate_json(encoded, strict=True)
-        case {"request": {"workflow": "tune"}}:
-            return _CandidateAssociation.model_validate_json(encoded, strict=True)
-        case _:
-            raise ValueError("checkpoint association must contain one train or tune request")
+    return _ASSOCIATION_ADAPTER.validate_json(encoded, strict=True)
 
 
 class _Heads(nn.Module):
