@@ -65,18 +65,13 @@ def test_remote_workflow_dispatches_final_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = _request(kind)
-    prepared = object()
-    train_calls: list[tuple[TrainRequest, object, Path]] = []
+    train_calls: list[tuple[TrainRequest, Path]] = []
     evaluate_calls: list[tuple[EvaluateRequest, Path]] = []
     monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
-    monkeypatch.setattr(cli, "load_corpus", lambda *_: object())
-    monkeypatch.setattr(cli, "prepare_fit_history", lambda *_: prepared)
     monkeypatch.setattr(
         cli,
         "train",
-        lambda active_request, active_prepared, storage_root: train_calls.append(
-            (active_request, active_prepared, storage_root)
-        ),
+        lambda active_request, storage_root: train_calls.append((active_request, storage_root)),
     )
     monkeypatch.setattr(
         cli,
@@ -94,7 +89,7 @@ def test_remote_workflow_dispatches_final_request(
     assert result.exit_code == 0
     assert result.output == ""
     if isinstance(request, TrainRequest):
-        assert train_calls == [(request, prepared, STORAGE_ROOT)]
+        assert train_calls == [(request, STORAGE_ROOT)]
         assert evaluate_calls == []
     else:
         assert train_calls == []

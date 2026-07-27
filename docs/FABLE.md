@@ -40,8 +40,8 @@ transient observation-derived reductions
 ```text
 cli / experiment runners / mobile exporter
   ├─> execution
-  ├─> tuning ─────> corpus, temporal, modeling, study
-  ├─> modeling ───> study, temporal, min_block_fee
+  ├─> tuning ─────> modeling, study
+  ├─> modeling ───> corpus, study, temporal, min_block_fee
   └─> evaluation ─> corpus, temporal, modeling, min_block_fee
 
 temporal ─────────> corpus, min_block_fee
@@ -54,7 +54,8 @@ This diagram is generated from the production import direction at this revision.
 - `corpus` owns canonical `BlockFrame` row truth and completed Corpus association.
 - `temporal` owns causal feature state, fixed-block context/outcome geometry, and lazy historical examples.
 - `min_block_fee` owns target state, the fixed training loss, two-head output, and decode.
-- `modeling` owns the three concrete neural definitions, Lightning fitting, and native checkpoint loading.
+- `modeling` owns request-bound Corpus-to-model fitting, the three concrete neural definitions,
+  Lightning fitting, and native checkpoint loading.
 - `tuning` owns one candidate run from exact Method membership through result retention.
 - `study` owns bounded candidate membership, ordered retained results, publication, and selected-Method loading.
 - `evaluation` owns canonical self-contained observations and transient reduction.

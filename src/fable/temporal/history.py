@@ -95,7 +95,7 @@ def prepare_fit_history(
 
     backing = _build_backing(
         corpus,
-        first_block=training_window.first_parent_block - experiment.context_blocks + 1,
+        first_block=training_first_block,
         last_block=validation_window.last_parent_block + experiment.horizon_blocks,
         ordered_features=experiment.ordered_features,
         feature_state=feature_state,

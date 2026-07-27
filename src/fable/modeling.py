@@ -23,6 +23,7 @@ from . import _runtime
 from .addresses import artifact_checkpoint_path
 from .config import (
     BaselineSource,
+    ExperimentSemantics,
     LstmDefinition,
     Method,
     TrainingDefinition,
@@ -31,6 +32,7 @@ from .config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
+from .corpus import load_corpus
 from .min_block_fee import (
     MinBlockFeeLoss,
     MinBlockFeeOutput,
@@ -43,7 +45,7 @@ from .study import (
     load_selected_method,
 )
 from .temporal.features import FeatureState
-from .temporal.history import HistoricalPreparation
+from .temporal.history import HistoricalPreparation, prepare_fit_history
 
 
 class ArtifactAssociation(StrictFrozenRecord):
@@ -523,12 +525,24 @@ def _publish_artifact(
         pass
 
 
+def _load_fit_history(
+    storage_root: Path,
+    corpus_id: UUID,
+    experiment: ExperimentSemantics,
+) -> HistoricalPreparation:
+    return prepare_fit_history(load_corpus(storage_root, corpus_id), experiment)
+
+
 def train(
     request: TrainRequest,
-    prepared: HistoricalPreparation,
     storage_root: Path,
 ) -> None:
     source = request.source
+    canonical = artifact_checkpoint_path(storage_root, request.artifact_id)
+    if canonical.exists():
+        raise FileExistsError(canonical)
+
+    prepared = _load_fit_history(storage_root, source.corpus_id, source.experiment)
     if isinstance(source, BaselineSource):
         association = ArtifactAssociation(
             request=request,
@@ -544,9 +558,6 @@ def train(
             method=method,
         )
 
-    canonical = artifact_checkpoint_path(storage_root, request.artifact_id)
-    if canonical.exists():
-        raise FileExistsError(canonical)
     scratch = canonical.parent / f".{request.artifact_id}"
     outcome = _fit(association, prepared, scratch)
     _publish_artifact(storage_root, request.artifact_id, scratch, outcome)
@@ -555,9 +566,10 @@ def train(
 def fit_candidate(
     request: TuneRequest,
     method: Method,
-    prepared: HistoricalPreparation,
+    storage_root: Path,
     candidate_scratch: Path,
 ) -> RetainedResult:
+    prepared = _load_fit_history(storage_root, request.corpus_id, request.experiment)
     association = _CandidateAssociation(
         request=request,
         method=method,

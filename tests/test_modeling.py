@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,9 @@ from torch.utils.data import DataLoader
 import fable.modeling as modeling
 from fable.addresses import (
     artifact_checkpoint_path,
+    corpus_blocks_path,
+    corpus_directory,
+    corpus_json_path,
 )
 from fable.config import (
     BaselineSource,
@@ -116,6 +120,21 @@ def _corpus_request() -> CorpusRequest:
         corpus_id=CORPUS_ID,
         definition=CorpusDefinition(chain_id=1, first_block=10, last_block=23),
     )
+
+
+def _write_corpus(storage_root: Path) -> None:
+    corpus = _corpus()
+    corpus_directory(storage_root, CORPUS_ID).mkdir(parents=True)
+    corpus_json_path(storage_root, CORPUS_ID).write_text(
+        json.dumps(
+            {
+                "request": corpus.request.model_dump(mode="json"),
+                "finalized_anchor": corpus.finalized_anchor.model_dump(mode="json"),
+            }
+        ),
+        encoding="utf-8",
+    )
+    corpus.blocks.to_polars().write_parquet(corpus_blocks_path(storage_root, CORPUS_ID))
 
 
 def _candidate_request(method: Method) -> TuneRequest:
@@ -345,8 +364,8 @@ def test_all_three_models_train_load_and_apply_direct_loss(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prepared = prepare_fit_history(_corpus(), _experiment())
     request = _train_request(artifact_id, model)
+    _write_corpus(tmp_path)
     real_trainer: Any = modeling.pl.Trainer
 
     def cpu_trainer(**kwargs: Any) -> Any:
@@ -373,7 +392,7 @@ def test_all_three_models_train_load_and_apply_direct_loss(
 
         monkeypatch.setattr(Path, "unlink", fail_hidden_cleanup)
 
-    train(request, prepared, tmp_path)
+    train(request, tmp_path)
     association, loaded_model = load_artifact(tmp_path, artifact_id)
 
     assert association.request == request
@@ -384,12 +403,13 @@ def test_all_three_models_train_load_and_apply_direct_loss(
         assert hidden.is_file()
         contents = checkpoint.read_bytes()
         with pytest.raises(FileExistsError):
-            train(request, prepared, tmp_path)
+            train(request, tmp_path)
         assert checkpoint.read_bytes() == contents
     else:
         assert not hidden.exists()
 
-    batches = list(DataLoader(prepared.training, batch_size=3, shuffle=False))
+    application_history = prepare_fit_history(_corpus(), _experiment())
+    batches = list(DataLoader(application_history.training, batch_size=3, shuffle=False))
     for batch in batches:
         output = loaded_model(batch["inputs"])
         assert output.action_logits.shape == (batch["inputs"].shape[0], 2)
@@ -436,7 +456,7 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
         ),
     )
     request = _candidate_request(method)
-    prepared = prepare_fit_history(_corpus(), request.experiment)
+    _write_corpus(tmp_path)
     real_trainer: Any = modeling.pl.Trainer
     fit_kwargs: list[dict[str, object]] = []
 
@@ -456,12 +476,6 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
 
     monkeypatch.setattr(modeling.pl, "Trainer", TrainerSpy)
     scratch = tmp_path / "candidate"
-    association = modeling._CandidateAssociation(
-        request=request,
-        method=method,
-        feature_state=prepared.feature_state,
-        target_state=prepared.target_state,
-    )
 
     def progress() -> list[tuple[int, float]]:
         lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("epoch=")]
@@ -473,9 +487,9 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
             for epoch, loss in (line.split() for line in lines)
         ]
 
-    first = modeling._fit(association, prepared, scratch)
+    first = modeling.fit_candidate(request, method, tmp_path, scratch)
     first_progress = progress()
-    second = modeling._fit(association, prepared, scratch)
+    second = modeling.fit_candidate(request, method, tmp_path, scratch)
     second_progress = progress()
 
     assert [epoch for epoch, _ in first_progress] == [2]
