@@ -4,7 +4,7 @@ Research date: 2026-07-21. This note covers EIP-1559-style execution gas. Blob g
 
 ## Why block P50
 
-FABLE owns the canonical Corpus schema and historical feature identity in the [Corpus reference](../../FABLE.md#corpus-object) and [causal-feature contract](../../FABLE.md#causal-features). This note records why the chosen block statistic is P50 and how it may be interpreted.
+FABLE owns the canonical Corpus schema and historical feature identity in the [Corpus reference](../FABLE.md#corpus-object) and [causal-feature contract](../FABLE.md#causal-features). This note records why the chosen block statistic is P50 and how it may be interpreted.
 
 P50 is the gas-used-weighted median effective priority fee paid by transactions included in a block. Acquire it directly with:
 

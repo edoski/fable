@@ -30,7 +30,7 @@ second model interface without reducing the thesis scope.
 ## Implemented repository contract
 
 The canonical implemented exporter and app runtime contract is owned by
-[Mobile deployment](../../FABLE.md#mobile-deployment). This research note records the decision
+[Mobile deployment](../FABLE.md#mobile-deployment). This research note records the decision
 rationale and the real-artifact evidence still required.
 
 ## Current boundary

@@ -2,7 +2,7 @@
 
 FABLE (Fee Analysis through Blockchain Learning and Estimation) is a closed-parent, fixed-block-horizon system for learning when a future block is likely to minimize base fee per gas. This manual is the canonical detailed account of the product's scientific contract, worked decision, architecture, interfaces, requests, durable objects, commands, operator configuration, mobile surface, evaluation schemas, limitations, and sources.
 
-FABLE derives from and extends selected temporal work from *SPICE: A Predictive Framework for Cost-Optimization in Multichain Environments*. FABLE is neither SPICE nor a reproduction of SPICE. Domain terms are defined in [CONTEXT.md](CONTEXT.md); durable-object and execution-boundary decisions remain recorded in [docs/adr/](docs/adr/).
+FABLE derives from and extends selected temporal work from *SPICE: A Predictive Framework for Cost-Optimization in Multichain Environments*. FABLE is neither SPICE nor a reproduction of SPICE. Domain terms are defined in [CONTEXT.md](CONTEXT.md); active durable-object and execution-boundary decisions are indexed in [adr/](adr/).
 
 ## Contents
 
@@ -33,72 +33,35 @@ strict workflow request --> CLI or direct Python call
 transient observation-derived reductions
 ```
 
-`fable.config` owns frozen Pydantic values and small discriminated unions. `fable.requests` mints fresh UUIDv4 instances. A boundary receiving raw JSON or durable bytes hydrates the owning typed value once; downstream code trusts that value.
+`fable.config` owns frozen Pydantic values and small discriminated unions. `fable.requests` mints fresh UUIDv4 instances. Raw JSON and durable bytes are strictly hydrated once at their owning boundary; downstream code trusts those typed values and their already-typed nested values.
 
 ### Dependency direction
 
 ```text
-CLI / exporter / Python callers
-                |
-                v
-execution, study, evaluation
-                |
-                v
-modeling, temporal, min_block_fee, corpus
-                |
-                v
-strict config values and canonical addresses
+cli / experiment runners / mobile exporter
+  ├─> execution
+  ├─> tuning ─────> corpus, temporal, modeling, study
+  ├─> modeling ───> study, temporal, min_block_fee
+  └─> evaluation ─> corpus, temporal, modeling, min_block_fee
+
+temporal ─────────> corpus, min_block_fee
+corpus / study / min_block_fee / execution
+         └────────> config and strict records
 ```
 
-Each owner has one system seam:
+This diagram is generated from the production import direction at this revision. Direct owner seams are:
 
 - `corpus` owns canonical `BlockFrame` row truth and completed Corpus association.
 - `temporal` owns causal feature state, fixed-block context/outcome geometry, and lazy historical examples.
 - `min_block_fee` owns target state, the fixed training loss, two-head output, and decode.
 - `modeling` owns the three concrete neural definitions, Lightning fitting, and native checkpoint loading.
+- `tuning` owns one candidate run from exact Method membership through result retention.
 - `study` owns bounded candidate membership, ordered retained results, publication, and selected-Method loading.
 - `evaluation` owns canonical self-contained observations and transient reduction.
 
-### Durable object flow
+The closed model union is LSTM, Transformer, or Transformer-LSTM. Historical preparation supplies lazy contiguous CPU-backed examples; each model consumes float32 `[B,C,F]` and returns action logits `[B,K]` plus standardized minimum-fee prediction `[B]`. Architecture stays independent of target construction and evaluation accounting.
 
-#### Corpus
-
-`CorpusRequest` names an inclusive chain block range and its UUID. FABLE consumes and validates a
-completed canonical `corpus.json`/`blocks.parquet` pair. Corpus production is external.
-
-#### Study and artifact
-
-`TuneRequest` contains one `ExperimentSemantics` and a finite nonempty tuple of complete Methods from one model family. `run_candidate()` prepares training state, fits one supplied Method, and publishes its successful `RetainedResult` at the Method's request index. `publish_study()` assembles the complete result set in request order and publishes its canonical JSON file through a create-only hard link.
-
-A baseline `TrainRequest` embeds its complete `TrainingDefinition`. A selected-Study request instead names the exact Study UUID and result index while carrying the experiment. Training loads that exact row's Method, composes the definition from the source experiment and Method, and fits through Lightning in `artifacts/.<artifact_id>/`. It moves the native weights-only best checkpoint to hidden sibling `artifacts/.<artifact_id>.ckpt`, removes the scratch directory, and creates `artifacts/<artifact_id>.ckpt` with a create-only hard link. An occupied canonical path makes the link fail without overwrite; cleanup of the hidden checkpoint is best-effort after a successful link. The checkpoint embeds the request, feature and target state, and—only for selected-Study training—the exact result index and Method.
-
-#### Evaluation
-
-`EvaluateRequest` names an artifact, same-source Corpus, testing origin window, and evaluation UUID. Evaluation rebuilds historical examples with persisted state, runs the artifact on CUDA, and publishes `evaluation.json` with `observations.parquet`. Each ordered observation stores `h_i`, `hat{k}_i`, `k_i*`, `hat{ell}_i`, `B_i(0)`, `P_i(0)`, `B_i(hat{k}_i)`, `P_i(hat{k}_i)`, and `m_i` under the exact field names in the [reference](#canonical-observations).
-
-`reduce_evaluation()` validates the strict request and UUID, exact schema, nonnull row count, and ordered testing window, then trusts the published row values and returns a transient one-row seven-metric DataFrame. The rolling reduction reads explicit `K=2…5` observation files and returns one transient row of six economic metrics per architecture-chain cell. Neither path loads an artifact or Corpus or persists its result.
-
-### Training and inference
-
-Historical preparation produces lazy datasets over contiguous feature, fee, and block-number
-backing.
-
-The model union is closed: LSTM, Transformer, or Transformer-LSTM. Every model consumes float32 `[B,C,F]` and returns action logits `[B,K]` plus a scalar standardized minimum-fee prediction `[B]`. The architecture is independent of target construction and evaluation accounting.
-
-Mobile deployment is a build-time export followed by direct on-device inference. The isolated
-exporter consumes the strict `(chain,K)` artifact roster in `MOBILE.yaml` and publishes all twelve
-XNNPACK `.pte` models plus one manifest only after every cell passes validation and host parity.
-The Expo app reads an EVM chain directly, reproduces the ordered feature transform in TypeScript,
-runs the selected bundled model, decodes the same two heads, and records outcomes locally.
-
-### External boundaries
-
-Corpus production is external to FABLE. The mobile app uses Viem to read public EVM JSON-RPC
-endpoints; RPC supplies raw observations and does not perform FABLE inference.
-
-`fable.execution.submit()` is the boundary to native OpenSSH and Slurm execution. [ADR 0007](docs/adr/0007-native-external-execution-boundary.md) records that ownership decision.
-
-Completed objects have direct canonical addresses and own their exact requests once. UUIDs provide instance identity; associations provide meaning. See [ADR 0006](docs/adr/0006-direct-durable-object-authority.md).
+Corpus production is external. Native OpenSSH and Slurm begin at `fable.execution.submit()` ([ADR 0007](adr/0007-native-external-execution-boundary.md)). Completed objects own one exact request at direct canonical addresses; UUIDs identify instances and typed associations establish meaning ([ADR 0006](adr/0006-direct-durable-object-authority.md)).
 
 ## One decision, end to end
 
@@ -514,7 +477,7 @@ p50_fee_inclusive_savings
 base_fee_optimality_gap = mean_i ((B_i(hat{k}_i) - m_i) / m_i)
 ```
 
-`f1_macro` is standard unweighted macro-F1 over the union of action classes present in truth or predictions, with zero division equal to zero. Classes absent from both do not enter the mean.
+`f1_macro` is standard unweighted macro-F1 over the union of action classes present in truth or predictions. Classes absent from both do not enter the mean.
 
 All three economic metrics are mean per-origin fractions, not ratios of fee sums. Positive base fees make their denominators defined. Both savings metrics are higher-is-better; `base_fee_savings` remains base-fee-only, while `p50_fee_inclusive_savings` is a retrospective representative-cost proxy using each outcome block's included-transaction P50, not an inclusion guarantee. `base_fee_optimality_gap` is nonnegative and lower is better. Natural-log errors compare dimensionless coordinates relative to `u=1 wei/gas` and lower is better. Accuracy and macro-F1 are unitless and higher is better. Economic values remain fractions for later percentage formatting.
 
@@ -558,69 +521,13 @@ to cover the completed range.
 
 Temporal preparation has two direct paths: historical fixed-block examples and live closed-head inference. Both use the same ordered feature functions and persisted training-only feature state.
 
-#### Historical interface
+`prepare_fit_history(corpus, experiment)` validates complete context/outcome support, fits state from training support only, and returns training and validation `HistoricalDataset` values with `FeatureState` and `TargetState`. `prepare_historical_window(corpus, experiment, window, *, feature_state, target_state)` prepares an exact testing window with persisted state after complete validation outcomes.
 
-`prepare_fit_history(corpus, experiment)` validates complete context and outcome support, fits state from training support only, and returns:
+Preparation keeps one contiguous CPU backing of float32 feature rows and int64 fees/block numbers, plus per-origin positions, int64 `k_i*` labels, and float32 `z_i` targets. `HistoricalDataset.__getitem__()` slices one `[C,F]` input and `[K]` outcome on demand with scalar label, target, and origin.
 
-```text
-HistoricalPreparation
-  training: HistoricalDataset
-  validation: HistoricalDataset
-  feature_state: FeatureState
-  target_state: TargetState
-```
+The ordered feature tuple is request authority. Raw features are assembled in that order as Float64; training-support population state uses `ddof=0`, rejects constants, and transforms to finite C-contiguous float32. Outcomes remain positive int64 `B_i(k)` values. The [scientific contract](#causal-features) owns formulas, causality, target construction, and complete-outcome role boundaries.
 
-`prepare_historical_window(corpus, experiment, window, *, feature_state, target_state)` prepares an exact testing window with persisted state. Testing must begin after all validation outcomes are complete.
-
-For origin `h`, support is exact by block number:
-
-```text
-context:  h-C+1 ... h
-outcome:  h+1   ... h+K
-action k: target h+1+k
-```
-
-The Corpus must include every context and outcome block named by this geometry.
-
-#### Lazy dataset
-
-Preparation builds one contiguous CPU backing over the needed range:
-
-- transformed feature rows: float32 `[rows,F]`;
-- raw base fees: int64 `[rows]`;
-- block numbers: int64 `[rows]`.
-
-It stores per-origin row positions, canonical `k_i*` labels as int64 vectors, and standardized
-`z_i` targets as a float32 vector. `HistoricalDataset.__getitem__()` slices one float32 `[C,F]`
-input and one int64 `[K]` raw fee outcome on demand, plus scalar int64 label and origin block and
-scalar float32 target.
-
-#### Feature state
-
-The ordered feature tuple is request authority. Names must be unique and supported by the direct implementation. Raw features are assembled in exactly that order as Float64. Training-support population means and standard deviations use `ddof=0`; a constant feature is invalid. Transform applies those values and returns finite C-contiguous float32 rows.
-
-Exact formulas, units, causal availability, and the Ethereum forming-fee recurrence belong to the [theory](#causal-features).
-
-#### Outcome preparation
-
-Historical outcomes remain positive int64 `B_i(k)` fees. For each origin, canonical `k_i*` is the
-label, and `m_i` feeds the fitted target state.
-
-Role boundaries are complete-outcome boundaries. The training last parent plus `K` must be strictly before the first validation parent; an authored testing window obeys the same rule after validation. Training alone fits feature state, target state, and model weights.
-
-#### Live interface
-
-The mobile engine reads one latest closed head `h` and synchronizes the exact context from public
-RPC. Its TypeScript transform reproduces the historical path's ordered feature formulas and
-persisted `FeatureState`, then constructs float32 `[1,C,F]`. If
-`block_interval_seconds` is selected, `C+1` raw blocks supply the `C` feature rows. Historical
-preparation remains the parity authority for feature values. The exact build-time bundle and live
-app boundary are in [Mobile deployment](#mobile-deployment).
-
-The bundled cell fixes `C`, `K`, feature order, and fitted states. Decoding returns `hat{k}_i`, so
-the app reports `h_i+1+hat{k}_i` as the target block coordinate. It de-standardizes `hat{z}_i` to
-`hat{ell}_i` with the artifact's `TargetState` and returns `u * exp(hat{ell}_i)` as the positive
-finite `predicted_minimum_base_fee_per_gas`.
+For live inference, the app reads one closed head, synchronizes the exact context, reproduces the historical feature transform, and constructs float32 `[1,C,F]`; `block_interval_seconds` requires `C+1` raw blocks. The bundled cell fixes `C`, `K`, feature order, and fitted states. Decode returns target block `h_i+1+hat{k}_i` and positive finite `u * exp(hat{ell}_i)`. Historical preparation remains the parity authority; [Mobile deployment](#mobile-deployment) owns the build-time boundary.
 
 ### Minimum-block-fee task
 
@@ -663,9 +570,7 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 
 #### Request and membership
 
-`TuneRequest` fixes a Study UUID, Corpus UUID, `ExperimentSemantics`, and a nonempty tuple of unique complete Methods. Every Method uses the same model family and owns one `ModelDefinition` plus its complete fit policy.
-
-`apply_method(request, method)` requires exact whole-Method membership in `request.methods`, then returns `TrainingDefinition(experiment=request.experiment, method=method)`.
+`TuneRequest` fixes a Study UUID, Corpus UUID, `ExperimentSemantics`, and a nonempty tuple of unique complete Methods. Every Method uses the same model family and owns one `ModelDefinition` plus its complete fit policy. Candidate execution resolves membership directly with `request.methods.index(method)` and builds `TrainingDefinition(experiment=request.experiment, method=method)` as the fitting association's derived property.
 
 #### Candidate run
 
@@ -682,7 +587,7 @@ The selected epoch cannot exceed completed epochs, and completed epochs cannot e
 
 #### Indexed results and publication
 
-Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary sibling. Each result file is a one-trial `Study` carrying the full request. The former shared `progress.json` format is unsupported.
+Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary sibling. Each result file is a one-trial `Study` carrying the full request.
 
 `publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first available result. All files must carry the identical request and exactly one trial whose Method matches that request index. Publication assembles trials in `request.methods` order, writes hidden sibling `studies/.<study_id>.json`, removes scratch directory `studies/.<study_id>/`, and creates `studies/<study_id>.json` with `os.link()`. An occupied canonical path makes the link fail without overwrite. After a successful link, hidden-file cleanup is best-effort and cannot retract the canonical Study.
 
@@ -716,7 +621,7 @@ The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical n
 
 `reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, expected nonnull row count, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. It requires all seven computed metrics to be finite. It does not reload the artifact or Corpus or externally authenticate the horizon or source. The result has no evaluation ID, count, sums, supports, arrays, or auxiliary fields and is not persisted.
 
-The rolling reduction reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps exactly nine human-readable architecture-chain cell names to mappings from horizons `2`, `3`, `4`, and `5` to their Evaluation UUIDs. The final experiment runner owns that scientific association. Reduction verifies exact schemas, nonnull consecutive origins, action ranges, and required shifted coverage. Its nine-row, six-metric DataFrame is transient and is not persisted.
+Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps exactly nine human-readable architecture-chain cell names to mappings from horizons `2`, `3`, `4`, and `5` to their Evaluation UUIDs. The final experiment runner owns that scientific association. Reduction verifies exact schemas, nonnull consecutive origins, action ranges, and required shifted coverage. Its nine-row, six-metric DataFrame is transient and is not persisted.
 
 ## Exact reference
 
@@ -731,7 +636,7 @@ operator YAML, mobile bundle and runtime surfaces, and evaluation schemas.
 - Block ranges and origin windows are inclusive.
 - Base fees are positive Int64 wei/gas unless a field explicitly says Float64 aggregation.
 - Timestamps and elapsed values are integer seconds.
-- Strict records reject unknown fields and revalidate nested instances.
+- Raw JSON and durable bytes hydrate once with strict scalar parsing and unknown-field rejection. `StrictFrozenRecord` values are immutable; downstream code trusts already-typed nested Pydantic values instead of revalidating instances.
 
 Distribution name, import root, and installed executable are `fable`; the static distribution version is `0.1.0`.
 
@@ -771,7 +676,7 @@ The training last parent plus `K` must be strictly less than the validation firs
 | `transformer` | `model_width`; `attention_heads`; `transformer_layers`; `feedforward_width`; `head_hidden`: PositiveInt; `dropout: 0≤float<1` |
 | `transformer_lstm` | `model_width`; `attention_heads`; `transformer_layers`; `feedforward_width`; `lstm_hidden`; `lstm_layers`; `head_hidden`: PositiveInt; `dropout: 0≤float<1` |
 
-Transformer widths must be even and divisible by `attention_heads`.
+Only `model_width` must be even and divisible by `attention_heads`; `feedforward_width`, head widths, and LSTM widths are positive but have no such divisibility rule.
 
 #### Method
 
@@ -834,6 +739,8 @@ fresh_evaluate_request(
     testing_window: BlockWindow,
 ) -> EvaluateRequest
 ```
+
+`fresh_tune_request()` is the UUIDv4 origin for publishable TuneRequests; experiment runners call it rather than accepting operator-supplied Study IDs.
 
 ### Durable addresses and objects
 
@@ -939,6 +846,8 @@ Each `RetainedResult` has exact ordered fields:
 | `study_result_index` | absent/null for baseline; exact nonnegative source index for selected Study |
 | `method` | absent/null for baseline; exact selected Method for selected Study |
 
+Fitting uses hidden sibling scratch at `artifacts/.<artifact_id>/`. Publication moves the completed best checkpoint to `artifacts/.<artifact_id>.ckpt`, removes scratch, and creates the canonical path with `os.link()`. An occupied target fails without overwrite; cleanup of the hidden checkpoint is best-effort only after the canonical link exists.
+
 Direct loader:
 
 ```python
@@ -964,7 +873,7 @@ fable study finalize STUDY_ID
 
 - `submit` accepts one or more WorkflowRequest files and prints one positive Slurm job ID per request.
 - `study run` validates one strict TuneRequest and one strict Method, then prints the candidate Slurm job ID.
-- `study finalize` requires UUIDv4, reads absolute `STORAGE_ROOT`, and publishes existing progress.
+- `study finalize` accepts standard UUID syntax, reads absolute `STORAGE_ROOT`, and publishes existing indexed results. The result files' strict TuneRequest must carry the same Study ID, and publishable TuneRequests originate from `fresh_tune_request()` as UUIDv4.
 
 Two help-hidden generated-job leaves:
 
@@ -1006,19 +915,9 @@ export paths.
 
 ### Mobile deployment
 
-The isolated project in `tools/mobile-export` pins Torch 2.11 and ExecuTorch 1.2 without changing
-FABLE's Torch 2.7.1 scientific environment. It consumes an operator-created `MOBILE.yaml` whose
-root contains exactly `ethereum`, `polygon`, and `avalanche`. Each chain contains exactly
-integer keys `2`, `3`, `4`, and `5` mapped to twelve distinct artifact UUIDv4 values.
-`STORAGE_ROOT` locates the canonical artifacts.
+The isolated `tools/mobile-export` project pins Torch 2.11 and ExecuTorch 1.2 without changing FABLE's Torch 2.7.1 environment. Its strict `MOBILE.yaml` roster contains exactly `ethereum`, `polygon`, and `avalanche`, each with integer horizons `2…5` mapped to twelve distinct artifact UUIDv4 values.
 
-For every cell, the exporter verifies artifact identity, source-chain association, `K`, supported
-features, float32 output shape and finiteness, eager-to-XNNPACK host parity, selected action, and
-decoded-fee tolerance. All four horizons for a chain must share `C`, ordered features, and feature
-state. The exporter rejects an existing output directory before lowering, builds all files in a
-hidden sibling scratch directory, checks the output again immediately before publication, and
-renames the completed scratch directory. A detected collision preserves the occupied output, and
-failure cleanup removes exporter scratch. Only after all twelve cells pass does it publish:
+Every cell must match artifact identity, chain, horizon, supported features, native output semantics, eager-to-XNNPACK host parity, selected action, and decoded-fee tolerance. A chain's four cells must share context, ordered features, and feature state. The exporter rejects an occupied output before lowering, builds a hidden sibling directory, checks again immediately before rename, and removes scratch on failure. Publication is all twelve models plus one manifest:
 
 ```text
 app/assets/models/
@@ -1028,50 +927,15 @@ app/assets/models/
   avalanche-k2.pte ... avalanche-k5.pte
 ```
 
-The manifest stores each chain's shared context and ordered feature state plus each model's artifact
-UUID and target state. The app trusts this exporter-owned, build-time bundle and performs direct
-typed catalog lookups; it does not parse or revalidate the manifest at runtime. Metro binds the
-twelve stable `.pte` paths statically; there is no download path, alternate runtime, or remote
-inference fallback.
+The manifest owns shared context and feature state plus each model's artifact UUID and target state. The app trusts this build-time bundle through typed direct lookups and twelve static `.pte` requires. It has no download, alternate runtime, or remote inference fallback.
 
-The private Expo app manifest is fixed at:
+Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares the exact closed-head context, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset.
 
-| Fact | Value |
-| --- | --- |
-| display | `FABLE Demo` |
-| package | `fable-mobile-demo` |
-| Expo slug/scheme | `fable-demo` |
-| iOS bundle ID | `dev.edoski.fable.demo` |
-| Android package | `dev.edoski.fable.demo` |
-| entry | `expo/AppEntry` |
-
-Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native development
-build; Expo Go cannot load the model runtime. The app uses the default Viem RPC endpoint for the
-selected chain and requires chain IDs `1`, `137`, and `43114`. A self-scheduling one-second poll
-updates visible live conditions without mutating inference context. Run reads a fresh exact head,
-synchronizes and validates the context, prepares features, loads the `(chain,K)` model, and
-performs inference on device.
-
-One chain-scoped engine and one model are retained. A network change aborts and disposes the
-previous engine without delaying its replacement; a `K` change reuses chain context and selects
-another bundled model. The result contains chain, `K`, artifact UUID, head number and hash,
-selected zero-based action, target block, and the decoded minimum-fee prediction.
-
-Runs are stored as one unbounded canonical array under `fable.runs`. Pending outcomes resolve
-through direct RPC when the selected chain reaches the target block. Analytics derives every
-summary, chart, count, and row from the same `(chain,K)` subset. This schema is a clean break:
-clear the development app's storage once before starting this revision so the previous
-`fable.runs` value is removed. There is no migration or compatibility reader.
-
-The code and non-asset tests implement this contract. A real `MOBILE.yaml` and generated bundle do
-not yet exist because the twelve final artifact UUIDs do not exist. Simulator parity remains
-unrun. After all twelve real files exist, execute every `(chain,K)` cell in a custom native iOS
-simulator build and compare its outputs, selected action, and decoded fee with the Python oracle
-within the exporter's existing tolerances.
+The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real `MOBILE.yaml`, generated assets, and native parity evidence do not yet exist. Exporter retirement and final acceptance remain deferred to A01. The [README](../README.md#mobile-demo) owns build commands; the [on-device decision](research/on-device-inference.md) owns rationale and acceptance boundaries.
 
 ### Execution runtime
 
-The internal installed-executable profile fixes fit and evaluation batch size at 64; four persistent pinned-memory loader workers with prefetch factor 2; deterministic Torch execution without benchmarking; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32 enabled. It is code, not a request, schema, YAML field, or public configuration surface.
+The internal installed-executable profile sets `CUBLAS_WORKSPACE_CONFIG=:4096:8` before GPU work and fixes fit and evaluation batch size at 64; four persistent pinned-memory loader workers with prefetch factor 2; deterministic Torch execution without benchmarking; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32 enabled. It is code, not a request, schema, YAML field, or public configuration surface.
 
 ### Evaluation API
 
@@ -1086,6 +950,11 @@ evaluate(
 reduce_evaluation(
     storage_root: Path,
     evaluation_id: UUID,
+) -> polars.DataFrame
+
+reduce_rolling(
+    storage_root: Path,
+    roster: Mapping[str, Mapping[int, UUID]],
 ) -> polars.DataFrame
 ```
 
@@ -1122,7 +991,7 @@ Destination: none. `reduce_evaluation()` structurally validates the completed ev
 | 7 | `base_fee_optimality_gap` | Float64 | mean per-origin fraction above optimum; lower is better |
 
 `accuracy` compares `predicted_action_k` (`hat{k}_i`) with `minimum_action_k` (`k_i*`). `f1_macro`
-averages over the union of classes appearing in truth or predictions with zero division zero.
+averages over the union of classes appearing in truth or predictions.
 Regression compares `predicted_minimum_log_base_fee` (`hat{ell}_i`) with
 `ln(minimum_base_fee_per_gas / u)` (`ell_i`). Economic fields are fractions, not percentages or
 ratios of sums. `p50_fee_inclusive_savings` is retrospective and does not claim inclusion.

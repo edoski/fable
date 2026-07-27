@@ -6,11 +6,11 @@ Issues and PRDs are tracked in GitHub Issues for this repository; external PRs a
 
 ### Triage labels
 
-Use the canonical triage label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Use only `ready-for-agent`, `ready-for-human`, and `wontfix` as ordinary triage labels.
 
 ### Domain docs
 
-Use a single-context domain-doc layout. See `docs/agents/domain.md`.
+Use terminology from `docs/CONTEXT.md`. If work conflicts with an existing ADR, state the conflict explicitly rather than silently overriding it.
 
 ### Verification tools
 

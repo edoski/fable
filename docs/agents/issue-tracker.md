@@ -16,12 +16,6 @@ the CLI.
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
-## Pull requests as a triage surface
-
-External and collaborator pull requests do not enter the issue-triage queue.
-
-GitHub shares one number space across issues and PRs, so a bare `#42` may be either. Resolve with `gh pr view 42` and fall back to `gh issue view 42`.
-
 ## When a skill says "publish to the issue tracker"
 
 Create a GitHub issue through the connector, with `gh issue create` as the fallback.

@@ -78,10 +78,10 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Reviewer acceptance
 
-- [ ] Reproduce occupied-target preservation for Artifact, Study, and exporter output.
-- [ ] Confirm no post-publication cleanup failure can retract a published canonical object.
-- [ ] Confirm no compatibility layout or overwrite fallback was added.
-- [ ] Issue separate Standards and Spec verdicts.
+- [x] Reproduce occupied-target preservation for Artifact, Study, and exporter output.
+- [x] Confirm no post-publication cleanup failure can retract a published canonical object.
+- [x] Confirm no compatibility layout or overwrite fallback was added.
+- [x] Issue separate Standards and Spec verdicts.
 
 ## Slice 2 — Python interfaces, CLI, and orchestration ownership
 
@@ -140,10 +140,10 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Reviewer acceptance
 
-- [ ] Verify all five Study consumers use the public loader.
-- [ ] Verify entry-point installation and CLI help/import behavior.
-- [ ] Verify no old module path, shim, silent filter, or private cross-module import survives.
-- [ ] Issue separate Standards and Spec verdicts.
+- [x] Verify all five Study consumers use the public loader.
+- [x] Verify entry-point installation and CLI help/import behavior.
+- [x] Verify no old module path, shim, silent filter, or private cross-module import survives.
+- [x] Issue separate Standards and Spec verdicts.
 
 ## Slice 3 — Scientific core, evaluation, and numerical runtime
 
@@ -208,10 +208,10 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Reviewer acceptance
 
-- [ ] Trace every removed guard to its upstream typed/scientific owner or surviving final check.
-- [ ] Confirm EIP-1559 integer arithmetic, causal geometry, zero-variance rejection, feature finiteness, gas-utilization semantics, and native output checks remain.
-- [ ] Confirm runtime configuration occurs before any GPU work without starting a GPU job.
-- [ ] Issue separate Standards and Spec verdicts.
+- [x] Trace every removed guard to its upstream typed/scientific owner or surviving final check.
+- [x] Confirm EIP-1559 integer arithmetic, causal geometry, zero-variance rejection, feature finiteness, gas-utilization semantics, and native output checks remain.
+- [x] Confirm runtime configuration occurs before any GPU work without starting a GPU job.
+- [x] Issue separate Standards and Spec verdicts.
 
 ## Slice 4 — Experiment runners and mobile exporter contract
 
@@ -274,11 +274,11 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Reviewer acceptance
 
-- [ ] Verify experiment IDs are minted, printed, and consumed through the real workflow.
-- [ ] Verify the exporter raw boundary rejects malformed/incomplete/duplicate rosters.
-- [ ] Verify no runtime version parser or second environment survives.
-- [ ] Verify app/exporter manifest types agree exactly.
-- [ ] Issue separate Standards and Spec verdicts.
+- [x] Verify experiment IDs are minted, printed, and consumed through the real workflow.
+- [x] Verify the exporter raw boundary rejects malformed/incomplete/duplicate rosters.
+- [x] Verify no runtime version parser or second environment survives.
+- [x] Verify app/exporter manifest types agree exactly.
+- [x] Issue separate Standards and Spec verdicts.
 
 ## Slice 5 — App engine, model, and history
 
@@ -349,10 +349,10 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Reviewer acceptance
 
-- [ ] Probe selection change, disposal, failed preparation retry, serial execution, and history persistence.
-- [ ] Confirm raw bigint, numerical prediction, feature finiteness, and native decoder guards remain.
-- [ ] Confirm no lifecycle abstraction, history cap, migration, or error taxonomy survives.
-- [ ] Issue separate Standards and Spec verdicts.
+- [x] Probe selection change, disposal, failed preparation retry, serial execution, and history persistence.
+- [x] Confirm raw bigint, numerical prediction, feature finiteness, and native decoder guards remain.
+- [x] Confirm no lifecycle abstraction, history cap, migration, or error taxonomy survives.
+- [x] Issue separate Standards and Spec verdicts.
 
 ## Slice 6 — App RPC and analytics
 
@@ -406,10 +406,10 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Reviewer acceptance
 
-- [ ] Probe warm verification, concurrent sync, reorg recovery, disposal cancellation isolation, and the exact timeout boundary.
-- [ ] Confirm Viem batching cannot truncate the requested range.
-- [ ] Confirm remaining analytics tests cover every supported outcome state.
-- [ ] Issue separate Standards and Spec verdicts.
+- [x] Probe warm verification, concurrent sync, reorg recovery, disposal cancellation isolation, and the exact timeout boundary.
+- [x] Confirm Viem batching cannot truncate the requested range.
+- [x] Confirm remaining analytics tests cover every supported outcome state.
+- [x] Issue separate Standards and Spec verdicts.
 
 ## Slice 7 — App presentation and shared styles
 
@@ -464,10 +464,10 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Reviewer acceptance
 
-- [ ] Inspect both screens’ rendered ownership and chart props.
-- [ ] Confirm width/carousel state is gone and internal chart scrolling remains.
-- [ ] Confirm all shared colors/styles have one owner without override machinery.
-- [ ] Issue separate Standards and Spec verdicts.
+- [x] Inspect both screens’ rendered ownership and chart props.
+- [x] Confirm width/carousel state is gone and internal chart scrolling remains.
+- [x] Confirm all shared colors/styles have one owner without override machinery.
+- [x] Issue separate Standards and Spec verdicts.
 
 ## Slice 8 — Cross-cutting test and package-tool consolidation
 
@@ -510,10 +510,10 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Reviewer acceptance
 
-- [ ] Confirm each helper removes exact structure without coupling scientific fixtures.
-- [ ] Confirm the wheel contains/imports the package without custom Hatch mapping.
-- [ ] Manually audit Vulture findings against callbacks, validators, CLI registration, reflection, and configuration.
-- [ ] Issue separate Standards and Spec verdicts.
+- [x] Confirm each helper removes exact structure without coupling scientific fixtures.
+- [x] Confirm the wheel contains/imports the package without custom Hatch mapping.
+- [x] Manually audit Vulture findings against callbacks, validators, CLI registration, reflection, and configuration.
+- [x] Issue separate Standards and Spec verdicts.
 
 ## Slice 9 — Documentation and repository layout
 
@@ -521,56 +521,56 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Layout and links
 
-- [ ] Move `FABLE.md` to `docs/FABLE.md`.
-- [ ] Move `CONTEXT.md` to `docs/CONTEXT.md`.
-- [ ] Keep only `README.md` and discovery-critical `AGENTS.md` as root Markdown files.
-- [ ] Keep every other Markdown file under `docs/`.
-- [ ] Rewrite every inbound/relative link, including research links.
-- [ ] Preserve README-linked headings and anchors.
+- [x] Move `FABLE.md` to `docs/FABLE.md`.
+- [x] Move `CONTEXT.md` to `docs/CONTEXT.md`.
+- [x] Keep only `README.md` and discovery-critical `AGENTS.md` as root Markdown files.
+- [x] Keep every other Markdown file under `docs/`.
+- [x] Rewrite every inbound/relative link, including research links.
+- [x] Preserve README-linked headings and anchors.
 
 ### Manual and glossary
 
-- [ ] Compress the manual by about 97 lines as an estimate, not quota.
-- [ ] Preserve its standalone scientific contract, equations, causal rules, estimands, feature/target definitions, claim boundaries, limitations, sources, provenance, and ownership statements.
-- [ ] Remove only proven repetition, stale implementation wording, and mobile details owned elsewhere.
-- [ ] Delete nonexistent `apply_method()` wording and describe direct Method membership plus `TrainingDefinition`.
-- [ ] Add public `reduce_rolling()` to the evaluation API.
-- [ ] Describe hydrate-once strict records and trusted nested typed values.
-- [ ] State that only `model_width` must be even/divisible by `attention_heads`.
-- [ ] Regenerate the dependency diagram from imports, include `tuning`, and correct `modeling`/`study`.
-- [ ] State UUID syntax for `study finalize` and UUIDv4 origin for publishable TuneRequests.
-- [ ] Delete the inapplicable macro-F1 zero-division claim.
-- [ ] Remove the twelve glossary entries that merely restate Pydantic records.
-- [ ] Do not add “Cost over optimum.”
+- [x] Compress the manual by about 97 lines as an estimate, not quota.
+- [x] Preserve its standalone scientific contract, equations, causal rules, estimands, feature/target definitions, claim boundaries, limitations, sources, provenance, and ownership statements.
+- [x] Remove only proven repetition, stale implementation wording, and mobile details owned elsewhere.
+- [x] Delete nonexistent `apply_method()` wording and describe direct Method membership plus `TrainingDefinition`.
+- [x] Add public `reduce_rolling()` to the evaluation API.
+- [x] Describe hydrate-once strict records and trusted nested typed values.
+- [x] State that only `model_width` must be even/divisible by `attention_heads`.
+- [x] Regenerate the dependency diagram from imports, include `tuning`, and correct `modeling`/`study`.
+- [x] State UUID syntax for `study finalize` and UUIDv4 origin for publishable TuneRequests.
+- [x] Delete the inapplicable macro-F1 zero-division claim.
+- [x] Remove the twelve glossary entries that merely restate Pydantic records.
+- [x] Do not add “Cost over optimum.”
 
 ### ADR, agent, and research cleanup
 
-- [ ] Delete ADRs 0001–0005.
-- [ ] Add `docs/adr/README.md` listing number, title, final status, and successor.
-- [ ] Keep ADRs 0006 and 0007 in full.
-- [ ] Delete `docs/agents/triage-labels.md`.
-- [ ] List only `ready-for-agent`, `ready-for-human`, and `wontfix` as ordinary triage labels in `AGENTS.md`.
-- [ ] Leave Wayfinder labels/behavior unchanged.
-- [ ] Delete `docs/agents/domain.md`.
-- [ ] Fold only terminology-from-`docs/CONTEXT.md` and ADR-conflict rules into `AGENTS.md`.
-- [ ] Remove the PR-triage section from `docs/agents/issue-tracker.md`.
-- [ ] Collapse duplicate README navigation/architecture rows and keep one ADR pointer.
-- [ ] Delete tracked orphan research assets:
+- [x] Delete ADRs 0001–0005.
+- [x] Add `docs/adr/README.md` listing number, title, final status, and successor.
+- [x] Keep ADRs 0006 and 0007 in full.
+- [x] Delete `docs/agents/triage-labels.md`.
+- [x] List only `ready-for-agent`, `ready-for-human`, and `wontfix` as ordinary triage labels in `AGENTS.md`.
+- [x] Leave Wayfinder labels/behavior unchanged.
+- [x] Delete `docs/agents/domain.md`.
+- [x] Fold only terminology-from-`docs/CONTEXT.md` and ADR-conflict rules into `AGENTS.md`.
+- [x] Remove the PR-triage section from `docs/agents/issue-tracker.md`.
+- [x] Collapse duplicate README navigation/architecture rows and keep one ADR pointer.
+- [x] Delete tracked orphan research assets:
   - `docs/research/evm-fees.html`
   - `docs/research/gas-base-fees-and-priority-fees.html`
   - `docs/research/teaching.css`
-- [ ] Keep `priority-fees.md` and `on-device-inference.md`.
-- [ ] Leave the untracked GPU research note untouched.
+- [x] Keep `priority-fees.md` and `on-device-inference.md`.
+- [x] Leave the untracked GPU research note untouched.
 
 ### Implementer checks
 
-- [ ] Search the repository for old document paths, deleted ADR names, deleted APIs, old artifact paths, removed manifest fields, caps, and stale links.
-- [ ] Verify every local Markdown link target and README anchor.
-- [ ] Run `uv run --frozen pytest -q`.
-- [ ] Run `uv run ruff check .`, `uv run pyright`, and `uv run vulture`.
-- [ ] Run `uv run --project tools/mobile-export --frozen pytest -q`.
-- [ ] Run `npm test`, `npm run typecheck`, and Expo Doctor in `app/`.
-- [ ] Run `git diff --check`.
+- [x] Search the repository for old document paths, deleted ADR names, deleted APIs, old artifact paths, removed manifest fields, caps, and stale links.
+- [x] Verify every local Markdown link target and README anchor.
+- [x] Run `uv run --frozen pytest -q`.
+- [x] Run `uv run ruff check .`, `uv run pyright`, and `uv run vulture`.
+- [x] Run `uv run --project tools/mobile-export --frozen pytest -q`.
+- [x] Run `npm test`, `npm run typecheck`, and Expo Doctor in `app/`.
+- [x] Run `git diff --check`.
 
 ### Final reviewer acceptance
 
