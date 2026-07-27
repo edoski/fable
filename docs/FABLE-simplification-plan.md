@@ -360,49 +360,49 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### RPC production
 
-- [ ] Make `features.ts` the sole owner of priority-fee and interval feature constants.
-- [ ] Import them into `rpc.ts`.
-- [ ] Type ordered features as `readonly FeatureName[]`.
-- [ ] Remove manual sequential 40-call chunking.
-- [ ] Fetch the exact requested range directly and let Viem packetize with `batchSize: 40`.
-- [ ] Delete the maximum-active-call test.
-- [ ] Always read both logical outcome blocks through `Promise.all()`.
-- [ ] Delete action-zero provider-call-count evidence; retain returned values.
-- [ ] Inline `validateLinks()` while keeping `findBrokenLink()`.
-- [ ] Keep chain verification, exact block identity, hashes, base fee, bigint shape, fee-history coverage, reorg recovery, abort, timeout, and stale-result checks.
+- [x] Make `features.ts` the sole owner of priority-fee and interval feature constants.
+- [x] Import them into `rpc.ts`.
+- [x] Type ordered features as `readonly FeatureName[]`.
+- [x] Remove manual sequential 40-call chunking.
+- [x] Fetch the exact requested range directly and let Viem packetize with `batchSize: 40`.
+- [x] Delete the maximum-active-call test.
+- [x] Always read both logical outcome blocks through `Promise.all()`.
+- [x] Delete action-zero provider-call-count evidence; retain returned values.
+- [x] Inline `validateLinks()` while keeping `findBrokenLink()`.
+- [x] Keep chain verification, exact block identity, hashes, base fee, bigint shape, fee-history coverage, reorg recovery, abort, timeout, and stale-result checks.
 
 ### Analytics production
 
-- [ ] Keep only the positive immediate-fee denominator check for app-produced outcomes.
-- [ ] Delete finite and selected-negative checks.
-- [ ] Delete `formatGwei()`’s invalid-number fallback.
-- [ ] Rewrite `summarizeRuns()` as one direct loop computing each realized saving once.
-- [ ] Keep incremental means because history is unbounded.
+- [x] Keep only the positive immediate-fee denominator check for app-produced outcomes.
+- [x] Delete finite and selected-negative checks.
+- [x] Delete `formatGwei()`’s invalid-number fallback.
+- [x] Rewrite `summarizeRuns()` as one direct loop computing each realized saving once.
+- [x] Keep incremental means because history is unbounded.
 
 ### RPC test consolidation
 
-- [ ] Add one narrow `fakeChain()` in `app/test/rpc.test.ts`.
-- [ ] Give it a default chain ID, mutable head, block/fee-history responses, and request/read log.
-- [ ] Permit small overrides and reject unknown methods.
-- [ ] Use it only for ordinary deterministic tests.
-- [ ] Keep bespoke synchronization-race, slow-polling, disposal, production-HTTP abort, and timeout providers local.
-- [ ] Assert warm synchronization verifies the chain once.
-- [ ] Delete the redundant `Set.size` assertion after exact ordered block equality.
-- [ ] Keep the action-zero test only as compact outcome-value evidence.
-- [ ] Trim the local production JSON-RPC responder while proving distinct session signals, isolated disposal abort, and replacement completion.
-- [ ] Keep the production 10-second timeout test and stale synchronization-after-disposal test.
+- [x] Add one narrow `fakeChain()` in `app/test/rpc.test.ts`.
+- [x] Give it a default chain ID, mutable head, block/fee-history responses, and request/read log.
+- [x] Permit small overrides and reject unknown methods.
+- [x] Use it only for ordinary deterministic tests.
+- [x] Keep bespoke synchronization-race, slow-polling, disposal, production-HTTP abort, and timeout providers local.
+- [x] Assert warm synchronization verifies the chain once.
+- [x] Delete the redundant `Set.size` assertion after exact ordered block equality.
+- [x] Keep the action-zero test only as compact outcome-value evidence.
+- [x] Trim the local production JSON-RPC responder while proving distinct session signals, isolated disposal abort, and replacement completion.
+- [x] Keep the production 10-second timeout test and stale synchronization-after-disposal test.
 
 ### Analytics test consolidation
 
-- [ ] Delete the standalone selection/count test; the chart test covers both filters.
-- [ ] Delete the invalid-fee test after the trusted-history clean break.
-- [ ] Keep missing-outcome, zero-denominator, loss, zero-selected-fee, chart, and empty-selection behavior through the remaining tests.
+- [x] Delete the standalone selection/count test; the chart test covers both filters.
+- [x] Delete the invalid-fee test after the trusted-history clean break.
+- [x] Keep missing-outcome, zero-denominator, loss, zero-selected-fee, chart, and empty-selection behavior through the remaining tests.
 
 ### Implementer checks
 
-- [ ] Run focused RPC, analytics, history, and inference tests.
-- [ ] Run `npm test` and `npm run typecheck` in `app/`.
-- [ ] Run `git diff --check`.
+- [x] Run focused RPC, analytics, history, and inference tests.
+- [x] Run `npm test` and `npm run typecheck` in `app/`.
+- [x] Run `git diff --check`.
 
 ### Reviewer acceptance
 

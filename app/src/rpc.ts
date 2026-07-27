@@ -3,6 +3,11 @@ import type { Hash, Transport } from "viem";
 import { avalanche, mainnet, polygon } from "viem/chains";
 
 import type { Chain } from "./domain";
+import {
+  INTERVAL_FEATURE,
+  PRIORITY_FEE_FEATURE,
+  type FeatureName,
+} from "./features";
 import { createSerialQueue } from "./serialQueue";
 
 export type BlockRow = {
@@ -29,7 +34,7 @@ export type ChainOutcome = {
 export type ChainSessionConfig = {
   chain: Chain;
   contextBlocks: number;
-  orderedFeatures: readonly string[];
+  orderedFeatures: readonly FeatureName[];
 };
 
 export type ChainSession = {
@@ -54,9 +59,6 @@ const CHAIN_DEFINITIONS = {
 const BLOCK_BATCH_SIZE = 40;
 const POLL_INTERVAL_MS = 1_000;
 const RPC_TIMEOUT_MS = 10_000;
-const PRIORITY_FEE_FEATURE =
-  "log1p_effective_priority_fee_per_gas_p50";
-const INTERVAL_FEATURE = "block_interval_seconds";
 const HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 export function createChainSession(
@@ -146,21 +148,12 @@ export function createChainSession(
     firstBlock: bigint,
     lastBlock: bigint,
   ): Promise<BlockRow[]> {
-    const rows: BlockRow[] = [];
-    let nextBlock = firstBlock;
-    while (nextBlock <= lastBlock) {
-      const numbers: bigint[] = [];
-      while (
-        numbers.length < BLOCK_BATCH_SIZE &&
-        nextBlock <= lastBlock
-      ) {
-        numbers.push(nextBlock);
-        nextBlock += 1n;
-      }
-      rows.push(...(await Promise.all(numbers.map(readBlock))));
-      requireActive();
-    }
-    return rows;
+    return Promise.all(
+      Array.from(
+        { length: Number(lastBlock - firstBlock + 1n) },
+        (_, offset) => readBlock(firstBlock + BigInt(offset)),
+      ),
+    );
   }
 
   async function fullFetch(head: bigint): Promise<readonly BlockRow[]> {
@@ -171,7 +164,12 @@ export function createChainSession(
       );
     }
     const fetched = await readBlockRange(firstBlock, head);
-    validateLinks(fetched);
+    const broken = findBrokenLink(fetched);
+    if (broken !== null) {
+      throw new Error(
+        `Broken parent link between blocks ${broken[0].number} and ${broken[1].number}`,
+      );
+    }
     blocks = fetched;
     return blocks;
   }
@@ -266,17 +264,10 @@ export function createChainSession(
   ): Promise<ChainOutcome> {
     await verifyChain();
 
-    let immediate: BlockRow;
-    let selected: BlockRow;
-    if (immediateBlock === selectedBlock) {
-      immediate = await readBlock(immediateBlock);
-      selected = immediate;
-    } else {
-      [immediate, selected] = await Promise.all([
-        readBlock(immediateBlock),
-        readBlock(selectedBlock),
-      ]);
-    }
+    const [immediate, selected] = await Promise.all([
+      readBlock(immediateBlock),
+      readBlock(selectedBlock),
+    ]);
     requireActive();
     return {
       immediateBaseFeePerGas: immediate.baseFeePerGas,
@@ -374,15 +365,6 @@ async function fetchWithTimeout(
   } finally {
     clearTimeout(timer);
     sessionSignal?.removeEventListener("abort", abortFromSession);
-  }
-}
-
-function validateLinks(rows: readonly BlockRow[]): void {
-  const broken = findBrokenLink(rows);
-  if (broken !== null) {
-    throw new Error(
-      `Broken parent link between blocks ${broken[0].number} and ${broken[1].number}`,
-    );
   }
 }
 

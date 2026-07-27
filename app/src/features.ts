@@ -25,9 +25,10 @@ export type ChainManifest = {
   features: readonly FeatureManifest[];
 };
 
-const PRIORITY_FEE_FEATURE =
-  "log1p_effective_priority_fee_per_gas_p50";
-const INTERVAL_FEATURE = "block_interval_seconds";
+export const PRIORITY_FEE_FEATURE =
+  "log1p_effective_priority_fee_per_gas_p50" satisfies FeatureName;
+export const INTERVAL_FEATURE =
+  "block_interval_seconds" satisfies FeatureName;
 
 export function buildModelInput(
   blocks: readonly BlockRow[],

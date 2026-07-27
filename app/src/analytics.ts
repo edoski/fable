@@ -50,30 +50,31 @@ export function runsForSelection(
 }
 
 export function summarizeRuns(runs: readonly InferenceRun[]): RunSummary {
-  if (runs.length === 0) {
-    return {
-      averageWait: null,
-      averageSavingsPercent: null,
-      winPercent: null,
-    };
+  let averageWait = 0;
+  let averageSavings = 0;
+  let realizedCount = 0;
+  let waitedCount = 0;
+  let winCount = 0;
+
+  for (const [index, run] of runs.entries()) {
+    averageWait += (run.selected_action_k - averageWait) / (index + 1);
+    const savings = realizedSavingsPercent(run);
+    if (savings === null) {
+      continue;
+    }
+    realizedCount += 1;
+    averageSavings += (savings - averageSavings) / realizedCount;
+    if (run.selected_action_k !== 0) {
+      waitedCount += 1;
+      winCount += Number(savings > 0);
+    }
   }
-  const savings = runs.flatMap((run) => {
-    const value = realizedSavingsPercent(run);
-    return value === null ? [] : [value];
-  });
-  const waitedSavings = runs.flatMap((run) => {
-    const value = realizedSavingsPercent(run);
-    return run.selected_action_k === 0 || value === null ? [] : [value];
-  });
+
   return {
-    averageWait: mean(runs.map((run) => run.selected_action_k)),
-    averageSavingsPercent: mean(savings),
-    winPercent:
-      waitedSavings.length === 0
-        ? null
-        : (waitedSavings.filter((value) => value > 0).length /
-            waitedSavings.length) *
-          100,
+    averageWait: runs.length === 0 ? null : averageWait,
+    averageSavingsPercent:
+      realizedCount === 0 ? null : averageSavings,
+    winPercent: waitedCount === 0 ? null : (winCount / waitedCount) * 100,
   };
 }
 
@@ -108,9 +109,6 @@ export function formatRunDate(value: string): string {
 }
 
 export function formatGwei(value: number): string {
-  if (!Number.isFinite(value) || value < 0) {
-    return "—";
-  }
   const gwei = value / 1_000_000_000;
   if (gwei >= 100) {
     return `${gwei.toFixed(0)} Gwei`;
@@ -192,10 +190,7 @@ function validOutcome(run: InferenceRun): RunOutcome | null {
   const outcome = run.outcome;
   if (
     outcome === undefined ||
-    !Number.isFinite(outcome.immediate_base_fee_per_gas) ||
-    outcome.immediate_base_fee_per_gas <= 0 ||
-    !Number.isFinite(outcome.selected_base_fee_per_gas) ||
-    outcome.selected_base_fee_per_gas < 0
+    outcome.immediate_base_fee_per_gas <= 0
   ) {
     return null;
   }
