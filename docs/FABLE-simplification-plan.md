@@ -1,0 +1,606 @@
+# FABLE simplification implementation plan
+
+**Status:** approved and implementation-ready
+**Program baseline:** `0a4ad026b862da93b91877e69c509f30764f7293`
+**Execution:** nine sequential, independently reviewed slices
+**Deferred final-model work:** [A01 — Activate selected artifacts in the final Mac/mobile demo](https://github.com/edoski/fable/issues/139)
+
+## Contract
+
+- Keep one lean, direct, typed path that a single thesis developer can follow.
+- Add no compatibility shim, migration, fallback, adapter, registry, speculative abstraction, or transition test.
+- Trust typed values produced inside `src/` and the fixed app workflow.
+- Retain checks only at raw-input, scientific/numerical, cross-job, atomic-publication, and native-runtime boundaries, plus demonstrated failures.
+- Keep one canonical owner for each fact.
+- Preserve unrelated worktree and index state.
+- Preserve the untracked `docs/research/gpu-execution-optimizations.md` exactly where it is. Never stage, move, delete, or edit it.
+- Run no experiment, RPC acquisition, Slurm job, generated-manifest workflow, deployment, or final model export in this program.
+- Apply schema changes as clean breaks. Clear development state when required; add no migration.
+
+## Implementer–reviewer protocol
+
+Slices execute in order. A later slice starts only after the current slice is committed and GREEN.
+Every implementer and reviewer task works directly in the saved project’s `main` checkout.
+Create no worktree or slice branch.
+
+For each slice:
+
+1. Create one new xhigh implementer task.
+2. The implementer records HEAD, `git status --short`, the index state, and the slice-owned paths before editing.
+3. The implementer changes only the current slice, runs its focused checks, updates this plan’s slice checkboxes, and commits with the repository’s conventional prefix.
+4. The implementer reports the baseline, commit, exact changed files, checks, final worktree/index state, and residual risks to this task.
+5. Create one new xhigh, sole-authoritative reviewer task after the implementation commit exists.
+6. The reviewer is read-only. It pins the exact baseline-to-candidate range, reviews every changed line and relevant owner/caller, runs the slice’s review checks, and reports:
+   - actionable findings;
+   - Standards verdict;
+   - Spec verdict;
+   - scope and mutation audit;
+   - exact verification;
+   - `GREEN LIGHT` or `RED LIGHT`.
+7. Ignore any implementer-internal review. Only the parent-created reviewer is authoritative.
+8. On RED, send the findings to the same implementer task. That implementer commits focused corrections. Send the new range to the same reviewer task. Repeat until GREEN.
+9. Never let a reviewer fix, stage, commit, or broaden the slice.
+
+Each reviewer verifies that the pre-existing GPU research note remains untracked and untouched. The last reviewer runs the cumulative matrix in addition to its slice-local checks.
+
+## Slice 1 — Durable create-only publication
+
+**Goal:** give Artifact, Study, and exporter outputs one no-clobber publication model.
+
+### Implementation
+
+- [x] Confirm hard-link support once on the real Slurm `STORAGE_ROOT`. On 2026-07-27, a bounded manual probe created two names with one inode and link count two, then removed both names and its temporary directory. This is setup evidence, not an automated test or recurring probe.
+- [ ] If hard links are unsupported, retain the current artifact-directory layout and stop the flat-artifact part of this slice until another atomic create-only design is approved.
+- [ ] Flatten canonical artifacts to `artifacts/<artifact-id>.ckpt` only when hard-link support is confirmed.
+- [ ] Build each artifact in a hidden sibling scratch location.
+- [ ] Move the completed checkpoint to a hidden sibling file.
+- [ ] Remove scratch before creating any canonical artifact path.
+- [ ] Publish the canonical artifact with `os.link()` so an occupied target fails without overwrite.
+- [ ] Remove the hidden completed file after successful publication; make that cleanup non-fatal after the canonical link exists.
+- [ ] Apply the same hidden-sibling, create-only hard-link ordering to `studies/<study-id>.json`.
+- [ ] Retain publication-time Study identity, method/index, exact roster, and one-trial checks.
+- [ ] Use neither `os.replace()` nor ordinary rename as the canonical flat-file publication primitive.
+- [ ] Update every artifact path owner and string-literal test path.
+- [ ] Add an early exporter `output_directory.exists()` rejection before twelve lowerings.
+- [ ] Retain the late exporter collision check immediately before publication.
+- [ ] Retain exporter scratch cleanup after failure.
+- [ ] Retain complete-roster, unique-artifact, chain, horizon, parity, forced XNNPACK delegation, and collision coverage.
+- [ ] Update ADR 0006 and the current FABLE manual with the exact ordering and no-clobber contract.
+
+### Implementer checks
+
+- [ ] Run focused Artifact and Study publication tests.
+- [ ] Run focused exporter collision and cleanup tests.
+- [ ] Run `uv run --frozen pytest -q`.
+- [ ] Run Ruff and Pyright on changed Python files.
+- [ ] Run `uv run --frozen vulture` and manually classify any finding.
+- [ ] Run `git diff --check`.
+
+### Reviewer acceptance
+
+- [ ] Reproduce occupied-target preservation for Artifact, Study, and exporter output.
+- [ ] Confirm no post-publication cleanup failure can retract a published canonical object.
+- [ ] Confirm no compatibility layout or overwrite fallback was added.
+- [ ] Issue separate Standards and Spec verdicts.
+
+## Slice 2 — Python interfaces, CLI, and orchestration ownership
+
+**Goal:** collapse shallow Python interfaces while preserving raw durable boundaries and one clear Study/CLI owner.
+
+### Records and loading
+
+- [ ] Add `src/fable/records.py` with `StrictFrozenRecord`.
+- [ ] Migrate only the eight identical strict, frozen, extra-forbid Pydantic bases.
+- [ ] Keep the deliberately non-strict frozen base in `config.py`.
+- [ ] Add public `load_study(storage_root, study_id)` in `study.py`.
+- [ ] Keep a private path-based Study loader for scratch publication.
+- [ ] Route all five canonical Study consumers through the public loader.
+- [ ] Keep strict JSON validation and embedded-ID equality with both the path and requested UUID.
+
+### CLI and orchestration
+
+- [ ] Flatten `src/fable/cli/` into `src/fable/cli.py`.
+- [ ] Point `[project.scripts]` directly at `fable.cli:app`.
+- [ ] Delete the wrapper `main()` and old CLI modules. Add no import shim.
+- [ ] Update direct imports and focused CLI tests.
+- [ ] Keep `tuning.py` as the Study-orchestration owner.
+- [ ] Rename `modeling._run_candidate` to public `fit_candidate`.
+- [ ] Expose `candidate_scratch_directory()` from `study.py`; do not import private `_study_scratch` across modules.
+- [ ] Give Study scratch paths one owner.
+- [ ] Inline `_require_method()` into `Study.validate_methods()`.
+- [ ] Inline one-use `_Objective`, modeling `_NonNegativeInt`, feature-state width, and selected-epoch expressions at their owning fields/construction.
+- [ ] Add `_CandidateAssociation.training_definition`.
+- [ ] Delete `_training_definition()` and consume `association.training_definition`.
+- [ ] Keep `_hydrate_association()` and `_json_association()` as serialization-boundary owners.
+
+### Remote workflow and public names
+
+- [ ] Add `BaselineSource.experiment`.
+- [ ] Make both training-source variants expose `source.experiment`.
+- [ ] Delete the `isinstance(source, BaselineSource)` branch and remote-CLI BaselineSource import.
+- [ ] Delete the baseline parameter and unused large fixture from the remote-workflow test.
+- [ ] Keep selected-training and evaluation remote-workflow coverage.
+- [ ] Delete leaf-module `__all__` lists.
+- [ ] Keep package re-exports only where consumed.
+- [ ] Express retained re-exports as explicit aliases.
+- [ ] Leave `temporal/__init__.py` docstring-only.
+
+### Owned test changes
+
+- [ ] Keep only tuning candidate index `1` in the indexed-result test.
+- [ ] Keep only the later retention failure case for scratch-preservation evidence.
+- [ ] Rename test patches from `_run_candidate` to `fit_candidate`.
+- [ ] Preserve publication-time Study rejection coverage.
+
+### Implementer checks
+
+- [ ] Run focused records, Study, tuning, CLI, and remote-workflow tests.
+- [ ] Run `uv run --frozen pytest -q`.
+- [ ] Run Ruff, Pyright, Vulture, and `git diff --check`.
+
+### Reviewer acceptance
+
+- [ ] Verify all five Study consumers use the public loader.
+- [ ] Verify entry-point installation and CLI help/import behavior.
+- [ ] Verify no old module path, shim, silent filter, or private cross-module import survives.
+- [ ] Issue separate Standards and Spec verdicts.
+
+## Slice 3 — Scientific core, evaluation, and numerical runtime
+
+**Goal:** remove redundant internal computation while retaining causal, scientific, numerical, and native-runtime boundaries.
+
+### Runtime policy
+
+- [ ] Add `_runtime.configure_torch()` as the sole owner of numerical runtime policy.
+- [ ] Set `CUBLAS_WORKSPACE_CONFIG=:4096:8` before GPU work.
+- [ ] Configure deterministic algorithms, cuDNN determinism/benchmarking, float32 matmul precision, and CUDA/cuDNN TF32 there.
+- [ ] Call it before training and evaluation GPU work.
+- [ ] Source Lightning `deterministic` and `benchmark` arguments from the same constants.
+- [ ] Extend the existing evaluation-policy test with the environment variable. Add no dedicated policy test.
+- [ ] Run no GPU job. Confirm the policy during the next separately authorized L40 run.
+
+### Temporal and scientific mechanics
+
+- [ ] Keep `BlockFrame` and `BlockFrame.select_range()` as validation/range owners.
+- [ ] Keep its internal `object.__new__` path for validated slices.
+- [ ] Delete `_require_complete_support()` and duplicate calls.
+- [ ] Keep testing-window leakage validation, outcome chunking, and observation preallocation.
+- [ ] Convert `_feature_values()` to direct `match` dispatch.
+- [ ] Delete `_forming_base_fee_log()`.
+- [ ] Build named forming-fee columns, combine them with `zip(*columns, strict=True)`, and pass rows directly to `_forming_child_base_fee()`.
+- [ ] Keep `Series.to_list()` and `_forming_child_base_fee()` so EIP-1559 arithmetic remains arbitrary-precision and exact.
+- [ ] Replace redundant copied NumPy wrappers with Polars `to_numpy(writable=True)` for schema-owned Int64 columns.
+- [ ] Replace `total.sum() / batch_size` with `total.mean()`.
+- [ ] Remove the no-op dtype cast from `outcomes.argmin(axis=1)`.
+- [ ] Keep indexed minimum gather; do not add a second `min(axis=1)` scan.
+
+### Evaluation and native plumbing
+
+- [ ] Derive observation allocation from `OBSERVATION_SCHEMA`.
+- [ ] Remove evaluation dtype coercions guaranteed by dataset/model contracts.
+- [ ] Collapse evaluation loading so it does not return a discarded request.
+- [ ] Keep evaluation ID/path equality.
+- [ ] Let Lightning capture the incoming association dictionary directly in `save_hyperparameters(logger=False)`.
+- [ ] Remove the serialize–hydrate–serialize round trip.
+- [ ] Remove derived evaluation/export values stored only to be discarded.
+- [ ] Remove exporter host shape, dtype, and finite prechecks duplicated by parity and semantic checks.
+- [ ] Retain native bridge type/arity, semantic output, parity, and XNNPACK delegation checks.
+- [ ] Remove `_report_sizes()` and its call.
+- [ ] Keep `validation_total_loss` as the sole per-epoch Slurm progress value.
+
+### Owned test changes
+
+- [ ] Collapse the Python feature fit/transform test to the comprehensive seven-feature forming case.
+- [ ] Delete strict-subset activity/hour cases and their scaffolding.
+- [ ] Keep fitted-state, ordering, float32, contiguity, held-out, priority-fee, interval, and predecessor-alignment evidence.
+- [ ] Keep only the schema-order mutation among equivalent whole-schema BlockFrame rejections.
+- [ ] Delete the basic isolation test covered by range-selection source/return isolation.
+- [ ] Delete Corpus priority-fee and seven-column Parquet cases that repeat BlockFrame validation.
+- [ ] Keep corrupt Parquet, JSON, UUID, and anchor boundary cases.
+- [ ] Keep constant-feature and constant-target-state rejection tests.
+- [ ] Delete the loader-profile constant-mirroring test; real CPU training tests exercise the zero-worker path.
+
+### Implementer checks
+
+- [ ] Run focused modeling, temporal, corpus, evaluation, and exporter tests.
+- [ ] Run `uv run --frozen pytest -q`.
+- [ ] Run Ruff, Pyright, Vulture, and `git diff --check`.
+
+### Reviewer acceptance
+
+- [ ] Trace every removed guard to its upstream typed/scientific owner or surviving final check.
+- [ ] Confirm EIP-1559 integer arithmetic, causal geometry, zero-variance rejection, feature finiteness, gas-utilization semantics, and native output checks remain.
+- [ ] Confirm runtime configuration occurs before any GPU work without starting a GPU job.
+- [ ] Issue separate Standards and Spec verdicts.
+
+## Slice 4 — Experiment runners and mobile exporter contract
+
+**Goal:** give experiment bundles and the exporter direct typed ownership with one frozen workflow.
+
+### Experiment identities and bundles
+
+- [ ] Remove `--experiment-id` from all five experiment `prepare` commands.
+- [ ] Mint every new experiment ID with `uuid4()` and print it.
+- [ ] Delete the five unreachable UUID-version guards and `tests/experiments/test_cli.py`.
+- [ ] Make tests parse the minted ID from stdout.
+- [ ] Keep upstream experiment IDs explicit.
+- [ ] Add `experiments/bundle.py`.
+- [ ] Own paths with `bundle_path(storage_root, kind, id)`.
+- [ ] Share only generic `write_cells(bundle, header, rows)` and `read_cells(bundle)`.
+- [ ] Rename HPO `candidates.tsv` to `cells.tsv`.
+- [ ] Keep runner row schema, header, scientific semantics, and selection local.
+- [ ] Use `enumerate(product(...))` for Cartesian HPO and feature-ablation cells.
+- [ ] Keep grouped c/k-study loops and derive indices from `len(rows)`.
+- [ ] Delete mutable counters.
+
+### Experiment contracts
+
+- [ ] Delete only the duplicate read-time c-study trial-count check.
+- [ ] Keep authoring-time feature-ablation and context-study completeness.
+- [ ] Require exact ordered HPO retained-method equality with `request.methods`.
+- [ ] Add `ExperimentEntry.require_artifact_id()`, `require_study_id()`, and `require_evaluation_id()`.
+- [ ] Replace scattered `None` guards and silent filters with those accessors.
+- [ ] Keep feature-ablation and HPO Methods independent.
+
+### Mobile roster and manifest
+
+- [ ] Replace exporter `_Roster`/`_RosterChain` models with `dict[str, dict[int, UUID4]]`.
+- [ ] Change `MOBILE.yaml` to `chain -> integer horizon -> artifact UUID`.
+- [ ] At YAML hydration, require exactly three chains, horizons 2–5, UUIDv4 values, and twelve unique IDs.
+- [ ] Use direct indexing after validation.
+- [ ] Keep artifact/corpus chain and artifact/horizon validation.
+- [ ] Remove `_Cell.chain_id`; derive expected IDs from `_CHAINS`.
+- [ ] Remove emitted `chain_id` and `executorch_version`, their TypeScript fields, constants, fixtures, tests, and docs.
+- [ ] Delete `_require_versions`; trust the committed isolated project and lockfile.
+- [ ] Record the used export version only in deferred final-export evidence.
+- [ ] Keep one frozen exporter environment and supported execution workflow.
+- [ ] Remove inert exporter Pyright suppressions.
+
+### Owned tests
+
+- [ ] Consolidate chain/horizon mismatch cases without losing postconditions.
+- [ ] Use one module-level deterministic `TinyModel` seed.
+- [ ] Keep incomplete roster, duplicate artifact, early/late collision, scratch cleanup, genuine export, forced XNNPACK, host execution, and parity coverage.
+- [ ] Delete `test_experiment_kinds_map_to_their_manifest_namespaces`; runner tests pin all five canonical manifest paths.
+- [ ] Update app manifest fixtures for the clean schema.
+
+### Implementer checks
+
+- [ ] Run all experiment tests.
+- [ ] Run `uv run --project tools/mobile-export --frozen pytest -q`.
+- [ ] Run `uv run --frozen pytest -q`.
+- [ ] Run `npm test` and `npm run typecheck` in `app/`.
+- [ ] Run Ruff, Pyright, Vulture, and `git diff --check`.
+
+### Reviewer acceptance
+
+- [ ] Verify experiment IDs are minted, printed, and consumed through the real workflow.
+- [ ] Verify the exporter raw boundary rejects malformed/incomplete/duplicate rosters.
+- [ ] Verify no runtime version parser or second environment survives.
+- [ ] Verify app/exporter manifest types agree exactly.
+- [ ] Issue separate Standards and Spec verdicts.
+
+## Slice 5 — App engine, model, and history
+
+**Goal:** collapse app lifecycle and internal validation while preserving stale-work, raw RPC bigint, numerical, and native-model boundaries.
+
+### Engine and serialization
+
+- [ ] Delete `app/src/engineLifecycle.ts` and its tests.
+- [ ] Let the chain-selection effect own engine creation, polling stop, and cleanup.
+- [ ] Keep model serialization, RPC cancellation, engine revisions, and selection revisions.
+- [ ] Accept brief overlap between independent model loads during rapid chain changes.
+- [ ] Delete the root mounted ref, mounted guards, unreachable lifecycle catches, and `onRpcUnavailable`.
+- [ ] Let `onStatus("offline")` clear the snapshot.
+- [ ] Add local `app/src/serialQueue.ts` with `createSerialQueue()`.
+- [ ] Use it for model operations, RPC synchronization, and history load/write serialization.
+- [ ] Add neither `async-mutex` nor a queue-helper choreography test.
+
+### Preparation and failures
+
+- [ ] Inline `prepareSelection()` into `prepare()`.
+- [ ] Keep `Promise.allSettled()` so readiness waits for model and chain settlement.
+- [ ] Add the second microtask to the focused preparation test.
+- [ ] Collapse duplicate preparation settlement handlers into one local closure.
+- [ ] Add `attempt(message, work)` for public inference failure translation.
+- [ ] Delete `ModelOutputError`.
+- [ ] Return decoded native outputs directly from `model.execute()`.
+- [ ] Wrap execution and prediction decoding in one run failure.
+- [ ] Keep underlying causes and selection-revision checks.
+- [ ] Add a local `fail(message)` state-transition helper inside `App()`.
+- [ ] Keep stale-revision/AbortError decisions at call sites.
+- [ ] Add no reducer, hook, module, or helper test.
+
+### Trusted history and dead data
+
+- [ ] Parse `fable.runs` directly as `InferenceRun[]` after JSON parsing.
+- [ ] Delete custom record validation and its tests.
+- [ ] Remove all history/display caps and show every matching run.
+- [ ] Inline `recordOutcome()` and remove its already-resolved guard.
+- [ ] Remove `ChainSnapshot.chain`.
+- [ ] Remove stored `InferenceResult.immediate_block`; derive it from `head_block + 1`.
+- [ ] Remove result/run `head_base_fee_per_gas`; retain it only for RPC polling and model input.
+- [ ] Remove other derived values without production consumers.
+- [ ] Clear existing development `fable.runs` when applying the schema clean break. Add no migration.
+- [ ] Remove `hourAngle()`’s negative-timestamp guard and `positiveLog()`’s positivity guard.
+- [ ] Keep final feature finiteness and gas-utilization semantics.
+
+### Owned tests
+
+- [ ] Keep one unsafe external head-block bigint inference rejection.
+- [ ] Delete obsolete unsafe head-base-fee and immediate-block cases.
+- [ ] Keep unsafe outcome-fee and feature-input cases.
+- [ ] Keep a complete K2–K5 inference manifest; use a model-entry helper, not partial casts.
+- [ ] Keep the preparation wait/retry test with its second microtask.
+- [ ] Keep one chain-read, model-load, and run-failure assertion.
+- [ ] Delete separate malformed-output taxonomy coverage.
+- [ ] Keep nonfinite decoded-prediction rejection.
+- [ ] Delete standalone P50 row-alignment coverage already owned by the oracle fixture.
+- [ ] Delete the interval half of the arithmetic test; keep exact forming-fee integer cases.
+- [ ] Replace broad model `bundle()` use with one complete catalog fixture and one direct `selection()` helper.
+- [ ] Delete the import-time `initExecutorch()` call-count assertion.
+- [ ] Keep model serialization, replacement, disposal, retry, and native-output decoding tests.
+
+### Implementer checks
+
+- [ ] Run focused inference, model, feature, history, and App tests.
+- [ ] Run `npm test` and `npm run typecheck` in `app/`.
+- [ ] Run `git diff --check`.
+
+### Reviewer acceptance
+
+- [ ] Probe selection change, disposal, failed preparation retry, serial execution, and history persistence.
+- [ ] Confirm raw bigint, numerical prediction, feature finiteness, and native decoder guards remain.
+- [ ] Confirm no lifecycle abstraction, history cap, migration, or error taxonomy survives.
+- [ ] Issue separate Standards and Spec verdicts.
+
+## Slice 6 — App RPC and analytics
+
+**Goal:** remove duplicate batching/analytics work and compress RPC tests without weakening real network behavior.
+
+### RPC production
+
+- [ ] Make `features.ts` the sole owner of priority-fee and interval feature constants.
+- [ ] Import them into `rpc.ts`.
+- [ ] Type ordered features as `readonly FeatureName[]`.
+- [ ] Remove manual sequential 40-call chunking.
+- [ ] Fetch the exact requested range directly and let Viem packetize with `batchSize: 40`.
+- [ ] Delete the maximum-active-call test.
+- [ ] Always read both logical outcome blocks through `Promise.all()`.
+- [ ] Delete action-zero provider-call-count evidence; retain returned values.
+- [ ] Inline `validateLinks()` while keeping `findBrokenLink()`.
+- [ ] Keep chain verification, exact block identity, hashes, base fee, bigint shape, fee-history coverage, reorg recovery, abort, timeout, and stale-result checks.
+
+### Analytics production
+
+- [ ] Keep only the positive immediate-fee denominator check for app-produced outcomes.
+- [ ] Delete finite and selected-negative checks.
+- [ ] Delete `formatGwei()`’s invalid-number fallback.
+- [ ] Rewrite `summarizeRuns()` as one direct loop computing each realized saving once.
+- [ ] Keep incremental means because history is unbounded.
+
+### RPC test consolidation
+
+- [ ] Add one narrow `fakeChain()` in `app/test/rpc.test.ts`.
+- [ ] Give it a default chain ID, mutable head, block/fee-history responses, and request/read log.
+- [ ] Permit small overrides and reject unknown methods.
+- [ ] Use it only for ordinary deterministic tests.
+- [ ] Keep bespoke synchronization-race, slow-polling, disposal, production-HTTP abort, and timeout providers local.
+- [ ] Assert warm synchronization verifies the chain once.
+- [ ] Delete the redundant `Set.size` assertion after exact ordered block equality.
+- [ ] Keep the action-zero test only as compact outcome-value evidence.
+- [ ] Trim the local production JSON-RPC responder while proving distinct session signals, isolated disposal abort, and replacement completion.
+- [ ] Keep the production 10-second timeout test and stale synchronization-after-disposal test.
+
+### Analytics test consolidation
+
+- [ ] Delete the standalone selection/count test; the chart test covers both filters.
+- [ ] Delete the invalid-fee test after the trusted-history clean break.
+- [ ] Keep missing-outcome, zero-denominator, loss, zero-selected-fee, chart, and empty-selection behavior through the remaining tests.
+
+### Implementer checks
+
+- [ ] Run focused RPC, analytics, history, and inference tests.
+- [ ] Run `npm test` and `npm run typecheck` in `app/`.
+- [ ] Run `git diff --check`.
+
+### Reviewer acceptance
+
+- [ ] Probe warm verification, concurrent sync, reorg recovery, disposal cancellation isolation, and the exact timeout boundary.
+- [ ] Confirm Viem batching cannot truncate the requested range.
+- [ ] Confirm remaining analytics tests cover every supported outcome state.
+- [ ] Issue separate Standards and Spec verdicts.
+
+## Slice 7 — App presentation and shared styles
+
+**Goal:** collapse duplicated screen markup/styles and let charts own their natural layout.
+
+### Shared components and styles
+
+- [ ] Add `DetailRow.tsx` with `label`, formatted string `value`, and optional `last`.
+- [ ] Replace Analytics’ local detail component and Inference’s open-coded rows.
+- [ ] Keep conditional formatting in screens; let `DetailRow` own row markup and final border only.
+- [ ] Add no `DetailList` or component test.
+- [ ] Create one `app/src/styles.ts`.
+- [ ] Move both screen StyleSheets and Horizon slider styles there.
+- [ ] Normalize page, title, section, surface, network-card, button, dialog, detail-row, label, and value roles.
+- [ ] Keep unique graph, timeline, and prediction geometry under distinct names in the same file.
+- [ ] Keep colors in `theme.ts`; remove screen color literals.
+- [ ] Use direct composed styles without override chains or wrapper components.
+- [ ] Accept small visual normalization where duplicates differ.
+- [ ] Remove `NetworkIcon.color`, its fallbacks, and the `graphs` alias.
+
+### Analytics layout
+
+- [ ] Remove the outer horizontal carousel.
+- [ ] Render the three graph cards vertically.
+- [ ] Let Gifted Bar Chart own internal horizontal scrolling.
+- [ ] Remove `adjustToWidth`, window/layout width state, carousel state/ref, snapping, momentum, pagination, explicit width, and derived bar geometry.
+- [ ] Remove default-valued props and duplicate transparent-axis settings.
+- [ ] Keep semantic dark colors, fee-pair colors/spacing, unit labels, negative-label placement, and bounded negative scale.
+- [ ] Replace rotated axes with card titles:
+  - `Recommended wait distribution`
+  - `Savings by wait (%)`
+  - `Base fee by wait (Gwei)`
+- [ ] Split chart algorithms into named private components.
+- [ ] Add no `ChartFrame`.
+
+### Horizon and dates
+
+- [ ] Keep Analytics horizon independent and local.
+- [ ] Optionally rename `graphHorizon` to `analyticsHorizon`.
+- [ ] Return `HorizonSlider` without its inert wrapper.
+- [ ] Derive min/max from `HORIZONS` for bounds and accessibility metadata.
+- [ ] Keep slider accessibility, colors, step, and typed callback local to the component.
+- [ ] Replace manual date formatting with one module-level `Intl.DateTimeFormat`.
+- [ ] Use `en-GB`, numeric day, short month, two-digit hour/minute, and `hourCycle: "h23"`.
+
+### Implementer checks
+
+- [ ] Run `npm test` and `npm run typecheck` in `app/`.
+- [ ] Run Expo Doctor in `app/`.
+- [ ] Search screens for remaining local StyleSheets, raw color literals, carousel/width state, and deleted props.
+- [ ] Run `git diff --check`.
+
+### Reviewer acceptance
+
+- [ ] Inspect both screens’ rendered ownership and chart props.
+- [ ] Confirm width/carousel state is gone and internal chart scrolling remains.
+- [ ] Confirm all shared colors/styles have one owner without override machinery.
+- [ ] Issue separate Standards and Spec verdicts.
+
+## Slice 8 — Cross-cutting test and package-tool consolidation
+
+**Goal:** remove remaining mechanical duplication only after production names and seams are stable.
+
+### Shared Python test mechanics
+
+- [ ] Add plain functions in `tests/helpers.py`; add no fixture or god helper.
+- [ ] Share only exact duplication:
+  - subprocess `_run`
+  - TSV `_rows`
+  - `REMOTE_YAML` and `write_remote`
+  - three identical dispatch builders
+  - three identical `window(first)` builders
+  - the duplicate Method in `test_modeling.py`
+- [ ] Keep scientific Methods, Corpus/block builders, golden arrays, and publication algorithms local.
+- [ ] Import through `tests.helpers`.
+- [ ] Add no pytest `pythonpath` setting.
+
+### Package and static configuration
+
+- [ ] Remove unused SQLite-journal, Mypy, and coverage `.gitignore` entries.
+- [ ] Remove explicit Hatch wheel include/source configuration for conventional `src/fable`.
+- [ ] Extend Vulture paths to `src`, `tests`, `experiments`, and `tools/mobile-export`.
+- [ ] Build the wheel once and verify it contains and imports `fable`.
+- [ ] Delete only tests made obsolete by approved production deletions.
+- [ ] Keep one focused rejection test per live raw parser.
+- [ ] Keep scientific, numerical, atomic-publication, native-runtime, and demonstrated-failure tests.
+- [ ] Add no compatibility, transition, private-call-count, or library-choreography test.
+
+### Implementer checks
+
+- [ ] Run `uv build`.
+- [ ] Inspect wheel contents and import `fable` from the built wheel in an isolated temporary environment.
+- [ ] Run `uv run --frozen pytest -q`.
+- [ ] Run `uv run ruff check .`.
+- [ ] Run `uv run pyright`.
+- [ ] Run `uv run vulture` and manually validate every finding.
+- [ ] Run `git diff --check`.
+
+### Reviewer acceptance
+
+- [ ] Confirm each helper removes exact structure without coupling scientific fixtures.
+- [ ] Confirm the wheel contains/imports the package without custom Hatch mapping.
+- [ ] Manually audit Vulture findings against callbacks, validators, CLI registration, reflection, and configuration.
+- [ ] Issue separate Standards and Spec verdicts.
+
+## Slice 9 — Documentation and repository layout
+
+**Goal:** leave one current documentation tree with correct links and no stale contract text.
+
+### Layout and links
+
+- [ ] Move `FABLE.md` to `docs/FABLE.md`.
+- [ ] Move `CONTEXT.md` to `docs/CONTEXT.md`.
+- [ ] Keep only `README.md` and discovery-critical `AGENTS.md` as root Markdown files.
+- [ ] Keep every other Markdown file under `docs/`.
+- [ ] Rewrite every inbound/relative link, including research links.
+- [ ] Preserve README-linked headings and anchors.
+
+### Manual and glossary
+
+- [ ] Compress the manual by about 97 lines as an estimate, not quota.
+- [ ] Preserve its standalone scientific contract, equations, causal rules, estimands, feature/target definitions, claim boundaries, limitations, sources, provenance, and ownership statements.
+- [ ] Remove only proven repetition, stale implementation wording, and mobile details owned elsewhere.
+- [ ] Delete nonexistent `apply_method()` wording and describe direct Method membership plus `TrainingDefinition`.
+- [ ] Add public `reduce_rolling()` to the evaluation API.
+- [ ] Describe hydrate-once strict records and trusted nested typed values.
+- [ ] State that only `model_width` must be even/divisible by `attention_heads`.
+- [ ] Regenerate the dependency diagram from imports, include `tuning`, and correct `modeling`/`study`.
+- [ ] State UUID syntax for `study finalize` and UUIDv4 origin for publishable TuneRequests.
+- [ ] Delete the inapplicable macro-F1 zero-division claim.
+- [ ] Remove the twelve glossary entries that merely restate Pydantic records.
+- [ ] Do not add “Cost over optimum.”
+
+### ADR, agent, and research cleanup
+
+- [ ] Delete ADRs 0001–0005.
+- [ ] Add `docs/adr/README.md` listing number, title, final status, and successor.
+- [ ] Keep ADRs 0006 and 0007 in full.
+- [ ] Delete `docs/agents/triage-labels.md`.
+- [ ] List only `ready-for-agent`, `ready-for-human`, and `wontfix` as ordinary triage labels in `AGENTS.md`.
+- [ ] Leave Wayfinder labels/behavior unchanged.
+- [ ] Delete `docs/agents/domain.md`.
+- [ ] Fold only terminology-from-`docs/CONTEXT.md` and ADR-conflict rules into `AGENTS.md`.
+- [ ] Remove the PR-triage section from `docs/agents/issue-tracker.md`.
+- [ ] Collapse duplicate README navigation/architecture rows and keep one ADR pointer.
+- [ ] Delete tracked orphan research assets:
+  - `docs/research/evm-fees.html`
+  - `docs/research/gas-base-fees-and-priority-fees.html`
+  - `docs/research/teaching.css`
+- [ ] Keep `priority-fees.md` and `on-device-inference.md`.
+- [ ] Leave the untracked GPU research note untouched.
+
+### Implementer checks
+
+- [ ] Search the repository for old document paths, deleted ADR names, deleted APIs, old artifact paths, removed manifest fields, caps, and stale links.
+- [ ] Verify every local Markdown link target and README anchor.
+- [ ] Run `uv run --frozen pytest -q`.
+- [ ] Run `uv run ruff check .`, `uv run pyright`, and `uv run vulture`.
+- [ ] Run `uv run --project tools/mobile-export --frozen pytest -q`.
+- [ ] Run `npm test`, `npm run typecheck`, and Expo Doctor in `app/`.
+- [ ] Run `git diff --check`.
+
+### Final reviewer acceptance
+
+- [ ] Review the documentation slice against the implemented repository, not the pre-implementation plan.
+- [ ] Run the full cumulative Python, exporter, app, type, static, wheel/import, link, and diff matrix.
+- [ ] Confirm every prior slice commit is reachable in order and each prior authoritative review was GREEN.
+- [ ] Confirm the worktree/index contain only the intentional untracked GPU note.
+- [ ] Issue separate Standards and Spec verdicts and final `GREEN LIGHT`.
+
+## Deferred final-model export and exporter retirement
+
+This work is not Slice 10. It requires selected real artifacts and native execution evidence unavailable during this program. Its sole owner is [A01 — Activate selected artifacts in the final Mac/mobile demo](https://github.com/edoski/fable/issues/139), now updated with:
+
+- the final twelve artifact selections;
+- frozen exporter execution;
+- twelve `.pte` files and manifest;
+- roster, collision, parity, XNNPACK, and cleanup gates;
+- all-twelve-cell native simulator comparison;
+- one representative physical-phone outcome;
+- one-time provenance evidence;
+- exporter/tool retirement only after every gate passes.
+
+Do not delete `tools/`, `MOBILE.yaml`, exporter tests, its isolated environment, or exporter documentation in this simplification program.
+
+## Explicitly rejected
+
+- Merge `tuning.py` into `modeling.py`.
+- Convert `BlockFrame` into a dataclass plus validating factory.
+- Couple Analytics horizon to inference horizon.
+- Replace frozen experiment Methods with shared mutable definitions.
+- Add `async-mutex`, schema adapters, compatibility readers, history caps, runtime manifest revalidation, or alternate export workflows.
+- Remove final atomic collision checks, raw-input checks, scientific completeness, causal/leakage checks, feature finiteness, gas-utilization semantics, native bridge semantics, parity, or XNNPACK delegation proof.
+- Run experiments, live RPC acquisition, Slurm jobs, model export, deployment, or final asset publication inside these nine slices.
