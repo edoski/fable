@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -19,10 +20,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from . import _runtime
-from .addresses import (
-    artifact_checkpoint_path,
-    artifact_directory,
-)
+from .addresses import artifact_checkpoint_path
 from .config import (
     BaselineSource,
     LstmDefinition,
@@ -555,20 +553,15 @@ def _publish_artifact(
     scratch: Path,
     outcome: _FitOutcome,
 ) -> None:
-    canonical = artifact_directory(storage_root, artifact_id)
-    if canonical.exists():
-        raise FileExistsError(canonical)
-
-    checkpoint = scratch / "model.ckpt"
-    shutil.copyfile(outcome.best_checkpoint, checkpoint)
-
-    retained = {checkpoint}
-    for temporary in scratch.iterdir():
-        if temporary in retained:
-            continue
-        temporary.unlink()
-
-    scratch.rename(canonical)
+    canonical = artifact_checkpoint_path(storage_root, artifact_id)
+    completed = canonical.with_name(f".{canonical.name}")
+    outcome.best_checkpoint.rename(completed)
+    shutil.rmtree(scratch)
+    os.link(completed, canonical)
+    try:
+        completed.unlink()
+    except OSError:
+        pass
 
 
 def train(
@@ -593,7 +586,7 @@ def train(
             method=method,
         )
 
-    canonical = artifact_directory(storage_root, request.artifact_id)
+    canonical = artifact_checkpoint_path(storage_root, request.artifact_id)
     if canonical.exists():
         raise FileExistsError(canonical)
     scratch = canonical.parent / f".{request.artifact_id}"

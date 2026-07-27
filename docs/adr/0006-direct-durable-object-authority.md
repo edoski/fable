@@ -21,7 +21,12 @@ Typed requests, embedded associations, and the selected Study result index plus 
 
 A completed evaluation owns its exact `EvaluateRequest` plus sufficient canonical prediction and outcome observations. Loading it validates the strict request identity, exact schema, nonnull row count, and ordered window coverage. Atomic publication owns observation value consistency, so transient reduction trusts those values and is recomputed directly from the completed evaluation object; Artifact and Corpus availability is not required after publication. Selection remains recomputed from its canonical Study object.
 
-Owner-local hidden siblings support resumable work and publish canonical objects by direct rename.
+Artifact fitting and Study assembly use hidden sibling scratch. Each completed flat file moves or
+writes to a hidden sibling, scratch is removed, and `os.link()` creates the canonical path without
+overwrite. Cleanup of the hidden completed file is best-effort after the canonical link exists.
+Corpus and evaluation directories retain owner-local scratch and direct rename. The mobile exporter
+rejects an existing output before lowering, builds a hidden sibling directory, checks again
+immediately before rename, and removes scratch after failure.
 
 ## Consequences
 

@@ -50,31 +50,31 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 ### Implementation
 
 - [x] Confirm hard-link support once on the real Slurm `STORAGE_ROOT`. On 2026-07-27, a bounded manual probe created two names with one inode and link count two, then removed both names and its temporary directory. This is setup evidence, not an automated test or recurring probe.
-- [ ] If hard links are unsupported, retain the current artifact-directory layout and stop the flat-artifact part of this slice until another atomic create-only design is approved.
-- [ ] Flatten canonical artifacts to `artifacts/<artifact-id>.ckpt` only when hard-link support is confirmed.
-- [ ] Build each artifact in a hidden sibling scratch location.
-- [ ] Move the completed checkpoint to a hidden sibling file.
-- [ ] Remove scratch before creating any canonical artifact path.
-- [ ] Publish the canonical artifact with `os.link()` so an occupied target fails without overwrite.
-- [ ] Remove the hidden completed file after successful publication; make that cleanup non-fatal after the canonical link exists.
-- [ ] Apply the same hidden-sibling, create-only hard-link ordering to `studies/<study-id>.json`.
-- [ ] Retain publication-time Study identity, method/index, exact roster, and one-trial checks.
-- [ ] Use neither `os.replace()` nor ordinary rename as the canonical flat-file publication primitive.
-- [ ] Update every artifact path owner and string-literal test path.
-- [ ] Add an early exporter `output_directory.exists()` rejection before twelve lowerings.
-- [ ] Retain the late exporter collision check immediately before publication.
-- [ ] Retain exporter scratch cleanup after failure.
-- [ ] Retain complete-roster, unique-artifact, chain, horizon, parity, forced XNNPACK delegation, and collision coverage.
-- [ ] Update ADR 0006 and the current FABLE manual with the exact ordering and no-clobber contract.
+- [x] If hard links are unsupported, retain the current artifact-directory layout and stop the flat-artifact part of this slice until another atomic create-only design is approved. Not applicable because support is confirmed above.
+- [x] Flatten canonical artifacts to `artifacts/<artifact-id>.ckpt` only when hard-link support is confirmed.
+- [x] Build each artifact in a hidden sibling scratch location.
+- [x] Move the completed checkpoint to a hidden sibling file.
+- [x] Remove scratch before creating any canonical artifact path.
+- [x] Publish the canonical artifact with `os.link()` so an occupied target fails without overwrite.
+- [x] Remove the hidden completed file after successful publication; make that cleanup non-fatal after the canonical link exists.
+- [x] Apply the same hidden-sibling, create-only hard-link ordering to `studies/<study-id>.json`.
+- [x] Retain publication-time Study identity, method/index, exact roster, and one-trial checks.
+- [x] Use neither `os.replace()` nor ordinary rename as the canonical flat-file publication primitive.
+- [x] Update every artifact path owner and string-literal test path.
+- [x] Add an early exporter `output_directory.exists()` rejection before twelve lowerings.
+- [x] Retain the late exporter collision check immediately before publication.
+- [x] Retain exporter scratch cleanup after failure.
+- [x] Retain complete-roster, unique-artifact, chain, horizon, parity, forced XNNPACK delegation, and collision coverage.
+- [x] Update ADR 0006 and the current FABLE manual with the exact ordering and no-clobber contract.
 
 ### Implementer checks
 
-- [ ] Run focused Artifact and Study publication tests.
-- [ ] Run focused exporter collision and cleanup tests.
-- [ ] Run `uv run --frozen pytest -q`.
-- [ ] Run Ruff and Pyright on changed Python files.
-- [ ] Run `uv run --frozen vulture` and manually classify any finding.
-- [ ] Run `git diff --check`.
+- [x] Run focused Artifact and Study publication tests.
+- [x] Run focused exporter collision and cleanup tests.
+- [x] Run `uv run --frozen pytest -q`.
+- [x] Run Ruff and Pyright on changed Python files.
+- [x] Run `uv run --frozen vulture` and manually classify any finding.
+- [x] Run `git diff --check`.
 
 ### Reviewer acceptance
 

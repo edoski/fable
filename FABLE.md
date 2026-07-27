@@ -68,9 +68,9 @@ completed canonical `corpus.json`/`blocks.parquet` pair. Corpus production is ex
 
 #### Study and artifact
 
-`TuneRequest` contains one `ExperimentSemantics` and a finite nonempty tuple of complete Methods from one model family. `run_candidate()` prepares training state, fits one supplied Method, and publishes its successful `RetainedResult` at the Method's request index. `publish_study()` assembles the complete result set in request order and atomically publishes its canonical JSON file.
+`TuneRequest` contains one `ExperimentSemantics` and a finite nonempty tuple of complete Methods from one model family. `run_candidate()` prepares training state, fits one supplied Method, and publishes its successful `RetainedResult` at the Method's request index. `publish_study()` assembles the complete result set in request order and publishes its canonical JSON file through a create-only hard link.
 
-A baseline `TrainRequest` embeds its complete `TrainingDefinition`. A selected-Study request instead names the exact Study UUID and result index while carrying the experiment. Training loads that exact row's Method, composes the definition from the source experiment and Method, fits through Lightning, and renames the native weights-only best checkpoint to the artifact UUID address. The checkpoint embeds the request, feature and target state, and—only for selected-Study training—the exact result index and Method.
+A baseline `TrainRequest` embeds its complete `TrainingDefinition`. A selected-Study request instead names the exact Study UUID and result index while carrying the experiment. Training loads that exact row's Method, composes the definition from the source experiment and Method, and fits through Lightning in `artifacts/.<artifact_id>/`. It moves the native weights-only best checkpoint to hidden sibling `artifacts/.<artifact_id>.ckpt`, removes the scratch directory, and creates `artifacts/<artifact_id>.ckpt` with a create-only hard link. An occupied canonical path makes the link fail without overwrite; cleanup of the hidden checkpoint is best-effort after a successful link. The checkpoint embeds the request, feature and target state, and—only for selected-Study training—the exact result index and Method.
 
 #### Evaluation
 
@@ -684,7 +684,7 @@ The selected epoch cannot exceed completed epochs, and completed epochs cannot e
 
 Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary sibling. Each result file is a one-trial `Study` carrying the full request. The former shared `progress.json` format is unsupported.
 
-`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first available result. All files must carry the identical request and exactly one trial whose Method matches that request index. Publication assembles trials in `request.methods` order, writes one hidden final Study, and atomically renames it to `studies/<study_id>.json`. An existing canonical Study is an error. The hidden Study directory is removed only after canonical publication succeeds.
+`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first available result. All files must carry the identical request and exactly one trial whose Method matches that request index. Publication assembles trials in `request.methods` order, writes hidden sibling `studies/.<study_id>.json`, removes scratch directory `studies/.<study_id>/`, and creates `studies/<study_id>.json` with `os.link()`. An occupied canonical path makes the link fail without overwrite. After a successful link, hidden-file cleanup is best-effort and cannot retract the canonical Study.
 
 #### Selected training
 
@@ -1015,7 +1015,10 @@ values. `STORAGE_ROOT` locates the canonical artifacts.
 For every cell, the exporter verifies artifact identity, source-chain association, `K`, supported
 features, float32 output shape and finiteness, eager-to-XNNPACK host parity, selected action, and
 decoded-fee tolerance. All four horizons for a chain must share `C`, ordered features, and feature
-state. Only after all twelve cells pass does it atomically publish:
+state. The exporter rejects an existing output directory before lowering, builds all files in a
+hidden sibling scratch directory, checks the output again immediately before publication, and
+renames the completed scratch directory. A detected collision preserves the occupied output, and
+failure cleanup removes exporter scratch. Only after all twelve cells pass does it publish:
 
 ```text
 app/assets/models/

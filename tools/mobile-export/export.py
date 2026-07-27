@@ -305,6 +305,9 @@ def export_bundle(
     roster_path: Path,
     output_directory: Path,
 ) -> None:
+    if output_directory.exists():
+        raise FileExistsError(output_directory)
+
     _require_versions()
     roster = _load_roster(roster_path)
     cells = _load_cells(storage_root, roster)

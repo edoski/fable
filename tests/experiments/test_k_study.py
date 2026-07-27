@@ -174,9 +174,9 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     assert len({request.artifact_id for request in requests}) == 81
 
     for row in rows:
-        directory = tmp_path / "artifacts" / row["artifact_id"]
-        directory.mkdir(parents=True)
-        (directory / "model.ckpt").touch()
+        checkpoint = tmp_path / "artifacts" / f"{row['artifact_id']}.ckpt"
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint.touch()
     _run(_SCRIPT, "close", tmp_path, experiment_id)
 
     manifest = ExperimentManifest.model_validate_json(

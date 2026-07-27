@@ -15,7 +15,6 @@ from torch.utils.data import DataLoader
 import fable.modeling as modeling
 from fable.addresses import (
     artifact_checkpoint_path,
-    artifact_directory,
 )
 from fable.config import (
     BaselineSource,
@@ -411,13 +410,40 @@ def test_all_three_models_train_load_and_apply_direct_loss(
 
     monkeypatch.setattr(modeling.pl, "Trainer", cpu_trainer)
 
+    checkpoint = artifact_checkpoint_path(tmp_path, artifact_id)
+    hidden = checkpoint.with_name(f".{checkpoint.name}")
+    cleanup_attempted = False
+    real_unlink = Path.unlink
+    if isinstance(model, LstmDefinition):
+
+        def fail_hidden_cleanup(
+            path: Path,
+            missing_ok: bool = False,
+        ) -> None:
+            nonlocal cleanup_attempted
+            if path == hidden:
+                cleanup_attempted = True
+                raise OSError("cleanup failed")
+            real_unlink(path, missing_ok=missing_ok)
+
+        monkeypatch.setattr(Path, "unlink", fail_hidden_cleanup)
+
     train(request, prepared, tmp_path)
     association, loaded_model = load_artifact(tmp_path, artifact_id)
 
     assert association.request == request
-    directory = artifact_directory(tmp_path, artifact_id)
-    assert [path.name for path in directory.iterdir()] == ["model.ckpt"]
-    assert artifact_checkpoint_path(tmp_path, artifact_id).is_file()
+    assert checkpoint == tmp_path / "artifacts" / f"{artifact_id}.ckpt"
+    assert checkpoint.is_file()
+    if isinstance(model, LstmDefinition):
+        assert cleanup_attempted
+        assert hidden.is_file()
+        contents = checkpoint.read_bytes()
+        with pytest.raises(FileExistsError):
+            train(request, prepared, tmp_path)
+        assert checkpoint.read_bytes() == contents
+    else:
+        assert not hidden.exists()
+
     batches = list(DataLoader(prepared.training, batch_size=3, shuffle=False))
     for batch in batches:
         output = loaded_model(batch["inputs"])
@@ -434,9 +460,7 @@ def test_all_three_models_train_load_and_apply_direct_loss(
 
     if isinstance(model, LstmDefinition):
         mismatched_id = UUID("30000000-0000-4000-8000-000000000009")
-        artifact_directory(tmp_path, artifact_id).rename(
-            artifact_directory(tmp_path, mismatched_id)
-        )
+        checkpoint.rename(artifact_checkpoint_path(tmp_path, mismatched_id))
         with pytest.raises(ValueError, match="embedded artifact ID"):
             load_artifact(tmp_path, mismatched_id)
 

@@ -121,8 +121,12 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
         Study(request=request, trials=tuple(trials)).model_dump_json(),
         encoding="utf-8",
     )
-    hidden.rename(canonical)
     shutil.rmtree(scratch)
+    os.link(hidden, canonical)
+    try:
+        hidden.unlink()
+    except OSError:
+        pass
 
 
 def load_selected_method(
