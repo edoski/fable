@@ -27,7 +27,6 @@ export type MobileChainManifest = ChainManifest & {
 };
 
 export type MobileManifest = {
-  executorch_version: string;
   chains: Record<Chain, MobileChainManifest>;
 };
 

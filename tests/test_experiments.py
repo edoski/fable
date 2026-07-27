@@ -19,24 +19,6 @@ STUDY_ID = UUID("30000000-0000-4000-8000-000000000001")
 EVALUATION_ID = UUID("40000000-0000-4000-8000-000000000001")
 
 
-def test_experiment_kinds_map_to_their_manifest_namespaces() -> None:
-    root = Path("/storage")
-    cases = {
-        ExperimentKind.FEATURE_ABLATION: "feature_ablation",
-        ExperimentKind.C_STUDY: "c_study",
-        ExperimentKind.HPO: "hpo",
-        ExperimentKind.K_STUDY: "k_study",
-        ExperimentKind.HELD_OUT: "held_out",
-    }
-
-    assert {
-        kind: experiment_manifest_path(root, kind, EXPERIMENT_ID) for kind in ExperimentKind
-    } == {
-        kind: root / "experiments" / namespace / f"{EXPERIMENT_ID}.json"
-        for kind, namespace in cases.items()
-    }
-
-
 def test_experiment_manifest_round_trip_preserves_cell_references(tmp_path: Path) -> None:
     manifest = ExperimentManifest(
         experiment_id=EXPERIMENT_ID,
@@ -52,14 +34,15 @@ def test_experiment_manifest_round_trip_preserves_cell_references(tmp_path: Path
 
     write_experiment_manifest(tmp_path, ExperimentKind.FEATURE_ABLATION, manifest)
 
-    assert (
-        load_experiment_manifest(
-            tmp_path,
-            ExperimentKind.FEATURE_ABLATION,
-            EXPERIMENT_ID,
-        )
-        == manifest
+    loaded = load_experiment_manifest(
+        tmp_path,
+        ExperimentKind.FEATURE_ABLATION,
+        EXPERIMENT_ID,
     )
+    assert loaded == manifest
+    assert loaded.entries[0].require_artifact_id() == ARTIFACT_ID
+    assert loaded.entries[0].require_evaluation_id() == EVALUATION_ID
+    assert loaded.entries[1].require_study_id() == STUDY_ID
     assert json.loads(
         experiment_manifest_path(
             tmp_path,

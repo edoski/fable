@@ -1009,8 +1009,8 @@ export paths.
 The isolated project in `tools/mobile-export` pins Torch 2.11 and ExecuTorch 1.2 without changing
 FABLE's Torch 2.7.1 scientific environment. It consumes an operator-created `MOBILE.yaml` whose
 root contains exactly `ethereum`, `polygon`, and `avalanche`. Each chain contains exactly
-`k2_artifact_id`, `k3_artifact_id`, `k4_artifact_id`, and `k5_artifact_id`, all distinct UUIDv4
-values. `STORAGE_ROOT` locates the canonical artifacts.
+integer keys `2`, `3`, `4`, and `5` mapped to twelve distinct artifact UUIDv4 values.
+`STORAGE_ROOT` locates the canonical artifacts.
 
 For every cell, the exporter verifies artifact identity, source-chain association, `K`, supported
 features, float32 output shape and finiteness, eager-to-XNNPACK host parity, selected action, and
@@ -1028,11 +1028,11 @@ app/assets/models/
   avalanche-k2.pte ... avalanche-k5.pte
 ```
 
-The manifest stores ExecuTorch version, chain IDs, each chain's shared context and ordered feature
-state, and each model's artifact UUID and target state. The app trusts this exporter-owned,
-build-time bundle and performs direct typed catalog lookups; it does not parse or revalidate the
-manifest at runtime. Metro binds the twelve stable `.pte` paths statically; there is no download
-path, alternate runtime, or remote inference fallback.
+The manifest stores each chain's shared context and ordered feature state plus each model's artifact
+UUID and target state. The app trusts this exporter-owned, build-time bundle and performs direct
+typed catalog lookups; it does not parse or revalidate the manifest at runtime. Metro binds the
+twelve stable `.pte` paths statically; there is no download path, alternate runtime, or remote
+inference fallback.
 
 The private Expo app manifest is fixed at:
 

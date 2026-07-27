@@ -21,7 +21,6 @@ export type FeatureManifest = {
 };
 
 export type ChainManifest = {
-  chain_id: number;
   context_blocks: number;
   features: readonly FeatureManifest[];
 };

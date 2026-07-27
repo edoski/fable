@@ -7,26 +7,22 @@ import os
 import shutil
 import tempfile
 from dataclasses import dataclass
-from importlib.metadata import version
 from pathlib import Path
-from typing import Self
 from uuid import UUID
 
 import torch
 import yaml
-from executorch.backends.xnnpack.partition.xnnpack_partitioner import (  # pyright: ignore[reportMissingImports]
+from executorch.backends.xnnpack.partition.xnnpack_partitioner import (
     XnnpackPartitioner,
 )
-from executorch.exir import to_edge_transform_and_lower  # pyright: ignore[reportMissingImports]
-from executorch.runtime import Runtime  # pyright: ignore[reportMissingImports]
-from pydantic import UUID4, BaseModel, ConfigDict, model_validator
+from executorch.exir import to_edge_transform_and_lower
+from executorch.runtime import Runtime
+from pydantic import UUID4, ConfigDict, TypeAdapter
 from torch import nn
 
 from fable.corpus import Corpus, load_corpus
 from fable.modeling import ArtifactAssociation, load_artifact
 
-_EXECUTORCH_VERSION = "1.2.0"
-_TORCH_VERSION = "2.11.0"
 _CHAINS = {
     "ethereum": 1,
     "polygon": 137,
@@ -47,33 +43,8 @@ _SUPPORTED_FEATURES = frozenset(
     }
 )
 
-
-class _RosterChain(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-
-    k2_artifact_id: UUID4
-    k3_artifact_id: UUID4
-    k4_artifact_id: UUID4
-    k5_artifact_id: UUID4
-
-
-class _Roster(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-
-    ethereum: _RosterChain
-    polygon: _RosterChain
-    avalanche: _RosterChain
-
-    @model_validator(mode="after")
-    def validate_unique_artifacts(self) -> Self:
-        artifact_ids = tuple(
-            getattr(getattr(self, chain), f"k{horizon}_artifact_id")
-            for chain in _CHAINS
-            for horizon in _HORIZONS
-        )
-        if len(set(artifact_ids)) != len(artifact_ids):
-            raise ValueError("roster artifact IDs must be unique")
-        return self
+_Roster = dict[str, dict[int, UUID4]]
+_ROSTER_ADAPTER = TypeAdapter(_Roster, config=ConfigDict(strict=True))
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +57,6 @@ class _FeatureContract:
 
 @dataclass(frozen=True, slots=True)
 class _Cell:
-    chain_id: int
     horizon: int
     artifact_id: UUID
     features: _FeatureContract
@@ -105,18 +75,30 @@ class _NamedOutputWrapper(nn.Module):
         return output.action_logits, output.minimum_fee_z
 
 
-def _require_versions() -> None:
-    if torch.__version__.split("+", maxsplit=1)[0] != _TORCH_VERSION:
-        raise RuntimeError(f"mobile export requires torch=={_TORCH_VERSION}")
-    if version("executorch") != _EXECUTORCH_VERSION:
-        raise RuntimeError(f"mobile export requires executorch=={_EXECUTORCH_VERSION}")
-
-
 def _load_roster(roster_path: Path) -> _Roster:
-    return _Roster.model_validate_strings(
-        yaml.safe_load(roster_path.read_bytes()),
-        strict=True,
-    )
+    raw = yaml.safe_load(roster_path.read_bytes())
+    if (
+        not isinstance(raw, dict)
+        or not all(type(chain) is str for chain in raw)
+        or set(raw) != set(_CHAINS)
+    ):
+        raise ValueError("MOBILE.yaml must contain exactly the three supported chains")
+    for chain in _CHAINS:
+        horizons = raw[chain]
+        if (
+            not isinstance(horizons, dict)
+            or not all(type(horizon) is int for horizon in horizons)
+            or set(horizons) != set(_HORIZONS)
+        ):
+            raise ValueError(f"{chain} must contain exactly integer horizons 2 through 5")
+        if not all(type(artifact_id) is str for artifact_id in horizons.values()):
+            raise ValueError(f"{chain} artifact IDs must be UUIDv4 strings")
+
+    roster = _ROSTER_ADAPTER.validate_json(json.dumps(raw), strict=True)
+    artifact_ids = tuple(roster[chain][horizon] for chain in _CHAINS for horizon in _HORIZONS)
+    if len(set(artifact_ids)) != len(artifact_ids):
+        raise ValueError("roster artifact IDs must be unique")
+    return roster
 
 
 def _feature_contract(
@@ -148,7 +130,7 @@ def _load_cells(
         cells[chain] = {}
         shared_features: _FeatureContract | None = None
         for horizon in _HORIZONS:
-            artifact_id = getattr(getattr(roster, chain), f"k{horizon}_artifact_id")
+            artifact_id = roster[chain][horizon]
             association, model = load_artifact(storage_root, artifact_id)
 
             experiment = association.training_definition.experiment
@@ -169,7 +151,6 @@ def _load_cells(
                 raise ValueError(f"{chain} artifacts must share one feature contract")
 
             cells[chain][horizon] = _Cell(
-                chain_id=chain_id,
                 horizon=horizon,
                 artifact_id=artifact_id,
                 features=features,
@@ -255,7 +236,6 @@ def _manifest(cells: dict[str, dict[int, _Cell]]) -> dict[str, object]:
         chain_cells = cells[chain]
         features = chain_cells[2].features
         chains[chain] = {
-            "chain_id": chain_cells[2].chain_id,
             "context_blocks": features.context_blocks,
             "features": [
                 {
@@ -281,10 +261,7 @@ def _manifest(cells: dict[str, dict[int, _Cell]]) -> dict[str, object]:
                 for horizon in _HORIZONS
             },
         }
-    return {
-        "executorch_version": _EXECUTORCH_VERSION,
-        "chains": chains,
-    }
+    return {"chains": chains}
 
 
 def export_bundle(
@@ -295,7 +272,6 @@ def export_bundle(
     if output_directory.exists():
         raise FileExistsError(output_directory)
 
-    _require_versions()
     roster = _load_roster(roster_path)
     cells = _load_cells(storage_root, roster)
 

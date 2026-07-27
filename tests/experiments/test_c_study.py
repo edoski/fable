@@ -13,7 +13,6 @@ from fable.study import RetainedResult, Study
 _ROOT = Path(__file__).parents[2]
 _FEATURE_SCRIPT = _ROOT / "experiments" / "feature_ablation.py"
 _C_SCRIPT = _ROOT / "experiments" / "c_study.py"
-_FEATURE_EXPERIMENT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 
 
 def _run(script: Path, *arguments: object) -> subprocess.CompletedProcess[str]:
@@ -57,14 +56,14 @@ def _publish_studies(
 def test_context_study_uses_selected_features_and_reports_chain_winners(
     tmp_path: Path,
 ) -> None:
-    _run(
-        _FEATURE_SCRIPT,
-        "prepare",
-        tmp_path,
-        "--experiment-id",
-        _FEATURE_EXPERIMENT_ID,
+    feature_experiment_id = UUID(
+        _run(
+            _FEATURE_SCRIPT,
+            "prepare",
+            tmp_path,
+        ).stdout.strip()
     )
-    feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{_FEATURE_EXPERIMENT_ID}"
+    feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
     feature_rows = _rows(feature_bundle / "cells.tsv")
     _publish_studies(
         tmp_path,
@@ -75,13 +74,13 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
             ("avalanche", "B+S+P"): 0.5,
         },
     )
-    _run(_FEATURE_SCRIPT, "select", tmp_path, _FEATURE_EXPERIMENT_ID)
+    _run(_FEATURE_SCRIPT, "select", tmp_path, feature_experiment_id)
 
     result = _run(
         _C_SCRIPT,
         "prepare",
         tmp_path,
-        _FEATURE_EXPERIMENT_ID,
+        feature_experiment_id,
     )
     experiment_id = UUID(result.stdout.strip())
     bundle = tmp_path / "experiments" / "c_study" / f".{experiment_id}"

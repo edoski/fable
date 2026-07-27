@@ -25,7 +25,6 @@ function fixtureP50Rewards(): bigint[] {
 
 function fixtureManifest(): ChainManifest {
   return {
-    chain_id: fixture.manifest.chain_id,
     context_blocks: fixture.manifest.context_blocks,
     features: fixture.manifest.features.map((feature) => ({
       ...feature,
@@ -60,7 +59,6 @@ describe("buildModelInput", () => {
       blocks[4],
     ];
     const intervalInput = buildModelInput(blocks, null, {
-      chain_id: 1,
       context_blocks: 4,
       features: [
         {
@@ -71,7 +69,6 @@ describe("buildModelInput", () => {
       ],
     });
     const formingInput = buildModelInput(formingBlocks, null, {
-      chain_id: 1,
       context_blocks: 4,
       features: [
         {
@@ -92,7 +89,6 @@ describe("buildModelInput", () => {
 
   it("aligns P50 fee rows to model rows after dropping the predecessor", () => {
     const input = buildModelInput(fixtureBlocks(), fixtureP50Rewards(), {
-      chain_id: 1,
       context_blocks: 4,
       features: [
         {
@@ -128,7 +124,6 @@ describe("buildModelInput", () => {
         [{ ...block, baseFeePerGas: BigInt(Number.MAX_SAFE_INTEGER) + 1n }],
         null,
         {
-          chain_id: 1,
           context_blocks: 1,
           features: [
             {

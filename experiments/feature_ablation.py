@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import shutil
+from itertools import product
 from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
+
+from bundle import bundle_path, read_cells, write_cells
 
 from fable.config import (
     BlockWindow,
@@ -120,13 +122,10 @@ def _ordered_features(chain: str, feature_set: str) -> tuple[str, ...]:
     return tuple(feature for group in feature_set.split("+") for feature in groups[group])
 
 
-def _bundle_path(storage_root: Path, experiment_id: UUID) -> Path:
-    return storage_root / "experiments" / _KIND / f".{experiment_id}"
-
-
-def prepare(storage_root: Path, experiment_id: UUID) -> None:
+def prepare(storage_root: Path) -> None:
+    experiment_id = uuid4()
     storage_root = storage_root.resolve()
-    bundle = _bundle_path(storage_root, experiment_id)
+    bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
     methods = bundle / "methods"
     requests.mkdir(parents=True)
@@ -140,41 +139,37 @@ def prepare(storage_root: Path, experiment_id: UUID) -> None:
         method_paths[family] = path
 
     rows: list[tuple[str, Path, Path, UUID]] = []
-    index = 0
-    for chain, corpus_id, training_window, validation_window in _CHAINS:
-        for method in _METHODS:
-            family = method.model.family
-            for feature_set in _FEATURE_SETS:
-                cell = f"{chain}.{family}.{feature_set}"
-                request = fresh_tune_request(
-                    corpus_id,
-                    ExperimentSemantics(
-                        training_window=training_window,
-                        validation_window=validation_window,
-                        context_blocks=100,
-                        horizon_blocks=5,
-                        ordered_features=_ordered_features(chain, feature_set),
-                    ),
-                    (method,),
-                )
-                path = requests / f"{index:02d}.json"
-                path.write_text(request.model_dump_json(), encoding="utf-8")
-                rows.append((cell, path, method_paths[family], request.study_id))
-                index += 1
+    for index, (
+        (chain, corpus_id, training_window, validation_window),
+        method,
+        feature_set,
+    ) in enumerate(product(_CHAINS, _METHODS, _FEATURE_SETS)):
+        family = method.model.family
+        cell = f"{chain}.{family}.{feature_set}"
+        request = fresh_tune_request(
+            corpus_id,
+            ExperimentSemantics(
+                training_window=training_window,
+                validation_window=validation_window,
+                context_blocks=100,
+                horizon_blocks=5,
+                ordered_features=_ordered_features(chain, feature_set),
+            ),
+            (method,),
+        )
+        path = requests / f"{index:02d}.json"
+        path.write_text(request.model_dump_json(), encoding="utf-8")
+        rows.append((cell, path, method_paths[family], request.study_id))
 
-    with (bundle / "cells.tsv").open("x", newline="", encoding="utf-8") as destination:
-        writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
-        writer.writerow(("cell", "request", "method", "study_id"))
-        writer.writerows(rows)
+    write_cells(bundle, ("cell", "request", "method", "study_id"), rows)
 
     print(experiment_id)
 
 
 def select(storage_root: Path, experiment_id: UUID) -> None:
     storage_root = storage_root.resolve()
-    bundle = _bundle_path(storage_root, experiment_id)
-    with (bundle / "cells.tsv").open(newline="", encoding="utf-8") as source:
-        rows = list(csv.DictReader(source, delimiter="\t"))
+    bundle = bundle_path(storage_root, _KIND, experiment_id)
+    rows = read_cells(bundle)
 
     objectives: dict[tuple[str, str], list[float]] = {}
     entries: list[ExperimentEntry] = []
@@ -214,16 +209,13 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     prepare_parser = commands.add_parser("prepare")
     prepare_parser.add_argument("storage_root", type=Path)
-    prepare_parser.add_argument("--experiment-id", type=UUID, default=None)
     select_parser = commands.add_parser("select")
     select_parser.add_argument("storage_root", type=Path)
     select_parser.add_argument("experiment_id", type=UUID)
     arguments = parser.parse_args()
 
     if arguments.command == "prepare":
-        if arguments.experiment_id is not None and arguments.experiment_id.version != 4:
-            raise ValueError("experiment_id must be a UUIDv4")
-        prepare(arguments.storage_root, arguments.experiment_id or uuid4())
+        prepare(arguments.storage_root)
     else:
         select(arguments.storage_root, arguments.experiment_id)
 

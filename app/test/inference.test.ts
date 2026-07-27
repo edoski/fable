@@ -65,7 +65,6 @@ function context(
 }
 
 const chainManifest: MobileChainManifest = {
-  chain_id: 1,
   context_blocks: 2,
   features: [
     {

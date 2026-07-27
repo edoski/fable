@@ -12,6 +12,8 @@ import torch
 import yaml
 from torch import nn
 
+torch.manual_seed(2026)
+
 _CORPUS_IDS = {
     "ethereum": UUID("10000000-0000-4000-8000-000000000001"),
     "polygon": UUID("10000000-0000-4000-8000-000000000002"),
@@ -25,14 +27,14 @@ def _artifact_id(index: int) -> UUID:
 
 def _write_roster(path: Path, *, duplicate: bool = False) -> dict[tuple[str, int], UUID]:
     artifact_ids: dict[tuple[str, int], UUID] = {}
-    raw: dict[str, dict[str, str]] = {}
+    raw: dict[str, dict[int, str]] = {}
     index = 1
     for chain in mobile_export._CHAINS:
         raw[chain] = {}
         for horizon in mobile_export._HORIZONS:
             artifact_id = _artifact_id(1 if duplicate and index == 12 else index)
             artifact_ids[(chain, horizon)] = artifact_id
-            raw[chain][f"k{horizon}_artifact_id"] = str(artifact_id)
+            raw[chain][horizon] = str(artifact_id)
             index += 1
     path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
     return artifact_ids
@@ -125,10 +127,8 @@ def test_export_bundle_publishes_complete_stable_bundle(
     assert {path.name for path in output.iterdir()} == expected_files
     manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     assert manifest == {
-        "executorch_version": "1.2.0",
         "chains": {
             chain: {
-                "chain_id": chain_id,
                 "context_blocks": 3,
                 "features": [
                     {
@@ -153,7 +153,7 @@ def test_export_bundle_publishes_complete_stable_bundle(
                     for horizon in mobile_export._HORIZONS
                 },
             }
-            for chain, chain_id in mobile_export._CHAINS.items()
+            for chain in mobile_export._CHAINS
         },
     }
 
@@ -182,10 +182,10 @@ def test_export_bundle_rejects_incomplete_roster(tmp_path: Path) -> None:
     roster_path = tmp_path / "MOBILE.yaml"
     _write_roster(roster_path)
     raw = yaml.safe_load(roster_path.read_text(encoding="utf-8"))
-    del raw["polygon"]["k5_artifact_id"]
+    del raw["polygon"][5]
     roster_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="k5_artifact_id"):
+    with pytest.raises(ValueError, match="horizons"):
         mobile_export.export_bundle(
             tmp_path / "storage",
             roster_path,
@@ -237,6 +237,7 @@ def test_export_bundle_rejects_artifact_association_mismatch(
             roster_path,
             tmp_path / "models",
         )
+    assert not (tmp_path / "models").exists()
 
 
 def test_export_bundle_rejects_feature_mismatch_without_publication(
@@ -344,18 +345,6 @@ class _TinyModel(nn.Module):
         super().__init__()
         self.action = nn.Linear(2, 2)
         self.regression = nn.Linear(2, 1)
-        with torch.no_grad():
-            self.action.weight.copy_(
-                torch.tensor(
-                    [
-                        [0.5, -0.25],
-                        [-0.75, 1.0],
-                    ]
-                )
-            )
-            self.action.bias.copy_(torch.tensor([0.1, -0.2]))
-            self.regression.weight.copy_(torch.tensor([[0.4, 0.6]]))
-            self.regression.bias.copy_(torch.tensor([0.3]))
 
     def forward(self, inputs: torch.Tensor) -> _Output:
         final = inputs[:, -1]
@@ -387,7 +376,6 @@ def test_real_xnnpack_export_and_host_execution(tmp_path: Path) -> None:
     destination = tmp_path / "tiny.pte"
     mobile_export._export_model(
         mobile_export._Cell(
-            chain_id=1,
             horizon=2,
             artifact_id=_artifact_id(1),
             features=mobile_export._FeatureContract(

@@ -32,6 +32,21 @@ class ExperimentEntry(StrictFrozenRecord):
             raise ValueError("entry must reference a canonical record")
         return self
 
+    def require_artifact_id(self) -> UUID:
+        if self.artifact_id is None:
+            raise ValueError("experiment entry must reference an artifact")
+        return self.artifact_id
+
+    def require_study_id(self) -> UUID:
+        if self.study_id is None:
+            raise ValueError("experiment entry must reference a Study")
+        return self.study_id
+
+    def require_evaluation_id(self) -> UUID:
+        if self.evaluation_id is None:
+            raise ValueError("experiment entry must reference an evaluation")
+        return self.evaluation_id
+
 
 class ExperimentManifest(StrictFrozenRecord):
     experiment_id: UUID4

@@ -14,8 +14,6 @@ _ROOT = Path(__file__).parents[2]
 _FEATURE_SCRIPT = _ROOT / "experiments" / "feature_ablation.py"
 _C_SCRIPT = _ROOT / "experiments" / "c_study.py"
 _HPO_SCRIPT = _ROOT / "experiments" / "hpo.py"
-_FEATURE_EXPERIMENT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-_C_EXPERIMENT_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 
 
 def _run(script: Path, *arguments: object) -> subprocess.CompletedProcess[str]:
@@ -63,32 +61,32 @@ def _publish_studies(
 def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
     tmp_path: Path,
 ) -> None:
-    _run(_FEATURE_SCRIPT, "prepare", tmp_path, "--experiment-id", _FEATURE_EXPERIMENT_ID)
-    feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{_FEATURE_EXPERIMENT_ID}"
+    feature_experiment_id = UUID(_run(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
+    feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
     _publish_studies(tmp_path, _rows(feature_bundle / "cells.tsv"), 1.0)
-    _run(_FEATURE_SCRIPT, "select", tmp_path, _FEATURE_EXPERIMENT_ID)
+    _run(_FEATURE_SCRIPT, "select", tmp_path, feature_experiment_id)
 
-    _run(
-        _C_SCRIPT,
-        "prepare",
-        tmp_path,
-        _FEATURE_EXPERIMENT_ID,
-        "--experiment-id",
-        _C_EXPERIMENT_ID,
+    c_experiment_id = UUID(
+        _run(
+            _C_SCRIPT,
+            "prepare",
+            tmp_path,
+            feature_experiment_id,
+        ).stdout.strip()
     )
-    c_bundle = tmp_path / "experiments" / "c_study" / f".{_C_EXPERIMENT_ID}"
+    c_bundle = tmp_path / "experiments" / "c_study" / f".{c_experiment_id}"
     _publish_studies(tmp_path, _rows(c_bundle / "cells.tsv"), 1.0)
-    _run(_C_SCRIPT, "select", tmp_path, _C_EXPERIMENT_ID)
+    _run(_C_SCRIPT, "select", tmp_path, c_experiment_id)
 
     result = _run(
         _HPO_SCRIPT,
         "prepare",
         tmp_path,
-        _C_EXPERIMENT_ID,
+        c_experiment_id,
     )
     experiment_id = UUID(result.stdout.strip())
     bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
-    rows = _rows(bundle / "candidates.tsv")
+    rows = _rows(bundle / "cells.tsv")
     requests = {
         row["cell"]: TuneRequest.model_validate_json(
             Path(row["request"]).read_bytes(),

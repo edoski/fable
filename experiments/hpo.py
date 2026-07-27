@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import shutil
+from itertools import product
 from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
+
+from bundle import bundle_path, read_cells, write_cells
 
 from fable.config import (
     FitMethod,
@@ -127,10 +129,6 @@ def _methods(family: str) -> tuple[Method, ...]:
     )
 
 
-def _bundle_path(storage_root: Path, experiment_id: UUID) -> Path:
-    return storage_root / "experiments" / _KIND / f".{experiment_id}"
-
-
 def _selected_context_studies(
     storage_root: Path,
     experiment_id: UUID,
@@ -144,10 +142,8 @@ def _selected_context_studies(
     objectives: dict[tuple[str, int], list[float]] = {}
     for entry in manifest.entries:
         chain, family, context_label = entry.cell.split(".")
-        if entry.study_id is None:
-            raise ValueError("context-study entry must reference a Study")
         context = int(context_label.removeprefix("C"))
-        study = load_study(storage_root, entry.study_id)
+        study = load_study(storage_root, entry.require_study_id())
         studies[chain, family, context] = study
         objectives.setdefault((chain, context), []).append(study.trials[0].objective)
 
@@ -163,10 +159,11 @@ def _selected_context_studies(
     return selected
 
 
-def prepare(storage_root: Path, c_experiment_id: UUID, experiment_id: UUID) -> None:
+def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
+    experiment_id = uuid4()
     storage_root = storage_root.resolve()
     selected = _selected_context_studies(storage_root, c_experiment_id)
-    bundle = _bundle_path(storage_root, experiment_id)
+    bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
     methods_directory = bundle / "methods"
     requests.mkdir(parents=True)
@@ -183,43 +180,40 @@ def prepare(storage_root: Path, c_experiment_id: UUID, experiment_id: UUID) -> N
             method_paths[family, index] = path
 
     rows: list[tuple[str, Path, Path, UUID, int]] = []
-    index = 0
-    for chain in _CHAINS:
-        for family in _FAMILIES:
-            source = selected[chain, family]
-            request = fresh_tune_request(
-                source.request.corpus_id,
-                source.request.experiment,
-                methods_by_family[family],
+    for index, (chain, family) in enumerate(product(_CHAINS, _FAMILIES)):
+        source = selected[chain, family]
+        request = fresh_tune_request(
+            source.request.corpus_id,
+            source.request.experiment,
+            methods_by_family[family],
+        )
+        request_path = requests / f"{index}.json"
+        request_path.write_text(request.model_dump_json(), encoding="utf-8")
+        cell = f"{chain}.{family}"
+        rows.extend(
+            (
+                cell,
+                request_path,
+                method_paths[family, method_index],
+                request.study_id,
+                method_index,
             )
-            request_path = requests / f"{index}.json"
-            request_path.write_text(request.model_dump_json(), encoding="utf-8")
-            cell = f"{chain}.{family}"
-            rows.extend(
-                (
-                    cell,
-                    request_path,
-                    method_paths[family, method_index],
-                    request.study_id,
-                    method_index,
-                )
-                for method_index in range(len(request.methods))
-            )
-            index += 1
+            for method_index in range(len(request.methods))
+        )
 
-    with (bundle / "candidates.tsv").open("x", newline="", encoding="utf-8") as destination:
-        writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
-        writer.writerow(("cell", "request", "method", "study_id", "method_index"))
-        writer.writerows(rows)
+    write_cells(
+        bundle,
+        ("cell", "request", "method", "study_id", "method_index"),
+        rows,
+    )
 
     print(experiment_id)
 
 
 def select(storage_root: Path, experiment_id: UUID) -> None:
     storage_root = storage_root.resolve()
-    bundle = _bundle_path(storage_root, experiment_id)
-    with (bundle / "candidates.tsv").open(newline="", encoding="utf-8") as source:
-        rows = list(csv.DictReader(source, delimiter="\t"))
+    bundle = bundle_path(storage_root, _KIND, experiment_id)
+    rows = read_cells(bundle)
 
     entries: list[ExperimentEntry] = []
     selections: list[tuple[str, int, float]] = []
@@ -231,9 +225,7 @@ def select(storage_root: Path, experiment_id: UUID) -> None:
         seen.add(study_id)
         study = load_study(storage_root, study_id)
         retained_methods = tuple(result.method for result in study.trials)
-        if len(study.trials) != len(study.request.methods) or any(
-            method not in retained_methods for method in study.request.methods
-        ):
+        if retained_methods != study.request.methods:
             raise ValueError("HPO Study must retain every frozen Method")
         selected_index, result = min(
             enumerate(study.trials),
@@ -258,19 +250,15 @@ def main() -> None:
     prepare_parser = commands.add_parser("prepare")
     prepare_parser.add_argument("storage_root", type=Path)
     prepare_parser.add_argument("c_experiment_id", type=UUID)
-    prepare_parser.add_argument("--experiment-id", type=UUID, default=None)
     select_parser = commands.add_parser("select")
     select_parser.add_argument("storage_root", type=Path)
     select_parser.add_argument("experiment_id", type=UUID)
     arguments = parser.parse_args()
 
     if arguments.command == "prepare":
-        if arguments.experiment_id is not None and arguments.experiment_id.version != 4:
-            raise ValueError("experiment_id must be a UUIDv4")
         prepare(
             arguments.storage_root,
             arguments.c_experiment_id,
-            arguments.experiment_id or uuid4(),
         )
     else:
         select(arguments.storage_root, arguments.experiment_id)

@@ -219,58 +219,58 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Experiment identities and bundles
 
-- [ ] Remove `--experiment-id` from all five experiment `prepare` commands.
-- [ ] Mint every new experiment ID with `uuid4()` and print it.
-- [ ] Delete the five unreachable UUID-version guards and `tests/experiments/test_cli.py`.
-- [ ] Make tests parse the minted ID from stdout.
-- [ ] Keep upstream experiment IDs explicit.
-- [ ] Add `experiments/bundle.py`.
-- [ ] Own paths with `bundle_path(storage_root, kind, id)`.
-- [ ] Share only generic `write_cells(bundle, header, rows)` and `read_cells(bundle)`.
-- [ ] Rename HPO `candidates.tsv` to `cells.tsv`.
-- [ ] Keep runner row schema, header, scientific semantics, and selection local.
-- [ ] Use `enumerate(product(...))` for Cartesian HPO and feature-ablation cells.
-- [ ] Keep grouped c/k-study loops and derive indices from `len(rows)`.
-- [ ] Delete mutable counters.
+- [x] Remove `--experiment-id` from all five experiment `prepare` commands.
+- [x] Mint every new experiment ID with `uuid4()` and print it.
+- [x] Delete the five unreachable UUID-version guards and `tests/experiments/test_cli.py`.
+- [x] Make tests parse the minted ID from stdout.
+- [x] Keep upstream experiment IDs explicit.
+- [x] Add `experiments/bundle.py`.
+- [x] Own paths with `bundle_path(storage_root, kind, id)`.
+- [x] Share only generic `write_cells(bundle, header, rows)` and `read_cells(bundle)`.
+- [x] Rename HPO `candidates.tsv` to `cells.tsv`.
+- [x] Keep runner row schema, header, scientific semantics, and selection local.
+- [x] Use `enumerate(product(...))` for Cartesian HPO and feature-ablation cells.
+- [x] Keep grouped c/k-study loops and derive indices from `len(rows)`.
+- [x] Delete mutable counters.
 
 ### Experiment contracts
 
-- [ ] Delete only the duplicate read-time c-study trial-count check.
-- [ ] Keep authoring-time feature-ablation and context-study completeness.
-- [ ] Require exact ordered HPO retained-method equality with `request.methods`.
-- [ ] Add `ExperimentEntry.require_artifact_id()`, `require_study_id()`, and `require_evaluation_id()`.
-- [ ] Replace scattered `None` guards and silent filters with those accessors.
-- [ ] Keep feature-ablation and HPO Methods independent.
+- [x] Delete only the duplicate read-time c-study trial-count check.
+- [x] Keep authoring-time feature-ablation and context-study completeness.
+- [x] Require exact ordered HPO retained-method equality with `request.methods`.
+- [x] Add `ExperimentEntry.require_artifact_id()`, `require_study_id()`, and `require_evaluation_id()`.
+- [x] Replace scattered `None` guards and silent filters with those accessors.
+- [x] Keep feature-ablation and HPO Methods independent.
 
 ### Mobile roster and manifest
 
-- [ ] Replace exporter `_Roster`/`_RosterChain` models with `dict[str, dict[int, UUID4]]`.
-- [ ] Change `MOBILE.yaml` to `chain -> integer horizon -> artifact UUID`.
-- [ ] At YAML hydration, require exactly three chains, horizons 2–5, UUIDv4 values, and twelve unique IDs.
-- [ ] Use direct indexing after validation.
-- [ ] Keep artifact/corpus chain and artifact/horizon validation.
-- [ ] Remove `_Cell.chain_id`; derive expected IDs from `_CHAINS`.
-- [ ] Remove emitted `chain_id` and `executorch_version`, their TypeScript fields, constants, fixtures, tests, and docs.
-- [ ] Delete `_require_versions`; trust the committed isolated project and lockfile.
-- [ ] Record the used export version only in deferred final-export evidence.
-- [ ] Keep one frozen exporter environment and supported execution workflow.
-- [ ] Remove inert exporter Pyright suppressions.
+- [x] Replace exporter `_Roster`/`_RosterChain` models with `dict[str, dict[int, UUID4]]`.
+- [x] Change `MOBILE.yaml` to `chain -> integer horizon -> artifact UUID`.
+- [x] At YAML hydration, require exactly three chains, horizons 2–5, UUIDv4 values, and twelve unique IDs.
+- [x] Use direct indexing after validation.
+- [x] Keep artifact/corpus chain and artifact/horizon validation.
+- [x] Remove `_Cell.chain_id`; derive expected IDs from `_CHAINS`.
+- [x] Remove emitted `chain_id` and `executorch_version`, their TypeScript fields, constants, fixtures, tests, and docs.
+- [x] Delete `_require_versions`; trust the committed isolated project and lockfile.
+- [x] Record the used export version only in deferred final-export evidence.
+- [x] Keep one frozen exporter environment and supported execution workflow.
+- [x] Remove inert exporter Pyright suppressions.
 
 ### Owned tests
 
-- [ ] Consolidate chain/horizon mismatch cases without losing postconditions.
-- [ ] Use one module-level deterministic `TinyModel` seed.
-- [ ] Keep incomplete roster, duplicate artifact, early/late collision, scratch cleanup, genuine export, forced XNNPACK, host execution, and parity coverage.
-- [ ] Delete `test_experiment_kinds_map_to_their_manifest_namespaces`; runner tests pin all five canonical manifest paths.
-- [ ] Update app manifest fixtures for the clean schema.
+- [x] Consolidate chain/horizon mismatch cases without losing postconditions.
+- [x] Use one module-level deterministic `TinyModel` seed.
+- [x] Keep incomplete roster, duplicate artifact, early/late collision, scratch cleanup, genuine export, forced XNNPACK, host execution, and parity coverage.
+- [x] Delete `test_experiment_kinds_map_to_their_manifest_namespaces`; runner tests pin all five canonical manifest paths.
+- [x] Update app manifest fixtures for the clean schema.
 
 ### Implementer checks
 
-- [ ] Run all experiment tests.
-- [ ] Run `uv run --project tools/mobile-export --frozen pytest -q`.
-- [ ] Run `uv run --frozen pytest -q`.
-- [ ] Run `npm test` and `npm run typecheck` in `app/`.
-- [ ] Run Ruff, Pyright, Vulture, and `git diff --check`.
+- [x] Run all experiment tests.
+- [x] Run `uv run --project tools/mobile-export --frozen pytest -q`.
+- [x] Run `uv run --frozen pytest -q`.
+- [x] Run `npm test` and `npm run typecheck` in `app/`.
+- [x] Run Ruff, Pyright, Vulture, and `git diff --check`.
 
 ### Reviewer acceptance
 

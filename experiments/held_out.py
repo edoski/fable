@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import shutil
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import polars as pl
+from bundle import bundle_path, read_cells, write_cells
 
 from fable.addresses import corpus_json_path, evaluation_directory
 from fable.config import BlockWindow, CorpusRequest
@@ -28,10 +28,6 @@ _MAX_HORIZON = 200
 _KIND = ExperimentKind.HELD_OUT
 
 
-def _bundle_path(storage_root: Path, experiment_id: UUID) -> Path:
-    return storage_root / "experiments" / _KIND / f".{experiment_id}"
-
-
 def _corpus_last_block(storage_root: Path, corpus_id: UUID) -> int:
     document = json.loads(corpus_json_path(storage_root, corpus_id).read_bytes())
     return CorpusRequest.model_validate(document["request"]).definition.last_block
@@ -41,24 +37,21 @@ def prepare(
     storage_root: Path,
     hpo_experiment_id: UUID,
     k_experiment_id: UUID,
-    experiment_id: UUID,
 ) -> None:
+    experiment_id = uuid4()
     storage_root = storage_root.resolve()
     hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_experiment_id)
     studies = {
-        entry.cell: load_study(storage_root, entry.study_id)
-        for entry in hpo.entries
-        if entry.study_id is not None
+        entry.cell: load_study(storage_root, entry.require_study_id()) for entry in hpo.entries
     }
-    bundle = _bundle_path(storage_root, experiment_id)
+    bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
     requests.mkdir(parents=True)
 
     rows: list[tuple[str, Path, UUID]] = []
     for index, entry in enumerate(k_study.entries):
-        if entry.artifact_id is None:
-            raise ValueError("K-study entry must reference an artifact")
+        artifact_id = entry.require_artifact_id()
         chain, family, horizon_label = entry.cell.split(".")
         horizon = int(horizon_label.removeprefix("K"))
         study = studies[f"{chain}.{family}"]
@@ -70,7 +63,7 @@ def prepare(
             + max(0, 5 - horizon)
         )
         request = fresh_evaluate_request(
-            entry.artifact_id,
+            artifact_id,
             study.request.corpus_id,
             BlockWindow(
                 first_parent_block=first_parent,
@@ -81,19 +74,15 @@ def prepare(
         request_path.write_text(request.model_dump_json(), encoding="utf-8")
         rows.append((entry.cell, request_path, request.evaluation_id))
 
-    with (bundle / "cells.tsv").open("x", newline="", encoding="utf-8") as destination:
-        writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
-        writer.writerow(("cell", "request", "evaluation_id"))
-        writer.writerows(rows)
+    write_cells(bundle, ("cell", "request", "evaluation_id"), rows)
 
     print(experiment_id)
 
 
 def close(storage_root: Path, experiment_id: UUID) -> None:
     storage_root = storage_root.resolve()
-    bundle = _bundle_path(storage_root, experiment_id)
-    with (bundle / "cells.tsv").open(newline="", encoding="utf-8") as source:
-        rows = list(csv.DictReader(source, delimiter="\t"))
+    bundle = bundle_path(storage_root, _KIND, experiment_id)
+    rows = read_cells(bundle)
 
     entries = tuple(
         ExperimentEntry(cell=row["cell"], evaluation_id=evaluation_id)
@@ -119,10 +108,9 @@ def report(storage_root: Path, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     results = [
         pl.DataFrame({"cell": [entry.cell]}).hstack(
-            reduce_evaluation(storage_root, entry.evaluation_id)
+            reduce_evaluation(storage_root, entry.require_evaluation_id())
         )
         for entry in manifest.entries
-        if entry.evaluation_id is not None
     ]
     print(pl.concat(results).write_csv(None, separator="\t"), end="")
 
@@ -134,8 +122,8 @@ def rolling(storage_root: Path, experiment_id: UUID) -> None:
     for entry in manifest.entries:
         cell, horizon_label = entry.cell.rsplit(".", maxsplit=1)
         horizon = int(horizon_label.removeprefix("K"))
-        if horizon in (2, 3, 4, 5) and entry.evaluation_id is not None:
-            roster.setdefault(cell, {})[horizon] = entry.evaluation_id
+        if horizon in (2, 3, 4, 5):
+            roster.setdefault(cell, {})[horizon] = entry.require_evaluation_id()
     print(reduce_rolling(storage_root, roster).write_csv(None, separator="\t"), end="")
 
 
@@ -146,7 +134,6 @@ def main() -> None:
     prepare_parser.add_argument("storage_root", type=Path)
     prepare_parser.add_argument("hpo_experiment_id", type=UUID)
     prepare_parser.add_argument("k_experiment_id", type=UUID)
-    prepare_parser.add_argument("--experiment-id", type=UUID, default=None)
     close_parser = commands.add_parser("close")
     close_parser.add_argument("storage_root", type=Path)
     close_parser.add_argument("experiment_id", type=UUID)
@@ -159,13 +146,10 @@ def main() -> None:
     arguments = parser.parse_args()
 
     if arguments.command == "prepare":
-        if arguments.experiment_id is not None and arguments.experiment_id.version != 4:
-            raise ValueError("experiment_id must be a UUIDv4")
         prepare(
             arguments.storage_root,
             arguments.hpo_experiment_id,
             arguments.k_experiment_id,
-            arguments.experiment_id or uuid4(),
         )
     elif arguments.command == "close":
         close(arguments.storage_root, arguments.experiment_id)

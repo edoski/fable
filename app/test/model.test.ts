@@ -37,8 +37,7 @@ function bundle(): {
   resources: ModelResourceTable;
 } {
   let cell = 1;
-  const chain = (chainId: number) => ({
-    chain_id: chainId,
+  const chain = () => ({
     context_blocks: 2,
     features: [
       {
@@ -68,11 +67,10 @@ function bundle(): {
   });
   return {
     manifest: {
-      executorch_version: "1.2.0",
       chains: {
-        ethereum: chain(1),
-        polygon: chain(137),
-        avalanche: chain(43_114),
+        ethereum: chain(),
+        polygon: chain(),
+        avalanche: chain(),
       },
     },
     resources: {

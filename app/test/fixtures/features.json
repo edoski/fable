@@ -70,7 +70,6 @@
     ]
   },
   "manifest": {
-    "chain_id": 1,
     "context_blocks": 4,
     "features": [
       {

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import shutil
 from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
+
+from bundle import bundle_path, read_cells, write_cells
 
 from fable.experiments import (
     ExperimentEntry,
@@ -25,10 +26,6 @@ _CHAINS = ("ethereum", "polygon", "avalanche")
 _FAMILIES = ("lstm", "transformer", "transformer_lstm")
 
 
-def _bundle_path(storage_root: Path, experiment_id: UUID) -> Path:
-    return storage_root / "experiments" / _KIND / f".{experiment_id}"
-
-
 def _selected_feature_studies(
     storage_root: Path,
     experiment_id: UUID,
@@ -42,11 +39,7 @@ def _selected_feature_studies(
     objectives: dict[tuple[str, str], list[float]] = {}
     for entry in manifest.entries:
         chain, family, feature_set = entry.cell.split(".")
-        if entry.study_id is None:
-            raise ValueError("feature-ablation entry must reference a Study")
-        study = load_study(storage_root, entry.study_id)
-        if len(study.trials) != 1:
-            raise ValueError("feature-ablation Study must contain its one retained result")
+        study = load_study(storage_root, entry.require_study_id())
         studies[chain, family, feature_set] = study
         objectives.setdefault((chain, feature_set), []).append(study.trials[0].objective)
 
@@ -70,18 +63,17 @@ def _selected_feature_studies(
 def prepare(
     storage_root: Path,
     feature_experiment_id: UUID,
-    experiment_id: UUID,
 ) -> None:
+    experiment_id = uuid4()
     storage_root = storage_root.resolve()
     selected = _selected_feature_studies(storage_root, feature_experiment_id)
-    bundle = _bundle_path(storage_root, experiment_id)
+    bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
     methods = bundle / "methods"
     requests.mkdir(parents=True)
     methods.mkdir()
 
     rows: list[tuple[str, Path, Path, UUID]] = []
-    index = 0
     for chain in _CHAINS:
         for family in _FAMILIES:
             source = selected[chain, family]
@@ -94,7 +86,7 @@ def prepare(
                     source.request.experiment.model_copy(update={"context_blocks": context}),
                     (method,),
                 )
-                request_path = requests / f"{index:02d}.json"
+                request_path = requests / f"{len(rows):02d}.json"
                 request_path.write_text(request.model_dump_json(), encoding="utf-8")
                 rows.append(
                     (
@@ -104,21 +96,16 @@ def prepare(
                         request.study_id,
                     )
                 )
-                index += 1
 
-    with (bundle / "cells.tsv").open("x", newline="", encoding="utf-8") as destination:
-        writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
-        writer.writerow(("cell", "request", "method", "study_id"))
-        writer.writerows(rows)
+    write_cells(bundle, ("cell", "request", "method", "study_id"), rows)
 
     print(experiment_id)
 
 
 def select(storage_root: Path, experiment_id: UUID) -> None:
     storage_root = storage_root.resolve()
-    bundle = _bundle_path(storage_root, experiment_id)
-    with (bundle / "cells.tsv").open(newline="", encoding="utf-8") as source:
-        rows = list(csv.DictReader(source, delimiter="\t"))
+    bundle = bundle_path(storage_root, _KIND, experiment_id)
+    rows = read_cells(bundle)
 
     objectives: dict[tuple[str, int], list[float]] = {}
     entries: list[ExperimentEntry] = []
@@ -156,19 +143,15 @@ def main() -> None:
     prepare_parser = commands.add_parser("prepare")
     prepare_parser.add_argument("storage_root", type=Path)
     prepare_parser.add_argument("feature_experiment_id", type=UUID)
-    prepare_parser.add_argument("--experiment-id", type=UUID, default=None)
     select_parser = commands.add_parser("select")
     select_parser.add_argument("storage_root", type=Path)
     select_parser.add_argument("experiment_id", type=UUID)
     arguments = parser.parse_args()
 
     if arguments.command == "prepare":
-        if arguments.experiment_id is not None and arguments.experiment_id.version != 4:
-            raise ValueError("experiment_id must be a UUIDv4")
         prepare(
             arguments.storage_root,
             arguments.feature_experiment_id,
-            arguments.experiment_id or uuid4(),
         )
     else:
         select(arguments.storage_root, arguments.experiment_id)
