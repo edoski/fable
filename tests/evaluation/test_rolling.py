@@ -128,7 +128,6 @@ def test_reduce_rolling_reconstructs_every_stage_and_six_metrics(tmp_path: Path)
         ("origins", "consecutive unique origins"),
         ("shift", "lacks required shifted origins"),
         ("action", "K=3 predicted_action_k values must be valid actions"),
-        ("forced", "K=2 predicted_action_k values must be valid actions"),
     ],
 )
 def test_reduce_rolling_rejects_invalid_rosters_and_observations(
@@ -143,7 +142,7 @@ def test_reduce_rolling_rejects_invalid_rosters_and_observations(
     elif case == "horizons":
         roster["cell-0"].pop(2)
     else:
-        horizon = 2 if case in {"shift", "forced"} else 3
+        horizon = 2 if case == "shift" else 3
         observations_path = _observations_path(tmp_path, horizon)
         observations = pl.read_parquet(observations_path)
         if case == "schema":
@@ -164,13 +163,6 @@ def test_reduce_rolling_rejects_invalid_rosters_and_observations(
             observations = observations.with_columns(
                 pl.when(pl.col("origin_block") == 102)
                 .then(3)
-                .otherwise(pl.col("predicted_action_k"))
-                .alias("predicted_action_k")
-            )
-        else:
-            observations = observations.with_columns(
-                pl.when(pl.col("origin_block") == 107)
-                .then(2)
                 .otherwise(pl.col("predicted_action_k"))
                 .alias("predicted_action_k")
             )

@@ -1,39 +1,23 @@
 from __future__ import annotations
 
-import csv
-import subprocess
-import sys
 from pathlib import Path
 from uuid import UUID
 
 from fable.config import TuneRequest
 from fable.experiments import ExperimentManifest
 from fable.study import RetainedResult, Study
+from tests.helpers import read_tsv_rows, run_script
 
 _ROOT = Path(__file__).parents[2]
 _SCRIPT = _ROOT / "experiments" / "feature_ablation.py"
 
 
-def _run(*arguments: object) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(_SCRIPT), *(str(argument) for argument in arguments)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-
-def _rows(storage_root: Path, experiment_id: UUID) -> list[dict[str, str]]:
-    path = storage_root / "experiments" / "feature_ablation" / f".{experiment_id}" / "cells.tsv"
-    with path.open(newline="", encoding="utf-8") as source:
-        return list(csv.DictReader(source, delimiter="\t"))
-
-
 def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> None:
-    result = _run("prepare", tmp_path)
+    result = run_script(_SCRIPT, "prepare", tmp_path)
     experiment_id = UUID(result.stdout.strip())
 
-    rows = _rows(tmp_path, experiment_id)
+    bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
+    rows = read_tsv_rows(bundle / "cells.tsv")
     requests = [
         TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in rows
@@ -85,13 +69,14 @@ def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> No
 
 
 def test_select_publishes_all_studies_and_reports_chain_winners(tmp_path: Path) -> None:
-    experiment_id = UUID(_run("prepare", tmp_path).stdout.strip())
+    experiment_id = UUID(run_script(_SCRIPT, "prepare", tmp_path).stdout.strip())
+    bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
     objectives = {
         "ethereum": {"B": 1.0, "B+S+T+P": 1.0},
         "polygon": {"B+T+P": 0.5},
         "avalanche": {"B+S+P": 0.25},
     }
-    for row in _rows(tmp_path, experiment_id):
+    for row in read_tsv_rows(bundle / "cells.tsv"):
         chain, _, feature_set = row["cell"].split(".")
         request = TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         objective = objectives.get(chain, {}).get(feature_set, 2.0)
@@ -110,7 +95,7 @@ def test_select_publishes_all_studies_and_reports_chain_winners(tmp_path: Path) 
         path.parent.mkdir(exist_ok=True)
         path.write_text(study.model_dump_json(), encoding="utf-8")
 
-    result = _run("select", tmp_path, experiment_id)
+    result = run_script(_SCRIPT, "select", tmp_path, experiment_id)
 
     manifest_path = tmp_path / "experiments" / "feature_ablation" / f"{experiment_id}.json"
     manifest = ExperimentManifest.model_validate_json(

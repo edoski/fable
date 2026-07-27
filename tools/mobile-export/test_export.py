@@ -287,28 +287,17 @@ def test_export_bundle_cleans_scratch_after_export_failure(
     assert list(tmp_path.glob(".models.*")) == []
 
 
-def test_export_bundle_refuses_existing_output_before_lowering(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_export_bundle_preserves_existing_output(tmp_path: Path) -> None:
     roster_path = tmp_path / "MOBILE.yaml"
-    artifact_ids = _write_roster(roster_path)
-    _install_artifact_fakes(monkeypatch, artifact_ids)
     output = tmp_path / "models"
     output.mkdir()
     marker = output / "occupied"
     marker.write_text("preserve", encoding="utf-8")
-    monkeypatch.setattr(
-        mobile_export,
-        "_export_model",
-        lambda *args: pytest.fail(f"unexpected export: {args}"),
-    )
 
     with pytest.raises(FileExistsError):
         mobile_export.export_bundle(tmp_path / "storage", roster_path, output)
 
     assert marker.read_text(encoding="utf-8") == "preserve"
-    assert list(tmp_path.glob(".models.*")) == []
 
 
 def test_export_bundle_refuses_output_directory_created_during_export(

@@ -130,25 +130,26 @@ def test_reduce_evaluation_derives_exact_metrics_from_self_contained_observation
 
 
 @pytest.mark.parametrize(
-    "case",
+    ("case", "message"),
     [
-        "uuid",
-        "window",
-        "schema",
-        "null",
-        "origins",
+        ("uuid", "evaluation request ID must match the requested evaluation"),
+        ("window", "observations must cover every testing origin"),
+        ("schema", "observations must have the canonical ordered schema"),
+        ("null", "observations must contain no null values"),
+        ("origins", "observation origins must exactly match the ordered testing window"),
     ],
 )
 def test_reduce_evaluation_rejects_invalid_observation_contract(
     tmp_path: Path,
     case: str,
+    message: str,
 ) -> None:
     request = _request()
     rows = _rows()
     if case == "uuid":
         request = _request(evaluation_id=_OTHER_EVALUATION_ID)
     elif case == "window":
-        request = _request(testing_window=BlockWindow(first_parent_block=19, last_parent_block=25))
+        rows.pop()
     elif case == "null":
         rows[0]["predicted_minimum_log_base_fee"] = None
     elif case == "origins":
@@ -162,7 +163,7 @@ def test_reduce_evaluation_rejects_invalid_observation_contract(
         )
     _publish_evaluation(tmp_path, request, observations)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=message):
         reduce_evaluation(tmp_path, _EVALUATION_ID)
 
 
