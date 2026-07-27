@@ -151,60 +151,60 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Runtime policy
 
-- [ ] Add `_runtime.configure_torch()` as the sole owner of numerical runtime policy.
-- [ ] Set `CUBLAS_WORKSPACE_CONFIG=:4096:8` before GPU work.
-- [ ] Configure deterministic algorithms, cuDNN determinism/benchmarking, float32 matmul precision, and CUDA/cuDNN TF32 there.
-- [ ] Call it before training and evaluation GPU work.
-- [ ] Source Lightning `deterministic` and `benchmark` arguments from the same constants.
-- [ ] Extend the existing evaluation-policy test with the environment variable. Add no dedicated policy test.
-- [ ] Run no GPU job. Confirm the policy during the next separately authorized L40 run.
+- [x] Add `_runtime.configure_torch()` as the sole owner of numerical runtime policy.
+- [x] Set `CUBLAS_WORKSPACE_CONFIG=:4096:8` before GPU work.
+- [x] Configure deterministic algorithms, cuDNN determinism/benchmarking, float32 matmul precision, and CUDA/cuDNN TF32 there.
+- [x] Call it before training and evaluation GPU work.
+- [x] Source Lightning `deterministic` and `benchmark` arguments from the same constants.
+- [x] Extend the existing evaluation-policy test with the environment variable. Add no dedicated policy test.
+- [x] Run no GPU job. Confirm the policy during the next separately authorized L40 run.
 
 ### Temporal and scientific mechanics
 
-- [ ] Keep `BlockFrame` and `BlockFrame.select_range()` as validation/range owners.
-- [ ] Keep its internal `object.__new__` path for validated slices.
-- [ ] Delete `_require_complete_support()` and duplicate calls.
-- [ ] Keep testing-window leakage validation, outcome chunking, and observation preallocation.
-- [ ] Convert `_feature_values()` to direct `match` dispatch.
-- [ ] Delete `_forming_base_fee_log()`.
-- [ ] Build named forming-fee columns, combine them with `zip(*columns, strict=True)`, and pass rows directly to `_forming_child_base_fee()`.
-- [ ] Keep `Series.to_list()` and `_forming_child_base_fee()` so EIP-1559 arithmetic remains arbitrary-precision and exact.
-- [ ] Replace redundant copied NumPy wrappers with Polars `to_numpy(writable=True)` for schema-owned Int64 columns.
-- [ ] Replace `total.sum() / batch_size` with `total.mean()`.
-- [ ] Remove the no-op dtype cast from `outcomes.argmin(axis=1)`.
-- [ ] Keep indexed minimum gather; do not add a second `min(axis=1)` scan.
+- [x] Keep `BlockFrame` and `BlockFrame.select_range()` as validation/range owners.
+- [x] Keep its internal `object.__new__` path for validated slices.
+- [x] Delete `_require_complete_support()` and duplicate calls.
+- [x] Keep testing-window leakage validation, outcome chunking, and observation preallocation.
+- [x] Convert `_feature_values()` to direct `match` dispatch.
+- [x] Delete `_forming_base_fee_log()`.
+- [x] Build named forming-fee columns, combine them with `zip(*columns, strict=True)`, and pass rows directly to `_forming_child_base_fee()`.
+- [x] Keep `Series.to_list()` and `_forming_child_base_fee()` so EIP-1559 arithmetic remains arbitrary-precision and exact.
+- [x] Replace redundant copied NumPy wrappers with Polars `to_numpy(writable=True)` for schema-owned Int64 columns.
+- [x] Replace `total.sum() / batch_size` with `total.mean()`.
+- [x] Remove the no-op dtype cast from `outcomes.argmin(axis=1)`.
+- [x] Keep indexed minimum gather; do not add a second `min(axis=1)` scan.
 
 ### Evaluation and native plumbing
 
-- [ ] Derive observation allocation from `OBSERVATION_SCHEMA`.
-- [ ] Remove evaluation dtype coercions guaranteed by dataset/model contracts.
-- [ ] Collapse evaluation loading so it does not return a discarded request.
-- [ ] Keep evaluation ID/path equality.
-- [ ] Let Lightning capture the incoming association dictionary directly in `save_hyperparameters(logger=False)`.
-- [ ] Remove the serialize–hydrate–serialize round trip.
-- [ ] Remove derived evaluation/export values stored only to be discarded.
-- [ ] Remove exporter host shape, dtype, and finite prechecks duplicated by parity and semantic checks.
-- [ ] Retain native bridge type/arity, semantic output, parity, and XNNPACK delegation checks.
-- [ ] Remove `_report_sizes()` and its call.
-- [ ] Keep `validation_total_loss` as the sole per-epoch Slurm progress value.
+- [x] Derive observation allocation from `OBSERVATION_SCHEMA`.
+- [x] Remove evaluation dtype coercions guaranteed by dataset/model contracts.
+- [x] Collapse evaluation loading so it does not return a discarded request.
+- [x] Keep evaluation ID/path equality.
+- [x] Let Lightning capture the incoming association dictionary directly in `save_hyperparameters(logger=False)`.
+- [x] Remove the serialize–hydrate–serialize round trip.
+- [x] Remove derived evaluation/export values stored only to be discarded.
+- [x] Remove exporter host shape, dtype, and finite prechecks duplicated by parity and semantic checks.
+- [x] Retain native bridge type/arity, semantic output, parity, and XNNPACK delegation checks.
+- [x] Remove `_report_sizes()` and its call.
+- [x] Keep `validation_total_loss` as the sole per-epoch Slurm progress value.
 
 ### Owned test changes
 
-- [ ] Collapse the Python feature fit/transform test to the comprehensive seven-feature forming case.
-- [ ] Delete strict-subset activity/hour cases and their scaffolding.
-- [ ] Keep fitted-state, ordering, float32, contiguity, held-out, priority-fee, interval, and predecessor-alignment evidence.
-- [ ] Keep only the schema-order mutation among equivalent whole-schema BlockFrame rejections.
-- [ ] Delete the basic isolation test covered by range-selection source/return isolation.
-- [ ] Delete Corpus priority-fee and seven-column Parquet cases that repeat BlockFrame validation.
-- [ ] Keep corrupt Parquet, JSON, UUID, and anchor boundary cases.
-- [ ] Keep constant-feature and constant-target-state rejection tests.
-- [ ] Delete the loader-profile constant-mirroring test; real CPU training tests exercise the zero-worker path.
+- [x] Collapse the Python feature fit/transform test to the comprehensive seven-feature forming case.
+- [x] Delete strict-subset activity/hour cases and their scaffolding.
+- [x] Keep fitted-state, ordering, float32, contiguity, held-out, priority-fee, interval, and predecessor-alignment evidence.
+- [x] Keep only the schema-order mutation among equivalent whole-schema BlockFrame rejections.
+- [x] Delete the basic isolation test covered by range-selection source/return isolation.
+- [x] Delete Corpus priority-fee and seven-column Parquet cases that repeat BlockFrame validation.
+- [x] Keep corrupt Parquet, JSON, UUID, and anchor boundary cases.
+- [x] Keep constant-feature and constant-target-state rejection tests.
+- [x] Delete the loader-profile constant-mirroring test; real CPU training tests exercise the zero-worker path.
 
 ### Implementer checks
 
-- [ ] Run focused modeling, temporal, corpus, evaluation, and exporter tests.
-- [ ] Run `uv run --frozen pytest -q`.
-- [ ] Run Ruff, Pyright, Vulture, and `git diff --check`.
+- [x] Run focused modeling, temporal, corpus, evaluation, and exporter tests.
+- [x] Run `uv run --frozen pytest -q`.
+- [x] Run Ruff, Pyright, Vulture, and `git diff --check`.
 
 ### Reviewer acceptance
 

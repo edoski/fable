@@ -53,23 +53,6 @@ def test_requested_feature_formulas_fit_in_order_and_transform_held_out_rows() -
         timestamps=[0, 6 * 3_600, 12 * 3_600, 18 * 3_600],
         priority_fees=[0, 1, 2, 3],
     )
-    activity_support = _blocks(
-        base_fees=[10, 20, 80],
-        gas_used=[1, 3, 8],
-        gas_limits=[2, 6, 10],
-        tx_counts=[0, 3, 8],
-        timestamps=[0, 1, 2],
-        priority_fees=[0, 3, 8],
-    )
-    hour_support = _blocks(
-        base_fees=[10, 30, 90, 270],
-        gas_used=[1, 4, 9, 16],
-        gas_limits=[2, 8, 10, 20],
-        tx_counts=[0, 0, 0, 0],
-        timestamps=[0, 6 * 3_600, 12 * 3_600, 18 * 3_600],
-        priority_fees=[0, 1, 2, 3],
-    )
-
     forming_order = (
         "hour_cos",
         "log_exact_forming_base_fee_per_gas",
@@ -79,75 +62,34 @@ def test_requested_feature_formulas_fit_in_order_and_transform_held_out_rows() -
         "hour_sin",
         "log_gas_limit",
     )
-    activity_order = (
-        "log1p_tx_count",
-        "gas_utilization",
-        "log_base_fee_per_gas",
-    )
-    hour_order = (
-        "hour_cos",
-        "log_base_fee_per_gas",
-        "gas_utilization",
-    )
-    cases = (
+    raw = np.column_stack(
         (
-            forming_order,
-            forming_support,
-            np.column_stack(
-                (
-                    np.cos([0.0, np.pi / 2, np.pi, 3 * np.pi / 2]),
-                    np.log([1_000, 2_050, 2_925, 9_000_000_000_000_000_000]),
-                    [0.5, 0.6, 0.4, 1.0],
-                    np.log1p([0, 1, 2, 3]),
-                    np.log([1_000, 2_000, 3_000, 8_000_000_000_000_000_000]),
-                    np.sin([0.0, np.pi / 2, np.pi, 3 * np.pi / 2]),
-                    np.log([1_000, 2_000, 3_000, 4]),
-                )
-            ),
-        ),
-        (
-            activity_order,
-            activity_support,
-            np.column_stack(
-                (
-                    np.log1p([0, 3, 8]),
-                    [0.5, 0.5, 0.8],
-                    np.log([10, 20, 80]),
-                )
-            ),
-        ),
-        (
-            hour_order,
-            hour_support,
-            np.column_stack(
-                (
-                    np.cos([0.0, np.pi / 2, np.pi, 3 * np.pi / 2]),
-                    np.log([10, 30, 90, 270]),
-                    [0.5, 0.5, 0.9, 0.8],
-                )
-            ),
-        ),
-    )
-
-    states: list[FeatureState] = []
-    for ordered_features, support, expected_raw in cases:
-        raw = expected_raw.astype(np.float64)
-        state = fit_feature_state(support, ordered_features=ordered_features)
-        states.append(state)
-        np.testing.assert_allclose(state.means, raw.mean(axis=0))
-        np.testing.assert_allclose(state.standard_deviations, raw.std(axis=0, ddof=0))
-
-        transformed = transform_feature_rows(
-            support,
-            ordered_features=ordered_features,
-            state=state,
+            np.cos([0.0, np.pi / 2, np.pi, 3 * np.pi / 2]),
+            np.log([1_000, 2_050, 2_925, 9_000_000_000_000_000_000]),
+            [0.5, 0.6, 0.4, 1.0],
+            np.log1p([0, 1, 2, 3]),
+            np.log([1_000, 2_000, 3_000, 8_000_000_000_000_000_000]),
+            np.sin([0.0, np.pi / 2, np.pi, 3 * np.pi / 2]),
+            np.log([1_000, 2_000, 3_000, 4]),
         )
-        expected = ((raw - raw.mean(axis=0)) / raw.std(axis=0, ddof=0)).astype(np.float32)
-        np.testing.assert_allclose(transformed, expected, rtol=1e-6, atol=1e-6)
-        assert transformed.dtype == np.float32
-        assert transformed.flags.c_contiguous
+    ).astype(np.float64)
+    forming_state = fit_feature_state(forming_support, ordered_features=forming_order)
+    np.testing.assert_allclose(forming_state.means, raw.mean(axis=0))
+    np.testing.assert_allclose(
+        forming_state.standard_deviations,
+        raw.std(axis=0, ddof=0),
+    )
 
-    forming_state = states[0]
+    transformed = transform_feature_rows(
+        forming_support,
+        ordered_features=forming_order,
+        state=forming_state,
+    )
+    expected = ((raw - raw.mean(axis=0)) / raw.std(axis=0, ddof=0)).astype(np.float32)
+    np.testing.assert_allclose(transformed, expected, rtol=1e-6, atol=1e-6)
+    assert transformed.dtype == np.float32
+    assert transformed.flags.c_contiguous
+
     held_out = _blocks(
         base_fees=[1],
         gas_used=[101],

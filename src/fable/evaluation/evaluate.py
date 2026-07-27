@@ -55,7 +55,7 @@ def evaluate(
         .to_numpy()
     )
 
-    _configure_execution()
+    _runtime.configure_torch()
     observations = _collect_observations(
         dataset,
         model,
@@ -72,15 +72,6 @@ def evaluate(
     scratch.rename(canonical)
 
 
-def _configure_execution() -> None:
-    torch.use_deterministic_algorithms(_runtime.DETERMINISTIC)
-    torch.backends.cudnn.deterministic = _runtime.DETERMINISTIC
-    torch.backends.cudnn.benchmark = _runtime.BENCHMARK
-    torch.set_float32_matmul_precision(_runtime.FLOAT32_MATMUL_PRECISION)
-    torch.backends.cuda.matmul.allow_tf32 = _runtime.CUDA_MATMUL_ALLOW_TF32
-    torch.backends.cudnn.allow_tf32 = _runtime.CUDNN_ALLOW_TF32
-
-
 def _collect_observations(
     dataset: HistoricalDataset,
     model: nn.Module,
@@ -91,15 +82,7 @@ def _collect_observations(
 ) -> pl.DataFrame:
     count = len(dataset)
     columns = {
-        "origin_block": np.empty(count, dtype=np.int64),
-        "predicted_action_k": np.empty(count, dtype=np.int64),
-        "predicted_minimum_log_base_fee": np.empty(count, dtype=np.float64),
-        "minimum_action_k": np.empty(count, dtype=np.int64),
-        "immediate_base_fee_per_gas": np.empty(count, dtype=np.int64),
-        "immediate_effective_priority_fee_per_gas_p50": np.empty(count, dtype=np.int64),
-        "selected_base_fee_per_gas": np.empty(count, dtype=np.int64),
-        "selected_effective_priority_fee_per_gas_p50": np.empty(count, dtype=np.int64),
-        "minimum_base_fee_per_gas": np.empty(count, dtype=np.int64),
+        name: np.empty(count, dtype=dtype.to_python()) for name, dtype in OBSERVATION_SCHEMA.items()
     }
 
     workers = _runtime.NUM_WORKERS
@@ -118,10 +101,9 @@ def _collect_observations(
     with torch.inference_mode():
         for batch in loader:
             output = model(batch["inputs"].to(_DEVICE))
-            actions = decode_action(output).to(device="cpu", dtype=torch.int64).numpy()
-            minimum_actions_batch = batch["label"].to(dtype=torch.int64).numpy()
-            base_fees = batch["base_fees"].to(dtype=torch.int64).numpy()
-            minimum_fee_z = output.minimum_fee_z
+            actions = decode_action(output).cpu().numpy()
+            minimum_actions_batch = batch["label"].numpy()
+            base_fees = batch["base_fees"].numpy()
 
             rows = np.arange(actions.size, dtype=np.int64)
             immediate_batch = base_fees[:, 0]
@@ -133,7 +115,7 @@ def _collect_observations(
                 immediate_outcome_rows + actions
             ]
             predicted_logs_batch = target_state.mean + target_state.standard_deviation * (
-                minimum_fee_z.to(device="cpu", dtype=torch.float32).numpy().astype(np.float64)
+                output.minimum_fee_z.cpu().numpy()
             )
             if not np.isfinite(predicted_logs_batch).all():
                 raise ValueError("predicted minimum-log fees must be finite")

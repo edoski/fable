@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Self
 from uuid import UUID
@@ -259,6 +260,7 @@ class _Model(nn.Module):
 
     def to(self, *args: Any, **kwargs: Any) -> Self:
         assert torch.device(args[0]) == torch.device("cpu")
+        assert os.environ["CUBLAS_WORKSPACE_CONFIG"] == ":4096:8"
         assert torch.get_float32_matmul_precision() == "high"
         assert torch.are_deterministic_algorithms_enabled()
         assert torch.backends.cudnn.deterministic

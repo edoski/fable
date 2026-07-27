@@ -194,13 +194,13 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
             "blocks": corpus.blocks.select_range(10, 29),
         }
     )
-    with pytest.raises(ValueError, match="complete context and outcome support"):
+    with pytest.raises(ValueError, match="within the BlockFrame definition"):
         prepare_fit_history(without_predecessor, experiment)
 
 
 @pytest.mark.parametrize("corpus", (_corpus(first_block=11), _corpus(last_block=23)))
 def test_fit_history_requires_complete_context_and_outcome_support(corpus: Corpus) -> None:
-    with pytest.raises(ValueError, match="complete context and outcome support"):
+    with pytest.raises(ValueError, match="within the BlockFrame definition"):
         prepare_fit_history(corpus, _experiment())
 
 

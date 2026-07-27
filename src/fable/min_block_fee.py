@@ -79,7 +79,7 @@ def min_block_fee_loss(
     )
     total = classification + regression
     return MinBlockFeeLoss(
-        mean_total=total.sum() / output.action_logits.shape[0],
+        mean_total=total.mean(),
         total_by_origin=total.detach(),
     )
 

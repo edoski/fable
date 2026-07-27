@@ -81,8 +81,6 @@ def prepare_fit_history(
 
     training_window = experiment.training_window
     validation_window = experiment.validation_window
-    _require_complete_support(corpus, experiment, training_window)
-    _require_complete_support(corpus, experiment, validation_window)
 
     training_first_block = training_window.first_parent_block - experiment.context_blocks + 1
     predecessor_blocks = _feature_predecessor_blocks(experiment.ordered_features)
@@ -144,7 +142,6 @@ def prepare_historical_window(
         >= window.first_parent_block
     ):
         raise ValueError("testing window must follow complete validation outcomes")
-    _require_complete_support(corpus, experiment, window)
     backing = _build_backing(
         corpus,
         first_block=window.first_parent_block - experiment.context_blocks + 1,
@@ -153,23 +150,6 @@ def prepare_historical_window(
         feature_state=feature_state,
     )
     return _build_dataset(backing, experiment, window, target_state)
-
-
-def _require_complete_support(
-    corpus: Corpus,
-    experiment: ExperimentSemantics,
-    window: BlockWindow,
-) -> None:
-    required_first = (
-        window.first_parent_block
-        - experiment.context_blocks
-        + 1
-        - _feature_predecessor_blocks(experiment.ordered_features)
-    )
-    required_last = window.last_parent_block + experiment.horizon_blocks
-    available = corpus.request.definition
-    if required_first < available.first_block or required_last > available.last_block:
-        raise ValueError("Corpus must provide complete context and outcome support")
 
 
 def _build_backing(
@@ -188,18 +168,8 @@ def _build_backing(
         state=feature_state,
     )
     frame = blocks.to_polars().slice(predecessor_blocks)
-    base_fees = np.array(
-        frame["base_fee_per_gas"].to_numpy(),
-        dtype=np.int64,
-        copy=True,
-        order="C",
-    )
-    block_numbers = np.array(
-        frame["block_number"].to_numpy(),
-        dtype=np.int64,
-        copy=True,
-        order="C",
-    )
+    base_fees = frame["base_fee_per_gas"].to_numpy(writable=True)
+    block_numbers = frame["block_number"].to_numpy(writable=True)
     return _HistoricalBacking(
         first_block=first_block,
         inputs=torch.from_numpy(inputs),
@@ -232,7 +202,7 @@ def _minimum_outcomes(
     for start in range(0, origin_rows.size, _OUTCOME_CHUNK_SIZE):
         stop = min(start + _OUTCOME_CHUNK_SIZE, origin_rows.size)
         outcomes = base_fees[origin_rows[start:stop, None] + offsets]
-        chunk_labels = outcomes.argmin(axis=1).astype(np.int64, copy=False)
+        chunk_labels = outcomes.argmin(axis=1)
         labels[start:stop] = chunk_labels
         minima[start:stop] = outcomes[np.arange(stop - start), chunk_labels]
     return labels, minima

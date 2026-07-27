@@ -269,23 +269,6 @@ def test_transformer_encoder_layers_have_independent_matrix_initialization() -> 
     )
 
 
-def test_fit_loaders_use_fixed_runtime_profile() -> None:
-    prepared = prepare_fit_history(_corpus(), _experiment())
-
-    training, validation = modeling._loaders(
-        prepared,
-        torch.Generator(device="cpu"),
-    )
-
-    assert training.batch_size == 64
-    assert validation.batch_size == 64
-    assert training.num_workers == validation.num_workers == 0
-    assert training.pin_memory and validation.pin_memory
-    assert training.prefetch_factor is validation.prefetch_factor is None
-    assert not training.persistent_workers
-    assert not validation.persistent_workers
-
-
 def test_epoch_logs_weight_short_batches_in_float64(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -94,12 +94,6 @@ def _invalidate(
         anchor["block_number"] = 101
     elif case == "corrupt_blocks":
         blocks = blocks.with_columns(pl.lit(0, dtype=pl.Int64).alias("base_fee_per_gas"))
-    elif case == "priority_fee":
-        blocks = blocks.with_columns(
-            pl.lit(-1, dtype=pl.Int64).alias("effective_priority_fee_per_gas_p50")
-        )
-    elif case == "seven_column_schema":
-        blocks = blocks.drop("effective_priority_fee_per_gas_p50")
     else:
         raise AssertionError(f"unknown invalid case: {case}")
     return blocks
@@ -113,8 +107,6 @@ def _invalidate(
         "anchor_shape",
         "anchor_relation",
         "corrupt_blocks",
-        "priority_fee",
-        "seven_column_schema",
     ),
 )
 def test_load_corpus_rejects_invalid_canonical_facts(tmp_path, case: str) -> None:

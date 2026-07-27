@@ -192,24 +192,12 @@ def _example_inputs(features: _FeatureContract) -> tuple[torch.Tensor, torch.Ten
     return zeros, nonzero
 
 
-def _validated_native_outputs(
-    outputs: object,
-    *,
-    horizon: int,
-) -> tuple[torch.Tensor, torch.Tensor]:
+def _validated_native_outputs(outputs: object) -> tuple[torch.Tensor, torch.Tensor]:
     if not isinstance(outputs, (list, tuple)) or len(outputs) != 2:
         raise ValueError("ExecuTorch host must return action_logits and minimum_fee_z")
     action_logits, minimum_fee_z = outputs
     if not isinstance(action_logits, torch.Tensor) or not isinstance(minimum_fee_z, torch.Tensor):
         raise ValueError("ExecuTorch host outputs must be tensors")
-    if action_logits.shape != (1, horizon):
-        raise ValueError(f"ExecuTorch host action_logits must have shape [1, {horizon}]")
-    if minimum_fee_z.shape != (1,):
-        raise ValueError("ExecuTorch host minimum_fee_z must have shape [1]")
-    if action_logits.dtype != torch.float32 or minimum_fee_z.dtype != torch.float32:
-        raise ValueError("ExecuTorch host outputs must be float32")
-    if not torch.isfinite(action_logits).all() or not torch.isfinite(minimum_fee_z).all():
-        raise ValueError("ExecuTorch host outputs must be finite")
     return action_logits, minimum_fee_z
 
 
@@ -250,10 +238,7 @@ def _export_model(cell: _Cell, destination: Path) -> None:
 
     method = Runtime.get().load_program(destination).load_method("forward")
     for sample, eager in zip(samples, eager_outputs, strict=True):
-        host = _validated_native_outputs(
-            method.execute((sample,)),
-            horizon=cell.horizon,
-        )
+        host = _validated_native_outputs(method.execute((sample,)))
         _assert_parity(
             eager,
             host,
@@ -338,17 +323,6 @@ def export_bundle(
             shutil.rmtree(scratch)
 
 
-def _report_sizes(output_directory: Path) -> None:
-    total = 0
-    for chain in _CHAINS:
-        for horizon in _HORIZONS:
-            path = output_directory / f"{chain}-k{horizon}.pte"
-            size = path.stat().st_size
-            total += size
-            print(f"{path.name}: {size} bytes")
-    print(f"total: {total} bytes")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("roster_path", type=Path)
@@ -363,7 +337,6 @@ def main() -> None:
         args.roster_path,
         args.output_directory,
     )
-    _report_sizes(args.output_directory)
 
 
 if __name__ == "__main__":

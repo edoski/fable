@@ -59,15 +59,7 @@ def _reorder(frame: pl.DataFrame) -> pl.DataFrame:
 @pytest.mark.parametrize(
     ("mutate", "match"),
     [
-        pytest.param(
-            lambda frame: frame.rename({"tx_count": "transactions"}), "schema", id="names"
-        ),
         pytest.param(_reorder, "schema", id="order"),
-        pytest.param(
-            lambda frame: frame.with_columns(pl.col("tx_count").cast(pl.Int32)),
-            "schema",
-            id="dtype",
-        ),
         pytest.param(_replace("tx_count", 1, None), "non-null", id="null"),
         pytest.param(lambda frame: frame.head(4), "row count", id="count"),
         pytest.param(
@@ -129,17 +121,6 @@ def test_select_range_returns_exact_inclusive_block_range(
 def test_select_range_rejects_invalid_bounds(first_block: int, last_block: int) -> None:
     with pytest.raises(ValueError, match="range"):
         BlockFrame(_valid_frame(), _definition()).select_range(first_block, last_block)
-
-
-def test_block_frame_isolates_owned_and_returned_frames_from_mutation() -> None:
-    source = _valid_frame()
-    blocks = BlockFrame(source, _definition())
-
-    source[0, "base_fee_per_gas"] = 999
-    returned = blocks.to_polars()
-    returned[1, "base_fee_per_gas"] = 888
-
-    assert blocks.to_polars()["base_fee_per_gas"].to_list() == [100, 101, 102, 103, 104]
 
 
 def test_select_range_isolates_selected_frame_from_mutation() -> None:

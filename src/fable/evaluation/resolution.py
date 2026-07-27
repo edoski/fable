@@ -41,8 +41,7 @@ _ROLLING_RESULT_SCHEMA = pl.Schema(
 def reduce_evaluation(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     """Derive one testing evaluation's seven metrics from its observations."""
 
-    _, observations = _load_evaluation(storage_root, evaluation_id)
-    return _reduce(observations)
+    return _reduce(_load_evaluation(storage_root, evaluation_id))
 
 
 def reduce_rolling(
@@ -64,14 +63,14 @@ def reduce_rolling(
 def _load_evaluation(
     storage_root: Path,
     evaluation_id: UUID,
-) -> tuple[EvaluateRequest, pl.DataFrame]:
+) -> pl.DataFrame:
     request = EvaluateRequest.model_validate_json(
         evaluation_json_path(storage_root, evaluation_id).read_text(encoding="utf-8"),
         strict=True,
     )
     if request.evaluation_id != evaluation_id:
         raise ValueError("evaluation request ID must match the requested evaluation")
-    return request, _load_observations(storage_root, request)
+    return _load_observations(storage_root, request)
 
 
 def _load_observations(storage_root: Path, request: EvaluateRequest) -> pl.DataFrame:
@@ -105,15 +104,15 @@ def _reduce(observations: pl.DataFrame) -> pl.DataFrame:
     predicted_actions = observations["predicted_action_k"].to_numpy()
     minimum_actions = observations["minimum_action_k"].to_numpy()
     predicted_logs = observations["predicted_minimum_log_base_fee"].to_numpy()
-    immediate_fees = observations["immediate_base_fee_per_gas"].to_numpy().astype(np.float64)
-    immediate_priority_fees_p50 = (
-        observations["immediate_effective_priority_fee_per_gas_p50"].to_numpy().astype(np.float64)
-    )
-    selected_fees = observations["selected_base_fee_per_gas"].to_numpy().astype(np.float64)
-    selected_priority_fees_p50 = (
-        observations["selected_effective_priority_fee_per_gas_p50"].to_numpy().astype(np.float64)
-    )
-    minimum_fees = observations["minimum_base_fee_per_gas"].to_numpy().astype(np.float64)
+    immediate_fees = observations["immediate_base_fee_per_gas"].to_numpy()
+    immediate_priority_fees_p50 = observations[
+        "immediate_effective_priority_fee_per_gas_p50"
+    ].to_numpy()
+    selected_fees = observations["selected_base_fee_per_gas"].to_numpy()
+    selected_priority_fees_p50 = observations[
+        "selected_effective_priority_fee_per_gas_p50"
+    ].to_numpy()
+    minimum_fees = observations["minimum_base_fee_per_gas"].to_numpy()
 
     log_errors = predicted_logs - np.log(minimum_fees)
     classes = np.union1d(minimum_actions, predicted_actions)

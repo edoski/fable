@@ -276,12 +276,9 @@ class _TransformerLstmModel(_TransformerBackbone):
 class _FitModule(pl.LightningModule):
     def __init__(self, association: dict[str, object]) -> None:
         super().__init__()
+        self.save_hyperparameters(logger=False)
         self.association = _hydrate_association(association)
         self.definition = self.association.training_definition
-        self.save_hyperparameters(
-            {"association": _json_association(self.association)},
-            logger=False,
-        )
 
         experiment = self.definition.experiment
         model = self.definition.method.model
@@ -396,12 +393,6 @@ class _FitOutcome:
     completed_epochs: int
 
 
-def _configure_numerical_policy() -> None:
-    torch.set_float32_matmul_precision(_runtime.FLOAT32_MATMUL_PRECISION)
-    torch.backends.cuda.matmul.allow_tf32 = _runtime.CUDA_MATMUL_ALLOW_TF32
-    torch.backends.cudnn.allow_tf32 = _runtime.CUDNN_ALLOW_TF32
-
-
 def _loaders(
     prepared: HistoricalPreparation,
     generator: torch.Generator,
@@ -475,7 +466,7 @@ def _fit(
 ) -> _FitOutcome:
     definition = association.training_definition
     scratch.mkdir(parents=True, exist_ok=True)
-    _configure_numerical_policy()
+    _runtime.configure_torch()
     fit = definition.method.fit
     pl.seed_everything(fit.seed, workers=True)
     generator = torch.Generator(device="cpu").manual_seed(fit.seed)

@@ -83,36 +83,33 @@ def _raw_feature_rows(
 
 
 def _feature_values(blocks: pl.DataFrame, feature_name: str) -> NDArray[np.float64]:
-    if feature_name == "log_base_fee_per_gas":
-        base_fees = _float_column(blocks, "base_fee_per_gas")
-        return np.log(base_fees)
-    if feature_name == "gas_utilization":
-        gas_limits = _float_column(blocks, "gas_limit")
-        return _float_column(blocks, "gas_used") / gas_limits
-    if feature_name == "log_exact_forming_base_fee_per_gas":
-        if not (blocks["chain_id"] == 1).all():
-            raise ValueError("log_exact_forming_base_fee_per_gas is Ethereum-only")
-        return _forming_base_fee_logs(blocks)
-    if feature_name == "log_gas_limit":
-        gas_limits = _float_column(blocks, "gas_limit")
-        return np.log(gas_limits)
-    if feature_name == "log1p_tx_count":
-        tx_counts = _float_column(blocks, "tx_count")
-        return np.log1p(tx_counts)
-    if feature_name == "log1p_effective_priority_fee_per_gas_p50":
-        priority_fees = _float_column(blocks, "effective_priority_fee_per_gas_p50")
-        return np.log1p(priority_fees)
-    if feature_name == "block_interval_seconds":
-        timestamps = blocks["timestamp"].to_numpy().astype(np.int64, copy=False)
-        intervals = np.diff(timestamps)
-        if not (intervals > 0).all():
-            raise ValueError("block_interval_seconds values must be positive")
-        return intervals.astype(np.float64, copy=False)
-    if feature_name == "hour_sin":
-        return np.sin(_hour_angles(blocks))
-    if feature_name == "hour_cos":
-        return np.cos(_hour_angles(blocks))
-    raise ValueError(f"Unsupported feature: {feature_name}")
+    match feature_name:
+        case "log_base_fee_per_gas":
+            return np.log(_float_column(blocks, "base_fee_per_gas"))
+        case "gas_utilization":
+            return _float_column(blocks, "gas_used") / _float_column(blocks, "gas_limit")
+        case "log_exact_forming_base_fee_per_gas":
+            if not (blocks["chain_id"] == 1).all():
+                raise ValueError("log_exact_forming_base_fee_per_gas is Ethereum-only")
+            return _forming_base_fee_logs(blocks)
+        case "log_gas_limit":
+            return np.log(_float_column(blocks, "gas_limit"))
+        case "log1p_tx_count":
+            return np.log1p(_float_column(blocks, "tx_count"))
+        case "log1p_effective_priority_fee_per_gas_p50":
+            return np.log1p(_float_column(blocks, "effective_priority_fee_per_gas_p50"))
+        case "block_interval_seconds":
+            timestamps = blocks["timestamp"].to_numpy().astype(np.int64, copy=False)
+            intervals = np.diff(timestamps)
+            if not (intervals > 0).all():
+                raise ValueError("block_interval_seconds values must be positive")
+            return intervals.astype(np.float64, copy=False)
+        case "hour_sin":
+            return np.sin(_hour_angles(blocks))
+        case "hour_cos":
+            return np.cos(_hour_angles(blocks))
+        case _:
+            raise ValueError(f"Unsupported feature: {feature_name}")
 
 
 def _hour_angles(blocks: pl.DataFrame) -> NDArray[np.float64]:
@@ -122,31 +119,12 @@ def _hour_angles(blocks: pl.DataFrame) -> NDArray[np.float64]:
 
 
 def _forming_base_fee_logs(blocks: pl.DataFrame) -> NDArray[np.float64]:
-    base_fees = blocks["base_fee_per_gas"].to_list()
-    gas_used_values = blocks["gas_used"].to_list()
-    gas_limits = blocks["gas_limit"].to_list()
+    columns = [blocks[name].to_list() for name in ("base_fee_per_gas", "gas_used", "gas_limit")]
     return np.fromiter(
-        (
-            _forming_base_fee_log(base_fee, gas_used, gas_limit)
-            for base_fee, gas_used, gas_limit in zip(
-                base_fees,
-                gas_used_values,
-                gas_limits,
-                strict=True,
-            )
-        ),
+        (math.log(_forming_child_base_fee(*row)) for row in zip(*columns, strict=True)),
         dtype=np.float64,
         count=blocks.height,
     )
-
-
-def _forming_base_fee_log(
-    base_fee_per_gas: int,
-    gas_used: int,
-    gas_limit: int,
-) -> float:
-    child_base_fee = _forming_child_base_fee(base_fee_per_gas, gas_used, gas_limit)
-    return math.log(child_base_fee)
 
 
 def _forming_child_base_fee(
