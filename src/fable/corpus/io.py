@@ -5,21 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import polars as pl
-from pydantic import UUID4, BaseModel, ConfigDict
+from pydantic import UUID4
 
 from ..addresses import corpus_blocks_path, corpus_json_path
 from ..config import CorpusRequest
+from ..records import StrictFrozenRecord
 from .blocks import BlockFrame
 from .contract import Corpus, FinalizedAnchor
 
 
-class _CorpusDocument(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        strict=True,
-    )
-
+class _CorpusDocument(StrictFrozenRecord):
     request: CorpusRequest
     finalized_anchor: FinalizedAnchor
 

@@ -9,7 +9,6 @@ from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
 
-from fable.addresses import study_json_path
 from fable.experiments import (
     ExperimentEntry,
     ExperimentKind,
@@ -18,7 +17,7 @@ from fable.experiments import (
     write_experiment_manifest,
 )
 from fable.requests import fresh_tune_request
-from fable.study import Study
+from fable.study import Study, load_study
 
 _KIND = ExperimentKind.C_STUDY
 _CONTEXTS = (25, 50, 100, 200, 400)
@@ -28,13 +27,6 @@ _FAMILIES = ("lstm", "transformer", "transformer_lstm")
 
 def _bundle_path(storage_root: Path, experiment_id: UUID) -> Path:
     return storage_root / "experiments" / _KIND / f".{experiment_id}"
-
-
-def _load_study(storage_root: Path, study_id: UUID) -> Study:
-    return Study.model_validate_json(
-        study_json_path(storage_root, study_id).read_bytes(),
-        strict=True,
-    )
 
 
 def _selected_feature_studies(
@@ -52,7 +44,7 @@ def _selected_feature_studies(
         chain, family, feature_set = entry.cell.split(".")
         if entry.study_id is None:
             raise ValueError("feature-ablation entry must reference a Study")
-        study = _load_study(storage_root, entry.study_id)
+        study = load_study(storage_root, entry.study_id)
         if len(study.trials) != 1:
             raise ValueError("feature-ablation Study must contain its one retained result")
         studies[chain, family, feature_set] = study
@@ -134,7 +126,7 @@ def select(storage_root: Path, experiment_id: UUID) -> None:
         chain, _, context_label = row["cell"].split(".")
         context = int(context_label.removeprefix("C"))
         study_id = UUID(row["study_id"])
-        study = _load_study(storage_root, study_id)
+        study = load_study(storage_root, study_id)
         if len(study.trials) != 1:
             raise ValueError("context Study must contain its one retained result")
         objectives.setdefault((chain, context), []).append(study.trials[0].objective)

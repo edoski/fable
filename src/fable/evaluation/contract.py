@@ -15,5 +15,3 @@ OBSERVATION_SCHEMA = pl.Schema(
         "minimum_base_fee_per_gas": pl.Int64,
     }
 )
-
-__all__ = ["OBSERVATION_SCHEMA"]

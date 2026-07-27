@@ -9,8 +9,8 @@ import pytest
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
-import fable.cli.app as cli
-from fable.cli.app import app
+import fable.cli as cli
+from fable.cli import app
 from fable.config import (
     BlockWindow,
     EvaluateRequest,

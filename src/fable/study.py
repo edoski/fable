@@ -6,8 +6,9 @@ import os
 import shutil
 from pathlib import Path
 from typing import Annotated, Self, TypeAlias
+from uuid import UUID
 
-from pydantic import UUID4, BaseModel, ConfigDict, Field, model_validator
+from pydantic import UUID4, Field, model_validator
 
 from .addresses import study_json_path
 from .config import (
@@ -15,33 +16,14 @@ from .config import (
     SelectedStudySource,
     TuneRequest,
 )
+from .records import StrictFrozenRecord
 
-__all__ = [
-    "RetainedResult",
-    "Study",
-    "load_selected_method",
-    "publish_study",
-    "retain_result",
-]
-
-_Objective: TypeAlias = Annotated[
-    float,
-    Field(strict=True, allow_inf_nan=False),
-]
 _Epoch: TypeAlias = Annotated[int, Field(strict=True, ge=1)]
 
 
-class _FrozenRecord(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        strict=True,
-    )
-
-
-class RetainedResult(_FrozenRecord):
+class RetainedResult(StrictFrozenRecord):
     method: Method
-    objective: _Objective
+    objective: Annotated[float, Field(strict=True, allow_inf_nan=False)]
     selected_epoch: _Epoch
     completed_epochs: _Epoch
 
@@ -54,14 +36,15 @@ class RetainedResult(_FrozenRecord):
         return self
 
 
-class Study(_FrozenRecord):
+class Study(StrictFrozenRecord):
     request: TuneRequest
     trials: Annotated[tuple[RetainedResult, ...], Field(min_length=1)]
 
     @model_validator(mode="after")
     def validate_methods(self) -> Self:
         for result in self.trials:
-            _require_method(self.request, result.method)
+            if result.method not in self.request.methods:
+                raise ValueError("Method is outside the TuneRequest")
         return self
 
 
@@ -89,7 +72,7 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
     result_paths = set(scratch.glob("result-*.json"))
     if not result_paths:
         raise FileNotFoundError(scratch / "result-*.json")
-    first = _load_study(min(result_paths))
+    first = _load_study_path(min(result_paths))
     request = first.request
     if request.study_id != study_id:
         raise ValueError("result Study ID does not match requested Study ID")
@@ -106,7 +89,7 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
 
     trials: list[RetainedResult] = []
     for method_index, result_path in enumerate(expected_paths):
-        result_study = _load_study(result_path)
+        result_study = _load_study_path(result_path)
         if result_study.request != request:
             raise ValueError("result requests must be identical")
         if len(result_study.trials) != 1:
@@ -129,31 +112,39 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
         pass
 
 
+def load_study(storage_root: Path, study_id: UUID) -> Study:
+    study = _load_study_path(study_json_path(storage_root, study_id))
+    if study.request.study_id != study_id:
+        raise ValueError("Study ID does not match requested Study ID")
+    return study
+
+
 def load_selected_method(
     storage_root: Path,
     source: SelectedStudySource,
 ) -> Method:
-    study = _load_study(study_json_path(storage_root, source.study_id))
-    if study.request.study_id != source.study_id:
-        raise ValueError("selected source Study ID does not match canonical Study")
+    study = load_study(storage_root, source.study_id)
     if study.request.corpus_id != source.corpus_id:
         raise ValueError("selected source Corpus ID does not match canonical Study")
 
     return study.trials[source.study_result_index].method
 
 
-def _require_method(request: TuneRequest, method: Method) -> None:
-    if method not in request.methods:
-        raise ValueError("Method is outside the TuneRequest")
-
-
 def _study_scratch(storage_root: Path, study_id: UUID4) -> Path:
     return storage_root / "studies" / f".{study_id}"
+
+
+def candidate_scratch_directory(
+    storage_root: Path,
+    study_id: UUID4,
+    method_index: int,
+) -> Path:
+    return _study_scratch(storage_root, study_id) / f"candidate-{method_index}"
 
 
 def _result_path(storage_root: Path, study_id: UUID4, method_index: int) -> Path:
     return _study_scratch(storage_root, study_id) / f"result-{method_index}.json"
 
 
-def _load_study(path: Path) -> Study:
+def _load_study_path(path: Path) -> Study:
     return Study.model_validate_json(path.read_bytes(), strict=True)

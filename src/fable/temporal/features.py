@@ -8,21 +8,16 @@ from typing import Annotated, Self
 import numpy as np
 import polars as pl
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
 from ..corpus import BlockFrame
+from ..records import StrictFrozenRecord
 
 _FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
 _PositiveFiniteFloat = Annotated[float, Field(gt=0.0, allow_inf_nan=False)]
 
 
-class FeatureState(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        strict=True,
-    )
-
+class FeatureState(StrictFrozenRecord):
     means: Annotated[tuple[_FiniteFloat, ...], Field(min_length=1)]
     standard_deviations: Annotated[
         tuple[_PositiveFiniteFloat, ...],
@@ -172,6 +167,3 @@ def _forming_child_base_fee(
 
 def _float_column(blocks: pl.DataFrame, name: str) -> NDArray[np.float64]:
     return blocks[name].to_numpy().astype(np.float64, copy=False)
-
-
-__all__ = ["FeatureState", "fit_feature_state", "transform_feature_rows"]

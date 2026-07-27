@@ -7,16 +7,11 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..config import CorpusRequest
+from ..records import StrictFrozenRecord
 from .blocks import BlockFrame
 
 
-class FinalizedAnchor(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        strict=True,
-    )
-
+class FinalizedAnchor(StrictFrozenRecord):
     block_number: int = Field(ge=0)
     block_hash: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]+$")
 

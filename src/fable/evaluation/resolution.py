@@ -289,6 +289,3 @@ def _economic_metrics(
             np.mean((selected_base_fees - minimum_base_fees) / minimum_base_fees)
         ),
     }
-
-
-__all__ = ["reduce_evaluation", "reduce_rolling"]

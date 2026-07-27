@@ -9,7 +9,6 @@ from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
 
-from fable.addresses import study_json_path
 from fable.config import (
     BlockWindow,
     ExperimentSemantics,
@@ -26,7 +25,7 @@ from fable.experiments import (
     write_experiment_manifest,
 )
 from fable.requests import fresh_tune_request
-from fable.study import Study
+from fable.study import load_study
 
 _KIND = ExperimentKind.FEATURE_ABLATION
 _CHAINS = (
@@ -182,11 +181,8 @@ def select(storage_root: Path, experiment_id: UUID) -> None:
     for row in rows:
         chain, _, feature_set = row["cell"].split(".")
         study_id = UUID(row["study_id"])
-        study = Study.model_validate_json(
-            study_json_path(storage_root, study_id).read_bytes(),
-            strict=True,
-        )
-        if study.request.study_id != study_id or len(study.trials) != 1:
+        study = load_study(storage_root, study_id)
+        if len(study.trials) != 1:
             raise ValueError("feature-ablation Study must contain its one retained result")
         objectives.setdefault((chain, feature_set), []).append(study.trials[0].objective)
         entries.append(ExperimentEntry(cell=row["cell"], study_id=study_id))

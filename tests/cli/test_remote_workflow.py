@@ -7,18 +7,13 @@ from uuid import UUID
 import pytest
 from typer.testing import CliRunner
 
-import fable.cli.commands.remote as remote
-from fable.cli.app import app
+import fable.cli as cli
+from fable.cli import app
 from fable.config import (
-    BaselineSource,
     BlockWindow,
     EvaluateRequest,
     ExperimentSemantics,
-    FitMethod,
-    LstmDefinition,
-    Method,
     SelectedStudySource,
-    TrainingDefinition,
     TrainRequest,
     WorkflowRequest,
 )
@@ -47,7 +42,7 @@ def _experiment() -> ExperimentSemantics:
     )
 
 
-def _request(kind: Literal["baseline", "selected", "evaluate"]) -> WorkflowRequest:
+def _request(kind: Literal["selected", "evaluate"]) -> WorkflowRequest:
     if kind == "evaluate":
         return EvaluateRequest(
             workflow="evaluate",
@@ -56,55 +51,25 @@ def _request(kind: Literal["baseline", "selected", "evaluate"]) -> WorkflowReque
             corpus_id=CORPUS_ID,
             testing_window=_window(300),
         )
-    if kind == "selected":
-        source = SelectedStudySource(
-            kind="selected_study",
-            corpus_id=CORPUS_ID,
-            study_id=STUDY_ID,
-            study_result_index=2,
-            experiment=_experiment(),
-        )
-    else:
-        source = BaselineSource(
-            kind="baseline",
-            corpus_id=CORPUS_ID,
-            training_definition=TrainingDefinition(
-                experiment=_experiment(),
-                method=Method(
-                    model=LstmDefinition(
-                        family="lstm",
-                        hidden=8,
-                        layers=1,
-                        head_hidden=4,
-                        dropout=0.1,
-                    ),
-                    fit=FitMethod(
-                        learning_rate=0.001,
-                        weight_decay=0.01,
-                        accumulation=1,
-                        gradient_clip_norm=1.0,
-                        seed=2026,
-                        max_epochs=3,
-                        validate_every_completed_epoch=1,
-                        patience=2,
-                        min_delta=0.0,
-                    ),
-                ),
-            ),
-        )
+    source = SelectedStudySource(
+        kind="selected_study",
+        corpus_id=CORPUS_ID,
+        study_id=STUDY_ID,
+        study_result_index=2,
+        experiment=_experiment(),
+    )
     return TrainRequest(workflow="train", artifact_id=ARTIFACT_ID, source=source)
 
 
 @pytest.mark.parametrize(
     "kind",
     [
-        pytest.param("baseline", id="baseline"),
         pytest.param("selected", id="selected"),
         pytest.param("evaluate", id="evaluate"),
     ],
 )
 def test_remote_workflow_dispatches_final_request(
-    kind: Literal["baseline", "selected", "evaluate"],
+    kind: Literal["selected", "evaluate"],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = _request(kind)
@@ -112,17 +77,17 @@ def test_remote_workflow_dispatches_final_request(
     train_calls: list[tuple[TrainRequest, object, Path]] = []
     evaluate_calls: list[tuple[EvaluateRequest, Path]] = []
     monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
-    monkeypatch.setattr(remote, "load_corpus", lambda *_: object())
-    monkeypatch.setattr(remote, "prepare_fit_history", lambda *_: prepared)
+    monkeypatch.setattr(cli, "load_corpus", lambda *_: object())
+    monkeypatch.setattr(cli, "prepare_fit_history", lambda *_: prepared)
     monkeypatch.setattr(
-        remote,
+        cli,
         "train",
         lambda active_request, active_prepared, storage_root: train_calls.append(
             (active_request, active_prepared, storage_root)
         ),
     )
     monkeypatch.setattr(
-        remote,
+        cli,
         "evaluate",
         lambda active_request, storage_root: evaluate_calls.append((active_request, storage_root)),
     )

@@ -15,7 +15,7 @@ from uuid import UUID
 import lightning.pytorch as pl
 import torch
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -37,6 +37,7 @@ from .min_block_fee import (
     TargetState,
     min_block_fee_loss,
 )
+from .records import StrictFrozenRecord
 from .study import (
     RetainedResult,
     load_selected_method,
@@ -44,24 +45,14 @@ from .study import (
 from .temporal.features import FeatureState
 from .temporal.history import HistoricalPreparation
 
-_NonNegativeInt = Annotated[int, Field(strict=True, ge=0)]
 
-
-class _FrozenRecord(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        strict=True,
-    )
-
-
-class ArtifactAssociation(_FrozenRecord):
+class ArtifactAssociation(StrictFrozenRecord):
     """Scientific facts embedded in one native Lightning artifact."""
 
     request: TrainRequest
     feature_state: FeatureState
     target_state: TargetState
-    study_result_index: _NonNegativeInt | None = None
+    study_result_index: Annotated[int, Field(strict=True, ge=0)] | None = None
     method: Method | None = None
 
     @property
@@ -85,39 +76,28 @@ class ArtifactAssociation(_FrozenRecord):
                 raise ValueError("selected Study artifacts require result index and Method")
             if self.study_result_index != source.study_result_index:
                 raise ValueError("artifact Study result index must match the TrainRequest")
-        _validate_feature_state_association(
-            self.training_definition,
-            self.feature_state,
-        )
+        if len(self.feature_state.means) != len(
+            self.training_definition.experiment.ordered_features
+        ):
+            raise ValueError("feature state width must match the ordered features")
         return self
 
 
-class _CandidateAssociation(_FrozenRecord):
+class _CandidateAssociation(StrictFrozenRecord):
     request: TuneRequest
     method: Method
     feature_state: FeatureState
     target_state: TargetState
 
+    @property
+    def training_definition(self) -> TrainingDefinition:
+        return TrainingDefinition(
+            experiment=self.request.experiment,
+            method=self.method,
+        )
+
 
 _Association = ArtifactAssociation | _CandidateAssociation
-
-
-def _validate_feature_state_association(
-    definition: TrainingDefinition,
-    feature_state: FeatureState,
-) -> None:
-    experiment = definition.experiment
-    if len(feature_state.means) != len(experiment.ordered_features):
-        raise ValueError("feature state width must match the ordered features")
-
-
-def _training_definition(association: _Association) -> TrainingDefinition:
-    if isinstance(association, _CandidateAssociation):
-        return TrainingDefinition(
-            experiment=association.request.experiment,
-            method=association.method,
-        )
-    return association.training_definition
 
 
 def _json_association(association: _Association) -> dict[str, object]:
@@ -297,7 +277,7 @@ class _FitModule(pl.LightningModule):
     def __init__(self, association: dict[str, object]) -> None:
         super().__init__()
         self.association = _hydrate_association(association)
-        self.definition = _training_definition(self.association)
+        self.definition = self.association.training_definition
         self.save_hyperparameters(
             {"association": _json_association(self.association)},
             logger=False,
@@ -488,16 +468,12 @@ def _callbacks(
     return early_stopping, best, last
 
 
-def _selected_epoch(best_checkpoint: Path) -> int:
-    return int(best_checkpoint.stem.removeprefix("best-")) + 1
-
-
 def _fit(
     association: _Association,
     prepared: HistoricalPreparation,
     scratch: Path,
 ) -> _FitOutcome:
-    definition = _training_definition(association)
+    definition = association.training_definition
     scratch.mkdir(parents=True, exist_ok=True)
     _configure_numerical_policy()
     fit = definition.method.fit
@@ -542,7 +518,7 @@ def _fit(
     return _FitOutcome(
         best_checkpoint=best_checkpoint,
         objective=float(score),
-        selected_epoch=_selected_epoch(best_checkpoint),
+        selected_epoch=int(best_checkpoint.stem.removeprefix("best-")) + 1,
         completed_epochs=trainer.current_epoch,
     )
 
@@ -594,7 +570,7 @@ def train(
     _publish_artifact(storage_root, request.artifact_id, scratch, outcome)
 
 
-def _run_candidate(
+def fit_candidate(
     request: TuneRequest,
     method: Method,
     prepared: HistoricalPreparation,
@@ -632,10 +608,3 @@ def load_artifact(
         raise ValueError("embedded artifact ID does not match the requested artifact")
     module.model.eval()
     return association, module.model
-
-
-__all__ = [
-    "ArtifactAssociation",
-    "load_artifact",
-    "train",
-]

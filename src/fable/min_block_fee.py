@@ -9,17 +9,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
-__all__ = [
-    "TargetState",
-    "MinBlockFeeOutput",
-    "MinBlockFeeLoss",
-    "fit_target_state",
-    "standardize_target",
-    "min_block_fee_loss",
-    "decode_action",
-]
+from .records import StrictFrozenRecord
 
 _FiniteFloat: TypeAlias = Annotated[
     float,
@@ -31,15 +23,7 @@ _PositiveFloat: TypeAlias = Annotated[
 ]
 
 
-class _State(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        strict=True,
-    )
-
-
-class TargetState(_State):
+class TargetState(StrictFrozenRecord):
     mean: _FiniteFloat
     standard_deviation: _PositiveFloat
 

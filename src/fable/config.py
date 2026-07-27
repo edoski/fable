@@ -158,6 +158,10 @@ class BaselineSource(_FrozenRecord):
     corpus_id: UUID4
     training_definition: TrainingDefinition
 
+    @property
+    def experiment(self) -> ExperimentSemantics:
+        return self.training_definition.experiment
+
 
 class SelectedStudySource(_FrozenRecord):
     kind: Literal["selected_study"]
@@ -208,25 +212,3 @@ WorkflowRequest: TypeAlias = Annotated[
 ]
 
 WORKFLOW_REQUEST_ADAPTER = TypeAdapter(WorkflowRequest)
-
-__all__ = [
-    "BaselineSource",
-    "BlockWindow",
-    "CorpusDefinition",
-    "CorpusRequest",
-    "EvaluateRequest",
-    "ExperimentSemantics",
-    "FitMethod",
-    "LstmDefinition",
-    "Method",
-    "ModelDefinition",
-    "SelectedStudySource",
-    "TrainRequest",
-    "TrainingDefinition",
-    "TrainingSource",
-    "TransformerDefinition",
-    "TransformerLstmDefinition",
-    "TuneRequest",
-    "WORKFLOW_REQUEST_ADAPTER",
-    "WorkflowRequest",
-]

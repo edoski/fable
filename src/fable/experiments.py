@@ -7,15 +7,9 @@ from pathlib import Path
 from typing import Annotated, Self
 from uuid import UUID
 
-from pydantic import UUID4, BaseModel, ConfigDict, Field, model_validator
+from pydantic import UUID4, Field, model_validator
 
-
-class _FrozenRecord(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        strict=True,
-    )
+from .records import StrictFrozenRecord
 
 
 class ExperimentKind(StrEnum):
@@ -26,7 +20,7 @@ class ExperimentKind(StrEnum):
     HELD_OUT = "held_out"
 
 
-class ExperimentEntry(_FrozenRecord):
+class ExperimentEntry(StrictFrozenRecord):
     cell: Annotated[str, Field(min_length=1)]
     artifact_id: UUID4 | None = None
     study_id: UUID4 | None = None
@@ -39,7 +33,7 @@ class ExperimentEntry(_FrozenRecord):
         return self
 
 
-class ExperimentManifest(_FrozenRecord):
+class ExperimentManifest(StrictFrozenRecord):
     experiment_id: UUID4
     entries: Annotated[tuple[ExperimentEntry, ...], Field(min_length=1)]
 
@@ -75,13 +69,3 @@ def load_experiment_manifest(
     if manifest.experiment_id != experiment_id:
         raise ValueError("manifest ID does not match the requested experiment")
     return manifest
-
-
-__all__ = [
-    "ExperimentEntry",
-    "ExperimentKind",
-    "ExperimentManifest",
-    "experiment_manifest_path",
-    "load_experiment_manifest",
-    "write_experiment_manifest",
-]

@@ -9,24 +9,17 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 
 from .config import Method, TuneRequest, WorkflowRequest
+from .records import StrictFrozenRecord
 
 _NonEmptyString = Annotated[str, Field(strict=True, min_length=1)]
 _PositiveInt = Annotated[int, Field(strict=True, gt=0)]
 _JOB_ID_PATTERN = re.compile(r"([0-9]+)(?:;[^;\r\n]+)?\n?")
 
 
-class _Record(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        strict=True,
-    )
-
-
-class _Resources(_Record):
+class _Resources(StrictFrozenRecord):
     partition: _NonEmptyString
     gres: str
     cpus_per_task: _PositiveInt
@@ -34,7 +27,7 @@ class _Resources(_Record):
     time_limit: _NonEmptyString
 
 
-class _Remote(_Record):
+class _Remote(StrictFrozenRecord):
     ssh: _NonEmptyString
     executable: _NonEmptyString
     storage_root: _NonEmptyString
@@ -49,7 +42,7 @@ class _Remote(_Record):
         return value
 
 
-class _CandidateProcessInput(_Record):
+class CandidateProcessInput(StrictFrozenRecord):
     request: TuneRequest
     method: Method
 
@@ -64,9 +57,9 @@ def submit(request: WorkflowRequest) -> int:
     )
 
 
-def _submit_candidate(request: TuneRequest, method: Method) -> int:
+def submit_candidate(request: TuneRequest, method: Method) -> int:
     remote = _load_remote()
-    candidate_json = _CandidateProcessInput(
+    candidate_json = CandidateProcessInput(
         request=request,
         method=method,
     ).model_dump_json()
@@ -127,6 +120,3 @@ def _parse_job_id(output: str) -> int:
     if match is None or (job_id := int(match.group(1))) <= 0:
         raise ValueError(f"invalid sbatch --parsable output: {output!r}")
     return job_id
-
-
-__all__ = ["submit"]

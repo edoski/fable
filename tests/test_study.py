@@ -21,11 +21,13 @@ from fable.study import (
     RetainedResult,
     Study,
     load_selected_method,
+    load_study,
     publish_study,
     retain_result,
 )
 
 STUDY_ID = UUID("10000000-0000-4000-8000-000000000001")
+OTHER_STUDY_ID = UUID("10000000-0000-4000-8000-000000000002")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
 OTHER_CORPUS_ID = UUID("20000000-0000-4000-8000-000000000002")
 
@@ -123,10 +125,7 @@ def test_retain_publish_and_load_selected_method_in_request_order(
 
     selected = load_selected_method(tmp_path, source)
     canonical_path = study_json_path(tmp_path, STUDY_ID)
-    canonical = Study.model_validate_json(
-        canonical_path.read_bytes(),
-        strict=True,
-    )
+    canonical = load_study(tmp_path, STUDY_ID)
 
     assert canonical == Study(request=request, trials=(first, second))
     assert selected == OTHER_LSTM_METHOD
@@ -252,6 +251,33 @@ def test_load_selected_method_rejects_corpus_mismatch(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Corpus ID does not match"):
         load_selected_method(tmp_path, source)
+
+
+def test_load_study_rejects_non_strict_json(tmp_path: Path) -> None:
+    canonical = study_json_path(tmp_path, STUDY_ID)
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text(
+        Study(request=_request(), trials=(RESULT,))
+        .model_dump_json()
+        .replace('"objective":0.5', '"objective":"0.5"'),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        load_study(tmp_path, STUDY_ID)
+
+
+def test_load_study_rejects_embedded_id_mismatch(tmp_path: Path) -> None:
+    canonical = study_json_path(tmp_path, STUDY_ID)
+    canonical.parent.mkdir(parents=True)
+    request = _request().model_copy(update={"study_id": OTHER_STUDY_ID})
+    canonical.write_text(
+        Study(request=request, trials=(RESULT,)).model_dump_json(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Study ID does not match requested Study ID"):
+        load_study(tmp_path, STUDY_ID)
 
 
 def test_publish_study_preserves_canonical_created_during_publication(

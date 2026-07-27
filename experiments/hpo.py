@@ -9,7 +9,6 @@ from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
 
-from fable.addresses import study_json_path
 from fable.config import (
     FitMethod,
     LstmDefinition,
@@ -26,7 +25,7 @@ from fable.experiments import (
     write_experiment_manifest,
 )
 from fable.requests import fresh_tune_request
-from fable.study import Study
+from fable.study import Study, load_study
 
 _KIND = ExperimentKind.HPO
 _CHAINS = ("ethereum", "polygon", "avalanche")
@@ -132,13 +131,6 @@ def _bundle_path(storage_root: Path, experiment_id: UUID) -> Path:
     return storage_root / "experiments" / _KIND / f".{experiment_id}"
 
 
-def _load_study(storage_root: Path, study_id: UUID) -> Study:
-    return Study.model_validate_json(
-        study_json_path(storage_root, study_id).read_bytes(),
-        strict=True,
-    )
-
-
 def _selected_context_studies(
     storage_root: Path,
     experiment_id: UUID,
@@ -155,7 +147,7 @@ def _selected_context_studies(
         if entry.study_id is None:
             raise ValueError("context-study entry must reference a Study")
         context = int(context_label.removeprefix("C"))
-        study = _load_study(storage_root, entry.study_id)
+        study = load_study(storage_root, entry.study_id)
         studies[chain, family, context] = study
         objectives.setdefault((chain, context), []).append(study.trials[0].objective)
 
@@ -237,7 +229,7 @@ def select(storage_root: Path, experiment_id: UUID) -> None:
         if study_id in seen:
             continue
         seen.add(study_id)
-        study = _load_study(storage_root, study_id)
+        study = load_study(storage_root, study_id)
         retained_methods = tuple(result.method for result in study.trials)
         if len(study.trials) != len(study.request.methods) or any(
             method not in retained_methods for method in study.request.methods

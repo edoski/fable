@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fable.addresses import artifact_checkpoint_path, study_json_path
+from fable.addresses import artifact_checkpoint_path
 from fable.config import SelectedStudySource
 from fable.experiments import (
     ExperimentEntry,
@@ -18,7 +18,7 @@ from fable.experiments import (
     write_experiment_manifest,
 )
 from fable.requests import fresh_train_request
-from fable.study import Study
+from fable.study import load_study
 
 _KIND = ExperimentKind.K_STUDY
 _HORIZONS = (2, 3, 4, 5, 10, 25, 50, 100, 200)
@@ -26,13 +26,6 @@ _HORIZONS = (2, 3, 4, 5, 10, 25, 50, 100, 200)
 
 def _bundle_path(storage_root: Path, experiment_id: UUID) -> Path:
     return storage_root / "experiments" / _KIND / f".{experiment_id}"
-
-
-def _load_study(storage_root: Path, study_id: UUID) -> Study:
-    return Study.model_validate_json(
-        study_json_path(storage_root, study_id).read_bytes(),
-        strict=True,
-    )
 
 
 def prepare(storage_root: Path, hpo_experiment_id: UUID, experiment_id: UUID) -> None:
@@ -51,7 +44,7 @@ def prepare(storage_root: Path, hpo_experiment_id: UUID, experiment_id: UUID) ->
     for entry in manifest.entries:
         if entry.study_id is None:
             raise ValueError("HPO entry must reference a Study")
-        study = _load_study(storage_root, entry.study_id)
+        study = load_study(storage_root, entry.study_id)
         selected_index, _ = min(
             enumerate(study.trials),
             key=lambda item: item[1].objective,

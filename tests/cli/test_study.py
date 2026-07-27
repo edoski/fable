@@ -7,9 +7,9 @@ from uuid import UUID
 import pytest
 from typer.testing import CliRunner
 
-import fable.cli.commands.remote as remote
+import fable.cli as cli
 import fable.execution as execution
-from fable.cli.app import app
+from fable.cli import app
 from fable.config import (
     BlockWindow,
     ExperimentSemantics,
@@ -154,7 +154,7 @@ def test_remote_candidate_dispatches_input(
         calls.append((storage_root, request, method))
 
     monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
-    monkeypatch.setattr(remote, "run_candidate", fake_run_candidate)
+    monkeypatch.setattr(cli, "run_candidate", fake_run_candidate)
 
     result = CliRunner().invoke(app, ["remote", "candidate"], input=payload)
 

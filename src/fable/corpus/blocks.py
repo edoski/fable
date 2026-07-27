@@ -92,6 +92,3 @@ class BlockFrame:
 
     def to_polars(self) -> pl.DataFrame:
         return self._frame.clone()
-
-
-__all__ = ["BlockFrame"]

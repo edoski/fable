@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 import polars as pl
 
-from fable.addresses import corpus_json_path, evaluation_directory, study_json_path
+from fable.addresses import corpus_json_path, evaluation_directory
 from fable.config import BlockWindow, CorpusRequest
 from fable.evaluation import reduce_evaluation, reduce_rolling
 from fable.experiments import (
@@ -22,7 +22,7 @@ from fable.experiments import (
     write_experiment_manifest,
 )
 from fable.requests import fresh_evaluate_request
-from fable.study import Study
+from fable.study import load_study
 
 _MAX_HORIZON = 200
 _KIND = ExperimentKind.HELD_OUT
@@ -30,13 +30,6 @@ _KIND = ExperimentKind.HELD_OUT
 
 def _bundle_path(storage_root: Path, experiment_id: UUID) -> Path:
     return storage_root / "experiments" / _KIND / f".{experiment_id}"
-
-
-def _load_study(storage_root: Path, study_id: UUID) -> Study:
-    return Study.model_validate_json(
-        study_json_path(storage_root, study_id).read_bytes(),
-        strict=True,
-    )
 
 
 def _corpus_last_block(storage_root: Path, corpus_id: UUID) -> int:
@@ -54,7 +47,7 @@ def prepare(
     hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_experiment_id)
     studies = {
-        entry.cell: _load_study(storage_root, entry.study_id)
+        entry.cell: load_study(storage_root, entry.study_id)
         for entry in hpo.entries
         if entry.study_id is not None
     }

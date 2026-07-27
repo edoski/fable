@@ -89,54 +89,54 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Records and loading
 
-- [ ] Add `src/fable/records.py` with `StrictFrozenRecord`.
-- [ ] Migrate only the eight identical strict, frozen, extra-forbid Pydantic bases.
-- [ ] Keep the deliberately non-strict frozen base in `config.py`.
-- [ ] Add public `load_study(storage_root, study_id)` in `study.py`.
-- [ ] Keep a private path-based Study loader for scratch publication.
-- [ ] Route all five canonical Study consumers through the public loader.
-- [ ] Keep strict JSON validation and embedded-ID equality with both the path and requested UUID.
+- [x] Add `src/fable/records.py` with `StrictFrozenRecord`.
+- [x] Migrate only the eight identical strict, frozen, extra-forbid Pydantic bases.
+- [x] Keep the deliberately non-strict frozen base in `config.py`.
+- [x] Add public `load_study(storage_root, study_id)` in `study.py`.
+- [x] Keep a private path-based Study loader for scratch publication.
+- [x] Route all five canonical Study consumers through the public loader.
+- [x] Keep strict JSON validation and embedded-ID equality with both the path and requested UUID.
 
 ### CLI and orchestration
 
-- [ ] Flatten `src/fable/cli/` into `src/fable/cli.py`.
-- [ ] Point `[project.scripts]` directly at `fable.cli:app`.
-- [ ] Delete the wrapper `main()` and old CLI modules. Add no import shim.
-- [ ] Update direct imports and focused CLI tests.
-- [ ] Keep `tuning.py` as the Study-orchestration owner.
-- [ ] Rename `modeling._run_candidate` to public `fit_candidate`.
-- [ ] Expose `candidate_scratch_directory()` from `study.py`; do not import private `_study_scratch` across modules.
-- [ ] Give Study scratch paths one owner.
-- [ ] Inline `_require_method()` into `Study.validate_methods()`.
-- [ ] Inline one-use `_Objective`, modeling `_NonNegativeInt`, feature-state width, and selected-epoch expressions at their owning fields/construction.
-- [ ] Add `_CandidateAssociation.training_definition`.
-- [ ] Delete `_training_definition()` and consume `association.training_definition`.
-- [ ] Keep `_hydrate_association()` and `_json_association()` as serialization-boundary owners.
+- [x] Flatten `src/fable/cli/` into `src/fable/cli.py`.
+- [x] Point `[project.scripts]` directly at `fable.cli:app`.
+- [x] Delete the wrapper `main()` and old CLI modules. Add no import shim.
+- [x] Update direct imports and focused CLI tests.
+- [x] Keep `tuning.py` as the Study-orchestration owner.
+- [x] Rename `modeling._run_candidate` to public `fit_candidate`.
+- [x] Expose `candidate_scratch_directory()` from `study.py`; do not import private `_study_scratch` across modules.
+- [x] Give Study scratch paths one owner.
+- [x] Inline `_require_method()` into `Study.validate_methods()`.
+- [x] Inline one-use `_Objective`, modeling `_NonNegativeInt`, feature-state width, and selected-epoch expressions at their owning fields/construction.
+- [x] Add `_CandidateAssociation.training_definition`.
+- [x] Delete `_training_definition()` and consume `association.training_definition`.
+- [x] Keep `_hydrate_association()` and `_json_association()` as serialization-boundary owners.
 
 ### Remote workflow and public names
 
-- [ ] Add `BaselineSource.experiment`.
-- [ ] Make both training-source variants expose `source.experiment`.
-- [ ] Delete the `isinstance(source, BaselineSource)` branch and remote-CLI BaselineSource import.
-- [ ] Delete the baseline parameter and unused large fixture from the remote-workflow test.
-- [ ] Keep selected-training and evaluation remote-workflow coverage.
-- [ ] Delete leaf-module `__all__` lists.
-- [ ] Keep package re-exports only where consumed.
-- [ ] Express retained re-exports as explicit aliases.
-- [ ] Leave `temporal/__init__.py` docstring-only.
+- [x] Add `BaselineSource.experiment`.
+- [x] Make both training-source variants expose `source.experiment`.
+- [x] Delete the `isinstance(source, BaselineSource)` branch and remote-CLI BaselineSource import.
+- [x] Delete the baseline parameter and unused large fixture from the remote-workflow test.
+- [x] Keep selected-training and evaluation remote-workflow coverage.
+- [x] Delete leaf-module `__all__` lists.
+- [x] Keep package re-exports only where consumed.
+- [x] Express retained re-exports as explicit aliases.
+- [x] Leave `temporal/__init__.py` docstring-only.
 
 ### Owned test changes
 
-- [ ] Keep only tuning candidate index `1` in the indexed-result test.
-- [ ] Keep only the later retention failure case for scratch-preservation evidence.
-- [ ] Rename test patches from `_run_candidate` to `fit_candidate`.
-- [ ] Preserve publication-time Study rejection coverage.
+- [x] Keep only tuning candidate index `1` in the indexed-result test.
+- [x] Keep only the later retention failure case for scratch-preservation evidence.
+- [x] Rename test patches from `_run_candidate` to `fit_candidate`.
+- [x] Preserve publication-time Study rejection coverage.
 
 ### Implementer checks
 
-- [ ] Run focused records, Study, tuning, CLI, and remote-workflow tests.
-- [ ] Run `uv run --frozen pytest -q`.
-- [ ] Run Ruff, Pyright, Vulture, and `git diff --check`.
+- [x] Run focused records, Study, tuning, CLI, and remote-workflow tests.
+- [x] Run `uv run --frozen pytest -q`.
+- [x] Run Ruff, Pyright, Vulture, and `git diff --check`.
 
 ### Reviewer acceptance
 

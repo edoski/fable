@@ -40,7 +40,7 @@ dev = [
 ]
 
 [project.scripts]
-fable = "fable.cli.app:main"
+fable = "fable.cli:app"
 
 [tool.hatch.build.targets.wheel]
 include = ["src/fable/**/*.py"]

@@ -156,6 +156,3 @@ def _collect_observations(
             cursor += size
 
     return pl.DataFrame(columns, schema=OBSERVATION_SCHEMA)
-
-
-__all__ = ["evaluate"]

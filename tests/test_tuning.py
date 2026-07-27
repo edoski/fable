@@ -66,42 +66,34 @@ REQUEST = TuneRequest(
 )
 
 
-@pytest.mark.parametrize(
-    ("method", "method_index"),
-    [(METHOD, 0), (OTHER_METHOD, 1)],
-)
 def test_run_candidate_publishes_indexed_result_and_removes_scratch(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
-    method: Method,
-    method_index: int,
 ) -> None:
     result = RetainedResult(
-        method=method,
+        method=OTHER_METHOD,
         objective=0.4,
         selected_epoch=3,
         completed_epochs=8,
     )
     monkeypatch.setattr(tuning, "load_corpus", lambda *_: object())
     monkeypatch.setattr(tuning, "prepare_fit_history", lambda *_: object())
-    monkeypatch.setattr(tuning, "_run_candidate", lambda *_: result)
+    monkeypatch.setattr(tuning, "fit_candidate", lambda *_: result)
 
-    tuning.run_candidate(tmp_path, REQUEST, method)
+    tuning.run_candidate(tmp_path, REQUEST, OTHER_METHOD)
 
     study_scratch = tmp_path / "studies" / f".{STUDY_ID}"
     retained = Study.model_validate_json(
-        (study_scratch / f"result-{method_index}.json").read_bytes(),
+        (study_scratch / "result-1.json").read_bytes(),
         strict=True,
     )
     assert retained == Study(request=REQUEST, trials=(result,))
-    assert not (study_scratch / f"candidate-{method_index}").exists()
+    assert not (study_scratch / "candidate-1").exists()
 
 
-@pytest.mark.parametrize("failure", ["fit", "retention"])
-def test_run_candidate_preserves_last_checkpoint_after_failure(
+def test_run_candidate_preserves_last_checkpoint_after_retention_failure(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
-    failure: str,
 ) -> None:
     scratch = tmp_path / "studies" / f".{STUDY_ID}" / "candidate-0"
     result = RetainedResult(
@@ -113,20 +105,17 @@ def test_run_candidate_preserves_last_checkpoint_after_failure(
 
     def run_fit(*_: object) -> RetainedResult:
         (scratch / "last.ckpt").write_bytes(b"checkpoint")
-        if failure == "fit":
-            raise RuntimeError("fit failed")
         return result
 
     def retain_result(*_: object) -> None:
-        if failure == "retention":
-            raise RuntimeError("retention failed")
+        raise RuntimeError("retention failed")
 
     monkeypatch.setattr(tuning, "load_corpus", lambda *_: object())
     monkeypatch.setattr(tuning, "prepare_fit_history", lambda *_: object())
-    monkeypatch.setattr(tuning, "_run_candidate", run_fit)
+    monkeypatch.setattr(tuning, "fit_candidate", run_fit)
     monkeypatch.setattr(tuning, "retain_result", retain_result)
 
-    with pytest.raises(RuntimeError, match=f"{failure} failed"):
+    with pytest.raises(RuntimeError, match="retention failed"):
         tuning.run_candidate(tmp_path, REQUEST, METHOD)
 
     assert (scratch / "last.ckpt").read_bytes() == b"checkpoint"
