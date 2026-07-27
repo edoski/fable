@@ -21,7 +21,6 @@ function run(overrides: Partial<InferenceRun> = {}): InferenceRun {
     artifact_id: "artifact-5",
     head_block: 10,
     head_hash: "0xhead",
-    head_base_fee_per_gas: 10 * GWEI,
     selected_action_k: 1,
     target_block: 12,
     predicted_minimum_base_fee_per_gas: 9 * GWEI,
@@ -40,7 +39,6 @@ function resolved(
     selected_action_k: wait,
     target_block: 11 + wait,
     outcome: {
-      resolved_at: "2026-07-26T10:01:00.000Z",
       immediate_base_fee_per_gas: immediateGwei * GWEI,
       selected_base_fee_per_gas: selectedGwei * GWEI,
     },

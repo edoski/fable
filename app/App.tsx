@@ -2,13 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { StatusBar, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
-import { AppHeader } from "./src/components/AppHeader";
-import { BottomTabs, type AppTab } from "./src/components/BottomTabs";
 import {
-  createEngineLifecycle,
-  type EngineLifecycle,
+  AppHeader,
   type RpcStatus,
-} from "./src/engineLifecycle";
+} from "./src/components/AppHeader";
+import { BottomTabs, type AppTab } from "./src/components/BottomTabs";
 import type { Chain, Horizon } from "./src/domain";
 import {
   addRun,
@@ -27,6 +25,7 @@ import {
   InferenceScreen,
   type InferenceState,
 } from "./src/screens/InferenceScreen";
+import { createSerialQueue } from "./src/serialQueue";
 import { colors } from "./src/theme";
 
 type ActiveEngine = {
@@ -50,41 +49,11 @@ export default function App() {
   const activeEngine = useRef<ActiveEngine | null>(null);
   const selectionRevision = useRef(0);
   const runsRef = useRef<InferenceRun[]>([]);
-  const historyWrites = useRef<Promise<void>>(Promise.resolve());
-  const mounted = useRef(true);
-  const engineLifecycle = useRef<EngineLifecycle | null>(null);
-  if (engineLifecycle.current === null) {
-    engineLifecycle.current = createEngineLifecycle({
-      onConstructionError() {
-        if (!mounted.current) return;
-        setInference({
-          status: "error",
-          message: "Could not load the bundled models.",
-        });
-      },
-      onDisposalError() {
-        if (!mounted.current) return;
-        setInference({
-          status: "error",
-          message: "Could not release the previous model.",
-        });
-      },
-      onRpcUnavailable() {
-        if (mounted.current) setSnapshot(null);
-      },
-      onSnapshot(engine, nextSnapshot) {
-        if (!mounted.current) return;
-        const current = activeEngine.current;
-        if (current?.engine !== engine) return;
-        setSnapshot(nextSnapshot);
-        resolveOutcomes(current, nextSnapshot.head_block);
-      },
-      onStatus(status) {
-        if (mounted.current) setRpcStatus(status);
-      },
-    });
+  const serializeHistory = useRef(createSerialQueue()).current;
+
+  function fail(message: string): void {
+    setInference({ status: "error", message });
   }
-  const lifecycle = engineLifecycle.current;
 
   function commitRuns(
     update: (
@@ -92,7 +61,7 @@ export default function App() {
     ) => InferenceRun[] | Promise<InferenceRun[]>,
     isCurrent: () => boolean,
   ): Promise<InferenceRun[]> {
-    const committed = historyWrites.current.then(async () => {
+    return serializeHistory(async () => {
       const current = runsRef.current;
       if (!isCurrent()) return current;
       const next = await update(current);
@@ -116,11 +85,6 @@ export default function App() {
       setStorageError(null);
       return next;
     });
-    historyWrites.current = committed.then(
-      () => undefined,
-      () => undefined,
-    );
-    return committed;
   }
 
   function resolveOutcomes(engine: ActiveEngine, headBlock: number): void {
@@ -148,15 +112,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
     let active = true;
-    const loaded = historyWrites.current.then(async () => {
+    void serializeHistory(async () => {
       try {
         const storedRuns = await loadRuns();
         if (active) {
@@ -172,51 +129,45 @@ export default function App() {
         }
       }
     });
-    historyWrites.current = loaded;
     return () => {
       active = false;
     };
-  }, []);
+  }, [serializeHistory]);
 
   useEffect(() => {
-    setSnapshot(null);
-    let active = true;
-    let activated: InferenceEngine | null = null;
-    const lease = lifecycle.replace(() => createInferenceEngine(chain));
-    void lease
-      .then((engine) => {
-        if (!active || engine === null) return;
-        activated = engine;
-        activeEngine.current = {
-          chain,
-          engine,
-          outcomesRunning: false,
-        };
-        setEngineRevision((revision) => revision + 1);
-      })
-      .catch(() => {
-        if (!mounted.current) return;
-        setInference({
-          status: "error",
-          message: "Could not start local inference.",
-        });
-      });
+    const engine = createInferenceEngine(chain);
+    const current: ActiveEngine = {
+      chain,
+      engine,
+      outcomesRunning: false,
+    };
+    activeEngine.current = current;
+    setRpcStatus("checking");
+    const onStatus = (status: RpcStatus) => {
+      if (activeEngine.current !== current) return;
+      setRpcStatus(status);
+      if (status === "offline") setSnapshot(null);
+    };
+    const stopPolling = engine.startPolling(
+      (nextSnapshot) => {
+        if (activeEngine.current !== current) return;
+        onStatus("live");
+        setSnapshot(nextSnapshot);
+        resolveOutcomes(current, nextSnapshot.head_block);
+      },
+      () => onStatus("offline"),
+    );
+    setEngineRevision((revision) => revision + 1);
 
     return () => {
-      active = false;
       selectionRevision.current += 1;
-      if (activeEngine.current?.engine === activated) {
+      if (activeEngine.current === current) {
         activeEngine.current = null;
       }
-      void lifecycle.release(lease).catch(() => {
-        if (!mounted.current) return;
-        setInference({
-          status: "error",
-          message: "Could not release the previous model.",
-        });
-      });
+      stopPolling();
+      void engine.dispose();
     };
-  }, [chain, lifecycle]);
+  }, [chain]);
 
   useEffect(() => {
     const current = activeEngine.current;
@@ -226,25 +177,18 @@ export default function App() {
     selectionRevision.current = revision;
     let active = true;
     setInference({ status: "preparing" });
+    const settlePreparation = () => {
+      if (
+        active &&
+        activeEngine.current === current &&
+        selectionRevision.current === revision
+      ) {
+        setInference({ status: "idle" });
+      }
+    };
     void current.engine.prepare(horizon).then(
-      () => {
-        if (
-          active &&
-          activeEngine.current === current &&
-          selectionRevision.current === revision
-        ) {
-          setInference({ status: "idle" });
-        }
-      },
-      () => {
-        if (
-          active &&
-          activeEngine.current === current &&
-          selectionRevision.current === revision
-        ) {
-          setInference({ status: "idle" });
-        }
-      },
+      settlePreparation,
+      settlePreparation,
     );
     return () => {
       active = false;
@@ -270,10 +214,7 @@ export default function App() {
   async function runInference() {
     const current = activeEngine.current;
     if (current === null || current.chain !== chain) {
-      setInference({
-        status: "error",
-        message: "Could not connect to the selected chain.",
-      });
+      fail("Could not connect to the selected chain.");
       return;
     }
     const revision = selectionRevision.current;
@@ -290,10 +231,7 @@ export default function App() {
         isCurrent() &&
         !(error instanceof Error && error.name === "AbortError")
       ) {
-        setInference({
-          status: "error",
-          message: error instanceof Error ? error.message : String(error),
-        });
+        fail(error instanceof Error ? error.message : String(error));
       }
       return;
     }
@@ -306,10 +244,7 @@ export default function App() {
       );
     } catch {
       if (isCurrent()) {
-        setInference({
-          status: "error",
-          message: "Could not save this run.",
-        });
+        fail("Could not save this run.");
       }
       return;
     }

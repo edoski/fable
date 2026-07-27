@@ -40,9 +40,7 @@ function inferenceResult(
     artifact_id: "artifact-5",
     head_block: 100,
     head_hash: "0xhead",
-    head_base_fee_per_gas: 12_000_000_000,
     selected_action_k: 2,
-    immediate_block: 101,
     target_block: 103,
     predicted_minimum_base_fee_per_gas: 10_000_000_000,
     ...overrides,
@@ -60,7 +58,6 @@ function storedRun(
     artifact_id: "artifact-5",
     head_block: 10,
     head_hash: "0xhead",
-    head_base_fee_per_gas: 12_000_000_000,
     selected_action_k: 2,
     target_block: 13,
     predicted_minimum_base_fee_per_gas: 10_000_000_000,
@@ -84,8 +81,8 @@ beforeEach(() => {
 });
 
 describe("history", () => {
-  it("adds a canonical run and caps newest-first history", () => {
-    const existing = Array.from({ length: 100 }, (_, index) =>
+  it("adds a unique canonical run before every existing run", () => {
+    const existing = Array.from({ length: 3 }, (_, index) =>
       storedRun({ id: `existing-${index}` }),
     );
     const [first, ...retained] = addRun(existing, inferenceResult());
@@ -99,16 +96,15 @@ describe("history", () => {
       artifact_id: "artifact-5",
       head_block: 100,
       head_hash: "0xhead",
-      head_base_fee_per_gas: 12_000_000_000,
       selected_action_k: 2,
       target_block: 103,
       predicted_minimum_base_fee_per_gas: 10_000_000_000,
     });
     expect(first.id).not.toBe(second.id);
-    expect(retained).toEqual(existing.slice(0, 99));
+    expect(retained).toEqual(existing);
   });
 
-  it("round-trips one capped ordered array under fable.runs", async () => {
+  it("round-trips the complete ordered array under fable.runs", async () => {
     const runs = Array.from({ length: 105 }, (_, index) =>
       storedRun({ id: `run-${index}`, head_block: index }),
     );
@@ -117,22 +113,14 @@ describe("history", () => {
     const saved = JSON.parse(storage.values.get("fable.runs") ?? "null");
 
     expect([...storage.values.keys()]).toEqual(["fable.runs"]);
-    expect(saved).toHaveLength(100);
-    expect(saved.map((run: InferenceRun) => run.id)).toEqual(
-      runs.slice(0, 100).map((run) => run.id),
-    );
-    await expect(loadRuns()).resolves.toEqual(runs.slice(0, 100));
+    expect(saved).toEqual(runs);
+    await expect(loadRuns()).resolves.toEqual(runs);
   });
 
-  it("rejects malformed top-level storage", async () => {
+  it("rejects malformed stored JSON", async () => {
     storage.values.set("fable.runs", "{");
     await expect(loadRuns()).rejects.toThrow(
       "Stored inference runs are not valid JSON",
-    );
-
-    storage.values.set("fable.runs", JSON.stringify({ runs: [] }));
-    await expect(loadRuns()).rejects.toThrow(
-      "Stored inference runs must be a JSON array",
     );
   });
 

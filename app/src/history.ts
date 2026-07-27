@@ -8,7 +8,6 @@ import type {
 } from "./inference";
 
 const STORAGE_KEY = "fable.runs";
-const MAX_RUNS = 100;
 
 export type InferenceRun = {
   id: string;
@@ -18,7 +17,6 @@ export type InferenceRun = {
   artifact_id: string;
   head_block: number;
   head_hash: string;
-  head_base_fee_per_gas: number;
   selected_action_k: number;
   target_block: number;
   predicted_minimum_base_fee_per_gas: number;
@@ -26,7 +24,6 @@ export type InferenceRun = {
 };
 
 export type RunOutcome = {
-  resolved_at: string;
   immediate_base_fee_per_gas: number;
   selected_base_fee_per_gas: number;
 };
@@ -39,7 +36,7 @@ export function addRun(
   runs: readonly InferenceRun[],
   result: InferenceResult,
 ): InferenceRun[] {
-  return [createRun(result), ...runs].slice(0, MAX_RUNS);
+  return [createRun(result), ...runs];
 }
 
 function createRun(result: InferenceResult): InferenceRun {
@@ -53,28 +50,10 @@ function createRun(result: InferenceResult): InferenceRun {
     artifact_id: result.artifact_id,
     head_block: result.head_block,
     head_hash: result.head_hash,
-    head_base_fee_per_gas: result.head_base_fee_per_gas,
     selected_action_k: result.selected_action_k,
     target_block: result.target_block,
     predicted_minimum_base_fee_per_gas:
       result.predicted_minimum_base_fee_per_gas,
-  };
-}
-
-function recordOutcome(
-  run: InferenceRun,
-  outcome: InferenceOutcome,
-): InferenceRun {
-  if (run.outcome !== undefined) {
-    return run;
-  }
-  return {
-    ...run,
-    outcome: {
-      resolved_at: new Date().toISOString(),
-      immediate_base_fee_per_gas: outcome.immediate_base_fee_per_gas,
-      selected_base_fee_per_gas: outcome.selected_base_fee_per_gas,
-    },
   };
 }
 
@@ -97,7 +76,13 @@ export async function resolvePendingRuns(
         run.head_block + 1,
         run.target_block,
       );
-      return recordOutcome(run, outcome);
+      return {
+        ...run,
+        outcome: {
+          immediate_base_fee_per_gas: outcome.immediate_base_fee_per_gas,
+          selected_base_fee_per_gas: outcome.selected_base_fee_per_gas,
+        },
+      };
     }),
   );
 }
@@ -108,21 +93,13 @@ export async function loadRuns(): Promise<InferenceRun[]> {
     return [];
   }
 
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(stored);
+    return JSON.parse(stored) as InferenceRun[];
   } catch {
     throw new Error("Stored inference runs are not valid JSON");
   }
-  if (!Array.isArray(parsed)) {
-    throw new Error("Stored inference runs must be a JSON array");
-  }
-  return (parsed as InferenceRun[]).slice(0, MAX_RUNS);
 }
 
 export async function saveRuns(runs: readonly InferenceRun[]): Promise<void> {
-  await AsyncStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(runs.slice(0, MAX_RUNS)),
-  );
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(runs));
 }

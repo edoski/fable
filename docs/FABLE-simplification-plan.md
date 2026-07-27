@@ -286,66 +286,66 @@ Each reviewer verifies that the pre-existing GPU research note remains untracked
 
 ### Engine and serialization
 
-- [ ] Delete `app/src/engineLifecycle.ts` and its tests.
-- [ ] Let the chain-selection effect own engine creation, polling stop, and cleanup.
-- [ ] Keep model serialization, RPC cancellation, engine revisions, and selection revisions.
-- [ ] Accept brief overlap between independent model loads during rapid chain changes.
-- [ ] Delete the root mounted ref, mounted guards, unreachable lifecycle catches, and `onRpcUnavailable`.
-- [ ] Let `onStatus("offline")` clear the snapshot.
-- [ ] Add local `app/src/serialQueue.ts` with `createSerialQueue()`.
-- [ ] Use it for model operations, RPC synchronization, and history load/write serialization.
-- [ ] Add neither `async-mutex` nor a queue-helper choreography test.
+- [x] Delete `app/src/engineLifecycle.ts` and its tests.
+- [x] Let the chain-selection effect own engine creation, polling stop, and cleanup.
+- [x] Keep model serialization, RPC cancellation, engine revisions, and selection revisions.
+- [x] Accept brief overlap between independent model loads during rapid chain changes.
+- [x] Delete the root mounted ref, mounted guards, unreachable lifecycle catches, and `onRpcUnavailable`.
+- [x] Let `onStatus("offline")` clear the snapshot.
+- [x] Add local `app/src/serialQueue.ts` with `createSerialQueue()`.
+- [x] Use it for model operations, RPC synchronization, and history load/write serialization.
+- [x] Add neither `async-mutex` nor a queue-helper choreography test.
 
 ### Preparation and failures
 
-- [ ] Inline `prepareSelection()` into `prepare()`.
-- [ ] Keep `Promise.allSettled()` so readiness waits for model and chain settlement.
-- [ ] Add the second microtask to the focused preparation test.
-- [ ] Collapse duplicate preparation settlement handlers into one local closure.
-- [ ] Add `attempt(message, work)` for public inference failure translation.
-- [ ] Delete `ModelOutputError`.
-- [ ] Return decoded native outputs directly from `model.execute()`.
-- [ ] Wrap execution and prediction decoding in one run failure.
-- [ ] Keep underlying causes and selection-revision checks.
-- [ ] Add a local `fail(message)` state-transition helper inside `App()`.
-- [ ] Keep stale-revision/AbortError decisions at call sites.
-- [ ] Add no reducer, hook, module, or helper test.
+- [x] Inline `prepareSelection()` into `prepare()`.
+- [x] Keep `Promise.allSettled()` so readiness waits for model and chain settlement.
+- [x] Add the second microtask to the focused preparation test.
+- [x] Collapse duplicate preparation settlement handlers into one local closure.
+- [x] Add `attempt(message, work)` for public inference failure translation.
+- [x] Delete `ModelOutputError`.
+- [x] Return decoded native outputs directly from `model.execute()`.
+- [x] Wrap execution and prediction decoding in one run failure.
+- [x] Keep underlying causes and selection-revision checks.
+- [x] Add a local `fail(message)` state-transition helper inside `App()`.
+- [x] Keep stale-revision/AbortError decisions at call sites.
+- [x] Add no reducer, hook, module, or helper test.
 
 ### Trusted history and dead data
 
-- [ ] Parse `fable.runs` directly as `InferenceRun[]` after JSON parsing.
-- [ ] Delete custom record validation and its tests.
-- [ ] Remove all history/display caps and show every matching run.
-- [ ] Inline `recordOutcome()` and remove its already-resolved guard.
-- [ ] Remove `ChainSnapshot.chain`.
-- [ ] Remove stored `InferenceResult.immediate_block`; derive it from `head_block + 1`.
-- [ ] Remove result/run `head_base_fee_per_gas`; retain it only for RPC polling and model input.
-- [ ] Remove other derived values without production consumers.
-- [ ] Clear existing development `fable.runs` when applying the schema clean break. Add no migration.
-- [ ] Remove `hourAngle()`’s negative-timestamp guard and `positiveLog()`’s positivity guard.
-- [ ] Keep final feature finiteness and gas-utilization semantics.
+- [x] Parse `fable.runs` directly as `InferenceRun[]` after JSON parsing.
+- [x] Delete custom record validation and its tests.
+- [x] Remove all history/display caps and show every matching run.
+- [x] Inline `recordOutcome()` and remove its already-resolved guard.
+- [x] Remove `ChainSnapshot.chain`.
+- [x] Remove stored `InferenceResult.immediate_block`; derive it from `head_block + 1`.
+- [x] Remove result/run `head_base_fee_per_gas`; retain it only for RPC polling and model input.
+- [x] Remove other derived values without production consumers.
+- [x] Clear existing development `fable.runs` when applying the schema clean break. Add no migration.
+- [x] Remove `hourAngle()`’s negative-timestamp guard and `positiveLog()`’s positivity guard.
+- [x] Keep final feature finiteness and gas-utilization semantics.
 
 ### Owned tests
 
-- [ ] Keep one unsafe external head-block bigint inference rejection.
-- [ ] Delete obsolete unsafe head-base-fee and immediate-block cases.
-- [ ] Keep unsafe outcome-fee and feature-input cases.
-- [ ] Keep a complete K2–K5 inference manifest; use a model-entry helper, not partial casts.
-- [ ] Keep the preparation wait/retry test with its second microtask.
-- [ ] Keep one chain-read, model-load, and run-failure assertion.
-- [ ] Delete separate malformed-output taxonomy coverage.
-- [ ] Keep nonfinite decoded-prediction rejection.
-- [ ] Delete standalone P50 row-alignment coverage already owned by the oracle fixture.
-- [ ] Delete the interval half of the arithmetic test; keep exact forming-fee integer cases.
-- [ ] Replace broad model `bundle()` use with one complete catalog fixture and one direct `selection()` helper.
-- [ ] Delete the import-time `initExecutorch()` call-count assertion.
-- [ ] Keep model serialization, replacement, disposal, retry, and native-output decoding tests.
+- [x] Keep one unsafe external head-block bigint inference rejection.
+- [x] Delete obsolete unsafe head-base-fee and immediate-block cases.
+- [x] Keep unsafe outcome-fee and feature-input cases.
+- [x] Keep a complete K2–K5 inference manifest; use a model-entry helper, not partial casts.
+- [x] Keep the preparation wait/retry test with its second microtask.
+- [x] Keep one chain-read, model-load, and run-failure assertion.
+- [x] Delete separate malformed-output taxonomy coverage.
+- [x] Keep nonfinite decoded-prediction rejection.
+- [x] Delete standalone P50 row-alignment coverage already owned by the oracle fixture.
+- [x] Delete the interval half of the arithmetic test; keep exact forming-fee integer cases.
+- [x] Replace broad model `bundle()` use with one complete catalog fixture and one direct `selection()` helper.
+- [x] Delete the import-time `initExecutorch()` call-count assertion.
+- [x] Keep model serialization, replacement, disposal, retry, and native-output decoding tests.
 
 ### Implementer checks
 
-- [ ] Run focused inference, model, feature, history, and App tests.
-- [ ] Run `npm test` and `npm run typecheck` in `app/`.
-- [ ] Run `git diff --check`.
+- [x] Run focused inference, model, feature, history, and App tests.
+- [x] Run `npm test` and `npm run typecheck` in `app/`.
+- [x] Run `git diff --check`.
 
 ### Reviewer acceptance
 

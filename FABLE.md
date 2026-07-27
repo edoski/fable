@@ -1053,13 +1053,15 @@ synchronizes and validates the context, prepares features, loads the `(chain,K)`
 performs inference on device.
 
 One chain-scoped engine and one model are retained. A network change aborts and disposes the
-previous engine; a `K` change reuses chain context and selects another bundled model. The result
-contains chain, `K`, artifact UUID, head number and hash, head fee, selected zero-based action,
-immediate and target blocks, and the decoded minimum-fee prediction.
+previous engine without delaying its replacement; a `K` change reuses chain context and selects
+another bundled model. The result contains chain, `K`, artifact UUID, head number and hash,
+selected zero-based action, target block, and the decoded minimum-fee prediction.
 
-Runs are stored as one capped canonical array under `fable.runs`. Pending outcomes resolve through
-direct RPC when the selected chain reaches the target block. Analytics derives every summary,
-chart, count, and row from the same `(chain,K)` subset.
+Runs are stored as one unbounded canonical array under `fable.runs`. Pending outcomes resolve
+through direct RPC when the selected chain reaches the target block. Analytics derives every
+summary, chart, count, and row from the same `(chain,K)` subset. This schema is a clean break:
+clear the development app's storage once before starting this revision so the previous
+`fable.runs` value is removed. There is no migration or compatibility reader.
 
 The code and non-asset tests implement this contract. A real `MOBILE.yaml` and generated bundle do
 not yet exist because the twelve final artifact UUIDs do not exist. Simulator parity remains

@@ -11,6 +11,7 @@ import { ExpoResourceFetcher } from "react-native-executorch-expo-resource-fetch
 
 import type { ChainManifest } from "./features";
 import type { Chain, Horizon } from "./domain";
+import { createSerialQueue } from "./serialQueue";
 
 export type TargetManifest = {
   mean: number;
@@ -52,16 +53,6 @@ export type ModelOutput = {
   actionLogits: Float32Array;
   minimumFeeZ: number;
 };
-
-export class ModelOutputError extends Error {
-  constructor(error: unknown) {
-    super(
-      error instanceof Error ? error.message : "Invalid model output",
-      { cause: error },
-    );
-    this.name = "ModelOutputError";
-  }
-}
 
 export type ModelRuntime = {
   prepare(selection: ModelSelection): Promise<void>;
@@ -139,7 +130,8 @@ export function createModelRuntime(
   let current: LoadedModel | null = null;
   let desiredKey: string | null = null;
   let disposed = false;
-  let transitions: Promise<void> = Promise.resolve();
+  let disposal: Promise<void> | null = null;
+  const serialize = createSerialQueue();
 
   function requireActive(): void {
     if (disposed) throw abortError("Model runtime is disposed");
@@ -150,15 +142,6 @@ export function createModelRuntime(
     if (desiredKey !== key) {
       throw abortError("Model selection changed");
     }
-  }
-
-  function exclusively<T>(operation: () => Promise<T>): Promise<T> {
-    const result = transitions.then(operation, operation);
-    transitions = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
   }
 
   async function ensureLoaded(
@@ -196,7 +179,7 @@ export function createModelRuntime(
     requireActive();
     const key = selectionKey(selection);
     desiredKey = key;
-    return exclusively(async () => {
+    return serialize(async () => {
       await ensureLoaded(selection, key);
     });
   }
@@ -208,7 +191,7 @@ export function createModelRuntime(
     requireActive();
     const key = selectionKey(selection);
     desiredKey = key;
-    const outputs = await exclusively(async () => {
+    const outputs = await serialize(async () => {
       const model = await ensureLoaded(selection, key);
       const result = await model.module.forward([
         {
@@ -224,26 +207,20 @@ export function createModelRuntime(
       requireDesired(key);
       return result;
     });
-    try {
-      return decodeOutputs(outputs, selection.K);
-    } catch (error) {
-      throw new ModelOutputError(error);
-    }
+    return decodeOutputs(outputs, selection.K);
   }
 
-  async function dispose(): Promise<void> {
-    if (disposed) {
-      await transitions;
-      return;
-    }
+  function dispose(): Promise<void> {
+    if (disposal !== null) return disposal;
     disposed = true;
     desiredKey = null;
-    await exclusively(async () => {
+    disposal = serialize(async () => {
       if (current === null) return;
       const model = current;
       current = null;
       model.module.delete();
     });
+    return disposal;
   }
 
   return { prepare, execute, dispose };

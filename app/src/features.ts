@@ -104,9 +104,6 @@ function rawFeature(
 }
 
 function positiveLog(value: bigint, name: string): number {
-  if (value <= 0n) {
-    throw new Error(`${name} must be positive`);
-  }
   return Math.log(safeNumber(value, name));
 }
 
@@ -146,9 +143,6 @@ function formingChildBaseFee(block: BlockRow): bigint {
 }
 
 function hourAngle(timestamp: bigint): number {
-  if (timestamp < 0n) {
-    throw new Error("timestamp must be nonnegative");
-  }
   const hour = Number((timestamp / 3_600n) % 24n);
   return (2 * Math.PI * hour) / 24;
 }

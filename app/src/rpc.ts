@@ -3,6 +3,7 @@ import type { Hash, Transport } from "viem";
 import { avalanche, mainnet, polygon } from "viem/chains";
 
 import type { Chain } from "./domain";
+import { createSerialQueue } from "./serialQueue";
 
 export type BlockRow = {
   number: bigint;
@@ -89,7 +90,7 @@ export function createChainSession(
   let disposed = false;
   let verified = false;
   let activePollStop: (() => void) | null = null;
-  let synchronizations: Promise<void> = Promise.resolve();
+  const serializeSync = createSerialQueue();
 
   function requireActive(): void {
     if (disposed) throw abortError();
@@ -256,12 +257,7 @@ export function createChainSession(
 
   function sync(): Promise<PreparedChainContext> {
     requireActive();
-    const result = synchronizations.then(synchronize, synchronize);
-    synchronizations = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
+    return serializeSync(synchronize);
   }
 
   async function readOutcome(

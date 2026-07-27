@@ -16,10 +16,10 @@ import {
   type InferenceEngineDependencies,
 } from "../src/inference";
 import type { Horizon } from "../src/domain";
-import { ModelOutputError } from "../src/model";
 import type {
   MobileChainManifest,
   ModelCatalog,
+  ModelManifest,
   ModelOutput,
   ModelRuntime,
   ModelSelection,
@@ -64,6 +64,13 @@ function context(
   };
 }
 
+function modelEntry(K: Horizon): ModelManifest {
+  return {
+    artifact_id: `00000000-0000-4000-8000-${K.toString().padStart(12, "0")}`,
+    target: { mean: Math.log(100), standard_deviation: 0.5 },
+  };
+}
+
 const chainManifest: MobileChainManifest = {
   context_blocks: 2,
   features: [
@@ -74,22 +81,10 @@ const chainManifest: MobileChainManifest = {
     },
   ],
   models: {
-    2: {
-      artifact_id: "00000000-0000-4000-8000-000000000002",
-      target: { mean: Math.log(100), standard_deviation: 0.5 },
-    },
-    3: {
-      artifact_id: "00000000-0000-4000-8000-000000000003",
-      target: { mean: Math.log(100), standard_deviation: 0.5 },
-    },
-    4: {
-      artifact_id: "00000000-0000-4000-8000-000000000004",
-      target: { mean: Math.log(100), standard_deviation: 0.5 },
-    },
-    5: {
-      artifact_id: "00000000-0000-4000-8000-000000000005",
-      target: { mean: Math.log(100), standard_deviation: 0.5 },
-    },
+    2: modelEntry(2),
+    3: modelEntry(3),
+    4: modelEntry(4),
+    5: modelEntry(5),
   },
 };
 
@@ -204,9 +199,7 @@ describe("InferenceEngine", () => {
       artifact_id: chainManifest.models[4].artifact_id,
       head_block: 11,
       head_hash: hashOf(11n),
-      head_base_fee_per_gas: 40,
       selected_action_k: 1,
-      immediate_block: 12,
       target_block: 13,
       predicted_minimum_base_fee_per_gas: expect.closeTo(
         Math.exp(Math.log(100) + 1),
@@ -237,6 +230,7 @@ describe("InferenceEngine", () => {
     });
     await vi.waitFor(() => expect(model.prepare).toHaveBeenCalledOnce());
     await Promise.resolve();
+    await Promise.resolve();
     expect(rejected).toBe(false);
 
     synchronized.resolve(context(10n));
@@ -250,22 +244,24 @@ describe("InferenceEngine", () => {
     await engine.dispose();
   });
 
-  it("returns short chain and model failures from the run interface", async () => {
+  it("returns short chain, model-load, and run failures with their causes", async () => {
     const unavailable = session(async () => {
       throw new Error("HTTP transport details");
     });
     const chainFailure = createTestEngine({ session: unavailable });
-    await expect(chainFailure.engine.run(2)).rejects.toThrow(
-      "Could not read the selected chain.",
-    );
+    await expect(chainFailure.engine.run(2)).rejects.toMatchObject({
+      message: "Could not read the selected chain.",
+      cause: expect.objectContaining({ message: "HTTP transport details" }),
+    });
     await chainFailure.engine.dispose();
 
     const model = runtime();
     vi.mocked(model.prepare).mockRejectedValue(new Error("native load details"));
     const modelFailure = createTestEngine({ model });
-    await expect(modelFailure.engine.run(2)).rejects.toThrow(
-      "Could not load the selected model.",
-    );
+    await expect(modelFailure.engine.run(2)).rejects.toMatchObject({
+      message: "Could not load the selected model.",
+      cause: expect.objectContaining({ message: "native load details" }),
+    });
     await modelFailure.engine.dispose();
 
     const execution = runtime();
@@ -273,20 +269,11 @@ describe("InferenceEngine", () => {
       new Error("native execution details"),
     );
     const executionFailure = createTestEngine({ model: execution });
-    await expect(executionFailure.engine.run(2)).rejects.toThrow(
-      "Could not run the selected model.",
-    );
+    await expect(executionFailure.engine.run(2)).rejects.toMatchObject({
+      message: "Could not run the selected model.",
+      cause: expect.objectContaining({ message: "native execution details" }),
+    });
     await executionFailure.engine.dispose();
-
-    const invalidOutput = runtime();
-    vi.mocked(invalidOutput.execute).mockRejectedValue(
-      new ModelOutputError(new Error("tensor details")),
-    );
-    const outputFailure = createTestEngine({ model: invalidOutput });
-    await expect(outputFailure.engine.run(2)).rejects.toThrow(
-      "The selected model returned invalid output.",
-    );
-    await outputFailure.engine.dispose();
   });
 
   it("suppresses native work completed after a selection change", async () => {
@@ -333,58 +320,27 @@ describe("InferenceEngine", () => {
         minimumFeeZ: 2_000,
       }),
     });
-    await expect(engine.run(2)).rejects.toThrow("returned invalid output");
+    await expect(engine.run(2)).rejects.toMatchObject({
+      message: "Could not run the selected model.",
+      cause: expect.objectContaining({
+        message: "Predicted fee must be positive and finite",
+      }),
+    });
     await engine.dispose();
   });
 
-  it("checks every persisted bigint conversion for safe range", async () => {
+  it("rejects an unsafe external head block without losing raw precision", async () => {
     const unsafe = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
     const unsafeHead = session(async () => context(unsafe, 20n));
-    const first = createTestEngine({ session: unsafeHead });
-    await expect(first.engine.run(2)).rejects.toMatchObject({
+    const { engine } = createTestEngine({ session: unsafeHead });
+
+    await expect(engine.run(2)).rejects.toMatchObject({
       message: "Chain data is incomplete or invalid.",
       cause: expect.objectContaining({
         message: "head block exceeds the safe integer range",
       }),
     });
-    await first.engine.dispose();
-
-    const unsafeBaseFee = session(async () =>
-      context(10n, unsafe),
-    );
-    const nonFeeManifest: MobileChainManifest = {
-      ...chainManifest,
-      features: [
-        {
-          name: "gas_utilization",
-          mean: 0,
-          standard_deviation: 1,
-        },
-      ],
-    };
-    const second = createTestEngine({
-      catalog: catalog(nonFeeManifest),
-      session: unsafeBaseFee,
-    });
-    await expect(second.engine.run(2)).rejects.toMatchObject({
-      message: "Chain data is incomplete or invalid.",
-      cause: expect.objectContaining({
-        message: "head base fee exceeds the safe integer range",
-      }),
-    });
-    await second.engine.dispose();
-
-    const unsafeImmediate = session(async () =>
-      context(BigInt(Number.MAX_SAFE_INTEGER), 20n),
-    );
-    const third = createTestEngine({ session: unsafeImmediate });
-    await expect(third.engine.run(2)).rejects.toMatchObject({
-      message: "Chain data is incomplete or invalid.",
-      cause: expect.objectContaining({
-        message: "immediate block exceeds the safe integer range",
-      }),
-    });
-    await third.engine.dispose();
+    await engine.dispose();
   });
 
   it("passes exact outcome blocks and converts RPC fees through safe integers", async () => {

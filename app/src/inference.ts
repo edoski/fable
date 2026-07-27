@@ -1,10 +1,6 @@
 import { buildModelInput } from "./features";
 import type { Chain, Horizon } from "./domain";
-import {
-  createDefaultModelCatalog,
-  createModelRuntime,
-  ModelOutputError,
-} from "./model";
+import { createDefaultModelCatalog, createModelRuntime } from "./model";
 import type {
   ModelCatalog,
   ModelOutput,
@@ -20,15 +16,12 @@ export type InferenceResult = {
   artifact_id: string;
   head_block: number;
   head_hash: string;
-  head_base_fee_per_gas: number;
   selected_action_k: number;
-  immediate_block: number;
   target_block: number;
   predicted_minimum_base_fee_per_gas: number;
 };
 
 export type ChainSnapshot = {
-  chain: Chain;
   head_block: number;
   current_base_fee_per_gas: number;
 };
@@ -96,76 +89,58 @@ export function createInferenceEngine(
   async function prepare(K: Horizon): Promise<void> {
     const revision = beginSelection(K);
     const selection = catalog.select(chain, K);
-    await prepareSelection(selection);
+    const results = await Promise.allSettled([
+      session.sync(),
+      model.prepare(selection),
+    ]);
+    const requireFulfilled = (result: PromiseSettledResult<unknown>) => {
+      if (result.status === "rejected") throw result.reason;
+    };
+    results.forEach(requireFulfilled);
     requireCurrent(revision);
   }
 
   async function run(K: Horizon): Promise<InferenceResult> {
     const revision = beginSelection(K);
     const selection = catalog.select(chain, K);
-    try {
-      await model.prepare(selection);
-    } catch (error) {
-      throw inferenceFailure(
-        "Could not load the selected model.",
-        error,
-      );
-    }
+    await attempt("Could not load the selected model.", () =>
+      model.prepare(selection),
+    );
     requireCurrent(revision);
-    let context;
-    try {
-      context = await session.sync();
-    } catch (error) {
-      throw inferenceFailure(
-        "Could not read the selected chain.",
-        error,
-      );
-    }
+    const context = await attempt("Could not read the selected chain.", () =>
+      session.sync(),
+    );
     requireCurrent(revision);
 
     const head = context.blocks[context.blocks.length - 1];
-    let input: Float32Array;
-    try {
-      input = buildModelInput(
-        context.blocks,
-        context.p50Rewards,
-        selection.chainManifest,
-      );
-    } catch (error) {
-      throw inferenceFailure(
-        "Chain data is incomplete or invalid.",
-        error,
-      );
-    }
-    let output: ModelOutput;
-    try {
-      output = await model.execute(selection, input);
-    } catch (error) {
-      throw inferenceFailure(
-        error instanceof ModelOutputError
-          ? "The selected model returned invalid output."
-          : "Could not run the selected model.",
-        error,
-      );
-    }
+    const input = await attempt(
+      "Chain data is incomplete or invalid.",
+      async () =>
+        buildModelInput(
+          context.blocks,
+          context.p50Rewards,
+          selection.chainManifest,
+        ),
+    );
+    const prediction = await attempt(
+      "Could not run the selected model.",
+      async () =>
+        decodePrediction(
+          selection,
+          await model.execute(selection, input),
+        ),
+    );
     requireCurrent(revision);
-    let prediction: ReturnType<typeof decodePrediction>;
-    try {
-      prediction = decodePrediction(selection, output);
-    } catch (error) {
-      throw inferenceFailure(
-        "The selected model returned invalid output.",
-        error,
-      );
-    }
-    try {
-      return createInferenceResult(chain, selection, head, prediction);
-    } catch (error) {
-      throw inferenceFailure(
-        "Chain data is incomplete or invalid.",
-        error,
-      );
-    }
+    return attempt(
+      "Chain data is incomplete or invalid.",
+      async () =>
+        createInferenceResult(
+          chain,
+          selection,
+          head,
+          prediction,
+        ),
+    );
   }
 
   function startPolling(
@@ -176,7 +151,6 @@ export function createInferenceEngine(
     return session.startPolling((block) => {
       requireActive();
       onSnapshot({
-        chain,
         head_block: safeBigInt(block.number, "head block"),
         current_base_fee_per_gas: safeBigInt(
           block.baseFeePerGas,
@@ -221,17 +195,6 @@ export function createInferenceEngine(
       if (sessionError !== undefined) throw sessionError;
     });
     return disposal;
-  }
-
-  async function prepareSelection(
-    selection: ModelSelection,
-  ): Promise<void> {
-    const [chainResult, modelResult] = await Promise.allSettled([
-      session.sync(),
-      model.prepare(selection),
-    ]);
-    if (chainResult.status === "rejected") throw chainResult.reason;
-    if (modelResult.status === "rejected") throw modelResult.reason;
   }
 
   return {
@@ -300,12 +263,7 @@ function createInferenceResult(
     artifact_id: selection.modelManifest.artifact_id,
     head_block: safeBigInt(head.number, "head block"),
     head_hash: head.hash,
-    head_base_fee_per_gas: safeBigInt(
-      head.baseFeePerGas,
-      "head base fee",
-    ),
     selected_action_k: prediction.selectedAction,
-    immediate_block: safeBigInt(immediateBlock, "immediate block"),
     target_block: safeBigInt(targetBlock, "target block"),
     predicted_minimum_base_fee_per_gas: prediction.predictedFee,
   };
@@ -322,6 +280,17 @@ function abortError(message: string): Error {
   const error = new Error(message);
   error.name = "AbortError";
   return error;
+}
+
+async function attempt<T>(
+  message: string,
+  work: () => T | Promise<T>,
+): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    throw inferenceFailure(message, error);
+  }
 }
 
 function inferenceFailure(message: string, cause: unknown): Error {

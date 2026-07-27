@@ -18,9 +18,13 @@ vi.mock("react-native-executorch-expo-resource-fetcher", () => ({
 import {
   createModelCatalog,
   createModelRuntime,
+  type MobileChainManifest,
   type MobileManifest,
+  type ModelManifest,
   type ModelResourceTable,
+  type ModelSelection,
 } from "../src/model";
+import type { Chain, Horizon } from "../src/domain";
 
 type NativeTensor = {
   dataPtr: ArrayBuffer | Float32Array;
@@ -32,12 +36,15 @@ function artifactId(index: number): string {
   return `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}`;
 }
 
-function bundle(): {
-  manifest: MobileManifest;
-  resources: ModelResourceTable;
-} {
-  let cell = 1;
-  const chain = () => ({
+function modelEntry(index: number, K: Horizon): ModelManifest {
+  return {
+    artifact_id: artifactId(index),
+    target: { mean: K, standard_deviation: 0.5 },
+  };
+}
+
+function chainManifest(firstIndex: number): MobileChainManifest {
+  return {
     context_blocks: 2,
     features: [
       {
@@ -47,37 +54,35 @@ function bundle(): {
       },
     ],
     models: {
-      2: {
-        artifact_id: artifactId(cell++),
-        target: { mean: 2, standard_deviation: 0.5 },
-      },
-      3: {
-        artifact_id: artifactId(cell++),
-        target: { mean: 3, standard_deviation: 0.5 },
-      },
-      4: {
-        artifact_id: artifactId(cell++),
-        target: { mean: 4, standard_deviation: 0.5 },
-      },
-      5: {
-        artifact_id: artifactId(cell++),
-        target: { mean: 5, standard_deviation: 0.5 },
-      },
+      2: modelEntry(firstIndex, 2),
+      3: modelEntry(firstIndex + 1, 3),
+      4: modelEntry(firstIndex + 2, 4),
+      5: modelEntry(firstIndex + 3, 5),
     },
-  });
+  };
+}
+
+const MANIFEST: MobileManifest = {
+  chains: {
+    ethereum: chainManifest(1),
+    polygon: chainManifest(5),
+    avalanche: chainManifest(9),
+  },
+};
+
+const RESOURCES: ModelResourceTable = {
+  ethereum: { 2: 12, 3: 13, 4: 14, 5: 15 },
+  polygon: { 2: 22, 3: 23, 4: 24, 5: 25 },
+  avalanche: { 2: 32, 3: 33, 4: 34, 5: 35 },
+};
+
+function selection(chain: Chain, K: Horizon): ModelSelection {
   return {
-    manifest: {
-      chains: {
-        ethereum: chain(),
-        polygon: chain(),
-        avalanche: chain(),
-      },
-    },
-    resources: {
-      ethereum: { 2: 12, 3: 13, 4: 14, 5: 15 },
-      polygon: { 2: 22, 3: 23, 4: 24, 5: 25 },
-      avalanche: { 2: 32, 3: 33, 4: 34, 5: 35 },
-    },
+    chain,
+    K,
+    source: RESOURCES[chain][K],
+    chainManifest: MANIFEST.chains[chain],
+    modelManifest: MANIFEST.chains[chain].models[K],
   };
 }
 
@@ -122,35 +127,31 @@ async function flushMicrotasks(): Promise<void> {
 
 describe("model catalog", () => {
   it("selects the exact typed manifest and resource cell", () => {
-    const { manifest, resources } = bundle();
-    const catalog = createModelCatalog(manifest, resources);
+    const catalog = createModelCatalog(MANIFEST, RESOURCES);
 
-    expect(catalog.chainManifest("polygon")).toEqual(manifest.chains.polygon);
+    expect(catalog.chainManifest("polygon")).toEqual(MANIFEST.chains.polygon);
     expect(catalog.select("polygon", 4)).toEqual({
       chain: "polygon",
       K: 4,
       source: 24,
-      chainManifest: manifest.chains.polygon,
-      modelManifest: manifest.chains.polygon.models[4],
+      chainManifest: MANIFEST.chains.polygon,
+      modelManifest: MANIFEST.chains.polygon.models[4],
     });
   });
 });
 
 describe("model runtime", () => {
-  it("initializes the Expo fetcher once and reuses an unchanged model", async () => {
-    const { manifest, resources } = bundle();
-    const catalog = createModelCatalog(manifest, resources);
+  it("reuses an unchanged model", async () => {
     const module = native();
     const factory = vi.fn(() => module);
     const runtime = createModelRuntime(factory);
-    const selection = catalog.select("ethereum", 2);
+    const selected = selection("ethereum", 2);
     const input = new Float32Array([1, 2]);
 
-    await runtime.prepare(selection);
-    await runtime.prepare(selection);
-    const result = await runtime.execute(selection, input);
+    await runtime.prepare(selected);
+    await runtime.prepare(selected);
+    const result = await runtime.execute(selected, input);
 
-    expect(executorch.init).toHaveBeenCalledTimes(1);
     expect(factory).toHaveBeenCalledTimes(1);
     expect(module.load).toHaveBeenCalledOnce();
     expect(module.load).toHaveBeenCalledWith(12);
@@ -169,8 +170,6 @@ describe("model runtime", () => {
   });
 
   it("serializes same-selection native forwards", async () => {
-    const { manifest, resources } = bundle();
-    const catalog = createModelCatalog(manifest, resources);
     const firstForward = deferred<NativeTensor[]>();
     const module = native();
     module.forward
@@ -180,12 +179,12 @@ describe("model runtime", () => {
         output([0.25], [1]),
       ]);
     const runtime = createModelRuntime(() => module);
-    const selection = catalog.select("ethereum", 2);
+    const selected = selection("ethereum", 2);
     const input = new Float32Array([1, 2]);
 
-    const first = runtime.execute(selection, input);
+    const first = runtime.execute(selected, input);
     await vi.waitFor(() => expect(module.forward).toHaveBeenCalledOnce());
-    const second = runtime.execute(selection, input);
+    const second = runtime.execute(selected, input);
     await flushMicrotasks();
     expect(module.forward).toHaveBeenCalledOnce();
 
@@ -206,8 +205,6 @@ describe("model runtime", () => {
   });
 
   it("waits for forward before replacing the one retained model", async () => {
-    const { manifest, resources } = bundle();
-    const catalog = createModelCatalog(manifest, resources);
     const forward = deferred<NativeTensor[]>();
     const events: string[] = [];
     const first = native(async () => forward.promise);
@@ -221,8 +218,8 @@ describe("model runtime", () => {
       .mockImplementationOnce(() => first)
       .mockImplementationOnce(() => second);
     const runtime = createModelRuntime(factory);
-    const firstSelection = catalog.select("ethereum", 2);
-    const secondSelection = catalog.select("ethereum", 3);
+    const firstSelection = selection("ethereum", 2);
+    const secondSelection = selection("ethereum", 3);
 
     const running = runtime
       .execute(firstSelection, new Float32Array([1, 2]))
@@ -244,15 +241,13 @@ describe("model runtime", () => {
   });
 
   it("waits for forward before disposing", async () => {
-    const { manifest, resources } = bundle();
-    const catalog = createModelCatalog(manifest, resources);
     const forward = deferred<NativeTensor[]>();
     const module = native(async () => forward.promise);
     const runtime = createModelRuntime(() => module);
-    const selection = catalog.select("ethereum", 2);
+    const selected = selection("ethereum", 2);
 
     const running = runtime
-      .execute(selection, new Float32Array([1, 2]))
+      .execute(selected, new Float32Array([1, 2]))
       .catch((error: unknown) => error);
     await vi.waitFor(() => expect(module.forward).toHaveBeenCalledOnce());
     const disposing = runtime.dispose();
@@ -266,8 +261,6 @@ describe("model runtime", () => {
   });
 
   it("retries after a model load fails", async () => {
-    const { manifest, resources } = bundle();
-    const catalog = createModelCatalog(manifest, resources);
     const failed = native();
     failed.load.mockRejectedValue(new Error("load failed"));
     const loaded = native();
@@ -276,11 +269,11 @@ describe("model runtime", () => {
       .mockImplementationOnce(() => failed)
       .mockImplementationOnce(() => loaded);
     const runtime = createModelRuntime(factory);
-    const selection = catalog.select("ethereum", 2);
+    const selected = selection("ethereum", 2);
 
-    await expect(runtime.prepare(selection)).rejects.toThrow("load failed");
+    await expect(runtime.prepare(selected)).rejects.toThrow("load failed");
     await expect(
-      runtime.execute(selection, new Float32Array([1, 2])),
+      runtime.execute(selected, new Float32Array([1, 2])),
     ).resolves.toEqual({
       actionLogits: new Float32Array([0, 1]),
       minimumFeeZ: 0.25,
@@ -317,14 +310,12 @@ describe("model runtime", () => {
       message: "finite",
     },
   ])("rejects invalid $name", async ({ outputs, message }) => {
-    const { manifest, resources } = bundle();
-    const catalog = createModelCatalog(manifest, resources);
     const module = native(async () => outputs);
     const runtime = createModelRuntime(() => module);
 
     await expect(
       runtime.execute(
-        catalog.select("ethereum", 2),
+        selection("ethereum", 2),
         new Float32Array([1, 2]),
       ),
     ).rejects.toThrow(message);

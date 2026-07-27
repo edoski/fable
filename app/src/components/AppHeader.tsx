@@ -1,8 +1,9 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import type { RpcStatus } from "../engineLifecycle";
 import { CHAIN_DETAILS, type Chain } from "../domain";
 import { colors } from "../theme";
+
+export type RpcStatus = "checking" | "live" | "offline";
 
 const STATUS = {
   checking: { color: colors.amber, label: "CHECKING" },

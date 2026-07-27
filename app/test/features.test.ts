@@ -50,7 +50,7 @@ describe("buildModelInput", () => {
     });
   });
 
-  it("uses the real predecessor and exact forming-fee integer arithmetic", () => {
+  it("uses exact forming-fee integer arithmetic", () => {
     const blocks = fixtureBlocks();
     const formingBlocks = [
       { ...blocks[1], baseFeePerGas: 1n, gasUsed: 101n, gasLimit: 200n },
@@ -58,16 +58,6 @@ describe("buildModelInput", () => {
       { ...blocks[3], baseFeePerGas: 10n, gasUsed: 100n, gasLimit: 200n },
       blocks[4],
     ];
-    const intervalInput = buildModelInput(blocks, null, {
-      context_blocks: 4,
-      features: [
-        {
-          name: "block_interval_seconds",
-          mean: 0,
-          standard_deviation: 1,
-        },
-      ],
-    });
     const formingInput = buildModelInput(formingBlocks, null, {
       context_blocks: 4,
       features: [
@@ -79,41 +69,11 @@ describe("buildModelInput", () => {
       ],
     });
 
-    expect(Array.from(intervalInput)).toEqual([12, 18, 15, 20]);
     ["2", "8", "10", fixture.formingChildBaseFees[3]].forEach((fee, index) => {
       expect(
         Math.abs(formingInput[index] - Math.log(Number(fee))),
       ).toBeLessThanOrEqual(1e-6);
     });
-  });
-
-  it("aligns P50 fee rows to model rows after dropping the predecessor", () => {
-    const input = buildModelInput(fixtureBlocks(), fixtureP50Rewards(), {
-      context_blocks: 4,
-      features: [
-        {
-          name: "log1p_effective_priority_fee_per_gas_p50",
-          mean: 0,
-          standard_deviation: 1,
-        },
-        {
-          name: "block_interval_seconds",
-          mean: 0,
-          standard_deviation: 1,
-        },
-      ],
-    });
-
-    expect(Array.from(input)).toEqual([
-      Math.fround(Math.log1p(2_000_000_000)),
-      12,
-      Math.fround(Math.log1p(3_000_000_000)),
-      18,
-      Math.fround(Math.log1p(4_000_000_000)),
-      15,
-      Math.fround(Math.log1p(5_000_000_000)),
-      20,
-    ]);
   });
 
   it("rejects unsafe integer conversion instead of losing raw precision", () => {

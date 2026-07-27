@@ -488,7 +488,6 @@ export function AnalyticsScreen({
   const graphRuns = runsForSelection(runs, chain, graphHorizon);
   const summary = summarizeRuns(graphRuns);
   const graphs = GRAPH_OPTIONS;
-  const visibleRuns = graphRuns.slice(0, 10);
 
   return (
     <>
@@ -656,10 +655,10 @@ export function AnalyticsScreen({
           ) : (
             <ScrollView
               nestedScrollEnabled
-              showsVerticalScrollIndicator={visibleRuns.length > 4}
+              showsVerticalScrollIndicator={graphRuns.length > 4}
               style={styles.runScroller}
             >
-              {visibleRuns.map((run, index) => (
+              {graphRuns.map((run, index) => (
                 <Pressable
                   accessibilityHint="Opens run details"
                   accessibilityRole="button"
@@ -667,7 +666,7 @@ export function AnalyticsScreen({
                   onPress={() => setSelectedRun(run)}
                   style={[
                     styles.runRow,
-                    index === visibleRuns.length - 1 && styles.runRowLast,
+                    index === graphRuns.length - 1 && styles.runRowLast,
                   ]}
                 >
                   <View style={styles.runIcon}>
