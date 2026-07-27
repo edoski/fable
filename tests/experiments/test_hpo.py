@@ -45,9 +45,7 @@ def _publish_studies(
 def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
     tmp_path: Path,
 ) -> None:
-    feature_experiment_id = UUID(
-        run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip()
-    )
+    feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
     _publish_studies(tmp_path, read_tsv_rows(feature_bundle / "cells.tsv"), 1.0)
     run_script(_FEATURE_SCRIPT, "select", tmp_path, feature_experiment_id)
