@@ -1,10 +1,16 @@
-"""Owned canonical block rows."""
+"""Canonical block rows, Corpus values, and loading."""
 
 from __future__ import annotations
 
-import polars as pl
+from pathlib import Path
+from typing import Self
 
-from ..config import CorpusDefinition
+import polars as pl
+from pydantic import UUID4, BaseModel, ConfigDict, Field, model_validator
+
+from .addresses import corpus_blocks_path, corpus_json_path
+from .config import CorpusDefinition, CorpusRequest
+from .records import StrictFrozenRecord
 
 _SCHEMA = pl.Schema(
     {
@@ -92,3 +98,60 @@ class BlockFrame:
 
     def to_polars(self) -> pl.DataFrame:
         return self._frame.clone()
+
+
+class FinalizedAnchor(StrictFrozenRecord):
+    block_number: int = Field(ge=0)
+    block_hash: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]+$")
+
+
+class Corpus(BaseModel):
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        extra="forbid",
+        frozen=True,
+        strict=True,
+    )
+
+    request: CorpusRequest
+    finalized_anchor: FinalizedAnchor
+    blocks: BlockFrame
+
+    @model_validator(mode="after")
+    def validate_ownership(self) -> Self:
+        if self.blocks.definition != self.request.definition:
+            raise ValueError("BlockFrame definition must match the Corpus request")
+        if self.finalized_anchor.block_number < self.request.definition.last_block:
+            raise ValueError("Finalized anchor precedes the requested last block")
+        return self
+
+
+class _CorpusDocument(StrictFrozenRecord):
+    request: CorpusRequest
+    finalized_anchor: FinalizedAnchor
+
+
+def _load_corpus_document(storage_root: Path, corpus_id: UUID4) -> _CorpusDocument:
+    document = _CorpusDocument.model_validate_json(
+        corpus_json_path(storage_root, corpus_id).read_text(encoding="utf-8"),
+        strict=True,
+    )
+    if document.request.corpus_id != corpus_id:
+        raise ValueError("Corpus request UUID does not match the requested corpus")
+    return document
+
+
+def load_corpus_request(storage_root: Path, corpus_id: UUID4) -> CorpusRequest:
+    return _load_corpus_document(storage_root, corpus_id).request
+
+
+def load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus:
+    document = _load_corpus_document(storage_root, corpus_id)
+    return Corpus(
+        request=document.request,
+        finalized_anchor=document.finalized_anchor,
+        blocks=BlockFrame(
+            pl.read_parquet(corpus_blocks_path(storage_root, corpus_id)),
+            document.request.definition,
+        ),
+    )

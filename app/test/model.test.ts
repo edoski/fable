@@ -25,6 +25,7 @@ import {
   type ModelSelection,
 } from "../src/model";
 import type { Chain, Horizon } from "../src/domain";
+import { flushMicrotasks } from "./helpers";
 
 type NativeTensor = {
   dataPtr: ArrayBuffer | Float32Array;
@@ -117,12 +118,6 @@ function deferred<T>() {
     resolve = next;
   });
   return { promise, resolve };
-}
-
-async function flushMicrotasks(): Promise<void> {
-  for (let index = 0; index < 10; index += 1) {
-    await Promise.resolve();
-  }
 }
 
 describe("model catalog", () => {

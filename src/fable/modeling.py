@@ -43,8 +43,7 @@ from .study import (
     RetainedResult,
     load_selected_method,
 )
-from .temporal.features import FeatureState
-from .temporal.history import HistoricalPreparation, prepare_fit_history
+from .temporal import FeatureState, HistoricalPreparation, prepare_fit_history
 
 
 class ArtifactAssociation(StrictFrozenRecord):
@@ -521,21 +520,18 @@ def train(
     if canonical.exists():
         raise FileExistsError(canonical)
 
+    method = (
+        None
+        if isinstance(source, BaselineSource)
+        else load_selected_method(storage_root, source)
+    )
     prepared = _load_fit_history(storage_root, source.corpus_id, source.experiment)
-    if isinstance(source, BaselineSource):
-        association = ArtifactAssociation(
-            request=request,
-            feature_state=prepared.feature_state,
-            target_state=prepared.target_state,
-        )
-    else:
-        method = load_selected_method(storage_root, source)
-        association = ArtifactAssociation(
-            request=request,
-            feature_state=prepared.feature_state,
-            target_state=prepared.target_state,
-            method=method,
-        )
+    association = ArtifactAssociation(
+        request=request,
+        feature_state=prepared.feature_state,
+        target_state=prepared.target_state,
+        method=method,
+    )
 
     scratch = canonical.parent / f".{request.artifact_id}"
     outcome = _fit(association, prepared, scratch)

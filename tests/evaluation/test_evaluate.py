@@ -38,9 +38,9 @@ from fable.config import (
 from fable.evaluation import evaluate
 from fable.min_block_fee import MinBlockFeeOutput, TargetState
 from fable.modeling import ArtifactAssociation
-from fable.temporal.features import FeatureState
+from fable.temporal import FeatureState
 
-evaluation_module = importlib.import_module("fable.evaluation.evaluate")
+evaluation_module = importlib.import_module("fable.evaluation")
 
 _CORPUS_ID = UUID("10000000-0000-4000-8000-000000000001")
 _OTHER_CORPUS_ID = UUID("10000000-0000-4000-8000-000000000002")

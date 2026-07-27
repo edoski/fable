@@ -935,7 +935,7 @@ The code and non-asset tests implement this contract, but the twelve final artif
 
 ### Execution runtime
 
-The internal installed-executable profile sets `CUBLAS_WORKSPACE_CONFIG=:4096:8` before GPU work and fixes fit and evaluation batch size at 64; four persistent pinned-memory loader workers with prefetch factor 2; deterministic Torch execution without benchmarking; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32 enabled. It is code, not a request, schema, YAML field, or public configuration surface.
+The internal installed-executable profile sets `CUBLAS_WORKSPACE_CONFIG=:4096:8` before GPU work and fixes fit batch size at 64 and evaluation batch size at 512; four persistent pinned-memory loader workers with prefetch factor 2; deterministic Torch execution without benchmarking; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32 enabled. It is code, not a request, schema, YAML field, or public configuration surface.
 
 ### Evaluation API
 

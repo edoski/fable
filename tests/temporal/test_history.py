@@ -14,7 +14,7 @@ from fable.config import (
     ExperimentSemantics,
 )
 from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
-from fable.temporal.history import prepare_fit_history, prepare_historical_window
+from fable.temporal import prepare_fit_history, prepare_historical_window
 
 _CORPUS_ID = TypeAdapter(UUID4).validate_python("11111111-1111-4111-8111-111111111111")
 _BASE_FEES = np.array(

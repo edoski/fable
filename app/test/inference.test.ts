@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Hash } from "viem";
 
 vi.mock("react-native-executorch", () => ({
   ExecutorchModule: vi.fn(),
@@ -30,10 +29,7 @@ import type {
   ChainSession,
   PreparedChainContext,
 } from "../src/rpc";
-
-function hashOf(value: bigint): Hash {
-  return `0x${value.toString(16).padStart(64, "0")}`;
-}
+import { hashOf } from "./helpers";
 
 function block(
   number: bigint,

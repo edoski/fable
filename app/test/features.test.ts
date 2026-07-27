@@ -76,6 +76,24 @@ describe("buildModelInput", () => {
     });
   });
 
+  it("accepts same-second blocks as a zero interval", () => {
+    const blocks = fixtureBlocks();
+    blocks[2] = { ...blocks[2], timestamp: blocks[1].timestamp };
+
+    expect(
+      buildModelInput(blocks.slice(1, 3), null, {
+        context_blocks: 1,
+        features: [
+          {
+            name: "block_interval_seconds",
+            mean: 0,
+            standard_deviation: 1,
+          },
+        ],
+      }),
+    ).toEqual(new Float32Array([0]));
+  });
+
   it("rejects unsafe integer conversion instead of losing raw precision", () => {
     const [block] = fixtureBlocks();
 

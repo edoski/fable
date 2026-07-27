@@ -92,8 +92,8 @@ function rawFeature(
         throw new Error("block_interval_seconds requires a predecessor block");
       }
       const interval = block.timestamp - predecessor.timestamp;
-      if (interval <= 0n) {
-        throw new Error("block_interval_seconds values must be positive");
+      if (interval < 0n) {
+        throw new Error("block_interval_seconds values must be nonnegative");
       }
       return safeNumber(interval, "block interval");
     }

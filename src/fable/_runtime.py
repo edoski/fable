@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 _Item = TypeVar("_Item")
 
 FIT_BATCH_SIZE = 64
-EVALUATION_BATCH_SIZE = 64
+EVALUATION_BATCH_SIZE = 512
 
 NUM_WORKERS = 4
 PIN_MEMORY = True

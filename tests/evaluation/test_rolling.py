@@ -8,8 +8,7 @@ import polars as pl
 import pytest
 
 from fable.addresses import evaluation_directory
-from fable.evaluation.contract import OBSERVATION_SCHEMA
-from fable.evaluation.resolution import reduce_rolling
+from fable.evaluation import OBSERVATION_SCHEMA, reduce_rolling
 
 _EVALUATION_IDS = {
     horizon: UUID(f"20000000-0000-4000-8000-{horizon:012d}") for horizon in range(2, 6)

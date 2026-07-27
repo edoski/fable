@@ -5,6 +5,7 @@ import type { Hash, Transport } from "viem";
 import type { Chain } from "../src/domain";
 import type { FeatureName } from "../src/features";
 import { createChainSession } from "../src/rpc";
+import { flushMicrotasks, hashOf } from "./helpers";
 
 type RequestArguments = {
   method: string;
@@ -23,10 +24,6 @@ const CHAIN_IDS: Record<Chain, number> = {
 
 function quantity(value: bigint): `0x${string}` {
   return `0x${value.toString(16)}`;
-}
-
-function hashOf(value: bigint): Hash {
-  return `0x${value.toString(16).padStart(64, "0")}`;
 }
 
 function rpcBlock(
@@ -136,12 +133,6 @@ function session(
 
 function blockNumberFrom(args: RequestArguments): bigint {
   return BigInt((args.params as readonly [string])[0]);
-}
-
-async function flushMicrotasks(): Promise<void> {
-  for (let index = 0; index < 10; index += 1) {
-    await Promise.resolve();
-  }
 }
 
 afterEach(() => {

@@ -1,5 +1,5 @@
 {
-  "oracle": "src/fable/temporal/features.py::transform_feature_rows",
+  "oracle": "src/fable/temporal.py::transform_feature_rows",
   "blocks": [
     {
       "number": "100",

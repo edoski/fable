@@ -42,8 +42,7 @@ from fable.modeling import (
     load_artifact,
     train,
 )
-from fable.temporal.features import FeatureState
-from fable.temporal.history import prepare_fit_history
+from fable.temporal import FeatureState, prepare_fit_history
 from tests.helpers import modeling_method
 
 ARTIFACT_ID = UUID("10000000-0000-4000-8000-000000000001")

@@ -8,7 +8,7 @@ import pytest
 
 from fable.config import CorpusDefinition, FeatureName
 from fable.corpus import BlockFrame
-from fable.temporal.features import (
+from fable.temporal import (
     FeatureState,
     fit_feature_state,
     transform_feature_rows,
