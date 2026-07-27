@@ -45,9 +45,13 @@ def _selected_feature_studies(
 
     selected: dict[tuple[str, str], Study] = {}
     for chain in _CHAINS:
-        feature_sets = {
-            feature_set for candidate_chain, _, feature_set in studies if candidate_chain == chain
-        }
+        feature_sets = tuple(
+            dict.fromkeys(
+                feature_set
+                for candidate_chain, _, feature_set in studies
+                if candidate_chain == chain
+            )
+        )
         winner = min(
             feature_sets,
             key=lambda feature_set: (

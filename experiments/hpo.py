@@ -43,9 +43,9 @@ _L9 = (
     (2, 1, 0, 2),
     (2, 2, 1, 0),
 )
-_DROPOUT = (0.1, 0.2, 0.3)
-_LEARNING_RATE = (1e-4, 3e-4, 1e-3)
-_WEIGHT_DECAY = (0.0, 1e-4, 1e-3)
+_DROPOUT = (0.2, 0.1, 0.3)
+_LEARNING_RATE = (3e-4, 1e-4, 1e-3)
+_WEIGHT_DECAY = (1e-4, 0.0, 1e-3)
 _FIT = FitMethod(
     learning_rate=3e-4,
     weight_decay=1e-4,
@@ -62,8 +62,8 @@ _FIT = FitMethod(
 def _model(family: str, capacity: int, dropout: float) -> ModelDefinition:
     if family == "lstm":
         hidden, layers, head_hidden = (
-            (256, 1, 128),
             (256, 2, 256),
+            (256, 1, 128),
             (384, 2, 256),
         )[capacity]
         return LstmDefinition(
@@ -75,8 +75,8 @@ def _model(family: str, capacity: int, dropout: float) -> ModelDefinition:
         )
     if family == "transformer":
         model_width, attention_heads, transformer_layers, feedforward_width, head_hidden = (
-            (192, 4, 3, 384, 192),
             (256, 4, 4, 512, 256),
+            (192, 4, 3, 384, 192),
             (384, 8, 4, 768, 256),
         )[capacity]
         return TransformerDefinition(
@@ -97,8 +97,8 @@ def _model(family: str, capacity: int, dropout: float) -> ModelDefinition:
         lstm_layers,
         head_hidden,
     ) = (
-        (192, 4, 3, 384, 192, 1, 192),
         (256, 4, 4, 512, 256, 1, 256),
+        (192, 4, 3, 384, 192, 1, 192),
         (384, 8, 4, 768, 384, 1, 256),
     )[capacity]
     return TransformerLstmDefinition(

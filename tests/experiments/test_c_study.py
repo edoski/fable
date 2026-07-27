@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
+import pytest
+
 from fable.config import TuneRequest
 from fable.experiments import ExperimentManifest
 from fable.study import RetainedResult, Study
@@ -39,7 +41,9 @@ def _publish_studies(
 
 def test_context_study_uses_selected_features_and_reports_chain_winners(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("PYTHONHASHSEED", "3")
     feature_experiment_id = UUID(
         run_script(
             _FEATURE_SCRIPT,
@@ -55,6 +59,7 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
         {
             ("ethereum", "B+S+T+P"): 0.5,
             ("polygon", "B+T+P"): 0.5,
+            ("polygon", "B+S+P"): 0.5,
             ("avalanche", "B+S+P"): 0.5,
         },
     )

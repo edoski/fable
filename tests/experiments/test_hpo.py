@@ -90,13 +90,24 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
     assert requests["ethereum.lstm"].methods[0].model.model_dump() == {
         "family": "lstm",
         "hidden": 256,
-        "layers": 1,
-        "head_hidden": 128,
-        "dropout": 0.1,
+        "layers": 2,
+        "head_hidden": 256,
+        "dropout": 0.2,
+    }
+    assert requests["ethereum.lstm"].methods[0].fit.model_dump() == {
+        "learning_rate": 0.0003,
+        "weight_decay": 0.0001,
+        "accumulation": 1,
+        "gradient_clip_norm": 1.0,
+        "seed": 2026,
+        "max_epochs": 36,
+        "validate_every_completed_epoch": 1,
+        "patience": 8,
+        "min_delta": 0.0,
     }
     assert requests["ethereum.lstm"].methods[-1].fit.model_dump() == {
-        "learning_rate": 0.0003,
-        "weight_decay": 0.0,
+        "learning_rate": 0.0001,
+        "weight_decay": 0.0001,
         "accumulation": 1,
         "gradient_clip_norm": 1.0,
         "seed": 2026,
