@@ -74,7 +74,7 @@ def test_candidates_submit_three_per_job_and_record_exact_cell_mapping(
     assert len(batches) == 34
 
 
-def test_workflows_submit_three_per_job_and_record_exact_cell_mapping(
+def test_workflows_submit_two_per_job_and_record_exact_cell_mapping(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -107,18 +107,24 @@ def test_workflows_submit_three_per_job_and_record_exact_cell_mapping(
 
     monkeypatch.setattr(launcher, "submit_workflow_batch", submit)
 
-    result = dispatch(launcher.app, "workflows", str(bundle))
+    result = dispatch(
+        launcher.app,
+        "workflows",
+        str(bundle),
+        "--tasks-per-job",
+        "2",
+    )
 
     assert result.exit_code == 0
-    assert result.output == "2001\n2002\n"
-    assert [len(batch) for batch in batches] == [3, 3]
+    assert result.output == "2001\n2002\n2003\n"
+    assert [len(batch) for batch in batches] == [2, 2, 2]
     assert read_tsv_rows(bundle / "jobs.tsv") == [
         {"job_id": "2001", "slot": "0", "row": "0", "cell": "cell-0"},
         {"job_id": "2001", "slot": "1", "row": "1", "cell": "cell-1"},
-        {"job_id": "2001", "slot": "2", "row": "2", "cell": "cell-2"},
-        {"job_id": "2002", "slot": "0", "row": "3", "cell": "cell-3"},
-        {"job_id": "2002", "slot": "1", "row": "4", "cell": "cell-4"},
-        {"job_id": "2002", "slot": "2", "row": "5", "cell": "cell-5"},
+        {"job_id": "2002", "slot": "0", "row": "2", "cell": "cell-2"},
+        {"job_id": "2002", "slot": "1", "row": "3", "cell": "cell-3"},
+        {"job_id": "2003", "slot": "0", "row": "4", "cell": "cell-4"},
+        {"job_id": "2003", "slot": "1", "row": "5", "cell": "cell-5"},
     ]
 
 
@@ -139,5 +145,5 @@ def test_jobs_rejects_more_than_three_rows_for_one_allocation(
             )
         )
 
-    with pytest.raises(ValueError, match="complete three-task allocations"):
+    with pytest.raises(ValueError, match="complete packed allocations"):
         launcher._load_submitted_rows(jobs_path, rows)

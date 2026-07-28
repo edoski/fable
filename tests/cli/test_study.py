@@ -211,7 +211,7 @@ def test_submit_candidate_batch_rejects_duplicate_study_slots(
     )
 
     with pytest.raises(ValueError, match="packed candidate slots must be unique"):
-        execution.submit_candidate_batch((candidate, candidate, candidate))
+        execution.submit_candidate_batch((candidate, candidate))
 
 
 def test_remote_candidate_dispatches_input(

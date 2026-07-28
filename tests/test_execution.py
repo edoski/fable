@@ -130,11 +130,6 @@ def test_submit_workflow_batch_uses_one_isolated_gpu_step_per_request(
             "artifact_id": UUID("00000000-0000-4000-8000-000000000005"),
         }
     )
-    third = first.model_copy(
-        update={
-            "artifact_id": UUID("00000000-0000-4000-8000-000000000006"),
-        }
-    )
     write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
     scripts: list[str] = []
@@ -144,17 +139,16 @@ def test_submit_workflow_batch_uses_one_isolated_gpu_step_per_request(
         lambda _remote, script: scripts.append(script) or 789,
     )
 
-    result = execution.submit_workflow_batch((first, second, third))
+    result = execution.submit_workflow_batch((first, second))
 
     assert result == 789
     assert len(scripts) == 1
     script = scripts[0]
-    assert "#SBATCH --ntasks=3\n" in script
-    assert "#SBATCH --gres=gpu:a100:3\n" in script
-    assert script.count("remote workflow <<'FABLE_REQUEST_") == 3
+    assert "#SBATCH --ntasks=2\n" in script
+    assert "#SBATCH --gres=gpu:a100:2\n" in script
+    assert script.count("remote workflow <<'FABLE_REQUEST_") == 2
     assert first.model_dump_json() in script
     assert second.model_dump_json() in script
-    assert third.model_dump_json() in script
 
 
 def test_submit_workflow_batch_rejects_duplicate_durable_identities(
@@ -171,7 +165,7 @@ def test_submit_workflow_batch_rejects_duplicate_durable_identities(
     )
 
     with pytest.raises(ValueError, match="packed workflow identities must be unique"):
-        execution.submit_workflow_batch((request, request, request))
+        execution.submit_workflow_batch((request, request))
 
 
 @pytest.mark.parametrize("workflow", ["train", "evaluate"])

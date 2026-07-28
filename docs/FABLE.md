@@ -817,7 +817,8 @@ Each `experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>.json` c
 bundle under `experiments/feature_ablation/.<experiment_id>/`. For each architecture and chain it
 tests the full feature contract, each individual feature unit omitted, and a base-fee-only
 reference. Hour and day-of-week sine/cosine coordinates each remain one indivisible encoded unit.
-`experiments/launch.py candidates BUNDLE` submits its cells three at a time. After all canonical
+`experiments/launch.py candidates BUNDLE` submits its cells three at a time by default and accepts
+two-task packing for two-GPU nodes. After all canonical
 Studies exist, `close STORAGE_ROOT EXPERIMENT_ID` publishes the canonical manifest and removes
 the temporary bundle; `report` derives each chain/configuration mean from canonical Studies.
 
@@ -841,7 +842,7 @@ ranges extend their last origin by three, two, or one blocks so the fixed-deadli
 comparison has every reachable decision origin. Its report commands print, but do not persist, the
 ordinary and rolling reductions. Closure publishes the exact 81 evaluation references and removes
 the temporary bundle. `experiments/launch.py workflows BUNDLE` packs Train or Evaluate cells with
-the same three-task execution contract.
+the same packed execution contract.
 
 #### Study object
 
@@ -935,7 +936,7 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 |  | `memory_gb` | PositiveInt, rendered as `--mem=<n>G` |
 |  | `time_limit` | nonempty Slurm time string |
 
-Single-request scripts request one node/task. Packed scripts contain exactly three processes and
+Single-request scripts request one node/task. Packed scripts contain two or three processes and
 request one node and one task, GPU,
 CPU allotment, and memory allotment per process input. Each process runs as an exclusive exact
 `srun` step, sees one GPU, receives one strict stdin record, and writes

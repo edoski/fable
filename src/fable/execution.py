@@ -20,7 +20,7 @@ _NonEmptyString = Annotated[str, Field(min_length=1)]
 _NonNegativeInt = Annotated[int, Field(ge=0)]
 _PositiveInt = Annotated[int, Field(gt=0)]
 _JOB_ID_PATTERN = re.compile(r"([0-9]+)(?:;[^;\r\n]+)?\n?")
-PACKED_PROCESS_COUNT = 3
+MAX_PACKED_PROCESS_COUNT = 3
 
 
 class _Resources(StrictFrozenRecord):
@@ -150,8 +150,8 @@ def _render_allocation_script(
     process_inputs_json: tuple[str, ...],
     leaf: Literal["workflow", "candidate"],
 ) -> str:
-    if len(process_inputs_json) not in (1, PACKED_PROCESS_COUNT):
-        raise ValueError("an allocation requires one or three process inputs")
+    if not 1 <= len(process_inputs_json) <= MAX_PACKED_PROCESS_COUNT:
+        raise ValueError("an allocation requires one to three process inputs")
 
     resources = remote.resources
     task_count = len(process_inputs_json)
@@ -209,8 +209,8 @@ def _render_allocation_script(
 
 
 def _require_packed_count(inputs: Sequence[object]) -> None:
-    if len(inputs) != PACKED_PROCESS_COUNT:
-        raise ValueError("a packed job requires exactly three process inputs")
+    if not 2 <= len(inputs) <= MAX_PACKED_PROCESS_COUNT:
+        raise ValueError("a packed job requires two or three process inputs")
 
 
 def _workflow_identity(request: WorkflowRequest) -> tuple[str, UUID]:
