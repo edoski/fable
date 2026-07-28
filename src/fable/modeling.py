@@ -476,7 +476,7 @@ def _fit(
     trainer = pl.Trainer(
         accelerator="gpu",
         devices=1,
-        precision="32-true",
+        precision=_runtime.FIT_PRECISION,
         max_epochs=fit.max_epochs,
         check_val_every_n_epoch=fit.validate_every_completed_epoch,
         accumulate_grad_batches=fit.accumulation,
