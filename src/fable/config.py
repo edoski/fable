@@ -154,34 +154,17 @@ class TrainingDefinition(StrictFrozenRecord):
     method: Method
 
 
-class BaselineSource(StrictFrozenRecord):
-    kind: Literal["baseline"]
-    corpus_id: UUID4
-    training_definition: TrainingDefinition
-
-    @property
-    def experiment(self) -> ExperimentSemantics:
-        return self.training_definition.experiment
-
-
 class SelectedStudySource(StrictFrozenRecord):
-    kind: Literal["selected_study"]
     corpus_id: UUID4
     study_id: UUID4
     study_result_index: _NonNegativeInt
     experiment: ExperimentSemantics
 
 
-TrainingSource: TypeAlias = Annotated[
-    BaselineSource | SelectedStudySource,
-    Field(discriminator="kind"),
-]
-
-
 class TrainRequest(StrictFrozenRecord):
     workflow: Literal["train"]
     artifact_id: UUID4
-    source: TrainingSource
+    source: SelectedStudySource
 
 
 class TuneRequest(StrictFrozenRecord):
@@ -197,6 +180,11 @@ class TuneRequest(StrictFrozenRecord):
         if len({method.model.family for method in self.methods}) != 1:
             raise ValueError("methods must use one model family")
         return self
+
+    def method_at(self, method_index: int) -> Method:
+        if not 0 <= method_index < len(self.methods):
+            raise ValueError("method_index must identify a request Method")
+        return self.methods[method_index]
 
 
 class EvaluateRequest(StrictFrozenRecord):

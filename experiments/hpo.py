@@ -165,21 +165,11 @@ def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
     selected = _selected_context_studies(storage_root, c_experiment_id)
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
-    methods_directory = bundle / "methods"
     requests.mkdir(parents=True)
-    methods_directory.mkdir()
 
     methods_by_family = {family: _methods(family) for family in _FAMILIES}
-    method_paths: dict[tuple[str, int], Path] = {}
-    for family, methods in methods_by_family.items():
-        family_directory = methods_directory / family
-        family_directory.mkdir()
-        for index, method in enumerate(methods):
-            path = family_directory / f"{index}.json"
-            path.write_text(method.model_dump_json(), encoding="utf-8")
-            method_paths[family, index] = path
 
-    rows: list[tuple[str, Path, Path, UUID, int]] = []
+    rows: list[tuple[str, Path, int, UUID]] = []
     for index, (chain, family) in enumerate(product(_CHAINS, _FAMILIES)):
         source = selected[chain, family]
         request = fresh_tune_request(
@@ -194,16 +184,15 @@ def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
             (
                 cell,
                 request_path,
-                method_paths[family, method_index],
-                request.study_id,
                 method_index,
+                request.study_id,
             )
             for method_index in range(len(request.methods))
         )
 
     write_cells(
         bundle,
-        ("cell", "request", "method", "study_id", "method_index"),
+        ("cell", "request", "method_index", "study_id"),
         rows,
     )
 
@@ -224,13 +213,7 @@ def select(storage_root: Path, experiment_id: UUID) -> None:
             continue
         seen.add(study_id)
         study = load_study(storage_root, study_id)
-        retained_methods = tuple(result.method for result in study.trials)
-        if retained_methods != study.request.methods:
-            raise ValueError("HPO Study must retain every frozen Method")
-        selected_index, result = min(
-            enumerate(study.trials),
-            key=lambda item: item[1].objective,
-        )
+        selected_index, result = study.best_result()
         entries.append(ExperimentEntry(cell=row["cell"], study_id=study_id))
         selections.append((row["cell"], selected_index, result.objective))
 

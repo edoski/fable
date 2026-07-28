@@ -21,7 +21,6 @@ from torch import nn
 from . import _runtime
 from .addresses import artifact_checkpoint_path
 from .config import (
-    BaselineSource,
     ExperimentSemantics,
     LstmDefinition,
     Method,
@@ -52,27 +51,17 @@ class ArtifactAssociation(StrictFrozenRecord):
     request: TrainRequest
     feature_state: FeatureState
     target_state: TargetState
-    method: Method | None = None
+    method: Method
 
     @property
     def training_definition(self) -> TrainingDefinition:
-        source = self.request.source
-        if isinstance(source, BaselineSource):
-            return source.training_definition
         return TrainingDefinition(
-            experiment=source.experiment,
-            method=cast(Method, self.method),
+            experiment=self.request.source.experiment,
+            method=self.method,
         )
 
     @model_validator(mode="after")
     def validate_association(self) -> Self:
-        source = self.request.source
-        if isinstance(source, BaselineSource):
-            if self.method is not None:
-                raise ValueError("baseline artifacts cannot contain a selected Study Method")
-        else:
-            if self.method is None:
-                raise ValueError("selected Study artifacts require a Method")
         if len(self.feature_state.means) != len(
             self.training_definition.experiment.ordered_features
         ):
@@ -82,9 +71,18 @@ class ArtifactAssociation(StrictFrozenRecord):
 
 class _CandidateAssociation(StrictFrozenRecord):
     request: TuneRequest
-    method: Method
+    method_index: int
     feature_state: FeatureState
     target_state: TargetState
+
+    @model_validator(mode="after")
+    def validate_method_index(self) -> Self:
+        self.request.method_at(self.method_index)
+        return self
+
+    @property
+    def method(self) -> Method:
+        return self.request.methods[self.method_index]
 
     @property
     def training_definition(self) -> TrainingDefinition:
@@ -520,11 +518,7 @@ def train(
     if canonical.exists():
         raise FileExistsError(canonical)
 
-    method = (
-        None
-        if isinstance(source, BaselineSource)
-        else load_selected_method(storage_root, source)
-    )
+    method = load_selected_method(storage_root, source)
     prepared = _load_fit_history(storage_root, source.corpus_id, source.experiment)
     association = ArtifactAssociation(
         request=request,
@@ -540,20 +534,19 @@ def train(
 
 def fit_candidate(
     request: TuneRequest,
-    method: Method,
+    method_index: int,
     storage_root: Path,
     candidate_scratch: Path,
 ) -> RetainedResult:
     prepared = _load_fit_history(storage_root, request.corpus_id, request.experiment)
     association = _CandidateAssociation(
         request=request,
-        method=method,
+        method_index=method_index,
         feature_state=prepared.feature_state,
         target_state=prepared.target_state,
     )
     outcome = _fit(association, prepared, candidate_scratch)
     return RetainedResult(
-        method=method,
         objective=outcome.objective,
         selected_epoch=outcome.selected_epoch,
         completed_epochs=outcome.completed_epochs,

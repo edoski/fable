@@ -134,18 +134,9 @@ def prepare(storage_root: Path) -> None:
     storage_root = storage_root.resolve()
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
-    methods = bundle / "methods"
     requests.mkdir(parents=True)
-    methods.mkdir()
 
-    method_paths: dict[str, Path] = {}
-    for method in _METHODS:
-        family = method.model.family
-        path = methods / f"{family}.json"
-        path.write_text(method.model_dump_json(), encoding="utf-8")
-        method_paths[family] = path
-
-    rows: list[tuple[str, Path, Path, UUID]] = []
+    rows: list[tuple[str, Path, int, UUID]] = []
     for index, (
         (chain, corpus_id, training_window, validation_window),
         method,
@@ -166,9 +157,10 @@ def prepare(storage_root: Path) -> None:
         )
         path = requests / f"{index:02d}.json"
         path.write_text(request.model_dump_json(), encoding="utf-8")
-        rows.append((cell, path, method_paths[family], request.study_id))
+        method_index = 0
+        rows.append((cell, path, method_index, request.study_id))
 
-    write_cells(bundle, ("cell", "request", "method", "study_id"), rows)
+    write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
 
     print(experiment_id)
 

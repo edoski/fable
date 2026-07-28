@@ -41,14 +41,10 @@ def prepare(storage_root: Path, hpo_experiment_id: UUID) -> None:
     for entry in manifest.entries:
         study_id = entry.require_study_id()
         study = load_study(storage_root, study_id)
-        selected_index, _ = min(
-            enumerate(study.trials),
-            key=lambda item: item[1].objective,
-        )
+        selected_index, _ = study.best_result()
         for horizon in _HORIZONS:
             request = fresh_train_request(
                 SelectedStudySource(
-                    kind="selected_study",
                     corpus_id=study.request.corpus_id,
                     study_id=study_id,
                     study_result_index=selected_index,

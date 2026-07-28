@@ -56,7 +56,7 @@ This diagram is generated from the production import direction at this revision.
 - `min_block_fee` owns target state, the fixed training loss, two-head output, and decode.
 - `modeling` owns request-bound Corpus-to-model fitting, the three concrete neural definitions,
   Lightning fitting, and native checkpoint loading.
-- `tuning` owns one candidate run from exact Method membership through result retention.
+- `tuning` owns one indexed candidate run through result retention.
 - `study` owns bounded candidate membership, ordered retained results, publication, and selected-Method loading.
 - `evaluation` owns canonical self-contained observations and transient reduction.
 
@@ -494,7 +494,7 @@ For every architecture-chain cell, the rolling reduction uses every `K=5` testin
 
 ### HPO interpretation
 
-A `TuneRequest` freezes the experiment and one finite tuple of complete Methods. An operator submits complete Methods from that tuple. Each successful fit contributes validation total loss, earliest best epoch, and completed epochs in retention order. Selected training names an exact result index.
+A `TuneRequest` freezes the experiment and one finite tuple of complete Methods. An operator submits an index into that tuple. Each successful fit contributes validation total loss, earliest best epoch, and completed epochs in request order. Selected training names an exact result index.
 
 The planned thesis protocol is staged: leave one feature group out on validation, run the `C` study, run HPO on the winning feature/context route, then run `K` sensitivity and final testing. Fit methods use seed `2026`. This is not a full factorial design. No experiments have been run.
 
@@ -573,30 +573,30 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 
 #### Request and membership
 
-`TuneRequest` fixes a Study UUID, Corpus UUID, `ExperimentSemantics`, and a nonempty tuple of unique complete Methods. Every Method uses the same model family and owns one `ModelDefinition` plus its complete fit policy. Candidate execution resolves membership directly with `request.methods.index(method)` and builds `TrainingDefinition(experiment=request.experiment, method=method)` as the fitting association's derived property.
+`TuneRequest` fixes a Study UUID, Corpus UUID, `ExperimentSemantics`, and a nonempty tuple of unique complete Methods. Every Method uses the same model family and owns one `ModelDefinition` plus its complete fit policy. Candidate input carries a validated zero-based index; fitting derives the Method from `request.methods[method_index]` and builds `TrainingDefinition(experiment=request.experiment, method=method)` as the association's derived property.
 
 #### Candidate run
 
-`run_candidate(storage_root, request, method)` loads the request's Corpus, prepares training history and state, fits the exact Method through native Lightning, and retains one successful result. Method index `i` owns checkpoint scratch at `studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while fit or publication failure preserves it for `last.ckpt` resume.
+`run_candidate(storage_root, request, method_index)` loads the request's Corpus, prepares training history and state, fits the indexed Method through native Lightning, and retains one successful result. Method index `i` owns checkpoint scratch at `studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while fit or publication failure preserves it for `last.ckpt` resume.
 
-`RetainedResult` has four fields:
+`RetainedResult` has three fields:
 
-- the exact Method;
 - finite complete-validation total-loss objective;
 - one-based earliest selected epoch;
 - one-based completed epoch count.
 
-The selected epoch cannot exceed completed epochs, and completed epochs cannot exceed the Method maximum.
+The selected epoch cannot exceed completed epochs. The enclosing Study requires one result per request Method and checks completed epochs against the corresponding Method maximum.
+`Study.best_result()` owns selection and returns the earliest request index when objectives tie.
 
 #### Indexed results and publication
 
-Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary sibling. Each result file is a one-trial `Study` carrying the full request.
+Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary sibling. Each private result envelope carries the full request, method index, and retained metrics.
 
-`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first available result. All files must carry the identical request and exactly one trial whose Method matches that request index. Publication assembles trials in `request.methods` order, writes hidden sibling `studies/.<study_id>.json`, removes scratch directory `studies/.<study_id>/`, and creates `studies/<study_id>.json` with `os.link()`. An occupied canonical path makes the link fail without overwrite. After a successful link, hidden-file cleanup is best-effort and cannot retract the canonical Study.
+`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first result. All files must carry the identical request and an embedded index matching the filename. Publication assembles metrics in `request.methods` order, writes hidden sibling `studies/.<study_id>.json`, removes scratch directory `studies/.<study_id>/`, and creates `studies/<study_id>.json` with `os.link()`. An occupied canonical path makes the link fail without overwrite. After a successful link, hidden-file cleanup is best-effort and cannot retract the canonical Study.
 
 #### Selected training
 
-A selected-Study `TrainRequest` supplies the exact Study UUID and zero-based `study_result_index`. `load_selected_method()` strictly loads the canonical Study, verifies Study and Corpus associations, and returns the Method from that ordered row. The artifact association composes its `TrainingDefinition` from the source experiment and returned Method.
+A `TrainRequest` supplies the exact Study UUID and zero-based `study_result_index`. `load_selected_method()` strictly loads the canonical Study, verifies Study and Corpus associations, and returns `study.request.methods[study_result_index]`. The artifact association composes its `TrainingDefinition` from the source experiment and returned Method.
 
 The resulting native artifact embeds the same result index and Method for later loading and evaluation.
 
@@ -703,17 +703,13 @@ Every serialized `Method` has ordered fields `model: ModelDefinition` and `fit: 
 | --- | --- | --- |
 | `TrainingDefinition` | `experiment` | `ExperimentSemantics` |
 |  | `method` | complete `Method` |
-| `BaselineSource` | `kind` | exactly `"baseline"` |
-|  | `corpus_id` | UUIDv4 |
-|  | `training_definition` | `TrainingDefinition` |
-| `SelectedStudySource` | `kind` | exactly `"selected_study"` |
-|  | `corpus_id` | UUIDv4 |
+| `SelectedStudySource` | `corpus_id` | UUIDv4 |
 |  | `study_id` | UUIDv4 |
 |  | `study_result_index` | NonNegativeInt |
 |  | `experiment` | `ExperimentSemantics` |
 | `TrainRequest` | `workflow` | exactly `"train"` |
 |  | `artifact_id` | UUIDv4 |
-|  | `source` | `BaselineSource | SelectedStudySource` |
+|  | `source` | `SelectedStudySource` |
 | `TuneRequest` | `workflow` | exactly `"tune"` |
 |  | `study_id` | UUIDv4 |
 |  | `corpus_id` | UUIDv4 |
@@ -730,7 +726,7 @@ Every serialized `Method` has ordered fields `model: ModelDefinition` and `fit: 
 Fresh constructors:
 
 ```python
-fresh_train_request(source: TrainingSource) -> TrainRequest
+fresh_train_request(source: SelectedStudySource) -> TrainRequest
 fresh_tune_request(
     corpus_id: UUID,
     experiment: ExperimentSemantics,
@@ -803,12 +799,15 @@ its cells. After all canonical Studies exist, `select STORAGE_ROOT EXPERIMENT_ID
 validation-selected feature set per chain, publishes the canonical manifest, and removes the
 temporary bundle. The script does not submit jobs or persist copied metrics.
 
+Study bundles keep each complete Method roster inside its TuneRequest. Their `cells.tsv` rows
+carry the request path, zero-based `method_index`, and Study ID; they do not write separate Method
+JSON files.
+
 `experiments/c_study.py` derives the selected feature set, authors the 45
 architecture-chain-context Studies for `C={25,50,100,200,400}`, and selects one context per
 chain by mean validation loss across the three architectures. `experiments/hpo.py` then authors
 the exact nine architecture-chain Studies and their ordered nine-Method L9 rosters. Its selector
-requires one retained result for every frozen Method and chooses the earliest minimum validation
-loss.
+chooses the earliest minimum validation loss.
 
 `experiments/k_study.py` derives each architecture-chain HPO result and authors 81 fresh
 selected-Study Train requests for `K={2,3,4,5,10,25,50,100,200}`. It publishes the K-study
@@ -832,10 +831,11 @@ Each `RetainedResult` has exact ordered fields:
 
 | Field | Type/rule |
 | --- | --- |
-| `method` | exact complete Method contained in `request.methods` |
 | `objective` | finite float validation total loss |
 | `selected_epoch` | integer `≥1` |
-| `completed_epochs` | integer `≥selected_epoch` and `≤method.fit.max_epochs` |
+| `completed_epochs` | integer `≥selected_epoch` and `≤` the corresponding request Method's `fit.max_epochs` |
+
+`trials` has exactly the same length and order as `request.methods`.
 
 #### Native Lightning artifact
 
@@ -846,7 +846,7 @@ Each `RetainedResult` has exact ordered fields:
 | `request` | exact `TrainRequest`; embedded artifact UUID must match path |
 | `feature_state` | Float64 means and positive standard deviations, equal feature width |
 | `target_state` | Float64 finite mean and positive standard deviation |
-| `method` | absent/null for baseline; exact selected Method for selected Study |
+| `method` | exact selected Method |
 
 Fitting uses hidden sibling scratch at `artifacts/.<artifact_id>/`. Publication moves the completed best checkpoint to `artifacts/.<artifact_id>.ckpt`, removes scratch, and creates the canonical path with `os.link()`. An occupied target fails without overwrite; cleanup of the hidden checkpoint is best-effort only after the canonical link exists.
 
@@ -869,12 +869,12 @@ Three public command leaves:
 
 ```text
 fable submit REQUEST.json [REQUEST.json ...]
-fable study run TUNE_REQUEST.json METHOD.json
+fable study run TUNE_REQUEST.json METHOD_INDEX
 fable study finalize STUDY_ID
 ```
 
 - `submit` accepts one or more WorkflowRequest files and prints one positive Slurm job ID per request.
-- `study run` validates one strict TuneRequest and one strict Method, then prints the candidate Slurm job ID.
+- `study run` validates one strict TuneRequest and a zero-based Method index, then prints the candidate Slurm job ID.
 - `study finalize` accepts standard UUID syntax, reads absolute `STORAGE_ROOT`, and publishes existing indexed results. The result files' strict TuneRequest must carry the same Study ID, and publishable TuneRequests originate from `fresh_tune_request()` as UUIDv4.
 
 Two help-hidden generated-job leaves:
@@ -908,7 +908,7 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 |  | `memory_gb` | PositiveInt, rendered as `--mem=<n>G` |
 |  | `time_limit` | nonempty Slurm time string |
 
-The generated script requests one node/task, writes `%j.out` under `log_root`, exports `STORAGE_ROOT`, and executes `fable remote workflow` or `fable remote candidate` with a stdin heredoc. Workflow stdin is the Train or Evaluate request JSON directly. Candidate stdin is the strict record containing the TuneRequest and Method. Submission is one `ssh -T -o BatchMode=yes … sbatch --parsable` call.
+The generated script requests one node/task, writes `%j.out` under `log_root`, exports `STORAGE_ROOT`, and executes `fable remote workflow` or `fable remote candidate` with a stdin heredoc. Workflow stdin is the Train or Evaluate request JSON directly. Candidate stdin is the strict record containing the TuneRequest and validated Method index. Submission is one `ssh -T -o BatchMode=yes … sbatch --parsable` call.
 
 The installed executable owns one fixed runtime profile. It must remain unchanged while submitted jobs are queued so every queued request runs under the executable version that defined its loader and Torch policy.
 

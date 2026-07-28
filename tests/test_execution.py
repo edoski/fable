@@ -49,7 +49,6 @@ def _request(workflow: Literal["train", "evaluate"]) -> WorkflowRequest:
         workflow="train",
         artifact_id=ARTIFACT_ID,
         source=SelectedStudySource(
-            kind="selected_study",
             corpus_id=CORPUS_ID,
             study_id=STUDY_ID,
             study_result_index=0,

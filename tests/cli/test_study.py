@@ -64,9 +64,7 @@ def test_study_run_sends_golden_candidate_script(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request_path = tmp_path / "TUNE_REQUEST.json"
-    method_path = tmp_path / "METHOD.json"
     request_path.write_text(REQUEST.model_dump_json(), encoding="utf-8")
-    method_path.write_text(METHOD.model_dump_json(), encoding="utf-8")
     write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
     scripts: list[str] = []
@@ -79,7 +77,7 @@ def test_study_run_sends_golden_candidate_script(
 
     result = CliRunner().invoke(
         app,
-        ["study", "run", str(request_path), str(method_path)],
+        ["study", "run", str(request_path), "0"],
     )
 
     assert result.exit_code == 0
@@ -87,7 +85,7 @@ def test_study_run_sends_golden_candidate_script(
     candidate_json = json.dumps(
         {
             "request": REQUEST.model_dump(mode="json"),
-            "method": METHOD.model_dump(mode="json"),
+            "method_index": 0,
         },
         separators=(",", ":"),
     )
@@ -116,18 +114,18 @@ def test_remote_candidate_dispatches_input(
     payload = json.dumps(
         {
             "request": REQUEST.model_dump(mode="json"),
-            "method": METHOD.model_dump(mode="json"),
+            "method_index": 0,
         },
         separators=(",", ":"),
     )
-    calls: list[tuple[Path, TuneRequest, Method]] = []
+    calls: list[tuple[Path, TuneRequest, int]] = []
 
     def fake_run_candidate(
         storage_root: Path,
         request: TuneRequest,
-        method: Method,
+        method_index: int,
     ) -> None:
-        calls.append((storage_root, request, method))
+        calls.append((storage_root, request, method_index))
 
     monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
     monkeypatch.setattr(cli, "run_candidate", fake_run_candidate)
@@ -136,4 +134,19 @@ def test_remote_candidate_dispatches_input(
 
     assert result.exit_code == 0
     assert result.output == ""
-    assert calls == [(STORAGE_ROOT, REQUEST, METHOD)]
+    assert calls == [(STORAGE_ROOT, REQUEST, 0)]
+
+
+def test_remote_candidate_rejects_method_index_outside_request() -> None:
+    payload = json.dumps(
+        {
+            "request": REQUEST.model_dump(mode="json"),
+            "method_index": 1,
+        },
+        separators=(",", ":"),
+    )
+
+    result = dispatch(app, "remote", "candidate", input=payload)
+
+    assert result.exit_code == 1
+    assert "method_index must identify a request Method" in str(result.exception)

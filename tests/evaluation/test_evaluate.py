@@ -22,7 +22,6 @@ from fable.addresses import (
     evaluation_observations_path,
 )
 from fable.config import (
-    BaselineSource,
     BlockWindow,
     CorpusDefinition,
     CorpusRequest,
@@ -32,7 +31,6 @@ from fable.config import (
     LstmDefinition,
     Method,
     SelectedStudySource,
-    TrainingDefinition,
     TrainRequest,
 )
 from fable.evaluation import evaluate
@@ -149,37 +147,15 @@ def _method() -> Method:
 
 
 def _association(
-    source_kind: str,
-    *,
     experiment: ExperimentSemantics | None = None,
 ) -> ArtifactAssociation:
     experiment = experiment or _experiment()
-    if source_kind == "baseline":
-        source = BaselineSource(
-            kind="baseline",
-            corpus_id=_CORPUS_ID,
-            training_definition=TrainingDefinition(
-                experiment=experiment,
-                method=_method(),
-            ),
-        )
-        return ArtifactAssociation(
-            request=TrainRequest(
-                workflow="train",
-                artifact_id=_ARTIFACT_ID,
-                source=source,
-            ),
-            feature_state=FeatureState(means=(0.0,), standard_deviations=(1.0,)),
-            target_state=TargetState(mean=10.0, standard_deviation=0.25),
-        )
-
     method = _method()
     return ArtifactAssociation(
         request=TrainRequest(
             workflow="train",
             artifact_id=_ARTIFACT_ID,
             source=SelectedStudySource(
-                kind="selected_study",
                 corpus_id=_CORPUS_ID,
                 study_id=_STUDY_ID,
                 study_result_index=2,
@@ -282,17 +258,12 @@ class _Model(nn.Module):
         )
 
 
-@pytest.mark.parametrize(
-    "source_kind",
-    ["baseline", "selected"],
-)
 def test_evaluate_publishes_exact_observations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    source_kind: str,
 ) -> None:
     _write_corpus(tmp_path, _CORPUS_ID)
-    association = _association(source_kind)
+    association = _association()
     model = _Model()
     monkeypatch.setattr(
         evaluation_module,
@@ -336,7 +307,7 @@ def test_evaluate_rejects_owned_association_and_publication_conflicts(
 ) -> None:
     corpus_id = _OTHER_CORPUS_ID if case == "source_corpus" else _CORPUS_ID
     _write_corpus(tmp_path, corpus_id)
-    association = _association("baseline")
+    association = _association()
     model = _Model()
     monkeypatch.setattr(
         evaluation_module,

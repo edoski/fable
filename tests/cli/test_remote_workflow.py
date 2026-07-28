@@ -44,7 +44,6 @@ def _request(kind: Literal["selected", "evaluate"]) -> WorkflowRequest:
             testing_window=window(300),
         )
     source = SelectedStudySource(
-        kind="selected_study",
         corpus_id=CORPUS_ID,
         study_id=STUDY_ID,
         study_result_index=2,

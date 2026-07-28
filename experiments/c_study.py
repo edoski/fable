@@ -73,17 +73,14 @@ def prepare(
     selected = _selected_feature_studies(storage_root, feature_experiment_id)
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
-    methods = bundle / "methods"
     requests.mkdir(parents=True)
-    methods.mkdir()
 
-    rows: list[tuple[str, Path, Path, UUID]] = []
+    rows: list[tuple[str, Path, int, UUID]] = []
     for chain in _CHAINS:
         for family in _FAMILIES:
             source = selected[chain, family]
-            method = source.trials[0].method
-            method_path = methods / f"{chain}-{family}.json"
-            method_path.write_text(method.model_dump_json(), encoding="utf-8")
+            method = source.request.methods[0]
+            method_index = 0
             for context in _CONTEXTS:
                 request = fresh_tune_request(
                     source.request.corpus_id,
@@ -96,12 +93,12 @@ def prepare(
                     (
                         f"{chain}.{family}.C{context}",
                         request_path,
-                        method_path,
+                        method_index,
                         request.study_id,
                     )
                 )
 
-    write_cells(bundle, ("cell", "request", "method", "study_id"), rows)
+    write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
 
     print(experiment_id)
 

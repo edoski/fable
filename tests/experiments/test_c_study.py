@@ -25,7 +25,6 @@ def _publish_studies(
             request=request,
             trials=(
                 RetainedResult(
-                    method=request.methods[0],
                     objective=objectives.get((parts[0], parts[-1]), 2.0),
                     selected_epoch=1,
                     completed_epochs=1,
@@ -85,6 +84,7 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
         "ethereum.lstm.C400",
     ]
     assert rows[-1]["cell"] == "avalanche.transformer_lstm.C400"
+    assert {row["method_index"] for row in rows} == {"0"}
     assert [request.experiment.context_blocks for request in requests[:5]] == [
         25,
         50,

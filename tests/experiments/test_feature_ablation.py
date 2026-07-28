@@ -35,6 +35,7 @@ def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> No
     assert rows[-1]["cell"] == "avalanche.transformer_lstm.B+S+T"
     assert len({request.study_id for request in requests}) == 45
     assert {len(request.methods) for request in requests} == {1}
+    assert {row["method_index"] for row in rows} == {"0"}
     assert requests[0].experiment.model_dump() == {
         "training_window": {
             "first_parent_block": 23_936_094,
@@ -86,7 +87,6 @@ def test_select_publishes_all_studies_and_reports_chain_winners(tmp_path: Path) 
             request=request,
             trials=(
                 RetainedResult(
-                    method=request.methods[0],
                     objective=objective,
                     selected_epoch=1,
                     completed_epochs=1,

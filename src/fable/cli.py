@@ -12,7 +12,6 @@ import typer
 
 from .config import (
     WORKFLOW_REQUEST_ADAPTER,
-    Method,
     TrainRequest,
     TuneRequest,
     WorkflowRequest,
@@ -76,18 +75,17 @@ def candidate_command() -> None:
     run_candidate(
         storage_root,
         candidate.request,
-        candidate.method,
+        candidate.method_index,
     )
 
 
 @study_app.command("run")
 def study_run_command(
     request_path: Annotated[Path, typer.Argument(metavar="TUNE_REQUEST.json")],
-    method_path: Annotated[Path, typer.Argument(metavar="METHOD.json")],
+    method_index: Annotated[int, typer.Argument(metavar="METHOD_INDEX")],
 ) -> None:
     request = TuneRequest.model_validate_json(request_path.read_bytes(), strict=True)
-    method = Method.model_validate_json(method_path.read_bytes(), strict=True)
-    typer.echo(submit_candidate(request, method))
+    typer.echo(submit_candidate(request, method_index))
 
 
 @study_app.command("finalize")

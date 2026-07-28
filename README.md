@@ -36,7 +36,7 @@ fable submit REQUEST.json
 Run one candidate configuration from a tuning request:
 
 ```bash
-fable study run TUNE_REQUEST.json METHOD.json
+fable study run TUNE_REQUEST.json METHOD_INDEX
 ```
 
 Publish the collected tuning results:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from uuid import UUID
 
@@ -15,7 +16,7 @@ from fable.config import (
     Method,
     TuneRequest,
 )
-from fable.study import RetainedResult, Study
+from fable.study import RetainedResult
 
 STUDY_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
@@ -71,7 +72,6 @@ def test_run_candidate_publishes_indexed_result_and_removes_scratch(
     monkeypatch: MonkeyPatch,
 ) -> None:
     result = RetainedResult(
-        method=OTHER_METHOD,
         objective=0.4,
         selected_epoch=3,
         completed_epochs=8,
@@ -85,13 +85,14 @@ def test_run_candidate_publishes_indexed_result_and_removes_scratch(
 
     monkeypatch.setattr(tuning, "fit_candidate", run_fit)
 
-    tuning.run_candidate(tmp_path, REQUEST, OTHER_METHOD)
+    tuning.run_candidate(tmp_path, REQUEST, 1)
 
-    retained = Study.model_validate_json(
-        (study_scratch / "result-1.json").read_bytes(),
-        strict=True,
-    )
-    assert retained == Study(request=REQUEST, trials=(result,))
+    retained = json.loads((study_scratch / "result-1.json").read_bytes())
+    assert retained == {
+        "request": REQUEST.model_dump(mode="json"),
+        "method_index": 1,
+        "result": result.model_dump(mode="json"),
+    }
     assert not (study_scratch / "candidate-1").exists()
 
 
@@ -101,7 +102,6 @@ def test_run_candidate_preserves_last_checkpoint_after_retention_failure(
 ) -> None:
     scratch = tmp_path / "studies" / f".{STUDY_ID}" / "candidate-0"
     result = RetainedResult(
-        method=METHOD,
         objective=0.4,
         selected_epoch=3,
         completed_epochs=8,
@@ -119,6 +119,6 @@ def test_run_candidate_preserves_last_checkpoint_after_retention_failure(
     monkeypatch.setattr(tuning, "retain_result", retain_result)
 
     with pytest.raises(RuntimeError, match="retention failed"):
-        tuning.run_candidate(tmp_path, REQUEST, METHOD)
+        tuning.run_candidate(tmp_path, REQUEST, 0)
 
     assert (scratch / "last.ckpt").read_bytes() == b"checkpoint"

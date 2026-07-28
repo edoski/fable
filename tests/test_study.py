@@ -57,7 +57,6 @@ OTHER_LSTM_METHOD = LSTM_METHOD.model_copy(
     update={"fit": FIT.model_copy(update={"learning_rate": 1e-4})},
 )
 RESULT = RetainedResult(
-    method=LSTM_METHOD,
     objective=0.5,
     selected_epoch=2,
     completed_epochs=5,
@@ -99,13 +98,11 @@ def test_retain_publish_and_load_selected_method_in_request_order(
 ) -> None:
     request = _request((LSTM_METHOD, OTHER_LSTM_METHOD))
     first = RetainedResult(
-        method=LSTM_METHOD,
         objective=-0.4,
         selected_epoch=3,
         completed_epochs=8,
     )
     second = RetainedResult(
-        method=OTHER_LSTM_METHOD,
         objective=-0.3,
         selected_epoch=4,
         completed_epochs=9,
@@ -116,7 +113,6 @@ def test_retain_publish_and_load_selected_method_in_request_order(
 
     publish_study(tmp_path, STUDY_ID)
     source = SelectedStudySource(
-        kind="selected_study",
         corpus_id=CORPUS_ID,
         study_id=STUDY_ID,
         study_result_index=1,
@@ -134,43 +130,55 @@ def test_retain_publish_and_load_selected_method_in_request_order(
 
 
 @pytest.mark.parametrize(
-    ("selected_epoch", "completed_epochs", "message"),
-    [
-        (3, 2, "selected_epoch must not exceed completed_epochs"),
-        (1, 13, "completed_epochs must not exceed method.fit.max_epochs"),
-    ],
+    ("selected_epoch", "completed_epochs"),
+    [(3, 2)],
 )
 def test_retained_result_rejects_invalid_epoch_bounds(
     selected_epoch: int,
     completed_epochs: int,
-    message: str,
 ) -> None:
-    with pytest.raises(ValidationError, match=message):
+    with pytest.raises(ValidationError, match="selected_epoch must not exceed completed_epochs"):
         RetainedResult(
-            method=LSTM_METHOD,
             objective=0.5,
             selected_epoch=selected_epoch,
             completed_epochs=completed_epochs,
         )
 
 
-def test_study_rejects_method_outside_request() -> None:
-    outside = LSTM_METHOD.model_copy(
-        update={"model": LSTM_METHOD.model.model_copy(update={"dropout": 0.3})}
-    )
-
-    with pytest.raises(ValidationError, match="Method is outside the TuneRequest"):
-        Study(
-            request=_request(),
-            trials=(
+@pytest.mark.parametrize(
+    ("trials", "message"),
+    [
+        ((RESULT, RESULT), "trials must align with request methods"),
+        (
+            (
                 RetainedResult(
-                    method=outside,
                     objective=0.5,
                     selected_epoch=1,
-                    completed_epochs=1,
+                    completed_epochs=13,
                 ),
             ),
+            "completed_epochs must not exceed method.fit.max_epochs",
+        ),
+    ],
+)
+def test_study_rejects_trials_outside_request_contract(
+    trials: tuple[RetainedResult, ...],
+    message: str,
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        Study(
+            request=_request(),
+            trials=trials,
         )
+
+
+def test_study_selects_the_earliest_minimum() -> None:
+    request = _request((LSTM_METHOD, OTHER_LSTM_METHOD))
+    first = RESULT.model_copy(update={"objective": 0.4})
+    second = RESULT.model_copy(update={"objective": 0.4})
+    study = Study(request=request, trials=(first, second))
+
+    assert study.best_result() == (0, first)
 
 
 def test_publish_study_rejects_missing_result(tmp_path: Path) -> None:
@@ -190,7 +198,6 @@ def test_publish_study_rejects_mismatched_result_request(tmp_path: Path) -> None
         corpus_id=OTHER_CORPUS_ID,
     )
     second = RetainedResult(
-        method=OTHER_LSTM_METHOD,
         objective=0.4,
         selected_epoch=3,
         completed_epochs=8,
@@ -204,31 +211,13 @@ def test_publish_study_rejects_mismatched_result_request(tmp_path: Path) -> None
     assert not study_json_path(tmp_path, STUDY_ID).exists()
 
 
-def test_publish_study_rejects_result_for_wrong_method_index(tmp_path: Path) -> None:
+def test_publish_study_rejects_result_for_wrong_file_index(tmp_path: Path) -> None:
     request = _request((LSTM_METHOD, OTHER_LSTM_METHOD))
     retain_result(tmp_path, request, 0, RESULT)
     scratch = tmp_path / "studies" / f".{STUDY_ID}"
-    (scratch / "result-1.json").write_text(
-        Study(request=request, trials=(RESULT,)).model_dump_json(),
-        encoding="utf-8",
-    )
+    (scratch / "result-1.json").write_bytes((scratch / "result-0.json").read_bytes())
 
-    with pytest.raises(ValueError, match="result method does not match request index"):
-        publish_study(tmp_path, STUDY_ID)
-
-    assert not study_json_path(tmp_path, STUDY_ID).exists()
-
-
-def test_publish_study_rejects_result_with_multiple_trials(tmp_path: Path) -> None:
-    request = _request()
-    scratch = tmp_path / "studies" / f".{STUDY_ID}"
-    scratch.mkdir(parents=True)
-    (scratch / "result-0.json").write_text(
-        Study(request=request, trials=(RESULT, RESULT)).model_dump_json(),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="exactly one trial"):
+    with pytest.raises(ValueError, match="result method index does not match file index"):
         publish_study(tmp_path, STUDY_ID)
 
     assert not study_json_path(tmp_path, STUDY_ID).exists()
@@ -242,7 +231,6 @@ def test_load_selected_method_rejects_corpus_mismatch(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     source = SelectedStudySource(
-        kind="selected_study",
         corpus_id=OTHER_CORPUS_ID,
         study_id=STUDY_ID,
         study_result_index=0,

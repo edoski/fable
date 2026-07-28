@@ -6,15 +6,16 @@ import re
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
 import yaml
-from pydantic import Field, ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .config import Method, TuneRequest, WorkflowRequest
+from .config import TuneRequest, WorkflowRequest
 from .records import StrictFrozenRecord
 
 _NonEmptyString = Annotated[str, Field(min_length=1)]
+_NonNegativeInt = Annotated[int, Field(ge=0)]
 _PositiveInt = Annotated[int, Field(gt=0)]
 _JOB_ID_PATTERN = re.compile(r"([0-9]+)(?:;[^;\r\n]+)?\n?")
 
@@ -44,7 +45,12 @@ class _Remote(StrictFrozenRecord):
 
 class CandidateProcessInput(StrictFrozenRecord):
     request: TuneRequest
-    method: Method
+    method_index: _NonNegativeInt
+
+    @model_validator(mode="after")
+    def validate_method_index(self) -> Self:
+        self.request.method_at(self.method_index)
+        return self
 
 
 def submit(request: WorkflowRequest) -> int:
@@ -57,11 +63,11 @@ def submit(request: WorkflowRequest) -> int:
     )
 
 
-def submit_candidate(request: TuneRequest, method: Method) -> int:
+def submit_candidate(request: TuneRequest, method_index: int) -> int:
     remote = _load_remote()
     candidate_json = CandidateProcessInput(
         request=request,
-        method=method,
+        method_index=method_index,
     ).model_dump_json()
     return _invoke_sbatch(remote, _render_script(remote, candidate_json, "candidate"))
 

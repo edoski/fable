@@ -461,7 +461,8 @@ export function AnalyticsScreen({
   const [analyticsHorizon, setAnalyticsHorizon] =
     useState<Horizon>(horizon);
   const [networkPickerOpen, setNetworkPickerOpen] = useState(false);
-  const [selectedRun, setSelectedRun] = useState<InferenceRun | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
   const graphRuns = runsForSelection(runs, chain, analyticsHorizon);
   const summary = summarizeRuns(graphRuns);
 
@@ -589,7 +590,7 @@ export function AnalyticsScreen({
                   accessibilityHint="Opens run details"
                   accessibilityRole="button"
                   key={run.id}
-                  onPress={() => setSelectedRun(run)}
+                  onPress={() => setSelectedRunId(run.id)}
                   style={[
                     styles.runRow,
                     index === graphRuns.length - 1 && styles.runRowLast,
@@ -622,7 +623,7 @@ export function AnalyticsScreen({
         </View>
       </ScrollView>
 
-      <RunDetails onClose={() => setSelectedRun(null)} run={selectedRun} />
+      <RunDetails onClose={() => setSelectedRunId(null)} run={selectedRun} />
       {networkPickerOpen && (
         <NetworkPicker
           onClose={() => setNetworkPickerOpen(false)}

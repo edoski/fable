@@ -19,9 +19,9 @@ from fable.addresses import (
     corpus_blocks_path,
     corpus_directory,
     corpus_json_path,
+    study_json_path,
 )
 from fable.config import (
-    BaselineSource,
     BlockWindow,
     CorpusDefinition,
     CorpusRequest,
@@ -29,6 +29,7 @@ from fable.config import (
     FitMethod,
     LstmDefinition,
     Method,
+    SelectedStudySource,
     TrainingDefinition,
     TrainRequest,
     TransformerDefinition,
@@ -42,6 +43,7 @@ from fable.modeling import (
     load_artifact,
     train,
 )
+from fable.study import RetainedResult, Study
 from fable.temporal import FeatureState, prepare_fit_history
 from tests.helpers import modeling_method
 
@@ -75,17 +77,14 @@ def _experiment() -> ExperimentSemantics:
 
 
 def _request() -> TrainRequest:
-    definition = TrainingDefinition(
-        experiment=_experiment(),
-        method=modeling_method(),
-    )
     return TrainRequest(
         workflow="train",
         artifact_id=ARTIFACT_ID,
-        source=BaselineSource(
-            kind="baseline",
+        source=SelectedStudySource(
             corpus_id=CORPUS_ID,
-            training_definition=definition,
+            study_id=UUID("40000000-0000-4000-8000-000000000001"),
+            study_result_index=0,
+            experiment=_experiment(),
         ),
     )
 
@@ -170,17 +169,44 @@ def _definition(
 
 def _train_request(
     artifact_id: UUID,
-    model: LstmDefinition | TransformerDefinition | TransformerLstmDefinition,
 ) -> TrainRequest:
     return TrainRequest(
         workflow="train",
         artifact_id=artifact_id,
-        source=BaselineSource(
-            kind="baseline",
+        source=SelectedStudySource(
             corpus_id=CORPUS_ID,
-            training_definition=_definition(model),
+            study_id=artifact_id,
+            study_result_index=0,
+            experiment=_experiment(),
         ),
     )
+
+
+def _write_selected_study(
+    storage_root: Path,
+    request: TrainRequest,
+    method: Method,
+) -> None:
+    source = request.source
+    study = Study(
+        request=TuneRequest(
+            workflow="tune",
+            study_id=source.study_id,
+            corpus_id=source.corpus_id,
+            experiment=source.experiment,
+            methods=(method,),
+        ),
+        trials=(
+            RetainedResult(
+                objective=0.5,
+                selected_epoch=1,
+                completed_epochs=1,
+            ),
+        ),
+    )
+    path = study_json_path(storage_root, source.study_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(study.model_dump_json(), encoding="utf-8")
 
 
 def test_artifact_association_round_trips_strict_json() -> None:
@@ -191,6 +217,7 @@ def test_artifact_association_round_trips_strict_json() -> None:
             standard_deviations=(0.5, 0.25),
         ),
         target_state=TargetState(mean=3.0, standard_deviation=0.75),
+        method=modeling_method(),
     )
 
     assert (
@@ -202,21 +229,8 @@ def test_artifact_association_round_trips_strict_json() -> None:
     )
 
 
-def test_artifact_association_rejects_only_owned_mismatches() -> None:
-    feature_state = FeatureState(
-        means=(1.0, 2.0),
-        standard_deviations=(0.5, 0.25),
-    )
+def test_artifact_association_rejects_feature_width_mismatch() -> None:
     target_state = TargetState(mean=3.0, standard_deviation=0.75)
-    method = modeling_method()
-
-    with pytest.raises(ValidationError, match="baseline artifacts"):
-        ArtifactAssociation(
-            request=_request(),
-            feature_state=feature_state,
-            target_state=target_state,
-            method=method,
-        )
     with pytest.raises(ValidationError, match="feature state width"):
         ArtifactAssociation(
             request=_request(),
@@ -225,6 +239,7 @@ def test_artifact_association_rejects_only_owned_mismatches() -> None:
                 standard_deviations=(0.5,),
             ),
             target_state=target_state,
+            method=modeling_method(),
         )
 
 
@@ -257,6 +272,7 @@ def test_epoch_logs_weight_short_batches_in_float64(
         request=_request(),
         feature_state=prepared.feature_state,
         target_state=prepared.target_state,
+        method=modeling_method(),
     )
     torch.manual_seed(89)
     module = modeling._FitModule(modeling._json_association(association)).eval()
@@ -298,6 +314,7 @@ def test_gradient_clipping_uses_trainer_value_and_rejects_nonfinite() -> None:
             standard_deviations=(0.5, 0.25),
         ),
         target_state=TargetState(mean=3.0, standard_deviation=0.75),
+        method=modeling_method(),
     )
     module = modeling._FitModule(modeling._json_association(association))
     parameter = torch.nn.Parameter(torch.tensor([3.0, 4.0]))
@@ -363,8 +380,10 @@ def test_all_three_models_train_load_and_apply_direct_loss(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    request = _train_request(artifact_id, model)
+    method = _definition(model).method
+    request = _train_request(artifact_id)
     _write_corpus(tmp_path)
+    _write_selected_study(tmp_path, request, method)
     real_trainer: Any = modeling.pl.Trainer
 
     def cpu_trainer(**kwargs: Any) -> Any:
@@ -486,9 +505,9 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
             for epoch, loss in (line.split() for line in lines)
         ]
 
-    first = modeling.fit_candidate(request, method, tmp_path, scratch)
+    first = modeling.fit_candidate(request, 0, tmp_path, scratch)
     first_progress = progress()
-    second = modeling.fit_candidate(request, method, tmp_path, scratch)
+    second = modeling.fit_candidate(request, 0, tmp_path, scratch)
     second_progress = progress()
 
     assert [epoch for epoch, _ in first_progress] == [2]

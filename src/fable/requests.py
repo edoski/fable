@@ -9,13 +9,13 @@ from .config import (
     EvaluateRequest,
     ExperimentSemantics,
     Method,
-    TrainingSource,
+    SelectedStudySource,
     TrainRequest,
     TuneRequest,
 )
 
 
-def fresh_train_request(source: TrainingSource) -> TrainRequest:
+def fresh_train_request(source: SelectedStudySource) -> TrainRequest:
     return TrainRequest(workflow="train", artifact_id=uuid4(), source=source)
 
 

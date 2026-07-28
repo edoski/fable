@@ -29,12 +29,11 @@ def _publish_studies(
             request=request,
             trials=tuple(
                 RetainedResult(
-                    method=method,
                     objective=objective + index,
                     selected_epoch=1,
                     completed_epochs=1,
                 )
-                for index, method in enumerate(request.methods)
+                for index, _ in enumerate(request.methods)
             ),
         )
         path = storage_root / "studies" / f"{request.study_id}.json"

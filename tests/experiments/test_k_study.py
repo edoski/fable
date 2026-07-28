@@ -79,13 +79,11 @@ def _publish_hpo(storage_root: Path) -> None:
             request=request,
             trials=(
                 RetainedResult(
-                    method=method,
                     objective=2.0,
                     selected_epoch=1,
                     completed_epochs=1,
                 ),
                 RetainedResult(
-                    method=_METHOD,
                     objective=1.0,
                     selected_epoch=1,
                     completed_epochs=1,

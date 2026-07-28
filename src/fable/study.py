@@ -19,10 +19,10 @@ from .config import (
 from .records import StrictFrozenRecord
 
 _Epoch: TypeAlias = Annotated[int, Field(ge=1)]
+_MethodIndex: TypeAlias = Annotated[int, Field(ge=0)]
 
 
 class RetainedResult(StrictFrozenRecord):
-    method: Method
     objective: Annotated[float, Field(allow_inf_nan=False)]
     selected_epoch: _Epoch
     completed_epochs: _Epoch
@@ -31,8 +31,6 @@ class RetainedResult(StrictFrozenRecord):
     def validate_epochs(self) -> Self:
         if self.selected_epoch > self.completed_epochs:
             raise ValueError("selected_epoch must not exceed completed_epochs")
-        if self.completed_epochs > self.method.fit.max_epochs:
-            raise ValueError("completed_epochs must not exceed method.fit.max_epochs")
         return self
 
 
@@ -41,11 +39,25 @@ class Study(StrictFrozenRecord):
     trials: Annotated[tuple[RetainedResult, ...], Field(min_length=1)]
 
     @model_validator(mode="after")
-    def validate_methods(self) -> Self:
-        for result in self.trials:
-            if result.method not in self.request.methods:
-                raise ValueError("Method is outside the TuneRequest")
+    def validate_trials(self) -> Self:
+        if len(self.trials) != len(self.request.methods):
+            raise ValueError("trials must align with request methods")
+        for method, result in zip(self.request.methods, self.trials, strict=True):
+            if result.completed_epochs > method.fit.max_epochs:
+                raise ValueError("completed_epochs must not exceed method.fit.max_epochs")
         return self
+
+    def best_result(self) -> tuple[int, RetainedResult]:
+        return min(
+            enumerate(self.trials),
+            key=lambda indexed: indexed[1].objective,
+        )
+
+
+class _CandidateResult(StrictFrozenRecord):
+    request: TuneRequest
+    method_index: _MethodIndex
+    result: RetainedResult
 
 
 def retain_result(
@@ -58,7 +70,11 @@ def retain_result(
     result_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = result_path.with_name(f".{result_path.name}.tmp")
     temporary.write_text(
-        Study(request=request, trials=(result,)).model_dump_json(),
+        _CandidateResult(
+            request=request,
+            method_index=method_index,
+            result=result,
+        ).model_dump_json(),
         encoding="utf-8",
     )
     os.replace(temporary, result_path)
@@ -72,7 +88,7 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
     first_path = _result_path(storage_root, study_id, 0)
     if first_path not in result_paths:
         raise ValueError("result files do not match TuneRequest methods")
-    first = _load_study_path(first_path)
+    first = _load_candidate_result_path(first_path)
     request = first.request
     if request.study_id != study_id:
         raise ValueError("result Study ID does not match requested Study ID")
@@ -89,15 +105,12 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
 
     trials: list[RetainedResult] = []
     for method_index, result_path in enumerate(expected_paths):
-        result_study = first if method_index == 0 else _load_study_path(result_path)
-        if result_study.request != request:
+        candidate = first if method_index == 0 else _load_candidate_result_path(result_path)
+        if candidate.request != request:
             raise ValueError("result requests must be identical")
-        if len(result_study.trials) != 1:
-            raise ValueError("each result file must contain exactly one trial")
-        result = result_study.trials[0]
-        if result.method != request.methods[method_index]:
-            raise ValueError("result method does not match request index")
-        trials.append(result)
+        if candidate.method_index != method_index:
+            raise ValueError("result method index does not match file index")
+        trials.append(candidate.result)
 
     hidden = canonical.with_name(f".{canonical.name}")
     hidden.write_text(
@@ -127,7 +140,7 @@ def load_selected_method(
     if study.request.corpus_id != source.corpus_id:
         raise ValueError("selected source Corpus ID does not match canonical Study")
 
-    return study.trials[source.study_result_index].method
+    return study.request.method_at(source.study_result_index)
 
 
 def _study_scratch(storage_root: Path, study_id: UUID4) -> Path:
@@ -148,3 +161,7 @@ def _result_path(storage_root: Path, study_id: UUID4, method_index: int) -> Path
 
 def _load_study_path(path: Path) -> Study:
     return Study.model_validate_json(path.read_bytes(), strict=True)
+
+
+def _load_candidate_result_path(path: Path) -> _CandidateResult:
+    return _CandidateResult.model_validate_json(path.read_bytes(), strict=True)
