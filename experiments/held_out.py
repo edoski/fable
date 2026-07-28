@@ -13,7 +13,7 @@ from bundle import bundle_path, read_cells, write_cells
 from fable.addresses import evaluation_directory
 from fable.config import BlockWindow
 from fable.corpus import load_corpus_request
-from fable.evaluation import reduce_evaluation, reduce_rolling
+from fable.evaluation import reduce_baselines, reduce_evaluation, reduce_rolling
 from fable.experiments import (
     ExperimentEntry,
     ExperimentKind,
@@ -107,6 +107,18 @@ def report(storage_root: Path, experiment_id: UUID) -> None:
     print(pl.concat(results).write_csv(None, separator="\t"), end="")
 
 
+def baselines(storage_root: Path, experiment_id: UUID) -> None:
+    storage_root = storage_root.resolve()
+    manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
+    results = []
+    for entry in manifest.entries:
+        result = reduce_baselines(storage_root, entry.require_evaluation_id())
+        results.append(
+            pl.DataFrame({"cell": [entry.cell] * result.height}).hstack(result)
+        )
+    print(pl.concat(results).write_csv(None, separator="\t"), end="")
+
+
 def rolling(storage_root: Path, experiment_id: UUID) -> None:
     storage_root = storage_root.resolve()
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
@@ -123,6 +135,7 @@ app = typer.Typer(add_completion=False)
 app.command()(prepare)
 app.command()(close)
 app.command()(report)
+app.command()(baselines)
 app.command()(rolling)
 
 

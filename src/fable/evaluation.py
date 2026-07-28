@@ -29,10 +29,13 @@ OBSERVATION_SCHEMA = pl.Schema(
         "predicted_action_k": pl.Int64,
         "predicted_minimum_log_base_fee": pl.Float64,
         "minimum_action_k": pl.Int64,
+        "deadline_action_k": pl.Int64,
         "immediate_base_fee_per_gas": pl.Int64,
         "immediate_effective_priority_fee_per_gas_p50": pl.Int64,
         "selected_base_fee_per_gas": pl.Int64,
         "selected_effective_priority_fee_per_gas_p50": pl.Int64,
+        "deadline_base_fee_per_gas": pl.Int64,
+        "deadline_effective_priority_fee_per_gas_p50": pl.Int64,
         "minimum_base_fee_per_gas": pl.Int64,
     }
 )
@@ -44,6 +47,16 @@ _RESULT_SCHEMA = pl.Schema(
         "f1_macro": pl.Float64,
         "log_fee_mae": pl.Float64,
         "log_fee_mse": pl.Float64,
+        "base_fee_savings": pl.Float64,
+        "p50_fee_inclusive_savings": pl.Float64,
+        "base_fee_optimality_gap": pl.Float64,
+    }
+)
+_BASELINE_RESULT_SCHEMA = pl.Schema(
+    {
+        "policy": pl.String,
+        "accuracy": pl.Float64,
+        "f1_macro": pl.Float64,
         "base_fee_savings": pl.Float64,
         "p50_fee_inclusive_savings": pl.Float64,
         "base_fee_optimality_gap": pl.Float64,
@@ -142,11 +155,15 @@ def _collect_observations(
             rows = np.arange(actions.size, dtype=np.int64)
             immediate_batch = base_fees[:, 0]
             selected_batch = base_fees[rows, actions]
+            deadline_batch = base_fees[:, -1]
             minimum_batch = base_fees[rows, minimum_actions_batch]
             immediate_outcome_rows = batch["origin_block"].numpy() + 1 - first_outcome_block
             immediate_priority_fees_p50_batch = outcome_priority_fees_p50[immediate_outcome_rows]
             selected_priority_fees_p50_batch = outcome_priority_fees_p50[
                 immediate_outcome_rows + actions
+            ]
+            deadline_priority_fees_p50_batch = outcome_priority_fees_p50[
+                immediate_outcome_rows + base_fees.shape[1] - 1
             ]
             predicted_logs_batch = target_state.mean + target_state.standard_deviation * (
                 output.minimum_fee_z.cpu().numpy().astype(np.float64)
@@ -160,6 +177,7 @@ def _collect_observations(
             columns["predicted_action_k"][destination] = actions
             columns["predicted_minimum_log_base_fee"][destination] = predicted_logs_batch
             columns["minimum_action_k"][destination] = minimum_actions_batch
+            columns["deadline_action_k"][destination] = base_fees.shape[1] - 1
             columns["immediate_base_fee_per_gas"][destination] = immediate_batch
             columns["immediate_effective_priority_fee_per_gas_p50"][destination] = (
                 immediate_priority_fees_p50_batch
@@ -167,6 +185,10 @@ def _collect_observations(
             columns["selected_base_fee_per_gas"][destination] = selected_batch
             columns["selected_effective_priority_fee_per_gas_p50"][destination] = (
                 selected_priority_fees_p50_batch
+            )
+            columns["deadline_base_fee_per_gas"][destination] = deadline_batch
+            columns["deadline_effective_priority_fee_per_gas_p50"][destination] = (
+                deadline_priority_fees_p50_batch
             )
             columns["minimum_base_fee_per_gas"][destination] = minimum_batch
             cursor += size
@@ -178,6 +200,49 @@ def reduce_evaluation(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     """Derive one testing evaluation's seven metrics from its observations."""
 
     return _reduce(_load_evaluation(storage_root, evaluation_id))
+
+
+def reduce_baselines(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
+    """Derive immediate and deadline policy metrics from one testing evaluation."""
+
+    observations = _load_evaluation(storage_root, evaluation_id)
+    minimum_actions = observations["minimum_action_k"].to_numpy()
+    immediate_fees = observations["immediate_base_fee_per_gas"].to_numpy()
+    immediate_priority_fees = observations[
+        "immediate_effective_priority_fee_per_gas_p50"
+    ].to_numpy()
+    minimum_fees = observations["minimum_base_fee_per_gas"].to_numpy()
+
+    policies = (
+        (
+            "immediate",
+            np.zeros_like(minimum_actions),
+            immediate_fees,
+            immediate_priority_fees,
+        ),
+        (
+            "deadline",
+            observations["deadline_action_k"].to_numpy(),
+            observations["deadline_base_fee_per_gas"].to_numpy(),
+            observations["deadline_effective_priority_fee_per_gas_p50"].to_numpy(),
+        ),
+    )
+    rows = []
+    for policy, actions, selected_fees, selected_priority_fees in policies:
+        metrics = _classification_metrics(actions, minimum_actions)
+        metrics.update(
+            _economic_metrics(
+                immediate_fees,
+                immediate_priority_fees,
+                selected_fees,
+                selected_priority_fees,
+                minimum_fees,
+            )
+        )
+        if not np.isfinite(tuple(metrics.values())).all():
+            raise ValueError("baseline reduction must contain only finite metrics")
+        rows.append({"policy": policy, **metrics})
+    return pl.DataFrame(rows, schema=_BASELINE_RESULT_SCHEMA)
 
 
 def reduce_rolling(
@@ -248,19 +313,8 @@ def _reduce(observations: pl.DataFrame) -> pl.DataFrame:
     minimum_fees = observations["minimum_base_fee_per_gas"].to_numpy()
 
     log_errors = predicted_logs - np.log(minimum_fees)
-    classes = np.union1d(minimum_actions, predicted_actions)
-    f1_by_class = [
-        2.0
-        * np.count_nonzero((minimum_actions == action) & (predicted_actions == action))
-        / (
-            np.count_nonzero(minimum_actions == action)
-            + np.count_nonzero(predicted_actions == action)
-        )
-        for action in classes
-    ]
-    metrics: dict[str, float] = {
-        "accuracy": float(np.mean(predicted_actions == minimum_actions)),
-        "f1_macro": float(np.mean(f1_by_class)),
+    metrics = {
+        **_classification_metrics(predicted_actions, minimum_actions),
         "log_fee_mae": float(np.mean(np.abs(log_errors))),
         "log_fee_mse": float(np.mean(np.square(log_errors))),
     }
@@ -279,6 +333,26 @@ def _reduce(observations: pl.DataFrame) -> pl.DataFrame:
         {name: [value] for name, value in metrics.items()},
         schema=_RESULT_SCHEMA,
     )
+
+
+def _classification_metrics(
+    predicted_actions: np.ndarray,
+    minimum_actions: np.ndarray,
+) -> dict[str, float]:
+    classes = np.union1d(minimum_actions, predicted_actions)
+    f1_by_class = [
+        2.0
+        * np.count_nonzero((minimum_actions == action) & (predicted_actions == action))
+        / (
+            np.count_nonzero(minimum_actions == action)
+            + np.count_nonzero(predicted_actions == action)
+        )
+        for action in classes
+    ]
+    return {
+        "accuracy": float(np.mean(predicted_actions == minimum_actions)),
+        "f1_macro": float(np.mean(f1_by_class)),
+    }
 
 
 def _reduce_rolling_cell(

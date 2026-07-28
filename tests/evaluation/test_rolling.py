@@ -42,10 +42,13 @@ def _publish_evaluation(
             "predicted_action_k": action,
             "predicted_minimum_log_base_fee": math.log(20),
             "minimum_action_k": 0,
+            "deadline_action_k": horizon - 1,
             "immediate_base_fee_per_gas": 100,
             "immediate_effective_priority_fee_per_gas_p50": 10,
             "selected_base_fee_per_gas": selected_base_fee,
             "selected_effective_priority_fee_per_gas_p50": selected_priority_fee,
+            "deadline_base_fee_per_gas": 100,
+            "deadline_effective_priority_fee_per_gas_p50": 10,
             "minimum_base_fee_per_gas": 20,
         }
         for origin, action, selected_base_fee, selected_priority_fee in zip(

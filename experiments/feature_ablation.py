@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import shutil
-from itertools import product
 from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
@@ -25,6 +24,7 @@ from fable.experiments import (
     ExperimentEntry,
     ExperimentKind,
     ExperimentManifest,
+    load_experiment_manifest,
     write_experiment_manifest,
 )
 from fable.requests import fresh_tune_request
@@ -51,7 +51,6 @@ _CHAINS = (
         BlockWindow(first_parent_block=79_663_827, last_parent_block=81_367_328),
     ),
 )
-_FEATURE_SETS = ("B", "B+S+T+P", "B+T+P", "B+S+P", "B+S+T")
 _FIT = FitMethod(
     learning_rate=3e-4,
     weight_decay=1e-4,
@@ -103,33 +102,64 @@ _METHODS = (
 )
 
 
-def _ordered_features(chain: str, feature_set: str) -> tuple[FeatureName, ...]:
-    state: tuple[FeatureName, ...] = (
-        (
-            "gas_utilization",
-            "log_exact_forming_base_fee_per_gas",
-            "log_gas_limit",
-            "log1p_tx_count",
+def _feature_units(chain: str) -> tuple[tuple[str, tuple[FeatureName, ...]], ...]:
+    units: list[tuple[str, tuple[FeatureName, ...]]] = [
+        ("base_fee", ("log_base_fee_per_gas",)),
+        ("gas_utilization", ("gas_utilization",)),
+    ]
+    if chain == "ethereum":
+        units.append(
+            ("exact_forming_base_fee", ("log_exact_forming_base_fee_per_gas",))
         )
-        if chain == "ethereum"
-        else ("gas_utilization", "log_gas_limit", "log1p_tx_count")
+    units.extend(
+        (
+            ("gas_limit", ("log_gas_limit",)),
+            ("transaction_count", ("log1p_tx_count",)),
+            ("block_interval", ("block_interval_seconds",)),
+            ("hour", ("hour_sin", "hour_cos")),
+            ("day_of_week", ("dow_sin", "dow_cos")),
+            (
+                "priority_fee_p50",
+                ("log1p_effective_priority_fee_per_gas_p50",),
+            ),
+            (
+                "priority_fee_p90",
+                ("log1p_effective_priority_fee_per_gas_p90",),
+            ),
+        )
     )
-    groups: dict[str, tuple[FeatureName, ...]] = {
-        "B": ("log_base_fee_per_gas",),
-        "S": state,
-        "T": (
-            "block_interval_seconds",
-            "hour_sin",
-            "hour_cos",
-            "dow_sin",
-            "dow_cos",
-        ),
-        "P": (
-            "log1p_effective_priority_fee_per_gas_p50",
-            "log1p_effective_priority_fee_per_gas_p90",
-        ),
-    }
-    return tuple(feature for group in feature_set.split("+") for feature in groups[group])
+    return tuple(units)
+
+
+def _feature_configurations(
+    chain: str,
+) -> tuple[tuple[str, tuple[FeatureName, ...]], ...]:
+    units = _feature_units(chain)
+    full = _flatten_units(units)
+    leave_one_out = tuple(
+        (
+            f"without_{omitted_name}",
+            _flatten_units(units, excluding=omitted_name),
+        )
+        for omitted_name, _ in units
+    )
+    return (
+        ("full", full),
+        *leave_one_out,
+        ("base_only", ("log_base_fee_per_gas",)),
+    )
+
+
+def _flatten_units(
+    units: tuple[tuple[str, tuple[FeatureName, ...]], ...],
+    *,
+    excluding: str | None = None,
+) -> tuple[FeatureName, ...]:
+    features: list[FeatureName] = []
+    for name, unit in units:
+        if name != excluding:
+            features.extend(unit)
+    return tuple(features)
 
 
 def prepare(storage_root: Path) -> None:
@@ -140,61 +170,49 @@ def prepare(storage_root: Path) -> None:
     requests.mkdir(parents=True)
 
     rows: list[tuple[str, Path, int, UUID]] = []
-    for index, (
-        (chain, corpus_id, training_window, validation_window),
-        method,
-        feature_set,
-    ) in enumerate(product(_CHAINS, _METHODS, _FEATURE_SETS)):
-        family = method.model.family
-        cell = f"{chain}.{family}.{feature_set}"
-        request = fresh_tune_request(
-            corpus_id,
-            ExperimentSemantics(
-                training_window=training_window,
-                validation_window=validation_window,
-                context_blocks=100,
-                horizon_blocks=5,
-                ordered_features=_ordered_features(chain, feature_set),
-            ),
-            (method,),
-        )
-        path = requests / f"{index:02d}.json"
-        path.write_text(request.model_dump_json(), encoding="utf-8")
-        method_index = 0
-        rows.append((cell, path, method_index, request.study_id))
+    for chain, corpus_id, training_window, validation_window in _CHAINS:
+        for method in _METHODS:
+            family = method.model.family
+            for configuration, ordered_features in _feature_configurations(chain):
+                request = fresh_tune_request(
+                    corpus_id,
+                    ExperimentSemantics(
+                        training_window=training_window,
+                        validation_window=validation_window,
+                        context_blocks=100,
+                        horizon_blocks=5,
+                        ordered_features=ordered_features,
+                    ),
+                    (method,),
+                )
+                path = requests / f"{len(rows):03d}.json"
+                path.write_text(request.model_dump_json(), encoding="utf-8")
+                rows.append(
+                    (
+                        f"{chain}.{family}.{configuration}",
+                        path,
+                        0,
+                        request.study_id,
+                    )
+                )
 
     write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
 
     print(experiment_id)
 
 
-def select(storage_root: Path, experiment_id: UUID) -> None:
+def close(storage_root: Path, experiment_id: UUID) -> None:
     storage_root = storage_root.resolve()
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 
-    objectives: dict[tuple[str, str], list[float]] = {}
     entries: list[ExperimentEntry] = []
     for row in rows:
-        chain, _, feature_set = row["cell"].split(".")
         study_id = UUID(row["study_id"])
         study = load_study(storage_root, study_id)
         if len(study.trials) != 1:
             raise ValueError("feature-ablation Study must contain its one retained result")
-        objectives.setdefault((chain, feature_set), []).append(study.trials[0].objective)
         entries.append(ExperimentEntry(cell=row["cell"], study_id=study_id))
-
-    winners: list[tuple[str, str, float]] = []
-    for chain, *_ in _CHAINS:
-        winner = min(
-            _FEATURE_SETS,
-            key=lambda feature_set: (
-                fmean(objectives[chain, feature_set]),
-                len(_ordered_features(chain, feature_set)),
-            ),
-        )
-        mean = fmean(objectives[chain, winner])
-        winners.append((chain, winner, mean))
 
     write_experiment_manifest(
         storage_root,
@@ -202,13 +220,27 @@ def select(storage_root: Path, experiment_id: UUID) -> None:
         ExperimentManifest(experiment_id=experiment_id, entries=tuple(entries)),
     )
     shutil.rmtree(bundle)
-    for chain, feature_set, mean in winners:
-        print(f"{chain}\t{feature_set}\t{mean:g}")
+    print(experiment_id)
+
+
+def report(storage_root: Path, experiment_id: UUID) -> None:
+    storage_root = storage_root.resolve()
+    manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
+    objectives: dict[tuple[str, str], list[float]] = {}
+    for entry in manifest.entries:
+        chain, _, configuration = entry.cell.split(".")
+        study = load_study(storage_root, entry.require_study_id())
+        objectives.setdefault((chain, configuration), []).append(study.trials[0].objective)
+
+    for chain, *_ in _CHAINS:
+        for configuration, _ in _feature_configurations(chain):
+            print(f"{chain}\t{configuration}\t{fmean(objectives[chain, configuration]):g}")
 
 
 app = typer.Typer(add_completion=False)
 app.command()(prepare)
-app.command()(select)
+app.command()(close)
+app.command()(report)
 
 
 if __name__ == "__main__":

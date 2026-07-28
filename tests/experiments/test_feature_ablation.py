@@ -12,7 +12,7 @@ _ROOT = Path(__file__).parents[2]
 _SCRIPT = _ROOT / "experiments" / "feature_ablation.py"
 
 
-def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> None:
+def test_prepare_authors_full_leave_one_out_and_base_only_matrix(tmp_path: Path) -> None:
     result = run_script(_SCRIPT, "prepare", tmp_path)
     experiment_id = UUID(result.stdout.strip())
 
@@ -24,16 +24,23 @@ def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> No
     ]
 
     assert experiment_id.version == 4
-    assert len(rows) == 45
-    assert [row["cell"] for row in rows[:5]] == [
-        "ethereum.lstm.B",
-        "ethereum.lstm.B+S+T+P",
-        "ethereum.lstm.B+T+P",
-        "ethereum.lstm.B+S+P",
-        "ethereum.lstm.B+S+T",
+    assert len(rows) == 102
+    assert [row["cell"] for row in rows[:12]] == [
+        "ethereum.lstm.full",
+        "ethereum.lstm.without_base_fee",
+        "ethereum.lstm.without_gas_utilization",
+        "ethereum.lstm.without_exact_forming_base_fee",
+        "ethereum.lstm.without_gas_limit",
+        "ethereum.lstm.without_transaction_count",
+        "ethereum.lstm.without_block_interval",
+        "ethereum.lstm.without_hour",
+        "ethereum.lstm.without_day_of_week",
+        "ethereum.lstm.without_priority_fee_p50",
+        "ethereum.lstm.without_priority_fee_p90",
+        "ethereum.lstm.base_only",
     ]
-    assert rows[-1]["cell"] == "avalanche.transformer_lstm.B+S+T"
-    assert len({request.study_id for request in requests}) == 45
+    assert rows[-1]["cell"] == "avalanche.transformer_lstm.base_only"
+    assert len({request.study_id for request in requests}) == 102
     assert {len(request.methods) for request in requests} == {1}
     assert {row["method_index"] for row in rows} == {"0"}
     assert requests[0].experiment.model_dump() == {
@@ -47,12 +54,40 @@ def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> No
         },
         "context_blocks": 100,
         "horizon_blocks": 5,
-        "ordered_features": ("log_base_fee_per_gas",),
+        "ordered_features": (
+            "log_base_fee_per_gas",
+            "gas_utilization",
+            "log_exact_forming_base_fee_per_gas",
+            "log_gas_limit",
+            "log1p_tx_count",
+            "block_interval_seconds",
+            "hour_sin",
+            "hour_cos",
+            "dow_sin",
+            "dow_cos",
+            "log1p_effective_priority_fee_per_gas_p50",
+            "log1p_effective_priority_fee_per_gas_p90",
+        ),
     }
-    assert requests[1].experiment.ordered_features == (
+    assert requests[7].experiment.ordered_features == (
         "log_base_fee_per_gas",
         "gas_utilization",
         "log_exact_forming_base_fee_per_gas",
+        "log_gas_limit",
+        "log1p_tx_count",
+        "block_interval_seconds",
+        "dow_sin",
+        "dow_cos",
+        "log1p_effective_priority_fee_per_gas_p50",
+        "log1p_effective_priority_fee_per_gas_p90",
+    )
+    assert requests[9].experiment.ordered_features[-1] == (
+        "log1p_effective_priority_fee_per_gas_p90"
+    )
+    assert requests[11].experiment.ordered_features == ("log_base_fee_per_gas",)
+    assert requests[-2].experiment.ordered_features == (
+        "log_base_fee_per_gas",
+        "gas_utilization",
         "log_gas_limit",
         "log1p_tx_count",
         "block_interval_seconds",
@@ -61,30 +96,23 @@ def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> No
         "dow_sin",
         "dow_cos",
         "log1p_effective_priority_fee_per_gas_p50",
-        "log1p_effective_priority_fee_per_gas_p90",
-    )
-    assert requests[-2].experiment.ordered_features == (
-        "log_base_fee_per_gas",
-        "gas_utilization",
-        "log_gas_limit",
-        "log1p_tx_count",
-        "log1p_effective_priority_fee_per_gas_p50",
-        "log1p_effective_priority_fee_per_gas_p90",
     )
 
 
-def test_select_publishes_all_studies_and_reports_chain_winners(tmp_path: Path) -> None:
+def test_close_publishes_all_studies_and_report_averages_each_configuration(
+    tmp_path: Path,
+) -> None:
     experiment_id = UUID(run_script(_SCRIPT, "prepare", tmp_path).stdout.strip())
     bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
     objectives = {
-        "ethereum": {"B": 1.0, "B+S+T+P": 1.0},
-        "polygon": {"B+T+P": 0.5},
-        "avalanche": {"B+S+P": 0.25},
+        "ethereum": {"full": 1.0, "without_hour": 0.75},
+        "polygon": {"without_priority_fee_p90": 0.5},
+        "avalanche": {"base_only": 0.25},
     }
     for row in read_tsv_rows(bundle / "cells.tsv"):
-        chain, _, feature_set = row["cell"].split(".")
+        chain, _, configuration = row["cell"].split(".")
         request = TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
-        objective = objectives.get(chain, {}).get(feature_set, 2.0)
+        objective = objectives.get(chain, {}).get(configuration, 2.0)
         study = Study(
             request=request,
             trials=(
@@ -99,18 +127,22 @@ def test_select_publishes_all_studies_and_reports_chain_winners(tmp_path: Path) 
         path.parent.mkdir(exist_ok=True)
         path.write_text(study.model_dump_json(), encoding="utf-8")
 
-    result = run_script(_SCRIPT, "select", tmp_path, experiment_id)
+    result = run_script(_SCRIPT, "close", tmp_path, experiment_id)
 
     manifest_path = tmp_path / "experiments" / "feature_ablation" / f"{experiment_id}.json"
     manifest = ExperimentManifest.model_validate_json(
         manifest_path.read_bytes(),
         strict=True,
     )
-    assert result.stdout.splitlines() == [
-        "ethereum\tB\t1",
-        "polygon\tB+T+P\t0.5",
-        "avalanche\tB+S+P\t0.25",
-    ]
+    assert result.stdout.strip() == str(experiment_id)
     assert manifest.experiment_id == experiment_id
-    assert len(manifest.entries) == 45
+    assert len(manifest.entries) == 102
     assert not manifest_path.with_name(f".{experiment_id}").exists()
+
+    report = run_script(_SCRIPT, "report", tmp_path, experiment_id)
+    lines = report.stdout.splitlines()
+    assert len(lines) == 34
+    assert lines[0] == "ethereum\tfull\t1"
+    assert lines[7] == "ethereum\twithout_hour\t0.75"
+    assert lines[21] == "polygon\twithout_priority_fee_p90\t0.5"
+    assert lines[-1] == "avalanche\tbase_only\t0.25"

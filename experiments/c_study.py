@@ -26,7 +26,7 @@ _CHAINS = ("ethereum", "polygon", "avalanche")
 _FAMILIES = ("lstm", "transformer", "transformer_lstm")
 
 
-def _selected_feature_studies(
+def _full_feature_studies(
     storage_root: Path,
     experiment_id: UUID,
 ) -> dict[tuple[str, str], Study]:
@@ -35,33 +35,12 @@ def _selected_feature_studies(
         ExperimentKind.FEATURE_ABLATION,
         experiment_id,
     )
-    studies: dict[tuple[str, str, str], Study] = {}
-    objectives: dict[tuple[str, str], list[float]] = {}
+    studies: dict[tuple[str, str], Study] = {}
     for entry in manifest.entries:
-        chain, family, feature_set = entry.cell.split(".")
-        study = load_study(storage_root, entry.require_study_id())
-        studies[chain, family, feature_set] = study
-        objectives.setdefault((chain, feature_set), []).append(study.trials[0].objective)
-
-    selected: dict[tuple[str, str], Study] = {}
-    for chain in _CHAINS:
-        feature_sets = tuple(
-            dict.fromkeys(
-                feature_set
-                for candidate_chain, _, feature_set in studies
-                if candidate_chain == chain
-            )
-        )
-        winner = min(
-            feature_sets,
-            key=lambda feature_set: (
-                fmean(objectives[chain, feature_set]),
-                len(studies[chain, _FAMILIES[0], feature_set].request.experiment.ordered_features),
-            ),
-        )
-        for family in _FAMILIES:
-            selected[chain, family] = studies[chain, family, winner]
-    return selected
+        chain, family, configuration = entry.cell.split(".")
+        if configuration == "full":
+            studies[chain, family] = load_study(storage_root, entry.require_study_id())
+    return studies
 
 
 def prepare(
@@ -70,7 +49,7 @@ def prepare(
 ) -> None:
     experiment_id = uuid4()
     storage_root = storage_root.resolve()
-    selected = _selected_feature_studies(storage_root, feature_experiment_id)
+    selected = _full_feature_studies(storage_root, feature_experiment_id)
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
     requests.mkdir(parents=True)

@@ -9,7 +9,7 @@ import pytest
 
 from fable.addresses import evaluation_directory
 from fable.config import BlockWindow, EvaluateRequest
-from fable.evaluation import reduce_evaluation
+from fable.evaluation import reduce_baselines, reduce_evaluation
 
 _EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000001")
 _OTHER_EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000002")
@@ -22,10 +22,13 @@ _OBSERVATION_SCHEMA = pl.Schema(
         "predicted_action_k": pl.Int64,
         "predicted_minimum_log_base_fee": pl.Float64,
         "minimum_action_k": pl.Int64,
+        "deadline_action_k": pl.Int64,
         "immediate_base_fee_per_gas": pl.Int64,
         "immediate_effective_priority_fee_per_gas_p50": pl.Int64,
         "selected_base_fee_per_gas": pl.Int64,
         "selected_effective_priority_fee_per_gas_p50": pl.Int64,
+        "deadline_base_fee_per_gas": pl.Int64,
+        "deadline_effective_priority_fee_per_gas_p50": pl.Int64,
         "minimum_base_fee_per_gas": pl.Int64,
     }
 )
@@ -65,6 +68,8 @@ def _row(
     immediate_priority_fee_p50: int,
     selected_fee: int,
     selected_priority_fee_p50: int,
+    deadline_fee: int,
+    deadline_priority_fee_p50: int,
     minimum_fee: int,
 ) -> dict[str, int | float | None]:
     return {
@@ -72,23 +77,26 @@ def _row(
         "predicted_action_k": predicted_action,
         "predicted_minimum_log_base_fee": predicted_log,
         "minimum_action_k": minimum_action,
+        "deadline_action_k": 3,
         "immediate_base_fee_per_gas": immediate_fee,
         "immediate_effective_priority_fee_per_gas_p50": immediate_priority_fee_p50,
         "selected_base_fee_per_gas": selected_fee,
         "selected_effective_priority_fee_per_gas_p50": selected_priority_fee_p50,
+        "deadline_base_fee_per_gas": deadline_fee,
+        "deadline_effective_priority_fee_per_gas_p50": deadline_priority_fee_p50,
         "minimum_base_fee_per_gas": minimum_fee,
     }
 
 
 def _rows() -> list[dict[str, int | float | None]]:
     return [
-        _row(20, 0, math.log(10) + 1.0, 0, 10, 0, 10, 0, 10),
-        _row(21, 1, math.log(10) - 1.0, 2, 20, 0, 15, 5, 10),
-        _row(22, 2, math.log(12) + 2.0, 2, 30, 10, 12, 8, 12),
-        _row(23, 3, math.log(10) - 2.0, 1, 40, 0, 20, 20, 10),
-        _row(24, 1, math.log(25), 1, 50, 0, 25, 25, 25),
-        _row(25, 0, math.log(15) + 0.5, 3, 60, 10, 60, 10, 15),
-        _row(26, 2, math.log(14) - 0.5, 0, 14, 6, 20, 0, 14),
+        _row(20, 0, math.log(10) + 1.0, 0, 10, 0, 10, 0, 30, 3, 10),
+        _row(21, 1, math.log(10) - 1.0, 2, 20, 0, 15, 5, 10, 0, 10),
+        _row(22, 2, math.log(12) + 2.0, 2, 30, 10, 12, 8, 12, 8, 12),
+        _row(23, 3, math.log(10) - 2.0, 1, 40, 0, 20, 20, 40, 0, 10),
+        _row(24, 1, math.log(25), 1, 50, 0, 25, 25, 75, 25, 25),
+        _row(25, 0, math.log(15) + 0.5, 3, 60, 10, 60, 10, 15, 10, 15),
+        _row(26, 2, math.log(14) - 0.5, 0, 14, 6, 20, 0, 28, 2, 14),
     ]
 
 
@@ -126,6 +134,34 @@ def test_reduce_evaluation_derives_exact_metrics_from_self_contained_observation
             1.0 / 14.0,
             69.0 / 98.0,
         )
+    )
+
+
+def test_reduce_baselines_derives_immediate_and_deadline_metrics(
+    tmp_path: Path,
+) -> None:
+    _publish_evaluation(tmp_path, _request(), _observations())
+
+    result = reduce_baselines(tmp_path, _EVALUATION_ID)
+
+    assert result["policy"].to_list() == ["immediate", "deadline"]
+    assert result.select(pl.exclude("policy")).rows() == pytest.approx(
+        [
+            (
+                2.0 / 7.0,
+                1.0 / 9.0,
+                0.0,
+                0.0,
+                19.0 / 14.0,
+            ),
+            (
+                1.0 / 7.0,
+                1.0 / 16.0,
+                -33.0 / 140.0,
+                -151.0 / 490.0,
+                8.0 / 7.0,
+            ),
+        ]
     )
 
 

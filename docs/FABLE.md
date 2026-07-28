@@ -478,7 +478,7 @@ hat{ell}_i      predicted dimensionless log minimum
 Evaluation de-standardizes `hat{z}_i` to `hat{ell}_i` before publication. Reduction reads the
 stored facts directly; `ell_i=ln(m_i/u)` is the true dimensionless log coordinate.
 
-Over the testing origins, reduction returns exactly seven Float64 metrics:
+Over the testing origins, learned-model reduction returns exactly seven Float64 metrics:
 
 ```text
 accuracy                = mean_i indicator[hat{k}_i = k_i*]
@@ -495,6 +495,10 @@ base_fee_optimality_gap = mean_i ((B_i(hat{k}_i) - m_i) / m_i)
 
 All three economic metrics are mean per-origin fractions, not ratios of fee sums. Positive base fees make their denominators defined. Both savings metrics are higher-is-better; `base_fee_savings` remains base-fee-only, while `p50_fee_inclusive_savings` is a retrospective representative-cost proxy using each outcome block's included-transaction P50, not an inclusion guarantee. `base_fee_optimality_gap` is nonnegative and lower is better. Natural-log errors compare dimensionless coordinates relative to `u=1 wei/gas` and lower is better. Accuracy and macro-F1 are unitless and higher is better. Economic values remain fractions for later percentage formatting.
 
+Immediate and deadline policy baselines use the same classification and economic equations. They
+do not predict a minimum fee, so they have no log-fee regression metrics. The immediate policy
+always selects `k=0`; the deadline policy always selects `k=K-1`.
+
 #### Fixed-deadline rolling comparison
 
 The rolling comparison fixes each `K=5` origin `h` and deadline `D=h+5`. Starting at `h`, it runs `K=5`, `K=4`, `K=3`, and `K=2` exactly once in that order. After each of the first three predictions, the next smaller model runs at the same decision origin unless the current model selected its final visible block, `k=K-1`; that terminal action advances the decision origin by one block. Each smaller model replaces the preceding prediction. The `K=2` prediction is final and selects `b=t+1+k`, where `t` is its decision origin. At most three origin advances followed by a two-block prediction keep `b≤D`.
@@ -507,7 +511,10 @@ For every architecture-chain cell, the rolling reduction uses every `K=5` testin
 
 A `TuneRequest` freezes the experiment and one finite tuple of complete Methods. An operator submits an index into that tuple. Each successful fit contributes validation base-fee optimality gap, earliest best epoch, and completed epochs in request order. Selected training names an exact result index.
 
-The planned thesis protocol is staged: leave one feature group out on validation, run the `C` study, run HPO on the winning feature/context route, then run `K` sensitivity and final testing. Fit methods use seed `2026`. This is not a full factorial design. No experiments have been run.
+The planned thesis protocol is staged: measure the full, individual
+leave-one-feature-unit-out, and base-only configurations at reference geometry; run the `C` study
+with the full feature contract; run HPO; then run `K` sensitivity and final testing. Fit methods
+use seed `2026`. This is not a full factorial design. No experiments have been run.
 
 ## Architecture and deep interfaces
 
@@ -620,7 +627,8 @@ Evaluation separates canonical self-contained observations from transient metric
 `evaluate(request, storage_root)` loads the exact Corpus and native artifact, requires the artifact's source Corpus to equal the evaluation Corpus, prepares the testing origin window with persisted state, and performs CUDA inference.
 
 For every eligible origin the evaluation publisher owns construction of one ordered, nonnull observation containing `h_i`, `hat{k}_i`,
-`k_i*`, `hat{ell}_i`, `B_i(0)`, `P_i(0)`, `B_i(hat{k}_i)`, `P_i(hat{k}_i)`, and `m_i` under the canonical field names. Work is
+`k_i*`, `K-1`, `hat{ell}_i`, `B_i(0)`, `P_i(0)`, `B_i(hat{k}_i)`, `P_i(hat{k}_i)`,
+`B_i(K-1)`, `P_i(K-1)`, and `m_i` under the canonical field names. Work is
 written under `evaluations/.<evaluation_id>/` and renamed to:
 
 ```text
@@ -629,11 +637,11 @@ evaluations/<evaluation_id>/
   observations.parquet
 ```
 
-The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical nine-column contract in the [reference](#canonical-observations).
+The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical twelve-column contract in the [reference](#canonical-observations).
 
 #### Transient reduction
 
-`reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, expected nonnull row count, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. It requires all seven computed metrics to be finite. It does not reload the artifact or Corpus or externally authenticate the horizon or source. The result has no evaluation ID, count, sums, supports, arrays, or auxiliary fields and is not persisted.
+`reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, expected nonnull row count, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. It requires all seven computed metrics to be finite. `reduce_baselines(storage_root, evaluation_id) -> polars.DataFrame` derives the same five classification and economic metrics for the immediate and deadline policies. Neither reducer reloads the artifact or Corpus or externally authenticates the horizon or source. Results have no evaluation ID, count, sums, supports, arrays, or auxiliary fields and are not persisted.
 
 Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps exactly nine human-readable architecture-chain cell names to mappings from horizons `2`, `3`, `4`, and `5` to their Evaluation UUIDs. The final experiment runner owns that scientific association. Reduction verifies exact schemas, nonnull consecutive origins, action ranges, and required decision-origin coverage. Its nine-row, six-metric DataFrame is transient and is not persisted.
 
@@ -805,17 +813,19 @@ load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus
 
 Each `experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>.json` contains the matching UUIDv4 `experiment_id` and a nonempty ordered `entries` tuple. Each entry has a nonempty `cell` label and at least one canonical `artifact_id`, `study_id`, or `evaluation_id` UUIDv4. Manifests group canonical references only; they do not duplicate metrics, results, or scientific definitions.
 
-`experiments/feature_ablation.py prepare STORAGE_ROOT` authors the frozen 45-cell request
-bundle under `experiments/feature_ablation/.<experiment_id>/`. The ordinary Study CLI submits
-its cells. After all canonical Studies exist, `select STORAGE_ROOT EXPERIMENT_ID` reports the
-validation-selected feature set per chain, publishes the canonical manifest, and removes the
-temporary bundle. The script does not submit jobs or persist copied metrics.
+`experiments/feature_ablation.py prepare STORAGE_ROOT` authors the frozen 102-cell request
+bundle under `experiments/feature_ablation/.<experiment_id>/`. For each architecture and chain it
+tests the full feature contract, each individual feature unit omitted, and a base-fee-only
+reference. Hour and day-of-week sine/cosine coordinates each remain one indivisible encoded unit.
+The ordinary Study CLI submits its cells. After all canonical Studies exist, `close STORAGE_ROOT
+EXPERIMENT_ID` publishes the canonical manifest and removes the temporary bundle; `report`
+derives each chain/configuration mean from canonical Studies.
 
 Study bundles keep each complete Method roster inside its TuneRequest. Their `cells.tsv` rows
 carry the request path, zero-based `method_index`, and Study ID; they do not write separate Method
 JSON files.
 
-`experiments/c_study.py` derives the selected feature set, authors the 45
+`experiments/c_study.py` derives the full feature contract, authors the 45
 architecture-chain-context Studies for `C={25,50,100,200,400}`, and selects one context per
 chain by mean validation objective across the three architectures. `experiments/hpo.py` then authors
 the exact nine architecture-chain Studies and their ordered nine-Method L9 rosters. Its selector
@@ -972,6 +982,11 @@ reduce_evaluation(
     evaluation_id: UUID,
 ) -> polars.DataFrame
 
+reduce_baselines(
+    storage_root: Path,
+    evaluation_id: UUID,
+) -> polars.DataFrame
+
 reduce_rolling(
     storage_root: Path,
     roster: Mapping[str, Mapping[int, UUID]],
@@ -988,11 +1003,14 @@ Destination: `evaluations/<evaluation_id>/observations.parquet`. Status: canonic
 | 2 | `predicted_action_k` | Int64 | decoded `hat{k}_i` |
 | 3 | `predicted_minimum_log_base_fee` | Float64 | dimensionless predicted log-minimum coordinate `hat{ell}_i` relative to `u` |
 | 4 | `minimum_action_k` | Int64 | canonical `k_i*` |
-| 5 | `immediate_base_fee_per_gas` | Int64 | `B_i(0)`, wei/gas |
-| 6 | `immediate_effective_priority_fee_per_gas_p50` | Int64 | `P_i(0)`, wei/gas |
-| 7 | `selected_base_fee_per_gas` | Int64 | `B_i(hat{k}_i)`, wei/gas |
-| 8 | `selected_effective_priority_fee_per_gas_p50` | Int64 | `P_i(hat{k}_i)`, wei/gas |
-| 9 | `minimum_base_fee_per_gas` | Int64 | `m_i`, wei/gas |
+| 5 | `deadline_action_k` | Int64 | fixed `K-1` |
+| 6 | `immediate_base_fee_per_gas` | Int64 | `B_i(0)`, wei/gas |
+| 7 | `immediate_effective_priority_fee_per_gas_p50` | Int64 | `P_i(0)`, wei/gas |
+| 8 | `selected_base_fee_per_gas` | Int64 | `B_i(hat{k}_i)`, wei/gas |
+| 9 | `selected_effective_priority_fee_per_gas_p50` | Int64 | `P_i(hat{k}_i)`, wei/gas |
+| 10 | `deadline_base_fee_per_gas` | Int64 | `B_i(K-1)`, wei/gas |
+| 11 | `deadline_effective_priority_fee_per_gas_p50` | Int64 | `P_i(K-1)`, wei/gas |
+| 12 | `minimum_base_fee_per_gas` | Int64 | `m_i`, wei/gas |
 
 The file contains predictions and the observed truth needed for local reduction. Losses, timestamps, waits, horizons, standardized predictions, and derived metrics remain absent.
 
@@ -1015,6 +1033,10 @@ averages over the union of classes appearing in truth or predictions.
 Regression compares `predicted_minimum_log_base_fee` (`hat{ell}_i`) with
 `ln(minimum_base_fee_per_gas / u)` (`ell_i`). Economic fields are fractions, not percentages or
 ratios of sums. `p50_fee_inclusive_savings` is retrospective and does not claim inclusion.
+
+`reduce_baselines()` returns two rows, ordered `immediate` then `deadline`, with `policy`,
+`accuracy`, `f1_macro`, `base_fee_savings`, `p50_fee_inclusive_savings`, and
+`base_fee_optimality_gap`. `experiments/held_out.py baselines` prefixes each row with its cell.
 
 #### Rolling comparison result
 

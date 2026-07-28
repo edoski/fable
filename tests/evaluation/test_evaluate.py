@@ -90,10 +90,13 @@ _OBSERVATION_SCHEMA = pl.Schema(
         "predicted_action_k": pl.Int64,
         "predicted_minimum_log_base_fee": pl.Float64,
         "minimum_action_k": pl.Int64,
+        "deadline_action_k": pl.Int64,
         "immediate_base_fee_per_gas": pl.Int64,
         "immediate_effective_priority_fee_per_gas_p50": pl.Int64,
         "selected_base_fee_per_gas": pl.Int64,
         "selected_effective_priority_fee_per_gas_p50": pl.Int64,
+        "deadline_base_fee_per_gas": pl.Int64,
+        "deadline_effective_priority_fee_per_gas_p50": pl.Int64,
         "minimum_base_fee_per_gas": pl.Int64,
     }
 )
@@ -282,11 +285,11 @@ def test_evaluate_publishes_exact_observations(
     assert observations.schema == _OBSERVATION_SCHEMA
     assert observations.null_count().row(0) == (0,) * len(_OBSERVATION_SCHEMA)
     assert observations.rows() == [
-        (20, 0, 10.025000000372529, 2, 60, 11, 60, 11, 50),
-        (21, 2, 9.875, 2, 70, 12, 40, 14, 40),
-        (22, 1, 10.25, 1, 50, 13, 40, 14, 40),
-        (23, 0, 10.0, 2, 40, 14, 40, 14, 30),
-        (24, 2, 10.5, 1, 55, 15, 30, 17, 30),
+        (20, 0, 10.025000000372529, 2, 2, 60, 11, 60, 11, 50, 13, 50),
+        (21, 2, 9.875, 2, 2, 70, 12, 40, 14, 40, 14, 40),
+        (22, 1, 10.25, 1, 2, 50, 13, 40, 14, 55, 15, 40),
+        (23, 0, 10.0, 2, 2, 40, 14, 40, 14, 30, 16, 30),
+        (24, 2, 10.5, 1, 2, 55, 15, 30, 17, 30, 17, 30),
     ]
 
 
