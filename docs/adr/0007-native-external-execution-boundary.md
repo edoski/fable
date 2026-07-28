@@ -11,16 +11,20 @@ FABLE (Fee Analysis through Blockchain Learning and Estimation) needs one narrow
 ## Decision
 
 Remote submission uses cwd-local `REMOTE.yaml`, OpenSSH, a generated Slurm script, one
-`sbatch --parsable` call, and the returned positive numeric job ID. The script runs one immutable
-Apptainer image with NVIDIA support. Its runscript invokes the installed `fable` executable with a
-generated-job entry point. Workflow jobs receive one strict `WorkflowRequest` directly; candidate
-jobs receive one strict record containing the `TuneRequest` and Method.
+`sbatch --parsable` call per allocation, and the returned positive numeric job ID. An allocation
+contains either one process or an ordered batch of three independent processes. Every process runs
+the same immutable Apptainer image through one exclusive Slurm step and receives exactly one GPU.
+Its runscript invokes the installed `fable` executable with a generated-job entry point. Workflow
+processes receive one strict `WorkflowRequest` directly; candidate processes receive one strict
+record containing the `TuneRequest` and Method index.
 
 Submission ends when Slurm returns the job ID. Scheduler tools monitor jobs, and file-transfer tools move completed objects between hosts.
 
 ## Consequences
 
-The submission interface stays small. Scientific requests and durable objects remain independent
-of host, queue, log, and transfer state. `REMOTE.yaml` owns only connection, image, storage, and
-Slurm resource facts. The immutable image owns one FABLE revision plus its fixed loader and Torch
-runtime profile.
+The submission interface stays small. Packing changes allocation efficiency, not scientific
+execution: each fit or evaluation remains an isolated single-GPU process with its original
+request, scratch, result, and resume behavior. Scientific requests and durable objects remain
+independent of host, queue, log, and transfer state. `REMOTE.yaml` owns only connection, image,
+storage, and Slurm resource facts. The immutable image owns one FABLE revision plus its fixed
+loader and Torch runtime profile.

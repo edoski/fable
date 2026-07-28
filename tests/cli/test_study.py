@@ -17,6 +17,7 @@ from fable.config import (
     Method,
     TuneRequest,
 )
+from fable.execution import CandidateProcessInput
 from tests.helpers import dispatch, window, write_remote
 
 STUDY_ID = UUID("10000000-0000-4000-8000-000000000001")
@@ -102,12 +103,115 @@ def test_study_run_sends_golden_candidate_script(
             "#SBATCH --output=/remote/logs/%j.out\n"
             "#SBATCH --chdir='/remote/storage root'\n"
             "export STORAGE_ROOT='/remote/storage root'\n"
-            "exec apptainer run --nv --bind '/remote/storage root' "
-            "'/opt/fable image.sif' remote candidate <<'FABLE_REQUEST'\n"
+            "pids=()\n"
+            "srun --exclusive --exact --nodes=1 --ntasks=1 "
+            "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
+            "apptainer run --nv --bind '/remote/storage root' "
+            "'/opt/fable image.sif' remote candidate <<'FABLE_REQUEST_0' &\n"
             f"{candidate_json}\n"
-            "FABLE_REQUEST\n"
+            "FABLE_REQUEST_0\n"
+            'pids+=("$!")\n'
+            "status=0\n"
+            'for pid in "${pids[@]}"; do\n'
+            '    if ! wait "$pid"; then status=1; fi\n'
+            "done\n"
+            'exit "$status"\n'
         )
     ]
+
+
+def test_submit_candidate_batch_runs_each_candidate_on_one_exclusive_gpu(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    second_request = REQUEST.model_copy(
+        update={"study_id": UUID("10000000-0000-4000-8000-000000000002")}
+    )
+    third_request = REQUEST.model_copy(
+        update={"study_id": UUID("10000000-0000-4000-8000-000000000003")}
+    )
+    candidates = (
+        CandidateProcessInput(request=REQUEST, method_index=0),
+        CandidateProcessInput(request=second_request, method_index=0),
+        CandidateProcessInput(request=third_request, method_index=0),
+    )
+    write_remote(tmp_path / "REMOTE.yaml")
+    monkeypatch.chdir(tmp_path)
+    scripts: list[str] = []
+    monkeypatch.setattr(
+        execution,
+        "_invoke_sbatch",
+        lambda _remote, script: scripts.append(script) or 456,
+    )
+
+    result = execution.submit_candidate_batch(candidates)
+
+    assert result == 456
+    assert scripts == [
+        (
+            "#!/bin/bash\n"
+            "#SBATCH --partition=thesis-partition\n"
+            "#SBATCH --nodes=1\n"
+            "#SBATCH --ntasks=3\n"
+            "#SBATCH --gres=gpu:a100:3\n"
+            "#SBATCH --cpus-per-task=8\n"
+            "#SBATCH --mem=144G\n"
+            "#SBATCH --time=17:23:45\n"
+            "#SBATCH --output=/remote/logs/%j.out\n"
+            "#SBATCH --chdir='/remote/storage root'\n"
+            "export STORAGE_ROOT='/remote/storage root'\n"
+            "pids=()\n"
+            "srun --exclusive --exact --nodes=1 --ntasks=1 "
+            "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
+            "--output=/remote/logs/${SLURM_JOB_ID}-0.out "
+            "--error=/remote/logs/${SLURM_JOB_ID}-0.out "
+            "apptainer run --nv --bind '/remote/storage root' "
+            "'/opt/fable image.sif' remote candidate <<'FABLE_REQUEST_0' &\n"
+            f"{candidates[0].model_dump_json()}\n"
+            "FABLE_REQUEST_0\n"
+            'pids+=("$!")\n'
+            "srun --exclusive --exact --nodes=1 --ntasks=1 "
+            "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
+            "--output=/remote/logs/${SLURM_JOB_ID}-1.out "
+            "--error=/remote/logs/${SLURM_JOB_ID}-1.out "
+            "apptainer run --nv --bind '/remote/storage root' "
+            "'/opt/fable image.sif' remote candidate <<'FABLE_REQUEST_1' &\n"
+            f"{candidates[1].model_dump_json()}\n"
+            "FABLE_REQUEST_1\n"
+            'pids+=("$!")\n'
+            "srun --exclusive --exact --nodes=1 --ntasks=1 "
+            "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
+            "--output=/remote/logs/${SLURM_JOB_ID}-2.out "
+            "--error=/remote/logs/${SLURM_JOB_ID}-2.out "
+            "apptainer run --nv --bind '/remote/storage root' "
+            "'/opt/fable image.sif' remote candidate <<'FABLE_REQUEST_2' &\n"
+            f"{candidates[2].model_dump_json()}\n"
+            "FABLE_REQUEST_2\n"
+            'pids+=("$!")\n'
+            "status=0\n"
+            'for pid in "${pids[@]}"; do\n'
+            '    if ! wait "$pid"; then status=1; fi\n'
+            "done\n"
+            'exit "$status"\n'
+        )
+    ]
+
+
+def test_submit_candidate_batch_rejects_duplicate_study_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = CandidateProcessInput(request=REQUEST, method_index=0)
+    write_remote(tmp_path / "REMOTE.yaml")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        execution,
+        "_invoke_sbatch",
+        lambda *_: pytest.fail("duplicate candidates must fail before submission"),
+    )
+
+    with pytest.raises(ValueError, match="packed candidate slots must be unique"):
+        execution.submit_candidate_batch((candidate, candidate, candidate))
 
 
 def test_remote_candidate_dispatches_input(

@@ -817,13 +817,15 @@ Each `experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>.json` c
 bundle under `experiments/feature_ablation/.<experiment_id>/`. For each architecture and chain it
 tests the full feature contract, each individual feature unit omitted, and a base-fee-only
 reference. Hour and day-of-week sine/cosine coordinates each remain one indivisible encoded unit.
-The ordinary Study CLI submits its cells. After all canonical Studies exist, `close STORAGE_ROOT
-EXPERIMENT_ID` publishes the canonical manifest and removes the temporary bundle; `report`
-derives each chain/configuration mean from canonical Studies.
+`experiments/launch.py candidates BUNDLE` submits its cells three at a time. After all canonical
+Studies exist, `close STORAGE_ROOT EXPERIMENT_ID` publishes the canonical manifest and removes
+the temporary bundle; `report` derives each chain/configuration mean from canonical Studies.
 
 Study bundles keep each complete Method roster inside its TuneRequest. Their `cells.tsv` rows
 carry the request path, zero-based `method_index`, and Study ID; they do not write separate Method
-JSON files.
+JSON files. Packed launch writes temporary `jobs.tsv` rows containing job ID, zero-based slot,
+source-row index, and cell. A repeated launch skips recorded rows. The bundle's ordinary closure
+removes both TSV files.
 
 `experiments/c_study.py` derives the full feature contract, authors the 45
 architecture-chain-context Studies for `C={25,50,100,200,400}`, and selects one context per
@@ -838,7 +840,8 @@ held-out Evaluate requests. All horizons share the same first testing origin. Th
 ranges extend their last origin by three, two, or one blocks so the fixed-deadline rolling
 comparison has every reachable decision origin. Its report commands print, but do not persist, the
 ordinary and rolling reductions. Closure publishes the exact 81 evaluation references and removes
-the temporary bundle.
+the temporary bundle. `experiments/launch.py workflows BUNDLE` packs Train or Evaluate cells with
+the same three-task execution contract.
 
 #### Study object
 
@@ -910,10 +913,12 @@ Generated Slurm scripts call these leaves with strict JSON on standard input.
 
 ### Remote submission
 
-`from fable.execution import submit` is the public execution seam:
+`fable.execution` exposes single-request submission and packed experiment submission:
 
 ```python
 submit(request: WorkflowRequest) -> int
+submit_workflow_batch(requests: Sequence[WorkflowRequest]) -> int
+submit_candidate_batch(candidates: Sequence[CandidateProcessInput]) -> int
 ```
 
 It reads cwd-local `REMOTE.yaml` with this exact strict schema:
@@ -925,16 +930,23 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 |  | `storage_root` | nonempty absolute path |
 |  | `log_root` | nonempty absolute path |
 | `resources` | `partition` | nonempty string |
-|  | `gres` | string |
+|  | `gres` | one-GPU GRES string; packed submission scales its final `:1` count |
 |  | `cpus_per_task` | PositiveInt |
 |  | `memory_gb` | PositiveInt, rendered as `--mem=<n>G` |
 |  | `time_limit` | nonempty Slurm time string |
 
-The generated script requests one node/task, writes `%j.out` under `log_root`, changes to
-`storage_root`, exports `STORAGE_ROOT`, and runs the immutable Apptainer image with NVIDIA
-support. The image dispatches `fable remote workflow` or `fable remote candidate` with a stdin
-heredoc. Workflow stdin is the Train or Evaluate request JSON directly. Candidate stdin is the
-strict record containing the TuneRequest and validated Method index. Submission is one
+Single-request scripts request one node/task. Packed scripts contain exactly three processes and
+request one node and one task, GPU,
+CPU allotment, and memory allotment per process input. Each process runs as an exclusive exact
+`srun` step, sees one GPU, receives one strict stdin record, and writes
+`<job_id>-<slot>.out`; `%j.out` remains the allocation log. The parent waits for every step and
+fails if any step fails. Candidate Study slots and workflow durable identities must be unique
+within an allocation.
+
+Both forms change to `storage_root`, export `STORAGE_ROOT`, and run the immutable Apptainer image
+with NVIDIA support. The image dispatches `fable remote workflow` or `fable remote candidate`.
+Workflow stdin is the Train or Evaluate request JSON directly. Candidate stdin is the strict
+record containing the TuneRequest and validated Method index. Each allocation uses one
 `ssh -T -o BatchMode=yes … sbatch --parsable` call.
 
 The image owns one exact FABLE revision and fixed runtime profile. Its path must remain unchanged

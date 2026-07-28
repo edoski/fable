@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 import fable.cli as cli
+import fable.execution as execution
 from fable.cli import app
 from fable.config import (
     EvaluateRequest,
@@ -99,15 +100,78 @@ def test_submit_sends_golden_workflow_script(
             "#SBATCH --output=/remote/logs/%j.out\n"
             "#SBATCH --chdir='/remote/storage root'\n"
             "export STORAGE_ROOT='/remote/storage root'\n"
-            "exec apptainer run --nv --bind '/remote/storage root' "
-            "'/opt/fable image.sif' remote workflow <<'FABLE_REQUEST'\n"
+            "pids=()\n"
+            "srun --exclusive --exact --nodes=1 --ntasks=1 "
+            "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
+            "apptainer run --nv --bind '/remote/storage root' "
+            "'/opt/fable image.sif' remote workflow <<'FABLE_REQUEST_0' &\n"
             f"{request.model_dump_json()}\n"
-            "FABLE_REQUEST\n"
+            "FABLE_REQUEST_0\n"
+            'pids+=("$!")\n'
+            "status=0\n"
+            'for pid in "${pids[@]}"; do\n'
+            '    if ! wait "$pid"; then status=1; fi\n'
+            "done\n"
+            'exit "$status"\n'
         ),
         "text": True,
         "stdout": subprocess.PIPE,
         "check": True,
     }
+
+
+def test_submit_workflow_batch_uses_one_isolated_gpu_step_per_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _request("train")
+    second = first.model_copy(
+        update={
+            "artifact_id": UUID("00000000-0000-4000-8000-000000000005"),
+        }
+    )
+    third = first.model_copy(
+        update={
+            "artifact_id": UUID("00000000-0000-4000-8000-000000000006"),
+        }
+    )
+    write_remote(tmp_path / "REMOTE.yaml")
+    monkeypatch.chdir(tmp_path)
+    scripts: list[str] = []
+    monkeypatch.setattr(
+        execution,
+        "_invoke_sbatch",
+        lambda _remote, script: scripts.append(script) or 789,
+    )
+
+    result = execution.submit_workflow_batch((first, second, third))
+
+    assert result == 789
+    assert len(scripts) == 1
+    script = scripts[0]
+    assert "#SBATCH --ntasks=3\n" in script
+    assert "#SBATCH --gres=gpu:a100:3\n" in script
+    assert script.count("remote workflow <<'FABLE_REQUEST_") == 3
+    assert first.model_dump_json() in script
+    assert second.model_dump_json() in script
+    assert third.model_dump_json() in script
+
+
+def test_submit_workflow_batch_rejects_duplicate_durable_identities(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request("train")
+    write_remote(tmp_path / "REMOTE.yaml")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        execution,
+        "_invoke_sbatch",
+        lambda *_: pytest.fail("duplicate workflows must fail before submission"),
+    )
+
+    with pytest.raises(ValueError, match="packed workflow identities must be unique"):
+        execution.submit_workflow_batch((request, request, request))
 
 
 @pytest.mark.parametrize("workflow", ["train", "evaluate"])
