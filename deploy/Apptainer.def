@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: python:3.11-slim-bookworm
+From: python:3.11-slim-trixie
 
 %files
     pyproject.toml /opt/fable/pyproject.toml
