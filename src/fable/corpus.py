@@ -22,6 +22,7 @@ _SCHEMA = pl.Schema(
         "gas_limit": pl.Int64,
         "tx_count": pl.Int64,
         "effective_priority_fee_per_gas_p50": pl.Int64,
+        "effective_priority_fee_per_gas_p90": pl.Int64,
     }
 )
 

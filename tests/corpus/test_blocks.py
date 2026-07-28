@@ -17,11 +17,11 @@ def _definition(first_block: int = 100, last_block: int = 104) -> CorpusDefiniti
 def _valid_frame() -> pl.DataFrame:
     return pl.DataFrame(
         [
-            (100, 1_000, 1, 100, 50, 100, 10, 0),
-            (101, 1_012, 1, 101, 51, 100, 11, 1),
-            (102, 1_012, 1, 102, 52, 100, 12, 2),
-            (103, 1_024, 1, 103, 53, 100, 13, 3),
-            (104, 1_036, 1, 104, 54, 100, 14, 4),
+            (100, 1_000, 1, 100, 50, 100, 10, 0, 0),
+            (101, 1_012, 1, 101, 51, 100, 11, 1, 2),
+            (102, 1_012, 1, 102, 52, 100, 12, 2, 4),
+            (103, 1_024, 1, 103, 53, 100, 13, 3, 6),
+            (104, 1_036, 1, 104, 54, 100, 14, 4, 8),
         ],
         schema={
             "block_number": pl.Int64,
@@ -32,6 +32,7 @@ def _valid_frame() -> pl.DataFrame:
             "gas_limit": pl.Int64,
             "tx_count": pl.Int64,
             "effective_priority_fee_per_gas_p50": pl.Int64,
+            "effective_priority_fee_per_gas_p90": pl.Int64,
         },
         orient="row",
     )

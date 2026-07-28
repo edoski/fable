@@ -61,6 +61,7 @@ def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> No
         "dow_sin",
         "dow_cos",
         "log1p_effective_priority_fee_per_gas_p50",
+        "log1p_effective_priority_fee_per_gas_p90",
     )
     assert requests[-2].experiment.ordered_features == (
         "log_base_fee_per_gas",
@@ -68,6 +69,7 @@ def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> No
         "log_gas_limit",
         "log1p_tx_count",
         "log1p_effective_priority_fee_per_gas_p50",
+        "log1p_effective_priority_fee_per_gas_p90",
     )
 
 

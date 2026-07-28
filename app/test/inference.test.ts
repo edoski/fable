@@ -56,7 +56,7 @@ function context(
       block(head - 1n, headBaseFee - 1n),
       block(head, headBaseFee),
     ],
-    p50Rewards: null,
+    priorityFeeRewards: null,
   };
 }
 

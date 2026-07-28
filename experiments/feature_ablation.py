@@ -124,7 +124,10 @@ def _ordered_features(chain: str, feature_set: str) -> tuple[FeatureName, ...]:
             "dow_sin",
             "dow_cos",
         ),
-        "P": ("log1p_effective_priority_fee_per_gas_p50",),
+        "P": (
+            "log1p_effective_priority_fee_per_gas_p50",
+            "log1p_effective_priority_fee_per_gas_p90",
+        ),
     }
     return tuple(feature for group in feature_set.split("+") for feature in groups[group])
 

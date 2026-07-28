@@ -19,8 +19,11 @@ function fixtureBlocks(): BlockRow[] {
   }));
 }
 
-function fixtureP50Rewards(): bigint[] {
-  return fixture.feeHistory.reward.map(([reward]) => BigInt(reward));
+function fixturePriorityFeeRewards(): readonly (readonly [bigint, bigint])[] {
+  return fixture.feeHistory.reward.map(([p50, p90]) => [
+    BigInt(p50),
+    BigInt(p90),
+  ]);
 }
 
 function fixtureManifest(): ChainManifest {
@@ -37,7 +40,7 @@ describe("buildModelInput", () => {
   it("matches the Python float32 oracle for all transforms in manifest order", () => {
     const result = buildModelInput(
       fixtureBlocks(),
-      fixtureP50Rewards(),
+      fixturePriorityFeeRewards(),
       fixtureManifest(),
     );
 

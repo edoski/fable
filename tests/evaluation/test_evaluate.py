@@ -197,6 +197,7 @@ def _write_corpus(storage_root: Path, corpus_id: UUID) -> None:
             "gas_limit": np.full(blocks.size, 100, dtype=np.int64),
             "tx_count": np.arange(5, 26, dtype=np.int64),
             "effective_priority_fee_per_gas_p50": np.arange(blocks.size, dtype=np.int64),
+            "effective_priority_fee_per_gas_p90": 2 * np.arange(blocks.size, dtype=np.int64),
         },
         schema={
             "block_number": pl.Int64,
@@ -207,6 +208,7 @@ def _write_corpus(storage_root: Path, corpus_id: UUID) -> None:
             "gas_limit": pl.Int64,
             "tx_count": pl.Int64,
             "effective_priority_fee_per_gas_p50": pl.Int64,
+            "effective_priority_fee_per_gas_p90": pl.Int64,
         },
     ).write_parquet(corpus_blocks_path(storage_root, corpus_id))
 

@@ -7,6 +7,7 @@ export const FEATURE_NAMES = [
   "log_gas_limit",
   "log1p_tx_count",
   "log1p_effective_priority_fee_per_gas_p50",
+  "log1p_effective_priority_fee_per_gas_p90",
   "block_interval_seconds",
   "hour_sin",
   "hour_cos",
@@ -27,14 +28,22 @@ export type ChainManifest = {
   features: readonly FeatureManifest[];
 };
 
-export const PRIORITY_FEE_FEATURE =
+export const P50_PRIORITY_FEE_FEATURE =
   "log1p_effective_priority_fee_per_gas_p50" satisfies FeatureName;
+export const P90_PRIORITY_FEE_FEATURE =
+  "log1p_effective_priority_fee_per_gas_p90" satisfies FeatureName;
+export const PRIORITY_FEE_FEATURES: readonly FeatureName[] = [
+  P50_PRIORITY_FEE_FEATURE,
+  P90_PRIORITY_FEE_FEATURE,
+];
 export const INTERVAL_FEATURE =
   "block_interval_seconds" satisfies FeatureName;
 
+export type PriorityFeeRewards = readonly [p50: bigint, p90: bigint];
+
 export function buildModelInput(
   blocks: readonly BlockRow[],
-  p50Rewards: readonly bigint[] | null,
+  priorityFeeRewards: readonly PriorityFeeRewards[] | null,
   manifest: ChainManifest,
 ): Float32Array {
   const needsPredecessor = manifest.features.some(
@@ -52,7 +61,7 @@ export function buildModelInput(
         feature.name,
         block,
         needsPredecessor ? blocks[blockIndex - 1] : null,
-        p50Rewards?.[row],
+        priorityFeeRewards?.[row],
       );
       const index = row * featureCount + column;
       output[index] =
@@ -70,7 +79,7 @@ function rawFeature(
   feature: FeatureName,
   block: BlockRow,
   predecessor: BlockRow | null,
-  reward: bigint | undefined,
+  priorityFeeRewards: PriorityFeeRewards | undefined,
 ): number {
   switch (feature) {
     case "log_base_fee_per_gas":
@@ -83,11 +92,19 @@ function rawFeature(
       return positiveLog(block.gasLimit, "gasLimit");
     case "log1p_tx_count":
       return Math.log1p(block.transactionCount);
-    case PRIORITY_FEE_FEATURE: {
+    case P50_PRIORITY_FEE_FEATURE: {
+      const reward = priorityFeeRewards?.[0];
       if (reward === undefined || reward < 0n) {
         throw new Error("P50 priority fee must be present and nonnegative");
       }
       return Math.log1p(safeNumber(reward, "P50 priority fee"));
+    }
+    case P90_PRIORITY_FEE_FEATURE: {
+      const reward = priorityFeeRewards?.[1];
+      if (reward === undefined || reward < 0n) {
+        throw new Error("P90 priority fee must be present and nonnegative");
+      }
+      return Math.log1p(safeNumber(reward, "P90 priority fee"));
     }
     case INTERVAL_FEATURE: {
       if (predecessor === null) {

@@ -20,6 +20,7 @@ FeatureName: TypeAlias = Literal[
     "log_gas_limit",
     "log1p_tx_count",
     "log1p_effective_priority_fee_per_gas_p50",
+    "log1p_effective_priority_fee_per_gas_p90",
     "block_interval_seconds",
     "hour_sin",
     "hour_cos",

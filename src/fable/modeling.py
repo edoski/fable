@@ -35,6 +35,7 @@ from .min_block_fee import (
     MinBlockFeeLoss,
     MinBlockFeeOutput,
     TargetState,
+    decode_action,
     min_block_fee_loss,
 )
 from .records import StrictFrozenRecord
@@ -334,16 +335,41 @@ class _FitModule(pl.LightningModule):
         batch_idx: int,
     ) -> None:
         del batch_idx
-        losses = self._loss(batch)
+        output = self(batch["inputs"])
+        losses = min_block_fee_loss(
+            output,
+            label=batch["label"],
+            target=batch["target"],
+        )
         self._log_epoch_loss("validation", losses)
+        actions = decode_action(output)
+        selected = batch["base_fees"].gather(1, actions.unsqueeze(1)).squeeze(1)
+        minimum = batch["base_fees"].amin(dim=1)
+        gap = (selected - minimum).to(torch.float64) / minimum
+        self.log(
+            "validation_base_fee_optimality_gap",
+            gap.mean(dtype=torch.float64),
+            on_step=False,
+            on_epoch=True,
+            logger=False,
+            sync_dist=False,
+            batch_size=gap.numel(),
+        )
 
     def on_validation_epoch_end(self) -> None:
-        metric = self.trainer.callback_metrics["validation_total_loss"]
-        value = float(metric.detach().cpu().item())
-        if not math.isfinite(value):
-            raise FloatingPointError("complete validation_total_loss must be finite")
+        loss = float(self.trainer.callback_metrics["validation_total_loss"].detach().cpu().item())
+        gap = float(
+            self.trainer.callback_metrics["validation_base_fee_optimality_gap"]
+            .detach()
+            .cpu()
+            .item()
+        )
+        if not math.isfinite(loss) or not math.isfinite(gap):
+            raise FloatingPointError("complete validation metrics must be finite")
         print(
-            f"epoch={self.trainer.current_epoch + 1} validation_total_loss={value}",
+            f"epoch={self.trainer.current_epoch + 1} "
+            f"validation_total_loss={loss} "
+            f"validation_base_fee_optimality_gap={gap}",
             flush=True,
         )
 
@@ -400,7 +426,7 @@ def _callbacks(
     best = ModelCheckpoint(
         dirpath=scratch,
         filename="best-{epoch:02d}",
-        monitor="validation_total_loss",
+        monitor="validation_base_fee_optimality_gap",
         mode="min",
         save_top_k=1,
         save_weights_only=True,

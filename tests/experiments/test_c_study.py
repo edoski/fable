@@ -93,7 +93,7 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
         400,
     ]
     assert requests[0].experiment.ordered_features[-1] == (
-        "log1p_effective_priority_fee_per_gas_p50"
+        "log1p_effective_priority_fee_per_gas_p90"
     )
     assert requests[15].experiment.ordered_features == (
         "log_base_fee_per_gas",
@@ -103,6 +103,7 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
         "dow_sin",
         "dow_cos",
         "log1p_effective_priority_fee_per_gas_p50",
+        "log1p_effective_priority_fee_per_gas_p90",
     )
 
     _publish_studies(

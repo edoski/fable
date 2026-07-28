@@ -24,6 +24,7 @@ BLOCK_SCHEMA = {
     "gas_limit": pl.Int64,
     "tx_count": pl.Int64,
     "effective_priority_fee_per_gas_p50": pl.Int64,
+    "effective_priority_fee_per_gas_p90": pl.Int64,
 }
 
 
@@ -47,9 +48,9 @@ def _valid_document() -> dict[str, object]:
 def _valid_blocks() -> pl.DataFrame:
     return pl.DataFrame(
         [
-            (100, 1_000, 1, 100, 50, 100, 10, 1),
-            (101, 1_012, 1, 101, 51, 100, 11, 2),
-            (102, 1_024, 1, 102, 52, 100, 12, 0),
+            (100, 1_000, 1, 100, 50, 100, 10, 1, 2),
+            (101, 1_012, 1, 101, 51, 100, 11, 2, 4),
+            (102, 1_024, 1, 102, 52, 100, 12, 0, 0),
         ],
         schema=BLOCK_SCHEMA,
         orient="row",

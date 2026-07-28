@@ -118,7 +118,7 @@ export function createInferenceEngine(
       async () =>
         buildModelInput(
           context.blocks,
-          context.p50Rewards,
+          context.priorityFeeRewards,
           selection.chainManifest,
         ),
     );

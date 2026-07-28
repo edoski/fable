@@ -5,8 +5,9 @@ import { avalanche, mainnet, polygon } from "viem/chains";
 import type { Chain } from "./domain";
 import {
   INTERVAL_FEATURE,
-  PRIORITY_FEE_FEATURE,
+  PRIORITY_FEE_FEATURES,
   type FeatureName,
+  type PriorityFeeRewards,
 } from "./features";
 import { createSerialQueue } from "./serialQueue";
 
@@ -23,7 +24,7 @@ export type BlockRow = {
 
 export type PreparedChainContext = {
   blocks: readonly BlockRow[];
-  p50Rewards: readonly bigint[] | null;
+  priorityFeeRewards: readonly PriorityFeeRewards[] | null;
 };
 
 export type ChainOutcome = {
@@ -84,8 +85,8 @@ export function createChainSession(
   const rawBlockCount =
     config.contextBlocks +
     Number(config.orderedFeatures.includes(INTERVAL_FEATURE));
-  const needsFeeHistory = config.orderedFeatures.includes(
-    PRIORITY_FEE_FEATURE,
+  const needsFeeHistory = config.orderedFeatures.some((feature) =>
+    PRIORITY_FEE_FEATURES.includes(feature),
   );
 
   let blocks: BlockRow[] = [];
@@ -214,9 +215,9 @@ export function createChainSession(
     return blocks;
   }
 
-  async function readP50Rewards(
+  async function readPriorityFeeRewards(
     head: bigint,
-  ): Promise<readonly bigint[] | null> {
+  ): Promise<readonly PriorityFeeRewards[] | null> {
     if (!needsFeeHistory) return null;
 
     const firstBlock = head - BigInt(config.contextBlocks) + 1n;
@@ -228,32 +229,32 @@ export function createChainSession(
     const history = await client.getFeeHistory({
       blockCount: config.contextBlocks,
       blockNumber: head,
-      rewardPercentiles: [50],
+      rewardPercentiles: [50, 90],
     });
     requireActive();
     if (
       history.oldestBlock !== firstBlock ||
       history.reward === undefined ||
       history.reward.length !== config.contextBlocks ||
-      history.reward.some((row) => row.length !== 1)
+      history.reward.some((row) => row.length !== 2)
     ) {
       throw new Error(
         `Fee history must exactly cover blocks ${firstBlock} through ${head}`,
       );
     }
-    return history.reward.map((row) => row[0]);
+    return history.reward.map((row) => [row[0], row[1]]);
   }
 
   async function synchronize(): Promise<PreparedChainContext> {
     await verifyChain();
     const head = await client.getBlockNumber();
     requireActive();
-    const [contextBlocks, p50Rewards] = await Promise.all([
+    const [contextBlocks, priorityFeeRewards] = await Promise.all([
       synchronizeBlocks(head),
-      readP50Rewards(head),
+      readPriorityFeeRewards(head),
     ]);
     requireActive();
-    return { blocks: contextBlocks, p50Rewards };
+    return { blocks: contextBlocks, priorityFeeRewards };
   }
 
   function sync(): Promise<PreparedChainContext> {

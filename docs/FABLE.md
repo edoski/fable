@@ -345,6 +345,7 @@ The request supplies a nonempty unique ordered tuple drawn from the supported na
 | `log_gas_limit` | `ln(gas_limit / (1 gas))` | Gas limit positive; closed-row header fact. |
 | `log1p_tx_count` | `ln(1 + tx_count / (1 transaction))` | Transaction count nonnegative; known after row close. |
 | `log1p_effective_priority_fee_per_gas_p50` | `ln(1 + effective_priority_fee_per_gas_p50 / (1 wei/gas))` | P50 nonnegative; included-transaction closed-row fact. |
+| `log1p_effective_priority_fee_per_gas_p90` | `ln(1 + effective_priority_fee_per_gas_p90 / (1 wei/gas))` | Included-transaction closed-row P90 fact. |
 | `block_interval_seconds` | `timestamp_b - timestamp_{b-1}` seconds | Nonnegative; requires the real predecessor row. |
 | `hour_sin` | `sin(2π hour_UTC/24)` | `hour_UTC = (timestamp//3600) mod 24`; closed timestamp. |
 | `hour_cos` | `cos(2π hour_UTC/24)` | Same angle and availability. |
@@ -439,6 +440,16 @@ The denominator is the number of origins in the batch. These are training and va
 Decode implements canonical `hat{k}_i` with native `argmax(action_logits, dim=-1)`. Equal maximum
 logits select the first index, and decode depends on the logits alone.
 
+#### Validation objective
+
+For each validation origin, let `m_i=min_k B_i(k)`. The decoded action contributes:
+
+```text
+q_i = (B_i(hat{k}_i) - m_i) / m_i
+```
+
+Validation logs `mean_i q_i` as `validation_base_fee_optimality_gap`. Loss-based early stopping remains unchanged. The retained best checkpoint and Study `objective` use the smallest validation gap, so all downstream selection is economic and lower-is-better without changing gradient training.
+
 ### Model concepts
 
 FABLE uses a closed discriminated union of three concrete sequence models:
@@ -494,7 +505,7 @@ For every architecture-chain cell, the rolling reduction uses every `K=5` testin
 
 ### HPO interpretation
 
-A `TuneRequest` freezes the experiment and one finite tuple of complete Methods. An operator submits an index into that tuple. Each successful fit contributes validation total loss, earliest best epoch, and completed epochs in request order. Selected training names an exact result index.
+A `TuneRequest` freezes the experiment and one finite tuple of complete Methods. An operator submits an index into that tuple. Each successful fit contributes validation base-fee optimality gap, earliest best epoch, and completed epochs in request order. Selected training names an exact result index.
 
 The planned thesis protocol is staged: leave one feature group out on validation, run the `C` study, run HPO on the winning feature/context route, then run `K` sensitivity and final testing. Fit methods use seed `2026`. This is not a full factorial design. No experiments have been run.
 
@@ -513,7 +524,7 @@ corpora/<corpus_id>/
 ```
 
 `corpus.json` stores the exact `CorpusRequest` and one finalized anchor. `blocks.parquet` stores the
-requested contiguous rows in block-number order with the exact eight-column canonical schema
+requested contiguous rows in block-number order with the exact nine-column canonical schema
 documented in the [reference](#corpus-object). `load_corpus()` strictly hydrates the request and
 anchor, checks the requested UUID, constructs the canonical `BlockFrame`, and requires the anchor
 to cover the completed range.
@@ -564,8 +575,8 @@ The exact equations are in the [theory](#targets-loss-and-decode).
 #### Boundaries
 
 Temporal preparation owns raw `[K]` `B_i(k)` outcomes, `k_i*` labels, and standardized `z_i`
-targets. Model code owns the sequence encoder and the two concrete heads. Evaluation owns
-observation publication and economic accounting.
+targets. Model fitting owns the validation-only base-fee optimality gap used for checkpoint and
+Study selection. Evaluation owns held-out observation publication and full economic accounting.
 
 ### Study
 
@@ -581,7 +592,7 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 
 `RetainedResult` has three fields:
 
-- finite complete-validation total-loss objective;
+- finite complete-validation base-fee optimality-gap objective;
 - one-based earliest selected epoch;
 - one-based completed epoch count.
 
@@ -780,6 +791,7 @@ finalized_anchor:
 | 6 | `gas_limit` | Int64 | positive gas |
 | 7 | `tx_count` | Int64 | nonnegative transaction count |
 | 8 | `effective_priority_fee_per_gas_p50` | Int64 | nonnegative gas-used-weighted P50 among included transactions, wei/gas |
+| 9 | `effective_priority_fee_per_gas_p90` | Int64 | gas-used-weighted P90 among included transactions, wei/gas |
 
 Direct loader:
 
@@ -805,9 +817,9 @@ JSON files.
 
 `experiments/c_study.py` derives the selected feature set, authors the 45
 architecture-chain-context Studies for `C={25,50,100,200,400}`, and selects one context per
-chain by mean validation loss across the three architectures. `experiments/hpo.py` then authors
+chain by mean validation objective across the three architectures. `experiments/hpo.py` then authors
 the exact nine architecture-chain Studies and their ordered nine-Method L9 rosters. Its selector
-chooses the earliest minimum validation loss.
+chooses the earliest minimum validation objective.
 
 `experiments/k_study.py` derives each architecture-chain HPO result and authors 81 fresh
 selected-Study Train requests for `K={2,3,4,5,10,25,50,100,200}`. It publishes the K-study
@@ -831,7 +843,7 @@ Each `RetainedResult` has exact ordered fields:
 
 | Field | Type/rule |
 | --- | --- |
-| `objective` | finite float validation total loss |
+| `objective` | finite float validation base-fee optimality gap |
 | `selected_epoch` | integer `≥1` |
 | `completed_epochs` | integer `≥selected_epoch` and `≤` the corresponding request Method's `fit.max_epochs` |
 
@@ -931,7 +943,7 @@ app/assets/models/
 
 The manifest owns shared context and feature state plus each model's artifact UUID and target state. The app trusts this build-time bundle through typed direct lookups and twelve static `.pte` requires. It has no download, alternate runtime, or remote inference fallback.
 
-Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares the exact closed-head context, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset.
+Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares the exact closed-head context, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call supplies both features. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
 
 The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real `MOBILE.yaml`, generated assets, and native parity evidence do not yet exist. Exporter retirement and final acceptance remain deferred to A01. The [README](../README.md#mobile-demo) owns build commands; the [on-device decision](research/on-device-inference.md) owns rationale and acceptance boundaries.
 

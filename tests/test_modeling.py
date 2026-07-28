@@ -37,7 +37,7 @@ from fable.config import (
     TuneRequest,
 )
 from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
-from fable.min_block_fee import TargetState, min_block_fee_loss
+from fable.min_block_fee import MinBlockFeeOutput, TargetState, min_block_fee_loss
 from fable.modeling import (
     ArtifactAssociation,
     load_artifact,
@@ -106,6 +106,8 @@ def _corpus() -> Corpus:
                     "gas_limit": np.full(blocks.size, 100, dtype=np.int64),
                     "tx_count": 4 + np.arange(blocks.size, dtype=np.int64),
                     "effective_priority_fee_per_gas_p50": np.arange(blocks.size, dtype=np.int64),
+                    "effective_priority_fee_per_gas_p90": 2
+                    * np.arange(blocks.size, dtype=np.int64),
                 }
             ),
             request.definition,
@@ -283,6 +285,7 @@ def test_epoch_logs_weight_short_batches_in_float64(
     logged: dict[str, list[tuple[torch.Tensor, dict[str, Any]]]] = {
         "training_total_loss": [],
         "validation_total_loss": [],
+        "validation_base_fee_optimality_gap": [],
     }
 
     def capture(name: str, value: torch.Tensor, **kwargs: Any) -> None:
@@ -294,7 +297,8 @@ def test_epoch_logs_weight_short_batches_in_float64(
             module.training_step(batch, batch_index)
             module.validation_step(batch, batch_index)
 
-    for entries in logged.values():
+    for name in ("training_total_loss", "validation_total_loss"):
+        entries = logged[name]
         assert [kwargs["batch_size"] for _, kwargs in entries] == [3, 1]
         assert all(value.dtype == torch.float64 for value, _ in entries)
         assert all(kwargs["on_step"] is False for _, kwargs in entries)
@@ -304,6 +308,60 @@ def test_epoch_logs_weight_short_batches_in_float64(
         unweighted = sum(float(value) for value, _ in entries) / 2
         assert weighted == pytest.approx(expected)
         assert unweighted != pytest.approx(expected)
+
+    gap_entries = logged["validation_base_fee_optimality_gap"]
+    assert [kwargs["batch_size"] for _, kwargs in gap_entries] == [3, 1]
+    output = module(complete["inputs"])
+    actions = output.action_logits.argmax(dim=1)
+    selected = complete["base_fees"].gather(1, actions.unsqueeze(1)).squeeze(1)
+    minimum = complete["base_fees"].amin(dim=1)
+    expected_gap = float(((selected - minimum).to(torch.float64) / minimum).mean())
+    weighted_gap = (
+        sum(float(value) * int(kwargs["batch_size"]) for value, kwargs in gap_entries) / 4
+    )
+    assert weighted_gap == pytest.approx(expected_gap)
+
+
+def test_validation_logs_mean_base_fee_cost_over_optimum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = prepare_fit_history(_corpus(), _experiment())
+    association = ArtifactAssociation(
+        request=_request(),
+        feature_state=prepared.feature_state,
+        target_state=prepared.target_state,
+        method=modeling_method(),
+    )
+    module = modeling._FitModule(modeling._json_association(association)).eval()
+    batch = {
+        "inputs": torch.zeros((2, 3, 2)),
+        "label": torch.tensor([0, 1]),
+        "target": torch.zeros(2),
+        "base_fees": torch.tensor([[4, 2], [3, 5]]),
+    }
+    output = MinBlockFeeOutput(
+        action_logits=torch.tensor([[0.0, 1.0], [1.0, 0.0]]),
+        minimum_fee_z=torch.zeros(2),
+    )
+    logged: dict[str, tuple[torch.Tensor, dict[str, Any]]] = {}
+
+    monkeypatch.setattr(module, "forward", lambda _inputs: output)
+    monkeypatch.setattr(
+        module,
+        "log",
+        lambda name, value, **kwargs: logged.__setitem__(name, (value, kwargs)),
+    )
+
+    module.validation_step(batch, 0)
+
+    selected = batch["base_fees"][torch.arange(2), torch.tensor([1, 0])]
+    minimum = batch["base_fees"].amin(dim=1)
+    expected = ((selected - minimum) / minimum).mean(dtype=torch.float64)
+    value, options = logged["validation_base_fee_optimality_gap"]
+    torch.testing.assert_close(value, expected)
+    assert options["batch_size"] == 2
+    assert options["on_step"] is False
+    assert options["on_epoch"] is True
 
 
 def test_gradient_clipping_uses_trainer_value_and_rejects_nonfinite() -> None:
@@ -495,14 +553,15 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
     monkeypatch.setattr(modeling.pl, "Trainer", TrainerSpy)
     scratch = tmp_path / "candidate"
 
-    def progress() -> list[tuple[int, float]]:
+    def progress() -> list[tuple[int, float, float]]:
         lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("epoch=")]
         return [
             (
                 int(epoch.removeprefix("epoch=")),
                 float(loss.removeprefix("validation_total_loss=")),
+                float(gap.removeprefix("validation_base_fee_optimality_gap=")),
             )
-            for epoch, loss in (line.split() for line in lines)
+            for epoch, loss, gap in (line.split() for line in lines)
         ]
 
     first = modeling.fit_candidate(request, 0, tmp_path, scratch)
@@ -510,17 +569,17 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
     second = modeling.fit_candidate(request, 0, tmp_path, scratch)
     second_progress = progress()
 
-    assert [epoch for epoch, _ in first_progress] == [2]
-    assert [epoch for epoch, _ in second_progress] == [4]
+    assert [epoch for epoch, _, _ in first_progress] == [2]
+    assert [epoch for epoch, _, _ in second_progress] == [4]
     validation_progress = first_progress + second_progress
-    assert all(math.isfinite(loss) for _, loss in validation_progress)
-    assert first.objective == first_progress[0][1]
+    assert all(math.isfinite(loss) and math.isfinite(gap) for _, loss, gap in validation_progress)
+    assert first.objective == first_progress[0][2]
     assert first.selected_epoch == 2
     assert first.completed_epochs == 2
     assert second.completed_epochs == method.fit.max_epochs
-    assert second.objective == min(loss for _, loss in validation_progress)
+    assert second.objective == min(gap for _, _, gap in validation_progress)
     assert second.selected_epoch == next(
-        epoch for epoch, loss in validation_progress if loss == second.objective
+        epoch for epoch, _, gap in validation_progress if gap == second.objective
     )
     assert fit_kwargs[0]["ckpt_path"] is None
     assert fit_kwargs[1]["ckpt_path"] == scratch / "last.ckpt"

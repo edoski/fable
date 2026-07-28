@@ -23,6 +23,7 @@ def _blocks(
     tx_counts: list[int],
     timestamps: list[int],
     priority_fees: list[int],
+    priority_fees_p90: list[int] | None = None,
     chain_id: int = 1,
 ) -> BlockFrame:
     count = len(base_fees)
@@ -36,6 +37,9 @@ def _blocks(
             "gas_limit": gas_limits,
             "tx_count": tx_counts,
             "effective_priority_fee_per_gas_p50": priority_fees,
+            "effective_priority_fee_per_gas_p90": (
+                priority_fees if priority_fees_p90 is None else priority_fees_p90
+            ),
         }
     )
     return BlockFrame(
@@ -149,12 +153,20 @@ def test_fee_and_nonnegative_interval_features_use_their_exact_block_facts() -> 
         tx_counts=[1, 2, 3, 4],
         timestamps=[100, 100, 112, 130],
         priority_fees=[0, 9, 99, 999],
+        priority_fees_p90=[0, 99, 999, 9_999],
     )
     ordered_features = (
         "log1p_effective_priority_fee_per_gas_p50",
+        "log1p_effective_priority_fee_per_gas_p90",
         "block_interval_seconds",
     )
-    raw = np.column_stack((np.log1p([9, 99, 999]), [0, 12, 18])).astype(np.float64)
+    raw = np.column_stack(
+        (
+            np.log1p([9, 99, 999]),
+            np.log1p([99, 999, 9_999]),
+            [0, 12, 18],
+        )
+    ).astype(np.float64)
 
     state = fit_feature_state(blocks, ordered_features=ordered_features)
     transformed = transform_feature_rows(

@@ -55,6 +55,7 @@ function feeHistory(oldestBlock: bigint, count: number) {
     gasUsedRatio: Array.from({ length: count }, () => 0.5),
     reward: Array.from({ length: count }, (_, index) => [
       quantity(2_000_000_000n + BigInt(index)),
+      quantity(3_000_000_000n + BigInt(index)),
     ]),
   };
 }
@@ -325,23 +326,26 @@ describe("createChainSession", () => {
     chainSession.dispose();
   });
 
-  it("returns exact P50 coverage ending at the synchronized head", async () => {
+  it("returns exact P50 and P90 coverage ending at the synchronized head", async () => {
     const rpc = fakeChain();
     const chainSession = session("ethereum", transport(rpc), {
-      orderedFeatures: ["log1p_effective_priority_fee_per_gas_p50"],
+      orderedFeatures: [
+        "log1p_effective_priority_fee_per_gas_p50",
+        "log1p_effective_priority_fee_per_gas_p90",
+      ],
     });
 
     const context = await chainSession.sync();
 
-    expect(context.p50Rewards).toEqual([
-      2_000_000_000n,
-      2_000_000_001n,
-      2_000_000_002n,
+    expect(context.priorityFeeRewards).toEqual([
+      [2_000_000_000n, 3_000_000_000n],
+      [2_000_000_001n, 3_000_000_001n],
+      [2_000_000_002n, 3_000_000_002n],
     ]);
     expect(
       rpc.requests.find((request) => request.method === "eth_feeHistory")
         ?.params,
-    ).toEqual(["0x3", "0xc", [50]]);
+    ).toEqual(["0x3", "0xc", [50, 90]]);
     chainSession.dispose();
   });
 

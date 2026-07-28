@@ -35,6 +35,7 @@ def _corpus(first_block: int = 10, last_block: int = 29) -> Corpus:
             "gas_limit": np.full(blocks.size, 100, dtype=np.int64),
             "tx_count": 20 + np.arange(blocks.size, dtype=np.int64),
             "effective_priority_fee_per_gas_p50": 2 + np.arange(blocks.size, dtype=np.int64),
+            "effective_priority_fee_per_gas_p90": 4 + np.arange(blocks.size, dtype=np.int64),
         },
     ).filter(pl.col("block_number").is_between(first_block, last_block))
     request = CorpusRequest(
@@ -161,6 +162,7 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
             "gas_limit": np.full(blocks.size, 100, dtype=np.int64),
             "tx_count": 19 + np.arange(blocks.size, dtype=np.int64),
             "effective_priority_fee_per_gas_p50": np.arange(blocks.size, dtype=np.int64),
+            "effective_priority_fee_per_gas_p90": 2 * np.arange(blocks.size, dtype=np.int64),
         }
     )
     request = CorpusRequest(

@@ -8,7 +8,7 @@ This glossary defines FABLE's active domain language.
 
 **Typed association.** An exact request/object relationship expressed by the owning schema, UUID, embedded request, or selected Study result index plus Method.
 
-**BlockFrame.** One isolated, validated eight-column value covering an exact contiguous single-chain `CorpusDefinition`, including the gas-used-weighted effective priority-fee P50; it establishes canonical row facts and range selection, not finality or provenance.
+**BlockFrame.** One isolated, validated nine-column value covering an exact contiguous single-chain `CorpusDefinition`, including gas-used-weighted effective priority-fee P50 and P90; it establishes canonical row facts and range selection, not finality or provenance.
 
 **Rolling comparison.** One transient held-out reduction that aligns completed `K=5`, `K=4`, `K=3`, and `K=2` Evaluation observations under an immutable five-block deadline, consulting each shorter-horizon prediction only after the earlier prediction waited.
 

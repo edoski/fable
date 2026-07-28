@@ -2,26 +2,26 @@
 
 Research date: 2026-07-21. This note covers EIP-1559-style execution gas. Blob gas has a separate base-fee market and is outside this feature.
 
-## Why block P50
+## Why block P50 and P90
 
-FABLE owns the canonical Corpus schema and historical feature identity in the [Corpus reference](../FABLE.md#corpus-object) and [causal-feature contract](../FABLE.md#causal-features). This note records why the chosen block statistic is P50 and how it may be interpreted.
+FABLE owns the canonical Corpus schema and historical feature identity in the [Corpus reference](../FABLE.md#corpus-object) and [causal-feature contract](../FABLE.md#causal-features). This note records why the chosen block statistics are P50 and P90 and how they may be interpreted.
 
-P50 is the gas-used-weighted median effective priority fee paid by transactions included in a block. Acquire it directly with:
+P50 is the gas-used-weighted median effective priority fee paid by transactions included in a block. P90 adds the upper tail of the same included-gas distribution. Acquire both directly with:
 
 ```json
 {
   "jsonrpc": "2.0",
   "method": "eth_feeHistory",
-  "params": ["0x<count>", "0x<newestBlock>", [50]],
+  "params": ["0x<count>", "0x<newestBlock>", [50, 90]],
   "id": 1
 }
 ```
 
-For returned block `oldestBlock + i`, decode `reward[i][0]` from a hexadecimal quantity to an integer. The Execution API defines `reward` as effective priority fees per gas, sorted by effective tip and weighted by gas consumed. It can return fewer blocks than requested, so preprocessing must map through `oldestBlock` and reject gaps, missing `reward`, wrong row widths, or incomplete requested coverage rather than silently shortening a Corpus. [Ethereum Execution API: `eth_feeHistory`](https://github.com/ethereum/execution-apis/blob/baa4c9a11736c729ef3f172633df995a84a310b2/src/eth/fee_market.yaml#L57-L133)
+For returned block `oldestBlock + i`, decode `reward[i][0]` as P50 and `reward[i][1]` as P90 from hexadecimal quantities to integers. The Execution API defines `reward` as effective priority fees per gas, sorted by effective tip and weighted by gas consumed. It can return fewer blocks than requested, so preprocessing must map through `oldestBlock` and reject gaps, missing `reward`, wrong row widths, or incomplete requested coverage rather than silently shortening a Corpus. [Ethereum Execution API: `eth_feeHistory`](https://github.com/ethereum/execution-apis/blob/baa4c9a11736c729ef3f172633df995a84a310b2/src/eth/fee_market.yaml#L57-L133)
 
 The API returns zeroes for an empty block. Zero is also a valid result for a nonempty block whose percentile lands on zero-tip gas. Preserve zero as data; `tx_count` already distinguishes an empty block. Do not use null or imputation. Geth implements the percentile by sorting effective tips, weighting each transaction by its receipt `gasUsed`, and selecting the first tip whose cumulative gas reaches the requested threshold. [Execution API empty-block rule](https://github.com/ethereum/execution-apis/blob/baa4c9a11736c729ef3f172633df995a84a310b2/src/eth/fee_market.yaml#L122-L133), [Geth implementation](https://github.com/ethereum/go-ethereum/blob/6e49f8e6b3404ee33712d147f561fc28c7974a2f/eth/gasprice/feehistory.go#L125-L153)
 
-Because block P50 may be zero, its historical transform uses `log1p`; an ordinary logarithm would be undefined at zero. Ethereum RPC quantities are unsigned, so acquisition must range-check them before integer casting.
+Because either percentile may be zero, both historical transforms use `log1p`; an ordinary logarithm would be undefined at zero. Ethereum RPC quantities are unsigned, so acquisition must range-check them before integer casting.
 
 ## Chain scope
 

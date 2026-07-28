@@ -103,6 +103,8 @@ def _feature_values(blocks: pl.DataFrame, feature_name: FeatureName) -> NDArray[
             return np.log1p(_float_column(blocks, "tx_count"))
         case "log1p_effective_priority_fee_per_gas_p50":
             return np.log1p(_float_column(blocks, "effective_priority_fee_per_gas_p50"))
+        case "log1p_effective_priority_fee_per_gas_p90":
+            return np.log1p(_float_column(blocks, "effective_priority_fee_per_gas_p90"))
         case "block_interval_seconds":
             timestamps = blocks["timestamp"].to_numpy().astype(np.int64, copy=False)
             intervals = np.diff(timestamps)
