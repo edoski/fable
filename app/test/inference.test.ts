@@ -29,7 +29,7 @@ import type {
   ChainSession,
   PreparedChainContext,
 } from "../src/rpc";
-import { hashOf } from "./helpers";
+import { deferred, hashOf } from "./helpers";
 
 function block(
   number: bigint,
@@ -150,16 +150,6 @@ function createTestEngine(
     dependencies,
     engine: createInferenceEngine(dependencies),
   };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((next, fail) => {
-    resolve = next;
-    reject = fail;
-  });
-  return { promise, resolve, reject };
 }
 
 describe("InferenceEngine", () => {

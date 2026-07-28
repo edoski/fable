@@ -345,7 +345,7 @@ The request supplies a nonempty unique ordered tuple drawn from the supported na
 | `log_gas_limit` | `ln(gas_limit / (1 gas))` | Gas limit positive; closed-row header fact. |
 | `log1p_tx_count` | `ln(1 + tx_count / (1 transaction))` | Transaction count nonnegative; known after row close. |
 | `log1p_effective_priority_fee_per_gas_p50` | `ln(1 + effective_priority_fee_per_gas_p50 / (1 wei/gas))` | P50 nonnegative; included-transaction closed-row fact. |
-| `log1p_effective_priority_fee_per_gas_p90` | `ln(1 + effective_priority_fee_per_gas_p90 / (1 wei/gas))` | Included-transaction closed-row P90 fact. |
+| `log1p_effective_priority_fee_per_gas_p90` | `ln(1 + effective_priority_fee_per_gas_p90 / (1 wei/gas))` | P90 nonnegative; included-transaction closed-row fact. |
 | `block_interval_seconds` | `timestamp_b - timestamp_{b-1}` seconds | Nonnegative; requires the real predecessor row. |
 | `hour_sin` | `sin(2π hour_UTC/24)` | `hour_UTC = (timestamp//3600) mod 24`; closed timestamp. |
 | `hour_cos` | `cos(2π hour_UTC/24)` | Same angle and availability. |
@@ -791,7 +791,7 @@ finalized_anchor:
 | 6 | `gas_limit` | Int64 | positive gas |
 | 7 | `tx_count` | Int64 | nonnegative transaction count |
 | 8 | `effective_priority_fee_per_gas_p50` | Int64 | nonnegative gas-used-weighted P50 among included transactions, wei/gas |
-| 9 | `effective_priority_fee_per_gas_p90` | Int64 | gas-used-weighted P90 among included transactions, wei/gas |
+| 9 | `effective_priority_fee_per_gas_p90` | Int64 | nonnegative gas-used-weighted P90 among included transactions, wei/gas |
 
 Direct loader:
 

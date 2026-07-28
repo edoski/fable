@@ -25,7 +25,7 @@ import {
   type ModelSelection,
 } from "../src/model";
 import type { Chain, Horizon } from "../src/domain";
-import { flushMicrotasks } from "./helpers";
+import { deferred, flushMicrotasks } from "./helpers";
 
 type NativeTensor = {
   dataPtr: ArrayBuffer | Float32Array;
@@ -110,14 +110,6 @@ function native(
     forward: vi.fn(forward),
     delete: vi.fn(),
   };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((next) => {
-    resolve = next;
-  });
-  return { promise, resolve };
 }
 
 describe("model catalog", () => {

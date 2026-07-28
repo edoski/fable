@@ -70,6 +70,8 @@ class BlockFrame:
             raise ValueError("Block tx_count values must be nonnegative")
         if not (frame["effective_priority_fee_per_gas_p50"] >= 0).all():
             raise ValueError("Block effective_priority_fee_per_gas_p50 values must be nonnegative")
+        if not (frame["effective_priority_fee_per_gas_p90"] >= 0).all():
+            raise ValueError("Block effective_priority_fee_per_gas_p90 values must be nonnegative")
 
         self._frame = frame.clone()
         self._definition = definition

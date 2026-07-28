@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +12,7 @@ import pytest
 import torch
 from torch import nn
 
+import fable.evaluation as evaluation_module
 from fable.addresses import (
     corpus_blocks_path,
     corpus_directory,
@@ -33,12 +33,9 @@ from fable.config import (
     SelectedStudySource,
     TrainRequest,
 )
-from fable.evaluation import evaluate
 from fable.min_block_fee import MinBlockFeeOutput, TargetState
 from fable.modeling import ArtifactAssociation
 from fable.temporal import FeatureState
-
-evaluation_module = importlib.import_module("fable.evaluation")
 
 _CORPUS_ID = UUID("10000000-0000-4000-8000-000000000001")
 _OTHER_CORPUS_ID = UUID("10000000-0000-4000-8000-000000000002")
@@ -275,7 +272,7 @@ def test_evaluate_publishes_exact_observations(
     monkeypatch.setattr(evaluation_module, "_DEVICE", torch.device("cpu"))
     request = _request()
 
-    evaluate(request, tmp_path)
+    evaluation_module.evaluate(request, tmp_path)
 
     assert model.transfers == 1
     assert model.batch_sizes == [5]
@@ -322,7 +319,7 @@ def test_evaluate_rejects_owned_association_and_publication_conflicts(
         evaluation_directory(tmp_path, _EVALUATION_ID).mkdir(parents=True)
 
     with pytest.raises(error, match=match):
-        evaluate(request, tmp_path)
+        evaluation_module.evaluate(request, tmp_path)
 
     if case == "occupied_canonical":
         scratch = tmp_path / "evaluations" / f".{_EVALUATION_ID}"

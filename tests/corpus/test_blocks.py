@@ -80,7 +80,12 @@ def _reorder(frame: pl.DataFrame) -> pl.DataFrame:
         pytest.param(
             _replace("effective_priority_fee_per_gas_p50", 1, -1),
             "effective_priority_fee_per_gas_p50",
-            id="priority-fee",
+            id="priority-fee-p50",
+        ),
+        pytest.param(
+            _replace("effective_priority_fee_per_gas_p90", 1, -1),
+            "effective_priority_fee_per_gas_p90",
+            id="priority-fee-p90",
         ),
     ],
 )

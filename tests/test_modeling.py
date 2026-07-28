@@ -49,6 +49,7 @@ from tests.helpers import modeling_method
 
 ARTIFACT_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
+STUDY_ID = UUID("40000000-0000-4000-8000-000000000001")
 _BASE_FEES = np.array(
     [11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2],
     dtype=np.int64,
@@ -73,19 +74,6 @@ def _experiment() -> ExperimentSemantics:
         context_blocks=3,
         horizon_blocks=2,
         ordered_features=("log_base_fee_per_gas", "gas_utilization"),
-    )
-
-
-def _request() -> TrainRequest:
-    return TrainRequest(
-        workflow="train",
-        artifact_id=ARTIFACT_ID,
-        source=SelectedStudySource(
-            corpus_id=CORPUS_ID,
-            study_id=UUID("40000000-0000-4000-8000-000000000001"),
-            study_result_index=0,
-            experiment=_experiment(),
-        ),
     )
 
 
@@ -140,7 +128,7 @@ def _write_corpus(storage_root: Path) -> None:
 def _candidate_request(method: Method) -> TuneRequest:
     return TuneRequest(
         workflow="tune",
-        study_id=UUID("40000000-0000-4000-8000-000000000001"),
+        study_id=STUDY_ID,
         corpus_id=CORPUS_ID,
         experiment=_experiment(),
         methods=(method,),
@@ -169,15 +157,13 @@ def _definition(
     )
 
 
-def _train_request(
-    artifact_id: UUID,
-) -> TrainRequest:
+def _train_request(artifact_id: UUID = ARTIFACT_ID) -> TrainRequest:
     return TrainRequest(
         workflow="train",
         artifact_id=artifact_id,
         source=SelectedStudySource(
             corpus_id=CORPUS_ID,
-            study_id=artifact_id,
+            study_id=STUDY_ID,
             study_result_index=0,
             experiment=_experiment(),
         ),
@@ -213,7 +199,7 @@ def _write_selected_study(
 
 def test_artifact_association_round_trips_strict_json() -> None:
     association = ArtifactAssociation(
-        request=_request(),
+        request=_train_request(),
         feature_state=FeatureState(
             means=(1.0, 2.0),
             standard_deviations=(0.5, 0.25),
@@ -235,7 +221,7 @@ def test_artifact_association_rejects_feature_width_mismatch() -> None:
     target_state = TargetState(mean=3.0, standard_deviation=0.75)
     with pytest.raises(ValidationError, match="feature state width"):
         ArtifactAssociation(
-            request=_request(),
+            request=_train_request(),
             feature_state=FeatureState(
                 means=(1.0,),
                 standard_deviations=(0.5,),
@@ -271,7 +257,7 @@ def test_epoch_logs_weight_short_batches_in_float64(
 ) -> None:
     prepared = prepare_fit_history(_corpus(), _experiment())
     association = ArtifactAssociation(
-        request=_request(),
+        request=_train_request(),
         feature_state=prepared.feature_state,
         target_state=prepared.target_state,
         method=modeling_method(),
@@ -327,7 +313,7 @@ def test_validation_logs_mean_base_fee_cost_over_optimum(
 ) -> None:
     prepared = prepare_fit_history(_corpus(), _experiment())
     association = ArtifactAssociation(
-        request=_request(),
+        request=_train_request(),
         feature_state=prepared.feature_state,
         target_state=prepared.target_state,
         method=modeling_method(),
@@ -366,7 +352,7 @@ def test_validation_logs_mean_base_fee_cost_over_optimum(
 
 def test_gradient_clipping_uses_trainer_value_and_rejects_nonfinite() -> None:
     association = ArtifactAssociation(
-        request=_request(),
+        request=_train_request(),
         feature_state=FeatureState(
             means=(1.0, 2.0),
             standard_deviations=(0.5, 0.25),
