@@ -51,7 +51,6 @@ class _FeatureContract:
 
 @dataclass(frozen=True, slots=True)
 class _Cell:
-    horizon: int
     artifact_id: UUID
     features: _FeatureContract
     target_mean: float
@@ -125,7 +124,6 @@ def _load_cells(
                 raise ValueError(f"{chain} artifacts must share one feature contract")
 
             cells[chain][horizon] = _Cell(
-                horizon=horizon,
                 artifact_id=artifact_id,
                 features=features,
                 target_mean=association.target_state.mean,

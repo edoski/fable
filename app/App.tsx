@@ -62,17 +62,17 @@ export default function App() {
       current: readonly InferenceRun[],
     ) => InferenceRun[] | Promise<InferenceRun[]>,
     isCurrent: () => boolean,
-  ): Promise<InferenceRun[]> {
+  ): Promise<void> {
     return serializeHistory(async () => {
       const current = runsRef.current;
-      if (!isCurrent()) return current;
+      if (!isCurrent()) return;
       const next = await update(current);
       if (
         !isCurrent() ||
         (next.length === current.length &&
           next.every((run, index) => run === current[index]))
       ) {
-        return current;
+        return;
       }
       try {
         await saveRuns(next);
@@ -85,7 +85,6 @@ export default function App() {
       runsRef.current = next;
       setRuns(next);
       setStorageError(null);
-      return next;
     });
   }
 
@@ -153,7 +152,7 @@ export default function App() {
       setRpcStatus(status);
       if (status === "offline") setSnapshot(null);
     };
-    const stopPolling = engine.startPolling(
+    engine.startPolling(
       (nextSnapshot) => {
         if (activeEngine.current !== current) return;
         onStatus("live");
@@ -169,7 +168,6 @@ export default function App() {
       if (activeEngine.current === current) {
         activeEngine.current = null;
       }
-      stopPolling();
       void engine.dispose();
     };
   }, [chain]);

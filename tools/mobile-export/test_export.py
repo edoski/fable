@@ -271,9 +271,10 @@ def test_export_bundle_cleans_scratch_after_export_failure(
     roster_path = tmp_path / "MOBILE.yaml"
     artifact_ids = _write_roster(roster_path)
     _install_artifact_fakes(monkeypatch, artifact_ids)
+    failing_artifact_id = artifact_ids[("ethereum", 3)]
 
     def export_model(cell: mobile_export._Cell, destination: Path) -> None:
-        if cell.horizon == 3:
+        if cell.artifact_id == failing_artifact_id:
             raise RuntimeError("lowering failed")
         destination.write_bytes(b"pte")
 
@@ -365,7 +366,6 @@ def test_real_xnnpack_export_and_host_execution(tmp_path: Path) -> None:
     destination = tmp_path / "tiny.pte"
     mobile_export._export_model(
         mobile_export._Cell(
-            horizon=2,
             artifact_id=_artifact_id(1),
             features=mobile_export._FeatureContract(
                 context_blocks=3,

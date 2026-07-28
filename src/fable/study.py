@@ -18,12 +18,12 @@ from .config import (
 )
 from .records import StrictFrozenRecord
 
-_Epoch: TypeAlias = Annotated[int, Field(strict=True, ge=1)]
+_Epoch: TypeAlias = Annotated[int, Field(ge=1)]
 
 
 class RetainedResult(StrictFrozenRecord):
     method: Method
-    objective: Annotated[float, Field(strict=True, allow_inf_nan=False)]
+    objective: Annotated[float, Field(allow_inf_nan=False)]
     selected_epoch: _Epoch
     completed_epochs: _Epoch
 
@@ -69,7 +69,10 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
     result_paths = set(scratch.glob("result-*.json"))
     if not result_paths:
         raise FileNotFoundError(scratch / "result-*.json")
-    first = _load_study_path(min(result_paths))
+    first_path = _result_path(storage_root, study_id, 0)
+    if first_path not in result_paths:
+        raise ValueError("result files do not match TuneRequest methods")
+    first = _load_study_path(first_path)
     request = first.request
     if request.study_id != study_id:
         raise ValueError("result Study ID does not match requested Study ID")
@@ -86,7 +89,7 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
 
     trials: list[RetainedResult] = []
     for method_index, result_path in enumerate(expected_paths):
-        result_study = _load_study_path(result_path)
+        result_study = first if method_index == 0 else _load_study_path(result_path)
         if result_study.request != request:
             raise ValueError("result requests must be identical")
         if len(result_study.trials) != 1:

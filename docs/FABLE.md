@@ -522,7 +522,7 @@ to cover the completed range.
 
 ### Temporal preparation
 
-Temporal preparation has two direct paths: historical fixed-block examples and live closed-head inference. Both use the same ordered feature functions and persisted training-only feature state.
+Temporal preparation has two direct paths: historical fixed-block examples and live closed-head inference. Both use the same ordered feature contract and persisted training-only feature state.
 
 `prepare_fit_history(corpus, experiment)` validates complete context/outcome support, fits state from training support only, and returns training and validation `HistoricalDataset` values with `FeatureState` and `TargetState`. `prepare_historical_window(corpus, experiment, window, *, feature_state, target_state)` prepares an exact testing window with persisted state after complete validation outcomes.
 

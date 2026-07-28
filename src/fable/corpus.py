@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Self
 
 import polars as pl
-from pydantic import UUID4, BaseModel, ConfigDict, Field, model_validator
+from pydantic import UUID4, ConfigDict, Field, model_validator
 
 from .addresses import corpus_blocks_path, corpus_json_path
 from .config import CorpusDefinition, CorpusRequest
@@ -105,13 +105,8 @@ class FinalizedAnchor(StrictFrozenRecord):
     block_hash: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]+$")
 
 
-class Corpus(BaseModel):
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True,
-        extra="forbid",
-        frozen=True,
-        strict=True,
-    )
+class Corpus(StrictFrozenRecord):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     request: CorpusRequest
     finalized_anchor: FinalizedAnchor

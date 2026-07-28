@@ -14,8 +14,8 @@ from pydantic import Field, ValidationInfo, field_validator
 from .config import Method, TuneRequest, WorkflowRequest
 from .records import StrictFrozenRecord
 
-_NonEmptyString = Annotated[str, Field(strict=True, min_length=1)]
-_PositiveInt = Annotated[int, Field(strict=True, gt=0)]
+_NonEmptyString = Annotated[str, Field(min_length=1)]
+_PositiveInt = Annotated[int, Field(gt=0)]
 _JOB_ID_PATTERN = re.compile(r"([0-9]+)(?:;[^;\r\n]+)?\n?")
 
 

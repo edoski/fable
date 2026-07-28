@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -16,7 +17,6 @@ from .config import (
     TuneRequest,
     WorkflowRequest,
 )
-from .environment import resolve_storage_root
 from .evaluation import evaluate
 from .execution import CandidateProcessInput, submit_candidate
 from .execution import submit as submit_workflow
@@ -29,6 +29,13 @@ remote_app = typer.Typer(add_completion=False)
 study_app = typer.Typer(add_completion=False)
 app.add_typer(remote_app, name="remote", hidden=True)
 app.add_typer(study_app, name="study")
+
+
+def _resolve_storage_root() -> Path:
+    storage_root = Path(os.environ["STORAGE_ROOT"])
+    if not storage_root.is_absolute():
+        raise ValueError("STORAGE_ROOT must be an absolute path")
+    return storage_root
 
 
 @app.command("submit")
@@ -51,7 +58,7 @@ def workflow_command() -> None:
         sys.stdin.buffer.read(),
         strict=True,
     )
-    storage_root = resolve_storage_root()
+    storage_root = _resolve_storage_root()
 
     if isinstance(request, TrainRequest):
         train(request, storage_root)
@@ -65,7 +72,7 @@ def candidate_command() -> None:
         sys.stdin.buffer.read(),
         strict=True,
     )
-    storage_root = resolve_storage_root()
+    storage_root = _resolve_storage_root()
     run_candidate(
         storage_root,
         candidate.request,
@@ -87,4 +94,4 @@ def study_run_command(
 def study_finalize_command(
     study_id: Annotated[UUID, typer.Argument(metavar="STUDY_ID")],
 ) -> None:
-    publish_study(resolve_storage_root(), study_id)
+    publish_study(_resolve_storage_root(), study_id)

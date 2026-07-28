@@ -87,7 +87,6 @@ function engine(): EngineHarness {
     prepare: vi.fn(async () => undefined),
     startPolling: vi.fn((onSnapshot) => {
       publish = onSnapshot;
-      return vi.fn();
     }),
     run: vi.fn(async () => {
       throw new Error("unused");

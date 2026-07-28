@@ -36,7 +36,7 @@ export type InferenceEngine = {
   startPolling(
     onSnapshot: (snapshot: ChainSnapshot) => void,
     onError?: (error: unknown) => void,
-  ): () => void;
+  ): void;
   run(K: Horizon): Promise<InferenceResult>;
   resolveOutcome(
     immediateBlock: number,
@@ -146,9 +146,9 @@ export function createInferenceEngine(
   function startPolling(
     onSnapshot: (snapshot: ChainSnapshot) => void,
     onError?: (error: unknown) => void,
-  ): () => void {
+  ): void {
     requireActive();
-    return session.startPolling((block) => {
+    session.startPolling((block) => {
       requireActive();
       onSnapshot({
         head_block: safeBigInt(block.number, "head block"),

@@ -108,7 +108,7 @@ function LiveConditions({ snapshot }: { snapshot: ChainSnapshot | null }) {
   );
 }
 
-function PredictionWindow({
+function HorizonSelector({
   disabled,
   horizon,
   onChange,
@@ -249,9 +249,9 @@ function Setup({
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
-            Prediction window (K = {horizon})
+            Horizon (K = {horizon})
           </Text>
-          <PredictionWindow
+          <HorizonSelector
             disabled={loading}
             horizon={horizon}
             onChange={onHorizonChange}
@@ -293,10 +293,8 @@ function Setup({
 
 function Timeline({
   result,
-  horizon,
 }: {
   result: InferenceResult;
-  horizon: Horizon;
 }) {
   return (
     <View style={styles.timeline}>
@@ -306,7 +304,7 @@ function Timeline({
           {result.head_block.toLocaleString()}
         </Text>
       </View>
-      {Array.from({ length: horizon }, (_, offset) => {
+      {Array.from({ length: result.K }, (_, offset) => {
         const active = offset === result.selected_action_k;
         return (
           <View
@@ -342,11 +340,12 @@ function Timeline({
 }
 
 function Result({
-  chain,
-  horizon,
   result,
   onRunAgain,
-}: Props & { result: InferenceResult }) {
+}: {
+  result: InferenceResult;
+  onRunAgain: () => void;
+}) {
   const recommendation =
     result.selected_action_k === 0
       ? "Use the next block"
@@ -367,12 +366,12 @@ function Result({
         </View>
       </View>
 
-      <Timeline horizon={horizon} result={result} />
+      <Timeline result={result} />
 
       <View style={[styles.surface, styles.detailsCard]}>
         <Text style={styles.detailsTitle}>Technical details</Text>
-        <DetailRow label="Network" value={CHAIN_DETAILS[chain].label} />
-        <DetailRow label="Horizon" value={`${horizon} blocks`} />
+        <DetailRow label="Network" value={CHAIN_DETAILS[result.chain].label} />
+        <DetailRow label="Horizon" value={`${result.K} blocks`} />
         <DetailRow
           label="Action offset"
           value={String(result.selected_action_k)}
@@ -402,7 +401,12 @@ function Result({
 
 export function InferenceScreen(props: Props) {
   if (props.state.status === "success") {
-    return <Result {...props} result={props.state.result} />;
+    return (
+      <Result
+        onRunAgain={props.onRunAgain}
+        result={props.state.result}
+      />
+    );
   }
   return <Setup {...props} />;
 }

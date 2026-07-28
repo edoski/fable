@@ -527,7 +527,7 @@ export function AnalyticsScreen({
         <View style={styles.graphSection}>
           <View style={styles.graphFilter}>
             <Text style={styles.sectionTitle}>
-              Prediction window (K = {analyticsHorizon})
+              Horizon (K = {analyticsHorizon})
             </Text>
             <View style={[styles.surface, styles.graphSliderCard]}>
               <HorizonSlider
@@ -575,7 +575,7 @@ export function AnalyticsScreen({
             <View style={styles.emptyRuns}>
               <Text style={styles.emptyRunsTitle}>No runs yet</Text>
               <Text style={styles.emptyRunsText}>
-                No runs match this prediction window.
+                No runs match this horizon.
               </Text>
             </View>
           ) : (
