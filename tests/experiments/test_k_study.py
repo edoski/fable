@@ -202,14 +202,12 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     ]
     assert held_out_experiment_id.version == 4
     assert len(evaluation_rows) == 81
-    assert evaluation_requests[0].testing_window == BlockWindow(
-        first_parent_block=704,
-        last_parent_block=803,
-    )
-    assert evaluation_requests[3].testing_window == BlockWindow(
-        first_parent_block=701,
-        last_parent_block=800,
-    )
+    assert [request.testing_window for request in evaluation_requests[:4]] == [
+        BlockWindow(first_parent_block=701, last_parent_block=803),
+        BlockWindow(first_parent_block=701, last_parent_block=802),
+        BlockWindow(first_parent_block=701, last_parent_block=801),
+        BlockWindow(first_parent_block=701, last_parent_block=800),
+    ]
     for row in evaluation_rows:
         (tmp_path / "evaluations" / row["evaluation_id"]).mkdir(parents=True)
     run_script(_HELD_OUT_SCRIPT, "close", tmp_path, held_out_experiment_id)

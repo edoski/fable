@@ -66,33 +66,33 @@ def _publish_rolling_evaluations(storage_root: Path) -> None:
         storage_root,
         5,
         first_origin=100,
-        actions=[0, 1, 1, 1, 1],
+        actions=[0, 4, 0, 4, 0],
         selected_base_fees=[90, 80, 70, 60, 50],
         selected_priority_fees=[9, 8, 7, 6, 5],
     )
     _publish_evaluation(
         storage_root,
         4,
-        first_origin=101,
-        actions=[3, 0, 1, 1, 1],
-        selected_base_fees=[1_000, 70, 1_000, 1_000, 1_000],
-        selected_priority_fees=[100, 7, 100, 100, 100],
+        first_origin=100,
+        actions=[1, 0, 3, 0, 0, 0],
+        selected_base_fees=[1_000] * 6,
+        selected_priority_fees=[100] * 6,
     )
     _publish_evaluation(
         storage_root,
         3,
-        first_origin=102,
-        actions=[2, 2, 0, 1, 1],
-        selected_base_fees=[1_000, 1_000, 50, 1_000, 1_000],
-        selected_priority_fees=[100, 100, 5, 100, 100],
+        first_origin=100,
+        actions=[2, 0, 0, 2, 2, 0, 0],
+        selected_base_fees=[1_000] * 7,
+        selected_priority_fees=[100] * 7,
     )
     _publish_evaluation(
         storage_root,
         2,
-        first_origin=103,
-        actions=[1, 1, 1, 0, 1],
-        selected_base_fees=[1_000, 1_000, 1_000, 30, 20],
-        selected_priority_fees=[100, 100, 100, 3, 2],
+        first_origin=100,
+        actions=[0, 0, 0, 0, 1, 0, 0, 0],
+        selected_base_fees=[1_000, 90, 1_000, 1_000, 20, 40, 1_000, 1_000],
+        selected_priority_fees=[100, 9, 100, 100, 2, 4, 100, 100],
     )
 
 
@@ -104,7 +104,7 @@ def _observations_path(storage_root: Path, horizon: int) -> Path:
     return evaluation_directory(storage_root, _EVALUATION_IDS[horizon]) / "observations.parquet"
 
 
-def test_reduce_rolling_reconstructs_every_stage_and_six_metrics(tmp_path: Path) -> None:
+def test_reduce_rolling_confirms_each_smaller_horizon_and_six_metrics(tmp_path: Path) -> None:
     _publish_rolling_evaluations(tmp_path)
 
     result = reduce_rolling(tmp_path, _roster())
@@ -114,7 +114,7 @@ def test_reduce_rolling_reconstructs_every_stage_and_six_metrics(tmp_path: Path)
     assert result["cell"].to_list() == [f"cell-{index}" for index in range(9)]
     for row in result.iter_rows(named=True):
         assert tuple(value for name, value in row.items() if name != "cell") == pytest.approx(
-            (0.3, 0.48, 0.3, 0.48, 2.5, 1.6)
+            (0.3, 0.58, 0.3, 0.58, 2.5, 1.1)
         )
 
 
@@ -125,7 +125,7 @@ def test_reduce_rolling_reconstructs_every_stage_and_six_metrics(tmp_path: Path)
         ("horizons", "must name exactly the K=2"),
         ("schema", "canonical ordered schema"),
         ("origins", "consecutive unique origins"),
-        ("shift", "lacks required shifted origins"),
+        ("shift", "lacks required decision origins"),
         ("action", "K=3 predicted_action_k values must be valid actions"),
     ],
 )

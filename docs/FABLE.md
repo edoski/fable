@@ -497,9 +497,9 @@ All three economic metrics are mean per-origin fractions, not ratios of fee sums
 
 #### Fixed-deadline rolling comparison
 
-The rolling comparison fixes each `K=5` origin `h` and deadline `D=h+5`. It aligns the completed predictions at `h` for `K=5`, `h+1` for `K=4`, `h+2` for `K=3`, and `h+3` for `K=2`. At each stage, `k=0` selects the next block and stops; otherwise the next shorter-horizon prediction is consulted. If the `K=2` prediction also waits, it must be `k=1` and selects `D`. The deadline never moves.
+The rolling comparison fixes each `K=5` origin `h` and deadline `D=h+5`. Starting at `h`, it runs `K=5`, `K=4`, `K=3`, and `K=2` exactly once in that order. After each of the first three predictions, the next smaller model runs at the same decision origin unless the current model selected its final visible block, `k=K-1`; that terminal action advances the decision origin by one block. Each smaller model replaces the preceding prediction. The `K=2` prediction is final and selects `b=t+1+k`, where `t` is its decision origin. At most three origin advances followed by a two-block prediction keep `b≤D`.
 
-Precomputed predictions preserve historical causality because a later row affects the result only when every earlier stage waited. The comparison performs no model inference or Corpus hydration.
+Every selected observation uses only context closed by its own decision origin. The comparison reconstructs the policy from precomputed predictions and performs no model inference or Corpus hydration.
 
 For every architecture-chain cell, the rolling reduction uses every `K=5` testing origin at stride one and returns one-shot and rolling values for base-fee savings, P50 fee-inclusive savings, and base-fee optimality gap. Savings use the immediate action as their baseline; optimality gap uses the earliest minimum within the original five-block window. These are exact descriptive means for the sealed held-out period. There is no bootstrap, confidence interval, significance test, resampling, stride thinning, or persisted pairwise delta.
 
@@ -635,7 +635,7 @@ The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical n
 
 `reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, expected nonnull row count, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. It requires all seven computed metrics to be finite. It does not reload the artifact or Corpus or externally authenticate the horizon or source. The result has no evaluation ID, count, sums, supports, arrays, or auxiliary fields and is not persisted.
 
-Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps exactly nine human-readable architecture-chain cell names to mappings from horizons `2`, `3`, `4`, and `5` to their Evaluation UUIDs. The final experiment runner owns that scientific association. Reduction verifies exact schemas, nonnull consecutive origins, action ranges, and required shifted coverage. Its nine-row, six-metric DataFrame is transient and is not persisted.
+Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps exactly nine human-readable architecture-chain cell names to mappings from horizons `2`, `3`, `4`, and `5` to their Evaluation UUIDs. The final experiment runner owns that scientific association. Reduction verifies exact schemas, nonnull consecutive origins, action ranges, and required decision-origin coverage. Its nine-row, six-metric DataFrame is transient and is not persisted.
 
 ## Exact reference
 
@@ -824,9 +824,9 @@ chooses the earliest minimum validation objective.
 `experiments/k_study.py` derives each architecture-chain HPO result and authors 81 fresh
 selected-Study Train requests for `K={2,3,4,5,10,25,50,100,200}`. It publishes the K-study
 manifest only after every artifact exists. `experiments/held_out.py` authors the corresponding
-held-out Evaluate requests. All horizons use the common complete-`K=200` testing range; the
-`K=2…4` ranges extend by three, two, or one shifted origins so the fixed-deadline rolling
-comparison can reuse the same evaluations. Its report commands print, but do not persist, the
+held-out Evaluate requests. All horizons share the same first testing origin. The `K=2…4`
+ranges extend their last origin by three, two, or one blocks so the fixed-deadline rolling
+comparison has every reachable decision origin. Its report commands print, but do not persist, the
 ordinary and rolling reductions. Closure publishes the exact 81 evaluation references and removes
 the temporary bundle.
 

@@ -290,37 +290,29 @@ def _reduce_rolling_cell(
         raise ValueError(f"{cell} must name exactly the K=2, K=3, K=4, and K=5 evaluations")
 
     initial_frame = _load_rolling_observations(storage_root, evaluation_ids[5])
-    initial_origins = initial_frame["origin_block"].to_numpy()
-    first_origin = int(initial_origins[0])
-    count = initial_origins.size
+    current_origins = initial_frame["origin_block"].to_numpy().copy()
     initial = _rolling_arrays(
         initial_frame,
-        first_origin=first_origin,
-        count=count,
+        decision_origins=current_origins,
         cell=cell,
         horizon=5,
     )
-    del initial_frame, initial_origins
-
-    rolling_base_fees = initial["selected_base_fee_per_gas"].copy()
-    rolling_priority_fees = initial["selected_effective_priority_fee_per_gas_p50"].copy()
-    waiting = initial["predicted_action_k"] != 0
-    for horizon in (4, 3, 2):
-        frame = _load_rolling_observations(storage_root, evaluation_ids[horizon])
+    current_origins += initial["predicted_action_k"] == 4
+    for horizon in (4, 3):
         current = _rolling_arrays(
-            frame,
-            first_origin=first_origin + 5 - horizon,
-            count=count,
+            _load_rolling_observations(storage_root, evaluation_ids[horizon]),
+            decision_origins=current_origins,
             cell=cell,
             horizon=horizon,
         )
-        selected = waiting if horizon == 2 else waiting & (current["predicted_action_k"] == 0)
-        rolling_base_fees[selected] = current["selected_base_fee_per_gas"][selected]
-        rolling_priority_fees[selected] = current["selected_effective_priority_fee_per_gas_p50"][
-            selected
-        ]
-        waiting &= ~selected
-        del frame, current
+        current_origins += current["predicted_action_k"] == horizon - 1
+
+    final = _rolling_arrays(
+        _load_rolling_observations(storage_root, evaluation_ids[2]),
+        decision_origins=current_origins,
+        cell=cell,
+        horizon=2,
+    )
 
     immediate_base_fees = initial["immediate_base_fee_per_gas"]
     immediate_priority_fees = initial["immediate_effective_priority_fee_per_gas_p50"]
@@ -335,8 +327,8 @@ def _reduce_rolling_cell(
     rolling = _economic_metrics(
         immediate_base_fees,
         immediate_priority_fees,
-        rolling_base_fees,
-        rolling_priority_fees,
+        final["selected_base_fee_per_gas"],
+        final["selected_effective_priority_fee_per_gas_p50"],
         minimum_base_fees,
     )
     metrics = {
@@ -364,8 +356,7 @@ def _load_rolling_observations(
 def _rolling_arrays(
     observations: pl.DataFrame,
     *,
-    first_origin: int,
-    count: int,
+    decision_origins: np.ndarray,
     cell: str,
     horizon: int,
 ) -> dict[str, np.ndarray]:
@@ -375,12 +366,11 @@ def _rolling_arrays(
             raise ValueError(f"{cell} K={horizon} {column} values must be valid actions")
 
     origins = observations["origin_block"].to_numpy()
-    start = first_origin - int(origins[0])
-    stop = start + count
-    if start < 0 or stop > origins.size:
-        raise ValueError(f"{cell} K={horizon} evaluation lacks required shifted origins")
+    rows = decision_origins - int(origins[0])
+    if np.any((rows < 0) | (rows >= origins.size)):
+        raise ValueError(f"{cell} K={horizon} evaluation lacks required decision origins")
     return {
-        name: observations[name].to_numpy()[start:stop]
+        name: observations[name].to_numpy()[rows]
         for name in (
             "predicted_action_k",
             "immediate_base_fee_per_gas",

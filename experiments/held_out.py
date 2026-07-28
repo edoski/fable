@@ -52,7 +52,7 @@ def prepare(
         study = studies[f"{chain}.{family}"]
         validation_end = study.request.experiment.validation_window.last_parent_block
         corpus_request = load_corpus_request(storage_root, study.request.corpus_id)
-        first_parent = validation_end + _MAX_HORIZON + 1 + max(0, 5 - horizon)
+        first_parent = validation_end + _MAX_HORIZON + 1
         last_parent = corpus_request.definition.last_block - _MAX_HORIZON + max(0, 5 - horizon)
         request = fresh_evaluate_request(
             artifact_id,

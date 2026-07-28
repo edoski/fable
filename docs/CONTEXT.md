@@ -10,7 +10,7 @@ This glossary defines FABLE's active domain language.
 
 **BlockFrame.** One isolated, validated nine-column value covering an exact contiguous single-chain `CorpusDefinition`, including gas-used-weighted effective priority-fee P50 and P90; it establishes canonical row facts and range selection, not finality or provenance.
 
-**Rolling comparison.** One transient held-out reduction that aligns completed `K=5`, `K=4`, `K=3`, and `K=2` Evaluation observations under an immutable five-block deadline, consulting each shorter-horizon prediction only after the earlier prediction waited.
+**Rolling comparison.** One transient held-out reduction that runs completed `K=5`, `K=4`, `K=3`, and `K=2` Evaluation predictions once in descending order under an immutable five-block deadline; each smaller model replaces the preceding prediction and moves one origin forward only after a terminal action.
 
 **P50 fee-inclusive savings.** The arithmetic mean of per-origin savings between the next block and the base-fee-selected block after adding each outcome block's included-transaction effective-priority-fee P50. It is a retrospective representative-cost proxy, not an inclusion guarantee.
 
