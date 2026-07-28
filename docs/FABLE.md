@@ -348,6 +348,8 @@ The request supplies a nonempty unique ordered tuple drawn from the supported na
 | `block_interval_seconds` | `timestamp_b - timestamp_{b-1}` seconds | Nonnegative; requires the real predecessor row. |
 | `hour_sin` | `sin(2π hour_UTC/24)` | `hour_UTC = (timestamp//3600) mod 24`; closed timestamp. |
 | `hour_cos` | `cos(2π hour_UTC/24)` | Same angle and availability. |
+| `dow_sin` | `sin(2π day_UTC/7)` | `day_UTC = ((timestamp//86400)+4) mod 7`, with Sunday zero; closed timestamp. |
+| `dow_cos` | `cos(2π day_UTC/7)` | Same angle and availability. |
 
 The exact forming-fee column implements the Ethereum parent-known recurrence. Polygon and Avalanche requests use the other supported features.
 

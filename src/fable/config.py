@@ -23,6 +23,8 @@ FeatureName: TypeAlias = Literal[
     "block_interval_seconds",
     "hour_sin",
     "hour_cos",
+    "dow_sin",
+    "dow_cos",
 ]
 
 

@@ -58,7 +58,7 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
         feature_rows,
         {
             ("ethereum", "B+S+T+P"): 0.5,
-            ("polygon", "B+T+P"): 0.5,
+            ("polygon", "B+T+P"): 0.4,
             ("polygon", "B+S+P"): 0.5,
             ("avalanche", "B+S+P"): 0.5,
         },
@@ -104,6 +104,8 @@ def test_context_study_uses_selected_features_and_reports_chain_winners(
         "block_interval_seconds",
         "hour_sin",
         "hour_cos",
+        "dow_sin",
+        "dow_cos",
         "log1p_effective_priority_fee_per_gas_p50",
     )
 

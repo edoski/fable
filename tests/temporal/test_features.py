@@ -50,26 +50,35 @@ def test_requested_feature_formulas_fit_in_order_and_transform_held_out_rows() -
         gas_used=[500, 1_200, 1_200, 4],
         gas_limits=[1_000, 2_000, 3_000, 4],
         tx_counts=[0, 1, 2, 3],
-        timestamps=[0, 6 * 3_600, 12 * 3_600, 18 * 3_600],
+        timestamps=[
+            3 * 86_400,
+            4 * 86_400 + 6 * 3_600,
+            5 * 86_400 + 12 * 3_600,
+            6 * 86_400 + 18 * 3_600,
+        ],
         priority_fees=[0, 1, 2, 3],
     )
     forming_order = (
+        "dow_cos",
         "hour_cos",
         "log_exact_forming_base_fee_per_gas",
         "gas_utilization",
         "log1p_tx_count",
         "log_base_fee_per_gas",
         "hour_sin",
+        "dow_sin",
         "log_gas_limit",
     )
     raw = np.column_stack(
         (
+            np.cos([0.0, 2 * np.pi / 7, 4 * np.pi / 7, 6 * np.pi / 7]),
             np.cos([0.0, np.pi / 2, np.pi, 3 * np.pi / 2]),
             np.log([1_000, 2_050, 2_925, 9_000_000_000_000_000_000]),
             [0.5, 0.6, 0.4, 1.0],
             np.log1p([0, 1, 2, 3]),
             np.log([1_000, 2_000, 3_000, 8_000_000_000_000_000_000]),
             np.sin([0.0, np.pi / 2, np.pi, 3 * np.pi / 2]),
+            np.sin([0.0, 2 * np.pi / 7, 4 * np.pi / 7, 6 * np.pi / 7]),
             np.log([1_000, 2_000, 3_000, 4]),
         )
     ).astype(np.float64)
@@ -101,12 +110,14 @@ def test_requested_feature_formulas_fit_in_order_and_transform_held_out_rows() -
     held_out_raw = np.array(
         [
             [
+                np.cos(8 * np.pi / 7),
                 np.cos(np.pi / 12),
                 np.log(2),
                 101 / 200,
                 np.log(5),
                 0.0,
                 np.sin(np.pi / 12),
+                np.sin(8 * np.pi / 7),
                 np.log(200),
             ]
         ],

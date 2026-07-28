@@ -111,12 +111,22 @@ def _feature_values(blocks: pl.DataFrame, feature_name: FeatureName) -> NDArray[
             return np.sin(_hour_angles(blocks))
         case "hour_cos":
             return np.cos(_hour_angles(blocks))
+        case "dow_sin":
+            return np.sin(_day_of_week_angles(blocks))
+        case "dow_cos":
+            return np.cos(_day_of_week_angles(blocks))
 
 
 def _hour_angles(blocks: pl.DataFrame) -> NDArray[np.float64]:
     timestamps = blocks["timestamp"].to_numpy().astype(np.int64, copy=False)
     hours = (timestamps // 3_600) % 24
     return 2.0 * math.pi * hours.astype(np.float64, copy=False) / 24.0
+
+
+def _day_of_week_angles(blocks: pl.DataFrame) -> NDArray[np.float64]:
+    timestamps = blocks["timestamp"].to_numpy().astype(np.int64, copy=False)
+    days = (timestamps // 86_400 + 4) % 7
+    return 2.0 * math.pi * days.astype(np.float64, copy=False) / 7.0
 
 
 def _forming_base_fee_logs(blocks: pl.DataFrame) -> NDArray[np.float64]:

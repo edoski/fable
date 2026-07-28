@@ -117,7 +117,13 @@ def _ordered_features(chain: str, feature_set: str) -> tuple[FeatureName, ...]:
     groups: dict[str, tuple[FeatureName, ...]] = {
         "B": ("log_base_fee_per_gas",),
         "S": state,
-        "T": ("block_interval_seconds", "hour_sin", "hour_cos"),
+        "T": (
+            "block_interval_seconds",
+            "hour_sin",
+            "hour_cos",
+            "dow_sin",
+            "dow_cos",
+        ),
         "P": ("log1p_effective_priority_fee_per_gas_p50",),
     }
     return tuple(feature for group in feature_set.split("+") for feature in groups[group])

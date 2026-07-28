@@ -57,6 +57,8 @@ def test_prepare_authors_the_exact_feature_ablation_matrix(tmp_path: Path) -> No
         "block_interval_seconds",
         "hour_sin",
         "hour_cos",
+        "dow_sin",
+        "dow_cos",
         "log1p_effective_priority_fee_per_gas_p50",
     )
     assert requests[-2].experiment.ordered_features == (

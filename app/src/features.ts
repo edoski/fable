@@ -10,6 +10,8 @@ export const FEATURE_NAMES = [
   "block_interval_seconds",
   "hour_sin",
   "hour_cos",
+  "dow_sin",
+  "dow_cos",
 ] as const;
 
 export type FeatureName = (typeof FEATURE_NAMES)[number];
@@ -101,6 +103,10 @@ function rawFeature(
       return Math.sin(hourAngle(block.timestamp));
     case "hour_cos":
       return Math.cos(hourAngle(block.timestamp));
+    case "dow_sin":
+      return Math.sin(dayOfWeekAngle(block.timestamp));
+    case "dow_cos":
+      return Math.cos(dayOfWeekAngle(block.timestamp));
   }
 }
 
@@ -146,6 +152,11 @@ function formingChildBaseFee(block: BlockRow): bigint {
 function hourAngle(timestamp: bigint): number {
   const hour = Number((timestamp / 3_600n) % 24n);
   return (2 * Math.PI * hour) / 24;
+}
+
+function dayOfWeekAngle(timestamp: bigint): number {
+  const day = Number((timestamp / 86_400n + 4n) % 7n);
+  return (2 * Math.PI * day) / 7;
 }
 
 function safeNumber(value: bigint, name: string): number {
