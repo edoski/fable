@@ -30,12 +30,12 @@ class _Resources(StrictFrozenRecord):
 
 class _Remote(StrictFrozenRecord):
     ssh: _NonEmptyString
-    executable: _NonEmptyString
+    image: _NonEmptyString
     storage_root: _NonEmptyString
     log_root: _NonEmptyString
     resources: _Resources
 
-    @field_validator("executable", "storage_root", "log_root")
+    @field_validator("image", "storage_root", "log_root")
     @classmethod
     def validate_absolute_path(cls, value: str, info: ValidationInfo) -> str:  # noqa: V107
         if not Path(value).is_absolute():
@@ -112,8 +112,12 @@ def _render_script(
             f"#SBATCH --mem={resources.memory_gb}G",
             f"#SBATCH --time={resources.time_limit}",
             f"#SBATCH --output={remote.log_root}/%j.out",
+            f"#SBATCH --chdir={shlex.quote(remote.storage_root)}",
             f"export STORAGE_ROOT={shlex.quote(remote.storage_root)}",
-            f"exec {shlex.quote(remote.executable)} remote {leaf} <<'FABLE_REQUEST'",
+            (
+                f"exec apptainer run --nv --bind {shlex.quote(remote.storage_root)} "
+                f"{shlex.quote(remote.image)} remote {leaf} <<'FABLE_REQUEST'"
+            ),
             process_input_json,
             "FABLE_REQUEST",
             "",

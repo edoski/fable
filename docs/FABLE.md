@@ -911,7 +911,7 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 | Section | Ordered field | Type/rule |
 | --- | --- | --- |
 | root | `ssh` | nonempty string passed to OpenSSH |
-|  | `executable` | nonempty absolute installed-executable path |
+|  | `image` | nonempty absolute Apptainer image path |
 |  | `storage_root` | nonempty absolute path |
 |  | `log_root` | nonempty absolute path |
 | `resources` | `partition` | nonempty string |
@@ -920,9 +920,15 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 |  | `memory_gb` | PositiveInt, rendered as `--mem=<n>G` |
 |  | `time_limit` | nonempty Slurm time string |
 
-The generated script requests one node/task, writes `%j.out` under `log_root`, exports `STORAGE_ROOT`, and executes `fable remote workflow` or `fable remote candidate` with a stdin heredoc. Workflow stdin is the Train or Evaluate request JSON directly. Candidate stdin is the strict record containing the TuneRequest and validated Method index. Submission is one `ssh -T -o BatchMode=yes … sbatch --parsable` call.
+The generated script requests one node/task, writes `%j.out` under `log_root`, changes to
+`storage_root`, exports `STORAGE_ROOT`, and runs the immutable Apptainer image with NVIDIA
+support. The image dispatches `fable remote workflow` or `fable remote candidate` with a stdin
+heredoc. Workflow stdin is the Train or Evaluate request JSON directly. Candidate stdin is the
+strict record containing the TuneRequest and validated Method index. Submission is one
+`ssh -T -o BatchMode=yes … sbatch --parsable` call.
 
-The installed executable owns one fixed runtime profile. It must remain unchanged while submitted jobs are queued so every queued request runs under the executable version that defined its loader and Torch policy.
+The image owns one exact FABLE revision and fixed runtime profile. Its path must remain unchanged
+while submitted jobs are queued.
 
 `STORAGE_ROOT` is the neutral implicit environment input to current CLI, remote Python, and mobile
 export paths.

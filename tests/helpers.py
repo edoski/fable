@@ -11,8 +11,8 @@ from typer.testing import CliRunner
 
 from fable.config import BlockWindow, FitMethod, LstmDefinition, Method
 
-REMOTE_YAML = """ssh: university-alias
-executable: /opt/fable executable
+REMOTE_YAML = """ssh: research-alias
+image: /opt/fable image.sif
 storage_root: /remote/storage root
 log_root: /remote/logs
 resources:

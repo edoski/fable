@@ -100,8 +100,10 @@ def test_study_run_sends_golden_candidate_script(
             "#SBATCH --mem=48G\n"
             "#SBATCH --time=17:23:45\n"
             "#SBATCH --output=/remote/logs/%j.out\n"
+            "#SBATCH --chdir='/remote/storage root'\n"
             "export STORAGE_ROOT='/remote/storage root'\n"
-            "exec '/opt/fable executable' remote candidate <<'FABLE_REQUEST'\n"
+            "exec apptainer run --nv --bind '/remote/storage root' "
+            "'/opt/fable image.sif' remote candidate <<'FABLE_REQUEST'\n"
             f"{candidate_json}\n"
             "FABLE_REQUEST\n"
         )

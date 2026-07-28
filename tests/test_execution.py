@@ -68,7 +68,7 @@ def test_submit_sends_golden_workflow_script(
 
     def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append((argv, kwargs))
-        return subprocess.CompletedProcess(argv, 0, stdout="456;university\n")
+        return subprocess.CompletedProcess(argv, 0, stdout="456;research\n")
 
     monkeypatch.setattr("fable.execution.subprocess.run", fake_run)
 
@@ -82,7 +82,7 @@ def test_submit_sends_golden_workflow_script(
         "-T",
         "-o",
         "BatchMode=yes",
-        "university-alias",
+        "research-alias",
         "sbatch",
         "--parsable",
     ]
@@ -97,8 +97,10 @@ def test_submit_sends_golden_workflow_script(
             "#SBATCH --mem=48G\n"
             "#SBATCH --time=17:23:45\n"
             "#SBATCH --output=/remote/logs/%j.out\n"
+            "#SBATCH --chdir='/remote/storage root'\n"
             "export STORAGE_ROOT='/remote/storage root'\n"
-            "exec '/opt/fable executable' remote workflow <<'FABLE_REQUEST'\n"
+            "exec apptainer run --nv --bind '/remote/storage root' "
+            "'/opt/fable image.sif' remote workflow <<'FABLE_REQUEST'\n"
             f"{request.model_dump_json()}\n"
             "FABLE_REQUEST\n"
         ),
@@ -131,18 +133,18 @@ def test_submit_cli_dispatches_request_json(
     assert calls == [request]
 
 
-def test_submit_rejects_relative_remote_executable(
+def test_submit_rejects_relative_remote_image(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote_yaml = REMOTE_YAML.replace(
-        "executable: /opt/fable executable",
-        "executable: relative/fable",
+        "image: /opt/fable image.sif",
+        "image: relative/fable.sif",
     )
     write_remote(tmp_path / "REMOTE.yaml", remote_yaml)
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(ValidationError, match="executable must be an absolute path"):
+    with pytest.raises(ValidationError, match="image must be an absolute path"):
         submit(_request("train"))
 
 

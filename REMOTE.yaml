@@ -1,10 +1,10 @@
-ssh: university
-executable: /scratch.hpc/edoardo.galli3/venvs/fable-cu118/bin/fable
+ssh: research
+image: /scratch.hpc/edoardo.galli3/deployments/fable-cuda-20260728.sif
 storage_root: /scratch.hpc/edoardo.galli3/fable
-log_root: /scratch.hpc/edoardo.galli3/slurm/fable
+log_root: /scratch.hpc/edoardo.galli3/logs/fable
 resources:
-  partition: l40
-  gres: gpu:l40:1
-  cpus_per_task: 8
-  memory_gb: 48
+  partition: h100sxm5,h100pcie,l40s
+  gres: gpu:1
+  cpus_per_task: 56
+  memory_gb: 256
   time_limit: "3-00:00:00"
