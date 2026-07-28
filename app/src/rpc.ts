@@ -199,6 +199,9 @@ export function createChainSession(
       }
       return blocks;
     }
+    if (head - cachedHead.number >= BigInt(rawBlockCount)) {
+      return recoverWithFullFetch(head);
+    }
 
     const appended = await readBlockRange(cachedHead.number + 1n, head);
     if (

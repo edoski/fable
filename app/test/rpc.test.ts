@@ -212,6 +212,23 @@ describe("createChainSession", () => {
     chainSession.dispose();
   });
 
+  it("bounds catch-up after a large head jump", async () => {
+    const rpc = fakeChain();
+    const chainSession = session("ethereum", transport(rpc));
+
+    await chainSession.sync();
+    rpc.head = 20n;
+    const context = await chainSession.sync();
+
+    expect(context.blocks.map((block) => block.number)).toEqual([
+      18n,
+      19n,
+      20n,
+    ]);
+    expect(rpc.reads).toEqual([10n, 11n, 12n, 18n, 19n, 20n]);
+    chainSession.dispose();
+  });
+
   it("serializes concurrent different-head synchronizations", async () => {
     const heads = [10n, 11n, 12n];
     let headReads = 0;
