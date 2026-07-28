@@ -214,11 +214,11 @@ def _require_packed_count(inputs: Sequence[object]) -> None:
 
 
 def _workflow_identity(request: WorkflowRequest) -> tuple[str, UUID]:
-    if isinstance(request, TrainRequest):
-        return request.workflow, request.artifact_id
-    if isinstance(request, EvaluateRequest):
-        return request.workflow, request.evaluation_id
-    raise AssertionError("unreachable WorkflowRequest variant")
+    match request:
+        case TrainRequest():
+            return request.workflow, request.artifact_id
+        case EvaluateRequest():
+            return request.workflow, request.evaluation_id
 
 
 def _scaled_gres(gres: str, count: int) -> str:
