@@ -1,5 +1,5 @@
 ssh: research
-image: /scratch.hpc/edoardo.galli3/deployments/fable-cuda-20260728.sif
+image: /scratch.hpc/edoardo.galli3/deployments/fable-cuda-e4499e1f.sif
 storage_root: /scratch.hpc/edoardo.galli3/fable
 log_root: /scratch.hpc/edoardo.galli3/logs/fable
 resources:
