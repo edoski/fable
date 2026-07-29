@@ -24,8 +24,8 @@ Status: active
 | Slice 2 — Modeling and Study | `c23cf37` | `11d1639` | `/root/slice2_impl` | `/root/slice2_review` | 0 | GREEN |
 | Slice 3 — Evaluation and manifests | `c23cf37` | `26b748f` | `/root/slice3_impl` | `/root/slice3_review` | 0 | GREEN |
 | Slice 4 — Operator edge | `c23cf37` | `8e1378d` | `/root/slice4_impl` | `/root/slice4_review` | 0 | GREEN |
-| Slice 5 — Python tests | pending | pending | pending | pending | pending | pending |
-| Slice 6 — Demo app | pending | pending | pending | pending | pending | pending |
+| Slice 5 — Python tests | `b36532f` | `d992476` | `/root/slice5_impl` | `/root/slice5_review` | 0 | GREEN |
+| Slice 6 — Demo app | `5912e44` | `2fcbd7b` | `/root/slice6_impl` | `/root/slice6_review` | 0 | GREEN |
 | Slice 7 — Temporal | pending | pending | pending | pending | pending | pending |
 | CUDA branch propagation | pending | pending | pending | pending | pending | pending |
 
@@ -88,3 +88,23 @@ checks.
 - Reviewer: Standards 0 findings; Spec 0 findings; `GREEN LIGHT`.
 - Orchestrator check: execution plus launch tests, 16 passed.
 - Combined Slices 2–4 integration gate: full pytest 125 passed; Ruff passed; Pyright passed.
+
+### Slice 5 — Python tests
+
+- Implementation branch commit: `4fb7f7f42a47784400a7d60de07a8e5b9af9fc2a`.
+- Integrated `main` commit: `d992476979aa1cd95174015665ef6bd8ae59ac06`.
+- Implementer checks: full pytest 124 passed; Ruff, Pyright, and Vulture passed.
+- Reviewer: Standards 0 findings; Spec 0 findings; `GREEN LIGHT`.
+- Orchestrator check: experiment plus evaluation-resolution tests, 21 passed.
+- The suite lost only duplicate fixture detail and call choreography; no migration, shim,
+  absence, transition, or architectural-state tests were added.
+
+### Slice 6 — Demo app
+
+- Implementation branch commit: `ae0cacc7f0d3dbb48da0b55aee03255e356a1508`.
+- Integrated `main` commit: `2fcbd7b68ef24f7058a65b9debb61de838fe2345`.
+- Implementer checks: app tests 32 passed; typecheck and diff check passed.
+- Reviewer: Standards 0 findings; Spec 0 findings; `GREEN LIGHT`.
+- Orchestrator check: focused App tests, 2 passed.
+- Combined Slices 5–6 integration gate: full pytest 124 passed; app tests 32 passed; app
+  typecheck passed.
