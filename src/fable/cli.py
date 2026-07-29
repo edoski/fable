@@ -17,8 +17,7 @@ from .config import (
     WorkflowRequest,
 )
 from .evaluation import evaluate
-from .execution import CandidateProcessInput, submit_candidate
-from .execution import submit as submit_workflow
+from .execution import CandidateProcessInput, submit_candidates, submit_workflows
 from .modeling import train
 from .study import publish_study
 from .tuning import run_candidate
@@ -48,7 +47,7 @@ def submit_command(
         WORKFLOW_REQUEST_ADAPTER.validate_json(path.read_bytes()) for path in request_paths
     ]
     for request in requests:
-        typer.echo(submit_workflow(request))
+        typer.echo(submit_workflows((request,)))
 
 
 @remote_app.command("workflow")
@@ -85,7 +84,9 @@ def study_run_command(
     method_index: Annotated[int, typer.Argument(metavar="METHOD_INDEX")],
 ) -> None:
     request = TuneRequest.model_validate_json(request_path.read_bytes(), strict=True)
-    typer.echo(submit_candidate(request, method_index))
+    typer.echo(
+        submit_candidates((CandidateProcessInput(request=request, method_index=method_index),))
+    )
 
 
 @study_app.command("finalize")

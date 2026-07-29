@@ -282,14 +282,14 @@ describe("model runtime", () => {
       message: "float32",
     },
     {
-      name: "logit shape",
-      outputs: [output([0, 1], [2]), output([0], [1])],
-      message: "[1, 2]",
+      name: "logit length",
+      outputs: [output([0], [1]), output([0], [1])],
+      message: "exactly 2",
     },
     {
-      name: "regression shape",
-      outputs: [output([0, 1], [1, 2]), output([0], [1, 1])],
-      message: "[1]",
+      name: "regression length",
+      outputs: [output([0, 1], [1, 2]), output([0, 1], [2])],
+      message: "exactly 1",
     },
     {
       name: "finite values",

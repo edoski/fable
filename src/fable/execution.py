@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import shlex
 import subprocess
 from collections.abc import Sequence
@@ -19,8 +18,7 @@ from .records import StrictFrozenRecord
 _NonEmptyString = Annotated[str, Field(min_length=1)]
 _NonNegativeInt = Annotated[int, Field(ge=0)]
 _PositiveInt = Annotated[int, Field(gt=0)]
-_JOB_ID_PATTERN = re.compile(r"([0-9]+)(?:;[^;\r\n]+)?\n?")
-MAX_PACKED_PROCESS_COUNT = 3
+MAX_ALLOCATION_PROCESS_COUNT = 3
 
 
 class _Resources(StrictFrozenRecord):
@@ -56,28 +54,14 @@ class CandidateProcessInput(StrictFrozenRecord):
         return self
 
 
-def submit(request: WorkflowRequest) -> int:
-    """Submit one Train or Evaluate request and return its positive Slurm ID."""
-
-    remote = _load_remote()
-    return _invoke_sbatch(
-        remote,
-        _render_allocation_script(
-            remote,
-            (request.model_dump_json(),),
-            "workflow",
-        ),
-    )
-
-
-def submit_workflow_batch(requests: Sequence[WorkflowRequest]) -> int:
+def submit_workflows(requests: Sequence[WorkflowRequest]) -> int:
     """Submit independent workflows as isolated one-GPU steps in one Slurm job."""
 
     requests = tuple(requests)
-    _require_packed_count(requests)
+    _require_process_count(requests)
     identities = tuple(_workflow_identity(request) for request in requests)
     if len(set(identities)) != len(identities):
-        raise ValueError("packed workflow identities must be unique")
+        raise ValueError("workflow identities must be unique within an allocation")
     remote = _load_remote()
     return _invoke_sbatch(
         remote,
@@ -89,28 +73,14 @@ def submit_workflow_batch(requests: Sequence[WorkflowRequest]) -> int:
     )
 
 
-def submit_candidate(request: TuneRequest, method_index: int) -> int:
-    remote = _load_remote()
-    candidate_json = CandidateProcessInput(
-        request=request,
-        method_index=method_index,
-    ).model_dump_json()
-    return _invoke_sbatch(
-        remote,
-        _render_allocation_script(remote, (candidate_json,), "candidate"),
-    )
-
-
-def submit_candidate_batch(candidates: Sequence[CandidateProcessInput]) -> int:
+def submit_candidates(candidates: Sequence[CandidateProcessInput]) -> int:
     """Submit independent candidates as isolated one-GPU steps in one Slurm job."""
 
     candidates = tuple(candidates)
-    _require_packed_count(candidates)
-    slots = tuple(
-        (candidate.request.study_id, candidate.method_index) for candidate in candidates
-    )
+    _require_process_count(candidates)
+    slots = tuple((candidate.request.study_id, candidate.method_index) for candidate in candidates)
     if len(set(slots)) != len(slots):
-        raise ValueError("packed candidate slots must be unique")
+        raise ValueError("candidate slots must be unique within an allocation")
     remote = _load_remote()
     return _invoke_sbatch(
         remote,
@@ -205,9 +175,9 @@ def _render_allocation_script(
     return "\n".join(lines)
 
 
-def _require_packed_count(inputs: Sequence[object]) -> None:
-    if not 2 <= len(inputs) <= MAX_PACKED_PROCESS_COUNT:
-        raise ValueError("a packed job requires two or three process inputs")
+def _require_process_count(inputs: Sequence[object]) -> None:
+    if not 1 <= len(inputs) <= MAX_ALLOCATION_PROCESS_COUNT:
+        raise ValueError("an allocation requires one to three process inputs")
 
 
 def _workflow_identity(request: WorkflowRequest) -> tuple[str, UUID]:
@@ -226,7 +196,7 @@ def _scaled_gres(gres: str, count: int) -> str:
 
 
 def _parse_job_id(output: str) -> int:
-    match = _JOB_ID_PATTERN.fullmatch(output)
-    if match is None or (job_id := int(match.group(1))) <= 0:
+    job_id = int(output.partition(";")[0])
+    if job_id <= 0:
         raise ValueError(f"invalid sbatch --parsable output: {output!r}")
     return job_id

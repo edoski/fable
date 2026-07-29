@@ -14,16 +14,16 @@ from bundle import read_cells
 
 from fable.config import WORKFLOW_REQUEST_ADAPTER, TuneRequest
 from fable.execution import (
-    MAX_PACKED_PROCESS_COUNT,
+    MAX_ALLOCATION_PROCESS_COUNT,
     CandidateProcessInput,
-    submit_candidate_batch,
-    submit_workflow_batch,
+    submit_candidates,
+    submit_workflows,
 )
 
 _ProcessInput = TypeVar("_ProcessInput")
 
 
-def candidates(bundle: Path, tasks_per_job: int = MAX_PACKED_PROCESS_COUNT) -> None:
+def candidates(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) -> None:
     bundle = bundle.resolve()
     rows = read_cells(bundle)
     process_inputs: list[CandidateProcessInput] = []
@@ -40,10 +40,10 @@ def candidates(bundle: Path, tasks_per_job: int = MAX_PACKED_PROCESS_COUNT) -> N
                 method_index=int(row["method_index"]),
             )
         )
-    _launch(bundle, rows, process_inputs, submit_candidate_batch, tasks_per_job)
+    _launch(bundle, rows, process_inputs, submit_candidates, tasks_per_job)
 
 
-def workflows(bundle: Path, tasks_per_job: int = MAX_PACKED_PROCESS_COUNT) -> None:
+def workflows(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) -> None:
     bundle = bundle.resolve()
     rows = read_cells(bundle)
     process_inputs = [
@@ -53,7 +53,7 @@ def workflows(bundle: Path, tasks_per_job: int = MAX_PACKED_PROCESS_COUNT) -> No
         )
         for row in rows
     ]
-    _launch(bundle, rows, process_inputs, submit_workflow_batch, tasks_per_job)
+    _launch(bundle, rows, process_inputs, submit_workflows, tasks_per_job)
 
 
 def _launch(
@@ -65,16 +65,14 @@ def _launch(
 ) -> None:
     if not rows:
         raise ValueError("experiment bundle must contain at least one cell")
-    if not 2 <= tasks_per_job <= MAX_PACKED_PROCESS_COUNT:
+    if not 2 <= tasks_per_job <= MAX_ALLOCATION_PROCESS_COUNT:
         raise ValueError("tasks per job must be two or three")
 
     jobs_path = bundle / "jobs.tsv"
     submitted_rows = _load_submitted_rows(jobs_path, rows)
     pending = [
         (index, row, process_input)
-        for index, (row, process_input) in enumerate(
-            zip(rows, process_inputs, strict=True)
-        )
+        for index, (row, process_input) in enumerate(zip(rows, process_inputs, strict=True))
         if index not in submitted_rows
     ]
     if not pending:
@@ -121,14 +119,14 @@ def _load_submitted_rows(
         row_index = int(job["row"])
         if (
             job_id <= 0
-            or not 0 <= slot < MAX_PACKED_PROCESS_COUNT
+            or not 0 <= slot < MAX_ALLOCATION_PROCESS_COUNT
             or not 0 <= row_index < len(rows)
             or job["cell"] != rows[row_index]["cell"]
         ):
             raise ValueError("jobs.tsv must contain valid job IDs and slots")
         slots_by_job.setdefault(job_id, []).append(slot)
     if any(
-        not 2 <= len(slots) <= MAX_PACKED_PROCESS_COUNT
+        not 2 <= len(slots) <= MAX_ALLOCATION_PROCESS_COUNT
         or sorted(slots) != list(range(len(slots)))
         for slots in slots_by_job.values()
     ):

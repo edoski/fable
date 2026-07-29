@@ -83,13 +83,13 @@ function rawFeature(
 ): number {
   switch (feature) {
     case "log_base_fee_per_gas":
-      return positiveLog(block.baseFeePerGas, "baseFeePerGas");
+      return positiveLog(block.baseFeePerGas);
     case "gas_utilization":
       return gasUtilization(block);
     case "log_exact_forming_base_fee_per_gas":
-      return positiveLog(formingChildBaseFee(block), "forming base fee");
+      return positiveLog(formingChildBaseFee(block));
     case "log_gas_limit":
-      return positiveLog(block.gasLimit, "gasLimit");
+      return positiveLog(block.gasLimit);
     case "log1p_tx_count":
       return Math.log1p(block.transactionCount);
     case P50_PRIORITY_FEE_FEATURE: {
@@ -97,14 +97,14 @@ function rawFeature(
       if (reward === undefined || reward < 0n) {
         throw new Error("P50 priority fee must be present and nonnegative");
       }
-      return Math.log1p(safeNumber(reward, "P50 priority fee"));
+      return Math.log1p(Number(reward));
     }
     case P90_PRIORITY_FEE_FEATURE: {
       const reward = priorityFeeRewards?.[1];
       if (reward === undefined || reward < 0n) {
         throw new Error("P90 priority fee must be present and nonnegative");
       }
-      return Math.log1p(safeNumber(reward, "P90 priority fee"));
+      return Math.log1p(Number(reward));
     }
     case INTERVAL_FEATURE: {
       if (predecessor === null) {
@@ -114,7 +114,7 @@ function rawFeature(
       if (interval < 0n) {
         throw new Error("block_interval_seconds values must be nonnegative");
       }
-      return safeNumber(interval, "block interval");
+      return Number(interval);
     }
     case "hour_sin":
       return Math.sin(hourAngle(block.timestamp));
@@ -127,8 +127,8 @@ function rawFeature(
   }
 }
 
-function positiveLog(value: bigint, name: string): number {
-  return Math.log(safeNumber(value, name));
+function positiveLog(value: bigint): number {
+  return Math.log(Number(value));
 }
 
 function gasUtilization(block: BlockRow): number {
@@ -139,8 +139,8 @@ function gasUtilization(block: BlockRow): number {
     throw new Error("gasUsed must be between zero and gasLimit");
   }
   return (
-    safeNumber(block.gasUsed, "gasUsed") /
-    safeNumber(block.gasLimit, "gasLimit")
+    Number(block.gasUsed) /
+    Number(block.gasLimit)
   );
 }
 
@@ -174,12 +174,4 @@ function hourAngle(timestamp: bigint): number {
 function dayOfWeekAngle(timestamp: bigint): number {
   const day = Number((timestamp / 86_400n + 4n) % 7n);
   return (2 * Math.PI * day) / 7;
-}
-
-function safeNumber(value: bigint, name: string): number {
-  const converted = Number(value);
-  if (!Number.isSafeInteger(converted)) {
-    throw new Error(`${name} exceeds the safe integer range`);
-  }
-  return converted;
 }

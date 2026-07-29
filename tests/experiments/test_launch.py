@@ -38,7 +38,7 @@ def test_candidates_submit_three_per_job_and_record_exact_cell_mapping(
         batches.append(candidates)
         return 1_000 + len(batches)
 
-    monkeypatch.setattr(launcher, "submit_candidate_batch", submit)
+    monkeypatch.setattr(launcher, "submit_candidates", submit)
     result = dispatch(launcher.app, "candidates", str(bundle))
 
     assert result.exit_code == 0
@@ -105,7 +105,7 @@ def test_workflows_submit_two_per_job_and_record_exact_cell_mapping(
         batches.append(request_batch)
         return 2_000 + len(batches)
 
-    monkeypatch.setattr(launcher, "submit_workflow_batch", submit)
+    monkeypatch.setattr(launcher, "submit_workflows", submit)
 
     result = dispatch(
         launcher.app,
@@ -139,10 +139,7 @@ def test_jobs_rejects_more_than_three_rows_for_one_allocation(
         writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
         writer.writerow(("job_id", "slot", "row", "cell"))
         writer.writerows(
-            (
-                (123, slot, row, rows[row]["cell"])
-                for row, slot in enumerate((0, 0, 1, 2))
-            )
+            ((123, slot, row, rows[row]["cell"]) for row, slot in enumerate((0, 0, 1, 2)))
         )
 
     with pytest.raises(ValueError, match="complete packed allocations"):

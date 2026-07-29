@@ -119,9 +119,7 @@ describe("history", () => {
 
   it("rejects malformed stored JSON", async () => {
     storage.values.set("fable.runs", "{");
-    await expect(loadRuns()).rejects.toThrow(
-      "Stored inference runs are not valid JSON",
-    );
+    await expect(loadRuns()).rejects.toThrow(SyntaxError);
   });
 
   it("leaves the original pending run retryable after resolver failure", async () => {

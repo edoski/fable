@@ -82,12 +82,7 @@ def retain_result(
 
 def publish_study(storage_root: Path, study_id: UUID4) -> None:
     scratch = _study_scratch(storage_root, study_id)
-    result_paths = set(scratch.glob("result-*.json"))
-    if not result_paths:
-        raise FileNotFoundError(scratch / "result-*.json")
     first_path = _result_path(storage_root, study_id, 0)
-    if first_path not in result_paths:
-        raise ValueError("result files do not match TuneRequest methods")
     first = _load_candidate_result_path(first_path)
     request = first.request
     if request.study_id != study_id:
@@ -100,7 +95,7 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
     expected_paths = tuple(
         _result_path(storage_root, study_id, index) for index in range(len(request.methods))
     )
-    if result_paths != set(expected_paths):
+    if set(scratch.glob("result-*.json")) != set(expected_paths):
         raise ValueError("result files do not match TuneRequest methods")
 
     trials: list[RetainedResult] = []

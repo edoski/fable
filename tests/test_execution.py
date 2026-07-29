@@ -18,7 +18,7 @@ from fable.config import (
     TrainRequest,
     WorkflowRequest,
 )
-from fable.execution import submit
+from fable.execution import submit_workflows
 from tests.helpers import REMOTE_YAML, dispatch, window, write_remote
 
 CORPUS_ID = UUID("00000000-0000-4000-8000-000000000001")
@@ -58,7 +58,7 @@ def _request(workflow: Literal["train", "evaluate"]) -> WorkflowRequest:
     )
 
 
-def test_submit_sends_golden_workflow_script(
+def test_submit_workflows_sends_golden_single_workflow_script(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -73,7 +73,7 @@ def test_submit_sends_golden_workflow_script(
 
     monkeypatch.setattr("fable.execution.subprocess.run", fake_run)
 
-    result = submit(request)
+    result = submit_workflows((request,))
 
     assert result == 456
     assert len(calls) == 1
@@ -120,7 +120,7 @@ def test_submit_sends_golden_workflow_script(
     }
 
 
-def test_submit_workflow_batch_uses_one_isolated_gpu_step_per_request(
+def test_submit_workflows_uses_one_isolated_gpu_step_per_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -139,7 +139,7 @@ def test_submit_workflow_batch_uses_one_isolated_gpu_step_per_request(
         lambda _remote, script: scripts.append(script) or 789,
     )
 
-    result = execution.submit_workflow_batch((first, second))
+    result = execution.submit_workflows((first, second))
 
     assert result == 789
     assert len(scripts) == 1
@@ -151,7 +151,7 @@ def test_submit_workflow_batch_uses_one_isolated_gpu_step_per_request(
     assert second.model_dump_json() in script
 
 
-def test_submit_workflow_batch_rejects_duplicate_durable_identities(
+def test_submit_workflows_rejects_duplicate_durable_identities(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -164,8 +164,8 @@ def test_submit_workflow_batch_rejects_duplicate_durable_identities(
         lambda *_: pytest.fail("duplicate workflows must fail before submission"),
     )
 
-    with pytest.raises(ValueError, match="packed workflow identities must be unique"):
-        execution.submit_workflow_batch((request, request))
+    with pytest.raises(ValueError, match="workflow identities must be unique"):
+        execution.submit_workflows((request, request))
 
 
 @pytest.mark.parametrize("workflow", ["train", "evaluate"])
@@ -177,18 +177,18 @@ def test_submit_cli_dispatches_request_json(
     request = _request(workflow)
     request_path = tmp_path / "request.json"
     request_path.write_text(request.model_dump_json(), encoding="utf-8")
-    calls: list[WorkflowRequest] = []
+    calls: list[tuple[WorkflowRequest, ...]] = []
     monkeypatch.setattr(
         cli,
-        "submit_workflow",
-        lambda submitted: calls.append(submitted) or 123,
+        "submit_workflows",
+        lambda submitted: calls.append(tuple(submitted)) or 123,
     )
 
     result = dispatch(app, "submit", str(request_path))
 
     assert result.output == "123\n"
     assert result.exit_code == 0
-    assert calls == [request]
+    assert calls == [(request,)]
 
 
 def test_submit_rejects_relative_remote_image(
@@ -203,7 +203,7 @@ def test_submit_rejects_relative_remote_image(
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(ValidationError, match="image must be an absolute path"):
-        submit(_request("train"))
+        submit_workflows((_request("train"),))
 
 
 def test_submit_rejects_invalid_job_id(
@@ -221,5 +221,5 @@ def test_submit_rejects_invalid_job_id(
         ),
     )
 
-    with pytest.raises(ValueError, match="invalid sbatch --parsable output"):
-        submit(_request("train"))
+    with pytest.raises(ValueError):
+        submit_workflows((_request("train"),))

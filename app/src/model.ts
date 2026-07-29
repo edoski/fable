@@ -239,12 +239,12 @@ function decodeOutputs(outputs: unknown, K: Horizon): ModelOutput {
   }
   const actionLogits = readFloatTensor(
     outputs[0],
-    [1, K],
+    K,
     "action logits",
   );
   const minimumFee = readFloatTensor(
     outputs[1],
-    [1],
+    1,
     "minimum fee z",
   );
   return {
@@ -255,7 +255,7 @@ function decodeOutputs(outputs: unknown, K: Horizon): ModelOutput {
 
 function readFloatTensor(
   value: unknown,
-  shape: readonly number[],
+  expectedLength: number,
   label: string,
 ): Float32Array {
   if (typeof value !== "object" || value === null) {
@@ -265,16 +265,6 @@ function readFloatTensor(
   if (tensor.scalarType !== ScalarType.FLOAT) {
     throw new Error(`${label} output must be float32`);
   }
-  if (
-    !Array.isArray(tensor.sizes) ||
-    tensor.sizes.length !== shape.length ||
-    tensor.sizes.some((size, index) => size !== shape[index])
-  ) {
-    throw new Error(
-      `${label} output must have shape [${shape.join(", ")}]`,
-    );
-  }
-
   let values: Float32Array;
   if (tensor.dataPtr instanceof Float32Array) {
     values = tensor.dataPtr;
@@ -286,10 +276,6 @@ function readFloatTensor(
   } else {
     throw new Error(`${label} output must contain float32 data`);
   }
-  const expectedLength = shape.reduce(
-    (size, dimension) => size * dimension,
-    1,
-  );
   if (values.length !== expectedLength) {
     throw new Error(
       `${label} output must contain exactly ${expectedLength} values`,

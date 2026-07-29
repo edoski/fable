@@ -89,11 +89,7 @@ export async function loadRuns(): Promise<InferenceRun[]> {
     return [];
   }
 
-  try {
-    return JSON.parse(stored) as InferenceRun[];
-  } catch {
-    throw new Error("Stored inference runs are not valid JSON");
-  }
+  return JSON.parse(stored) as InferenceRun[];
 }
 
 export async function saveRuns(runs: readonly InferenceRun[]): Promise<void> {

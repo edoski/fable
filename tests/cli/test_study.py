@@ -120,7 +120,7 @@ def test_study_run_sends_golden_candidate_script(
     ]
 
 
-def test_submit_candidate_batch_runs_each_candidate_on_one_exclusive_gpu(
+def test_submit_candidates_runs_each_candidate_on_one_exclusive_gpu(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -144,7 +144,7 @@ def test_submit_candidate_batch_runs_each_candidate_on_one_exclusive_gpu(
         lambda _remote, script: scripts.append(script) or 456,
     )
 
-    result = execution.submit_candidate_batch(candidates)
+    result = execution.submit_candidates(candidates)
 
     assert result == 456
     assert scripts == [
@@ -197,7 +197,7 @@ def test_submit_candidate_batch_runs_each_candidate_on_one_exclusive_gpu(
     ]
 
 
-def test_submit_candidate_batch_rejects_duplicate_study_slots(
+def test_submit_candidates_rejects_duplicate_study_slots(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -210,8 +210,8 @@ def test_submit_candidate_batch_rejects_duplicate_study_slots(
         lambda *_: pytest.fail("duplicate candidates must fail before submission"),
     )
 
-    with pytest.raises(ValueError, match="packed candidate slots must be unique"):
-        execution.submit_candidate_batch((candidate, candidate))
+    with pytest.raises(ValueError, match="candidate slots must be unique"):
+        execution.submit_candidates((candidate, candidate))
 
 
 def test_remote_candidate_dispatches_input(

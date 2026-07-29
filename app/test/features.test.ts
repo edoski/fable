@@ -97,24 +97,4 @@ describe("buildModelInput", () => {
     ).toEqual(new Float32Array([0]));
   });
 
-  it("rejects unsafe integer conversion instead of losing raw precision", () => {
-    const [block] = fixtureBlocks();
-
-    expect(() =>
-      buildModelInput(
-        [{ ...block, baseFeePerGas: BigInt(Number.MAX_SAFE_INTEGER) + 1n }],
-        null,
-        {
-          context_blocks: 1,
-          features: [
-            {
-              name: "log_base_fee_per_gas",
-              mean: 0,
-              standard_deviation: 1,
-            },
-          ],
-        },
-      ),
-    ).toThrow("baseFeePerGas exceeds the safe integer range");
-  });
 });

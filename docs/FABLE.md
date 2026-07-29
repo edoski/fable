@@ -62,7 +62,7 @@ This diagram is generated from the production import direction at this revision.
 
 The closed model union is LSTM, Transformer, or Transformer-LSTM. Historical preparation supplies lazy contiguous CPU-backed examples; each model consumes float32 `[B,C,F]` and returns action logits `[B,K]` plus standardized minimum-fee prediction `[B]`. Architecture stays independent of target construction and evaluation accounting.
 
-Corpus production is external. Native OpenSSH and Slurm begin at `fable.execution.submit()` ([ADR 0007](adr/0007-native-external-execution-boundary.md)). Completed objects own one exact request at direct canonical addresses; UUIDs identify instances and typed associations establish meaning ([ADR 0006](adr/0006-direct-durable-object-authority.md)).
+Corpus production is external. Native OpenSSH and Slurm begin at `fable.execution.submit_workflows()` ([ADR 0007](adr/0007-native-external-execution-boundary.md)). Completed objects own one exact request at direct canonical addresses; UUIDs identify instances and typed associations establish meaning ([ADR 0006](adr/0006-direct-durable-object-authority.md)).
 
 ## One decision, end to end
 
@@ -914,12 +914,11 @@ Generated Slurm scripts call these leaves with strict JSON on standard input.
 
 ### Remote submission
 
-`fable.execution` exposes single-request submission and packed experiment submission:
+`fable.execution` exposes two submission functions:
 
 ```python
-submit(request: WorkflowRequest) -> int
-submit_workflow_batch(requests: Sequence[WorkflowRequest]) -> int
-submit_candidate_batch(candidates: Sequence[CandidateProcessInput]) -> int
+submit_workflows(requests: Sequence[WorkflowRequest]) -> int
+submit_candidates(candidates: Sequence[CandidateProcessInput]) -> int
 ```
 
 It reads cwd-local `REMOTE.yaml` with this exact strict schema:
@@ -936,15 +935,14 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 |  | `memory_gb` | PositiveInt, rendered as `--mem=<n>G` |
 |  | `time_limit` | nonempty Slurm time string |
 
-Single-request scripts request one node/task. Packed scripts contain two or three processes and
-request one node and one task, GPU,
+Each allocation contains one to three processes and requests one node and one task, GPU,
 CPU allotment, and memory allotment per process input. Each process runs as an exclusive exact
 `srun` step, sees one GPU, receives one strict stdin record, and writes
 `<job_id>-<slot>.out`; `%j.out` remains the allocation log. The parent waits for every step and
 fails if any step fails. Candidate Study slots and workflow durable identities must be unique
 within an allocation.
 
-Both forms change to `storage_root`, export `STORAGE_ROOT`, and run the immutable Apptainer image
+Allocations change to `storage_root`, export `STORAGE_ROOT`, and run the immutable Apptainer image
 with NVIDIA support. The image dispatches `fable remote workflow` or `fable remote candidate`.
 Workflow stdin is the Train or Evaluate request JSON directly. Candidate stdin is the strict
 record containing the TuneRequest and validated Method index. Each allocation uses one

@@ -290,9 +290,9 @@ def _load_observations(storage_root: Path, request: EvaluateRequest) -> pl.DataF
 
 
 def _read_observations(path: Path) -> pl.DataFrame:
-    if pl.read_parquet_schema(path) != OBSERVATION_SCHEMA:
-        raise ValueError("observations must have the canonical ordered schema")
     observations = pl.read_parquet(path)
+    if observations.schema != OBSERVATION_SCHEMA:
+        raise ValueError("observations must have the canonical ordered schema")
     if any(observations.null_count().row(0)):
         raise ValueError("observations must contain no null values")
     return observations
