@@ -21,9 +21,9 @@ Status: active
 | Work unit | Baseline | Final head | Implementer | Reviewer | Corrections | Result |
 | --- | --- | --- | --- | --- | --- | --- |
 | Slice 1 — Typed spine | `c46e782` | `5912e44` | `/root/slice1_impl` | `/root/slice1_review` | 0 | GREEN |
-| Slice 2 — Modeling and Study | pending | pending | pending | pending | pending | pending |
-| Slice 3 — Evaluation and manifests | pending | pending | pending | pending | pending | pending |
-| Slice 4 — Operator edge | pending | pending | pending | pending | pending | pending |
+| Slice 2 — Modeling and Study | `c23cf37` | `11d1639` | `/root/slice2_impl` | `/root/slice2_review` | 0 | GREEN |
+| Slice 3 — Evaluation and manifests | `c23cf37` | `26b748f` | `/root/slice3_impl` | `/root/slice3_review` | 0 | GREEN |
+| Slice 4 — Operator edge | `c23cf37` | `8e1378d` | `/root/slice4_impl` | `/root/slice4_review` | 0 | GREEN |
 | Slice 5 — Python tests | pending | pending | pending | pending | pending | pending |
 | Slice 6 — Demo app | pending | pending | pending | pending | pending | pending |
 | Slice 7 — Temporal | pending | pending | pending | pending | pending | pending |
@@ -57,3 +57,34 @@ checks.
 - Reviewer: Standards 0 findings; Spec 0 findings; Vulture passed; `GREEN LIGHT`.
 - Orchestrator check: `tests/test_config.py`, 9 passed.
 - Deferred: no experiment, Slurm, remote, university, or CUDA execution.
+
+### Slice 2 — Modeling and Study
+
+- Implementation branch commit: `346fb0927c6887f04decdb854eb8ff2b361f0d1a`.
+- Integrated `main` commit: `11d1639383923c977fa5027a17ad1c518af1124a`.
+- Implementer checks: focused pytest 22 passed; full pytest 128 passed; Ruff, formatting,
+  Pyright, and Vulture passed.
+- Reviewer: Standards 0 findings; Spec 0 findings; `GREEN LIGHT`.
+- Orchestrator check: modeling plus Study tests, 22 passed.
+- ADR 0006 and `docs/FABLE.md` now describe direct hardlink publication and the accepted
+  leftover-scratch tradeoff.
+
+### Slice 3 — Evaluation and manifests
+
+- Implementation branch commit: `2c2f68ffe8e8a75ce7c5d65089410edf8068afa2`.
+- Integrated `main` commit: `26b748f78f96928d5f8b9dd5258893d1ad6e1756`.
+- Implementer checks: focused pytest 20 passed; full pytest 125 passed; Ruff, Pyright, and Vulture
+  passed.
+- Reviewer: Standards 0 findings; Spec 0 findings; `GREEN LIGHT`.
+- Orchestrator check: rolling plus manifest tests, 9 passed.
+- Integration automatically reconciled its evaluation documentation hunk with Slice 2.
+
+### Slice 4 — Operator edge
+
+- Implementation branch commit: `d8f0bce72198512c717eccafb44cc039e54244fb`.
+- Integrated `main` commit: `8e1378dd8ab63b207622cc6d677dc149d3615374`.
+- Implementer checks: focused pytest 19 passed; full pytest 128 passed; Ruff, Pyright, Vulture,
+  and diff checks passed.
+- Reviewer: Standards 0 findings; Spec 0 findings; `GREEN LIGHT`.
+- Orchestrator check: execution plus launch tests, 16 passed.
+- Combined Slices 2–4 integration gate: full pytest 125 passed; Ruff passed; Pyright passed.
