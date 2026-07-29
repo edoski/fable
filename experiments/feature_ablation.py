@@ -108,9 +108,7 @@ def _feature_units(chain: str) -> tuple[tuple[str, tuple[FeatureName, ...]], ...
         ("gas_utilization", ("gas_utilization",)),
     ]
     if chain == "ethereum":
-        units.append(
-            ("exact_forming_base_fee", ("log_exact_forming_base_fee_per_gas",))
-        )
+        units.append(("exact_forming_base_fee", ("log_exact_forming_base_fee_per_gas",)))
     units.extend(
         (
             ("gas_limit", ("log_gas_limit",)),

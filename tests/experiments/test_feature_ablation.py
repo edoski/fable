@@ -138,9 +138,7 @@ def test_close_publishes_all_studies_and_report_averages_each_configuration(
     assert result.stdout.strip() == str(experiment_id)
     assert manifest.experiment_id == experiment_id
     assert len(manifest.entries) == 102
-    assert [str(entry.record_id) for entry in manifest.entries] == [
-        row["study_id"] for row in rows
-    ]
+    assert [str(entry.record_id) for entry in manifest.entries] == [row["study_id"] for row in rows]
     assert not manifest_path.with_name(f".{experiment_id}").exists()
 
     report = run_script(_SCRIPT, "report", tmp_path, experiment_id)

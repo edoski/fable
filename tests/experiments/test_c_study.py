@@ -107,7 +107,5 @@ def test_context_study_uses_full_features_and_publishes_all_studies(
         strict=True,
     )
     assert len(manifest.entries) == 45
-    assert [str(entry.record_id) for entry in manifest.entries] == [
-        row["study_id"] for row in rows
-    ]
+    assert [str(entry.record_id) for entry in manifest.entries] == [row["study_id"] for row in rows]
     assert not bundle.exists()
