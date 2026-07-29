@@ -104,7 +104,7 @@ baseline and head SHAs, checks, findings, and status before proceeding.
 | Slice | Scope | Status | Baseline | Implementer | Reviewer |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Training core and tuning | GREEN LIGHT | `ffd7c368` | `019fad88-4411-7892-963a-301075fb96f7` / `44435ddf` | `019fad92-f093-75f3-99af-4f93de395d1f` |
-| 2 | Experiment manifests, selection, and packed launch | blocked by 1 | pending | pending | pending |
+| 2 | Experiment manifests, selection, and packed launch | GREEN LIGHT | `1a141fa4` | `019fad98-e122-71c3-b9a5-4a33384fc860` / `2d506cf6` | `019fada3-ec16-7552-becb-6fdaf9a819e3` |
 | 3 | Evaluation and rolling reduction | blocked by 2 | pending | pending | pending |
 | 4 | App inference and model lifecycle | blocked by 3 | pending | pending | pending |
 | 5 | App RPC and feature input path | blocked by 4 | pending | pending | pending |
@@ -116,6 +116,11 @@ baseline and head SHAs, checks, findings, and status before proceeding.
 Slice 1 review: Standards 0 findings; Spec 0 findings. Focused tests: 22 passed. Full Python
 suite: 117 passed. Ruff, Pyright, Vulture, and `git diff --check`: passed. The reviewer directly
 confirmed interrupted-fit resume and publication-failure scratch preservation.
+
+Slice 2 review: Standards 0 findings; Spec 0 findings. Focused tests: 34 passed. Full Python
+suite: 126 passed. Ruff, Pyright, Vulture, and `git diff --check`: passed. The reviewer also swept
+pending counts 1–20 and confirmed minimal allocation count, capacity bounds, stable totals, and no
+avoidable singleton.
 
 ## Slice 1 — Training core and tuning
 
