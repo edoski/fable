@@ -26,7 +26,6 @@ import { styles } from "../styles";
 import { colors } from "../theme";
 
 export type InferenceState =
-  | { status: "preparing" }
   | { status: "idle" }
   | { status: "loading" }
   | { status: "success"; result: InferenceResult }
@@ -226,8 +225,6 @@ function Setup({
   onRunAgain,
 }: Props) {
   const loading = state.status === "loading";
-  const preparing = state.status === "preparing";
-  const runDisabled = loading || preparing;
   return (
     <>
       <ScrollView
@@ -260,23 +257,19 @@ function Setup({
 
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ disabled: runDisabled }}
-          disabled={runDisabled}
+          accessibilityState={{ disabled: loading }}
+          disabled={loading}
           onPress={onRun}
           style={[
             styles.button,
             styles.primaryButton,
             styles.setupButton,
-            runDisabled && styles.buttonDisabled,
+            loading && styles.buttonDisabled,
           ]}
         >
-          {runDisabled && <ActivityIndicator color={colors.surface} />}
+          {loading && <ActivityIndicator color={colors.surface} />}
           <Text style={styles.buttonText}>
-            {preparing
-              ? "Preparing…"
-              : loading
-                ? "Generating…"
-                : "Get recommendation"}
+            {loading ? "Generating…" : "Get recommendation"}
           </Text>
         </Pressable>
       </ScrollView>

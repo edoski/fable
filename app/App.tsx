@@ -31,8 +31,6 @@ import { colors } from "./src/theme";
 type ActiveEngine = {
   chain: Chain;
   engine: InferenceEngine;
-  outcomesRunning: boolean;
-  revision: number;
 };
 
 export default function App() {
@@ -40,15 +38,13 @@ export default function App() {
   const [chain, setChain] = useState<Chain>("ethereum");
   const [horizon, setHorizon] = useState<Horizon>(5);
   const [inference, setInference] = useState<InferenceState>({
-    status: "preparing",
+    status: "idle",
   });
   const [rpcStatus, setRpcStatus] = useState<RpcStatus>("checking");
   const [snapshot, setSnapshot] = useState<ChainSnapshot | null>(null);
   const [runs, setRuns] = useState<InferenceRun[]>([]);
   const [storageError, setStorageError] = useState<string | null>(null);
-  const [engineRevision, setEngineRevision] = useState(0);
   const activeEngine = useRef<ActiveEngine | null>(null);
-  const engineRevisionSequence = useRef(0);
   const selectionRevision = useRef(0);
   const runsRef = useRef<InferenceRun[]>([]);
   const serializeHistory = useRef(createSerialQueue()).current;
@@ -89,27 +85,18 @@ export default function App() {
   }
 
   function resolveOutcomes(engine: ActiveEngine, headBlock: number): void {
-    if (engine.outcomesRunning) return;
-
-    engine.outcomesRunning = true;
-    void (async () => {
-      try {
-        await commitRuns(
-          (current) =>
-            resolvePendingRuns(
-              current,
-              engine.chain,
-              headBlock,
-              engine.engine.resolveOutcome,
-            ),
-          () => activeEngine.current === engine,
-        );
-      } catch {
-        // Pending chain outcomes remain retryable on the next successful poll.
-      } finally {
-        engine.outcomesRunning = false;
-      }
-    })();
+    void commitRuns(
+      (current) =>
+        resolvePendingRuns(
+          current,
+          engine.chain,
+          headBlock,
+          engine.engine.resolveOutcome,
+        ),
+      () => activeEngine.current === engine,
+    ).catch(() => {
+      // Pending chain outcomes remain retryable on the next successful poll.
+    });
   }
 
   useEffect(() => {
@@ -137,13 +124,9 @@ export default function App() {
 
   useEffect(() => {
     const engine = createInferenceEngine(chain);
-    const revision = engineRevisionSequence.current + 1;
-    engineRevisionSequence.current = revision;
     const current: ActiveEngine = {
       chain,
       engine,
-      outcomesRunning: false,
-      revision,
     };
     activeEngine.current = current;
     setRpcStatus("checking");
@@ -161,7 +144,6 @@ export default function App() {
       },
       () => onStatus("offline"),
     );
-    setEngineRevision(revision);
 
     return () => {
       selectionRevision.current += 1;
@@ -172,43 +154,11 @@ export default function App() {
     };
   }, [chain]);
 
-  useEffect(() => {
-    const current = activeEngine.current;
-    if (
-      current === null ||
-      current.chain !== chain ||
-      current.revision !== engineRevision
-    ) {
-      return;
-    }
-
-    const revision = selectionRevision.current + 1;
-    selectionRevision.current = revision;
-    let active = true;
-    setInference({ status: "preparing" });
-    const settlePreparation = () => {
-      if (
-        active &&
-        activeEngine.current === current &&
-        selectionRevision.current === revision
-      ) {
-        setInference({ status: "idle" });
-      }
-    };
-    void current.engine.prepare(horizon).then(
-      settlePreparation,
-      settlePreparation,
-    );
-    return () => {
-      active = false;
-    };
-  }, [chain, engineRevision, horizon]);
-
   function selectChain(nextChain: Chain) {
     if (nextChain === chain) return;
     activeEngine.current = null;
     selectionRevision.current += 1;
-    setInference({ status: "preparing" });
+    setInference({ status: "idle" });
     setRpcStatus("checking");
     setSnapshot(null);
     setChain(nextChain);
@@ -217,7 +167,7 @@ export default function App() {
   function selectHorizon(nextHorizon: Horizon) {
     if (nextHorizon === horizon) return;
     selectionRevision.current += 1;
-    setInference({ status: "preparing" });
+    setInference({ status: "idle" });
     setHorizon(nextHorizon);
   }
 
@@ -237,10 +187,7 @@ export default function App() {
     try {
       result = await current.engine.run(horizon);
     } catch (error) {
-      if (
-        isCurrent() &&
-        !(error instanceof Error && error.name === "AbortError")
-      ) {
+      if (isCurrent()) {
         fail(error instanceof Error ? error.message : String(error));
       }
       return;

@@ -238,9 +238,10 @@ Reduction uses this row directly. Base-fee savings is `(25.5-20.0)/25.5 ≈ 0.21
 ### 7. Carry the same contract on device
 
 The exported manifest and model fix chain association, `C`, `K`, ordered features, feature state,
-target state, model definition, and weights. On Run, the app reads a fresh latest closed head,
-synchronizes the exact context, creates `[1,C,F]`, executes the bundled model, validates both
-outputs, and decodes the action in the same way.
+target state, model definition, and weights. Selection remains idle. On Run, the app reads a fresh
+latest closed head, synchronizes the exact context, creates `[1,C,F]`, loads or reuses the bundled
+model, validates both native outputs, and decodes the action in the same way. The first Run accepts
+model-load and RPC latency.
 
 Continuing the teaching values, the app result shape is:
 
@@ -984,7 +985,7 @@ app/assets/models/
 
 The manifest owns shared context and feature state plus each model's artifact UUID and target state. The app trusts this build-time bundle through typed direct lookups and twelve static `.pte` requires. It has no download, alternate runtime, or remote inference fallback.
 
-Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares the exact closed-head context, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call supplies both features. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
+Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares the exact closed-head context, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. App's one engine-and-selection identity gate protects visible results and history commits. The model runtime serializes native load, forward, replacement, and disposal; the history queue serializes persistence and outcome retries. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call supplies both features. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
 
 The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real `MOBILE.yaml`, generated assets, and native parity evidence do not yet exist. Exporter retirement and final acceptance remain deferred to A01. The [README](../README.md#mobile-demo) owns build commands; the [on-device decision](research/on-device-inference.md) owns rationale and acceptance boundaries.
 

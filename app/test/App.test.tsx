@@ -10,9 +10,12 @@ import type { Chain, Horizon } from "../src/domain";
 import type {
   ChainSnapshot,
   InferenceEngine,
+  InferenceResult,
 } from "../src/inference";
+import { deferred } from "./helpers";
 
 const mocks = vi.hoisted(() => ({
+  addRun: vi.fn(),
   createInferenceEngine: vi.fn(),
   inferenceProps: null as Record<string, unknown> | null,
   headerProps: null as Record<string, unknown> | null,
@@ -61,7 +64,7 @@ vi.mock("../src/screens/InferenceScreen", () => ({
 }));
 
 vi.mock("../src/history", () => ({
-  addRun: vi.fn(),
+  addRun: mocks.addRun,
   loadRuns: mocks.loadRuns,
   resolvePendingRuns: mocks.resolvePendingRuns,
   saveRuns: mocks.saveRuns,
@@ -76,6 +79,7 @@ import App from "../App";
 type EngineHarness = {
   engine: InferenceEngine;
   publish(snapshot: ChainSnapshot): void;
+  resolveRun(result: InferenceResult): void;
 };
 
 const engines: EngineHarness[] = [];
@@ -83,14 +87,12 @@ let root: ReactTestRenderer | null = null;
 
 function engine(): EngineHarness {
   let publish = (_snapshot: ChainSnapshot) => undefined;
+  const run = deferred<InferenceResult>();
   const value: InferenceEngine = {
-    prepare: vi.fn(async () => undefined),
     startPolling: vi.fn((onSnapshot) => {
       publish = onSnapshot;
     }),
-    run: vi.fn(async () => {
-      throw new Error("unused");
-    }),
+    run: vi.fn(() => run.promise),
     resolveOutcome: vi.fn(async () => {
       throw new Error("unused");
     }),
@@ -101,14 +103,20 @@ function engine(): EngineHarness {
     publish(snapshot) {
       publish(snapshot);
     },
+    resolveRun(result) {
+      run.resolve(result);
+    },
   };
 }
 
 function inferenceProps(): {
   chain: Chain;
+  horizon: Horizon;
   onChainChange(chain: Chain): void;
   onHorizonChange(horizon: Horizon): void;
+  onRun(): void;
   snapshot: ChainSnapshot | null;
+  state: Record<string, unknown>;
 } {
   return mocks.inferenceProps as ReturnType<typeof inferenceProps>;
 }
@@ -122,6 +130,7 @@ beforeEach(() => {
   engines.length = 0;
   mocks.inferenceProps = null;
   mocks.headerProps = null;
+  mocks.addRun.mockReset();
   mocks.loadRuns.mockReset().mockResolvedValue([]);
   mocks.resolvePendingRuns.mockReset().mockResolvedValue([]);
   mocks.saveRuns.mockReset().mockResolvedValue(undefined);
@@ -146,45 +155,40 @@ async function renderApp(): Promise<void> {
 }
 
 describe("App engine selection", () => {
-  it("rejects an old-chain poll published during chain selection", async () => {
+  it("does not publish a completed result from an old selection", async () => {
     await renderApp();
-    act(() => {
-      engines[0].publish({
-        head_block: 10,
-        current_base_fee_per_gas: 20,
-      });
-    });
-    expect(inferenceProps().snapshot?.head_block).toBe(10);
+    expect(inferenceProps().state).toEqual({ status: "idle" });
 
-    await act(async () => {
+    act(() => inferenceProps().onRun());
+    expect(engines[0].engine.run).toHaveBeenCalledWith(5);
+    expect(inferenceProps().state).toEqual({ status: "loading" });
+
+    act(() => {
+      inferenceProps().onHorizonChange(4);
       inferenceProps().onChainChange("polygon");
-      engines[0].publish({
-        head_block: 11,
-        current_base_fee_per_gas: 21,
+    });
+    await act(async () => {
+      engines[0].resolveRun({
+        chain: "ethereum",
+        K: 5,
+        artifact_id: "artifact-5",
+        head_block: 10,
+        head_hash: "0xhead",
+        selected_action_k: 1,
+        target_block: 12,
+        predicted_minimum_base_fee_per_gas: 20,
       });
     });
 
     expect(inferenceProps()).toMatchObject({
       chain: "polygon",
+      horizon: 4,
       snapshot: null,
+      state: { status: "idle" },
     });
     expect(mocks.headerProps).toMatchObject({ status: "checking" });
-  });
-
-  it("prepares each committed engine revision once", async () => {
-    await renderApp();
-
-    expect(engines).toHaveLength(1);
-    expect(engines[0].engine.prepare).toHaveBeenCalledOnce();
-    expect(engines[0].engine.prepare).toHaveBeenCalledWith(5);
-
-    await act(async () => inferenceProps().onChainChange("polygon"));
     expect(engines).toHaveLength(2);
-    expect(engines[1].engine.prepare).toHaveBeenCalledOnce();
-    expect(engines[1].engine.prepare).toHaveBeenCalledWith(5);
-
-    await act(async () => inferenceProps().onHorizonChange(4));
-    expect(engines[1].engine.prepare).toHaveBeenCalledTimes(2);
-    expect(engines[1].engine.prepare).toHaveBeenLastCalledWith(4);
+    expect(mocks.addRun).not.toHaveBeenCalled();
+    expect(mocks.saveRuns).not.toHaveBeenCalled();
   });
 });
