@@ -108,10 +108,9 @@ baseline and head SHAs, checks, findings, and status before proceeding.
 | 3 | Evaluation and rolling reduction | GREEN LIGHT | `e755fbdd` | `019fadaa-4725-7323-813b-21f8760f16e5` / `836577f6` | `019fadb1-9646-7b31-8700-00d2dd9006be` |
 | 4 | App inference and model lifecycle | GREEN LIGHT | `b7e26671` | `019fadb6-2d6f-75e3-b3ed-7059843f6ec1` / `0226dcc4..ea0b664b` | `019fadc0-a253-7a23-998d-7ee44c3471e4` |
 | 5 | App RPC and feature input path | GREEN LIGHT | `41216ba4` | `019fade1-2207-7490-bc92-05d28d465848` / `51b7a4d0` | `019fadec-9614-7882-a227-278c006c85e6` |
-| 6 | Mobile exporter | ready | pending | pending | pending |
-| 7 | Documentation truth pass | blocked by 6 | pending | pending | pending |
+| 6 | Mobile exporter | accepted; doc re-review waived | `9fb7d793` | `019fadf3-86fe-75f0-98b7-245a78957396` / `7b65b3af..ea1087c2` | `019fadf8-60c4-7361-88ab-a9b616a7daf6` |
+| 7 | Documentation truth pass | ready | pending | pending | pending |
 | 8 | Compact-CUDA parity | blocked by 7 | pending | pending | pending |
-| 9 | Remove checkpoint resume | blocked by issue #147 gate | n/a | not started | not started |
 
 Slice 1 review: Standards 0 findings; Spec 0 findings. Focused tests: 22 passed. Full Python
 suite: 117 passed. Ruff, Pyright, Vulture, and `git diff --check`: passed. The reviewer directly
@@ -142,6 +141,14 @@ unwatch disposal. Fresh exact-range reads retain parent continuity, fee-history 
 integer forming-fee arithmetic, and final Float32 finiteness. App tests: 32 passed. Typecheck, Expo
 Doctor 19/19, Vulture, and `git diff --check`: passed. Tests used stubbed fetch; no live RPC was
 contacted.
+
+Slice 6 review: Standards 0 findings; Spec 1 P3 documentation finding. The implementation and
+native ExecuTorch schema checks were otherwise green. The reviewer proved portable and plan-less
+programs fail, a matching delegate in a later execution plan succeeds, near-match IDs fail, and a
+real `XnnpackBackend` delegate succeeds. Exporter tests: 11 passed. Full Python suite: 125 passed.
+Ruff, Pyright, Vulture, and `git diff --check`: passed. The same implementer corrected the single
+sentence to state the program-wide existential delegate rule in `ea1087c2`; the user explicitly
+waived another review round for this documentation-only correction.
 
 ## Slice 1 — Training core and tuning
 
@@ -651,8 +658,8 @@ uv run vulture
 8. Remove nonexistent ADR 0001–0005 rows from the ADR index. Keep active ADR 0006 and 0007.
 9. Replace unexplained/stale issue shorthand such as `A01` with a direct issue link or remove it.
 10. Describe the dependency diagram as high-level rather than generated if no generator exists.
-11. Delete stale resume wording only in Slice 8 after issue #147's gate. Until then, resume remains
-    documented as current behavior.
+11. Leave checkpoint-resume wording intact. Its cleanup is outside this plan and remains tracked
+    by issue #147.
 
 ### Test change
 
@@ -751,38 +758,15 @@ The compact branch equals finished `main` except for one isolated, reviewable im
 choice: CPU-backed lazy loading on `main` versus device-resident historical batching on the compact
 branch.
 
-## Slice 9 — Conditional checkpoint-resume removal
-
-This slice is not authorized to start merely because Slices 1–7 pass. It is fully specified in
-[issue #147](https://github.com/edoski/fable/issues/147).
-
-Before creating its implementer task, verify:
-
-- every required feature-ablation, context, HPO, horizon, and authorized retry fit is complete;
-- accepted Studies and artifacts are canonical;
-- no queued/running job or live university checkout depends on `last.ckpt`;
-- exact obsolete scratch/checkpoint paths are known.
-
-Then remove the full-state `last` checkpoint callback, automatic `ckpt_path` resume, resumable
-scratch behavior, resume-only tests, and resume documentation in one clean break. Keep Method
-seeds, early stopping, weights-only best checkpoints, selected-epoch semantics, accepted outputs,
-and atomic publication. Exact scratch deletion is a separate explicitly verified destructive step.
-
-The same implementer/reviewer protocol applies directly on `main`. If this slice occurs after
-compact-CUDA parity, repeat the parity procedure for its small resume deletion or retire the
-temporary compact branch first under explicit user direction; do not let the branches drift
-silently.
-
 ## Final acceptance
 
 The cleanup is complete only when:
 
-- every active slice has a committed implementer head and zero-actionable-finding Standards/Spec
-  review;
+- every active slice has a committed implementer head and either a zero-actionable-finding
+  Standards/Spec review or an explicit user waiver for a verified surgical correction;
 - full Python, app, and exporter checks pass on `main`;
 - `uv run vulture` findings have been manually classified;
 - `git diff --check` passes;
 - durable object and manuscript contracts listed above remain intact;
 - the plan ledger contains final SHAs and review outcomes;
-- Slice 8 leaves no non-DataLoader drift between `main` and the compact branch;
-- Slice 9 is either completed after its gate or remains explicitly blocked by issue #147.
+- Slice 8 leaves no non-DataLoader drift between `main` and the compact branch.
