@@ -43,7 +43,7 @@ _CHAINS = (
     (
         "avalanche",
         UUID("a06ae6b3-6c3c-445e-8dd8-f5933f9ce0a5"),
-        BlockWindow(first_parent_block=72_241_049, last_parent_block=79_663_626),
+        BlockWindow(first_parent_block=75_191_113, last_parent_block=79_663_626),
         BlockWindow(first_parent_block=79_663_827, last_parent_block=81_367_328),
     ),
 )
