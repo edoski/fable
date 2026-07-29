@@ -33,10 +33,22 @@ type ActiveEngine = {
   engine: InferenceEngine;
 };
 
+type Selection = {
+  chain: Chain;
+  horizon: Horizon;
+};
+
+const INITIAL_SELECTION: Selection = {
+  chain: "ethereum",
+  horizon: 5,
+};
+
 export default function App() {
   const [tab, setTab] = useState<AppTab>("inference");
-  const [chain, setChain] = useState<Chain>("ethereum");
-  const [horizon, setHorizon] = useState<Horizon>(5);
+  const [chain, setChain] = useState<Chain>(INITIAL_SELECTION.chain);
+  const [horizon, setHorizon] = useState<Horizon>(
+    INITIAL_SELECTION.horizon,
+  );
   const [inference, setInference] = useState<InferenceState>({
     status: "idle",
   });
@@ -46,6 +58,10 @@ export default function App() {
   const [storageError, setStorageError] = useState<string | null>(null);
   const activeEngine = useRef<ActiveEngine | null>(null);
   const selectionRevision = useRef(0);
+  const selection = useRef({
+    applied: INITIAL_SELECTION,
+    intended: INITIAL_SELECTION,
+  });
   const runsRef = useRef<InferenceRun[]>([]);
   const serializeHistory = useRef(createSerialQueue()).current;
 
@@ -154,25 +170,44 @@ export default function App() {
     };
   }, [chain]);
 
-  function selectChain(nextChain: Chain) {
-    if (nextChain === chain) return;
+  function queueSelection() {
     void serializeHistory(async () => {
-      activeEngine.current = null;
+      const current = selection.current.applied;
+      const next = selection.current.intended;
+      const chainChanged = next.chain !== current.chain;
+      const horizonChanged = next.horizon !== current.horizon;
+      if (!chainChanged && !horizonChanged) return;
+
+      selection.current.applied = next;
       selectionRevision.current += 1;
       setInference({ status: "idle" });
-      setRpcStatus("checking");
-      setSnapshot(null);
-      setChain(nextChain);
+      if (chainChanged) {
+        activeEngine.current = null;
+        setRpcStatus("checking");
+        setSnapshot(null);
+        setChain(next.chain);
+      }
+      if (horizonChanged) {
+        setHorizon(next.horizon);
+      }
     });
   }
 
+  function selectChain(nextChain: Chain) {
+    const intended = selection.current.intended;
+    if (nextChain === intended.chain) return;
+    selection.current.intended = { ...intended, chain: nextChain };
+    queueSelection();
+  }
+
   function selectHorizon(nextHorizon: Horizon) {
-    if (nextHorizon === horizon) return;
-    void serializeHistory(async () => {
-      selectionRevision.current += 1;
-      setInference({ status: "idle" });
-      setHorizon(nextHorizon);
-    });
+    const intended = selection.current.intended;
+    if (nextHorizon === intended.horizon) return;
+    selection.current.intended = {
+      ...intended,
+      horizon: nextHorizon,
+    };
+    queueSelection();
   }
 
   async function runInference() {

@@ -178,7 +178,7 @@ async function renderApp(): Promise<void> {
 }
 
 describe("App engine selection", () => {
-  it("orders selection after an accepted history commit", async () => {
+  it("applies the latest selection after an accepted history commit", async () => {
     const result: InferenceResult = {
       chain: "ethereum",
       K: 5,
@@ -210,8 +210,10 @@ describe("App engine selection", () => {
     expect(mocks.saveRuns).toHaveBeenLastCalledWith([acceptedRun]);
 
     act(() => {
-      inferenceProps().onHorizonChange(4);
       inferenceProps().onChainChange("polygon");
+      inferenceProps().onHorizonChange(4);
+      inferenceProps().onChainChange("ethereum");
+      inferenceProps().onHorizonChange(5);
     });
     expect(inferenceProps()).toMatchObject({
       chain: "ethereum",
@@ -227,13 +229,13 @@ describe("App engine selection", () => {
 
     expect(mocks.saveRuns).toHaveBeenCalledOnce();
     expect(inferenceProps()).toMatchObject({
-      chain: "polygon",
-      horizon: 4,
+      chain: "ethereum",
+      horizon: 5,
       snapshot: null,
-      state: { status: "idle" },
+      state: { status: "success", result },
     });
     expect(mocks.headerProps).toMatchObject({ status: "checking" });
-    expect(engines).toHaveLength(2);
+    expect(engines).toHaveLength(1);
     act(() => bottomTabsProps().onSelect("analytics"));
     expect(analyticsProps().runs).toEqual([acceptedRun]);
   });
