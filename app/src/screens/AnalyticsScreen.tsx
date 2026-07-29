@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { type PropsWithChildren, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -114,6 +114,27 @@ function chartScale(values: readonly number[]) {
   };
 }
 
+function chartScaleProps(scale: ReturnType<typeof chartScale>) {
+  return {
+    maxValue: scale.maximum,
+    noOfSections: scale.positiveSections,
+    stepHeight: scale.stepHeight,
+    stepValue: scale.step,
+  };
+}
+
+function ChartFrame({
+  children,
+  xAxisTitle,
+}: PropsWithChildren<{ xAxisTitle: string }>) {
+  return (
+    <View style={styles.graph}>
+      {children}
+      <Text style={styles.graphXAxisTitle}>{xAxisTitle}</Text>
+    </View>
+  );
+}
+
 function RecommendedWaitChart({
   runs,
   horizon,
@@ -128,21 +149,17 @@ function RecommendedWaitChart({
   const scale = chartScale(data.map((item) => item.value ?? 0));
 
   return (
-    <View style={styles.graph}>
+    <ChartFrame xAxisTitle="Wait (blocks)">
       <GiftedBarChart
         {...AXIS_PROPS}
+        {...chartScaleProps(scale)}
         data={data.map((item) => ({
           frontColor: colors.blue,
           label: item.label,
           value: item.value ?? 0,
         }))}
-        maxValue={scale.maximum}
-        noOfSections={scale.positiveSections}
-        stepHeight={scale.stepHeight}
-        stepValue={scale.step}
       />
-      <Text style={styles.graphXAxisTitle}>Wait (blocks)</Text>
-    </View>
+    </ChartFrame>
   );
 }
 
@@ -163,9 +180,10 @@ function SavingsByWaitChart({
   const scale = chartScale(values);
 
   return (
-    <View style={styles.graph}>
+    <ChartFrame xAxisTitle="Wait (blocks)">
       <GiftedBarChart
         {...AXIS_PROPS}
+        {...chartScaleProps(scale)}
         data={data.map((item) => ({
           frontColor:
             item.value !== null && item.value < 0 ? colors.red : colors.teal,
@@ -173,16 +191,11 @@ function SavingsByWaitChart({
           value: item.value ?? 0,
         }))}
         formatYLabel={(label) => `${Number(label).toFixed(0)}%`}
-        maxValue={scale.maximum}
         mostNegativeValue={scale.minimum}
         negativeStepValue={scale.step}
-        noOfSections={scale.positiveSections}
         noOfSectionsBelowXAxis={scale.negativeSections}
-        stepHeight={scale.stepHeight}
-        stepValue={scale.step}
       />
-      <Text style={styles.graphXAxisTitle}>Wait (blocks)</Text>
-    </View>
+    </ChartFrame>
   );
 }
 
@@ -202,9 +215,10 @@ function BaseFeeByWaitChart({
   );
 
   return (
-    <View style={styles.graph}>
+    <ChartFrame xAxisTitle="Recommended wait (blocks)">
       <GiftedBarChart
         {...AXIS_PROPS}
+        {...chartScaleProps(scale)}
         barWidth={18}
         data={data.flatMap((item, index) => [
           {
@@ -224,14 +238,9 @@ function BaseFeeByWaitChart({
           const value = Number(label);
           return value >= 10 ? value.toFixed(0) : value.toFixed(1);
         }}
-        maxValue={scale.maximum}
-        noOfSections={scale.positiveSections}
         spacing={0}
-        stepHeight={scale.stepHeight}
-        stepValue={scale.step}
       />
-      <Text style={styles.graphXAxisTitle}>Recommended wait (blocks)</Text>
-    </View>
+    </ChartFrame>
   );
 }
 

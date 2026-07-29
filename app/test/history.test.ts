@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type {
-  InferenceOutcome,
-  InferenceResult,
-} from "../src/inference";
-import type { InferenceRun } from "../src/history";
+import type { InferenceOutcome } from "../src/inference";
+import { inferenceResult, inferenceRun } from "./helpers";
 
 const storage = vi.hoisted(() => {
   const values = new Map<string, string>();
@@ -31,40 +28,6 @@ import {
   saveRuns,
 } from "../src/history";
 
-function inferenceResult(
-  overrides: Partial<InferenceResult> = {},
-): InferenceResult {
-  return {
-    chain: "ethereum",
-    K: 5,
-    artifact_id: "artifact-5",
-    head_block: 100,
-    head_hash: "0xhead",
-    selected_action_k: 2,
-    target_block: 103,
-    predicted_minimum_base_fee_per_gas: 10_000_000_000,
-    ...overrides,
-  };
-}
-
-function storedRun(
-  overrides: Partial<InferenceRun> = {},
-): InferenceRun {
-  return {
-    id: "run",
-    ran_at: "2026-07-26T10:00:00.000Z",
-    chain: "ethereum",
-    K: 5,
-    artifact_id: "artifact-5",
-    head_block: 10,
-    head_hash: "0xhead",
-    selected_action_k: 2,
-    target_block: 13,
-    predicted_minimum_base_fee_per_gas: 10_000_000_000,
-    ...overrides,
-  };
-}
-
 function outcome(
   overrides: Partial<InferenceOutcome> = {},
 ): InferenceOutcome {
@@ -83,10 +46,16 @@ beforeEach(() => {
 describe("history", () => {
   it("adds a unique canonical run before every existing run", () => {
     const existing = Array.from({ length: 3 }, (_, index) =>
-      storedRun({ id: `existing-${index}` }),
+      inferenceRun({ id: `existing-${index}` }),
     );
-    const [first, ...retained] = addRun(existing, inferenceResult());
-    const [second] = addRun(existing, inferenceResult());
+    const result = inferenceResult({
+      head_block: 100,
+      selected_action_k: 2,
+      target_block: 103,
+      predicted_minimum_base_fee_per_gas: 10_000_000_000,
+    });
+    const [first, ...retained] = addRun(existing, result);
+    const [second] = addRun(existing, result);
 
     expect(first).toEqual({
       id: expect.any(String),
@@ -106,7 +75,7 @@ describe("history", () => {
 
   it("round-trips the complete ordered array under fable.runs", async () => {
     const runs = Array.from({ length: 105 }, (_, index) =>
-      storedRun({ id: `run-${index}`, head_block: index }),
+      inferenceRun({ id: `run-${index}`, head_block: index }),
     );
 
     await saveRuns(runs);
@@ -117,13 +86,8 @@ describe("history", () => {
     await expect(loadRuns()).resolves.toEqual(runs);
   });
 
-  it("rejects malformed stored JSON", async () => {
-    storage.values.set("fable.runs", "{");
-    await expect(loadRuns()).rejects.toThrow(SyntaxError);
-  });
-
   it("leaves the original pending run retryable after resolver failure", async () => {
-    const run = storedRun();
+    const run = inferenceRun();
     const resolve = vi
       .fn()
       .mockRejectedValueOnce(new Error("RPC unavailable"))

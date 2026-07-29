@@ -12,16 +12,16 @@ import type {
   InferenceEngine,
   InferenceResult,
 } from "../src/inference";
-import type { InferenceRun } from "../src/history";
-import { deferred, flushMicrotasks } from "./helpers";
+import {
+  deferred,
+  flushMicrotasks,
+  inferenceResult,
+} from "./helpers";
 
 const mocks = vi.hoisted(() => ({
   addRun: vi.fn(),
-  analyticsProps: null as Record<string, unknown> | null,
-  bottomTabsProps: null as Record<string, unknown> | null,
   createInferenceEngine: vi.fn(),
   inferenceProps: null as Record<string, unknown> | null,
-  headerProps: null as Record<string, unknown> | null,
   loadRuns: vi.fn(),
   resolvePendingRuns: vi.fn(),
   saveRuns: vi.fn(),
@@ -45,24 +45,15 @@ vi.mock("react-native-safe-area-context", () => {
 });
 
 vi.mock("../src/components/AppHeader", () => ({
-  AppHeader: (props: Record<string, unknown>) => {
-    mocks.headerProps = props;
-    return null;
-  },
+  AppHeader: () => null,
 }));
 
 vi.mock("../src/components/BottomTabs", () => ({
-  BottomTabs: (props: Record<string, unknown>) => {
-    mocks.bottomTabsProps = props;
-    return null;
-  },
+  BottomTabs: () => null,
 }));
 
 vi.mock("../src/screens/AnalyticsScreen", () => ({
-  AnalyticsScreen: (props: Record<string, unknown>) => {
-    mocks.analyticsProps = props;
-    return null;
-  },
+  AnalyticsScreen: () => null,
 }));
 
 vi.mock("../src/screens/InferenceScreen", () => ({
@@ -87,7 +78,6 @@ import App from "../App";
 
 type EngineHarness = {
   engine: InferenceEngine;
-  publish(snapshot: ChainSnapshot): void;
   resolveRun(result: InferenceResult): void;
 };
 
@@ -95,12 +85,9 @@ const engines: EngineHarness[] = [];
 let root: ReactTestRenderer | null = null;
 
 function engine(): EngineHarness {
-  let publish = (_snapshot: ChainSnapshot) => undefined;
   const run = deferred<InferenceResult>();
   const value: InferenceEngine = {
-    watchBlocks: vi.fn((onSnapshot) => {
-      publish = onSnapshot;
-    }),
+    watchBlocks: vi.fn(),
     run: vi.fn(() => run.promise),
     resolveOutcome: vi.fn(async () => {
       throw new Error("unused");
@@ -109,9 +96,6 @@ function engine(): EngineHarness {
   };
   return {
     engine: value,
-    publish(snapshot) {
-      publish(snapshot);
-    },
     resolveRun(result) {
       run.resolve(result);
     },
@@ -130,18 +114,6 @@ function inferenceProps(): {
   return mocks.inferenceProps as ReturnType<typeof inferenceProps>;
 }
 
-function bottomTabsProps(): {
-  onSelect(tab: "inference" | "analytics"): void;
-} {
-  return mocks.bottomTabsProps as ReturnType<typeof bottomTabsProps>;
-}
-
-function analyticsProps(): {
-  runs: readonly InferenceRun[];
-} {
-  return mocks.analyticsProps as ReturnType<typeof analyticsProps>;
-}
-
 beforeEach(() => {
   (
     globalThis as typeof globalThis & {
@@ -149,10 +121,7 @@ beforeEach(() => {
     }
   ).IS_REACT_ACT_ENVIRONMENT = true;
   engines.length = 0;
-  mocks.analyticsProps = null;
-  mocks.bottomTabsProps = null;
   mocks.inferenceProps = null;
-  mocks.headerProps = null;
   mocks.addRun.mockReset();
   mocks.loadRuns.mockReset().mockResolvedValue([]);
   mocks.resolvePendingRuns.mockReset().mockResolvedValue([]);
@@ -178,65 +147,53 @@ async function renderApp(): Promise<void> {
 }
 
 describe("App engine selection", () => {
-  it("applies the latest selection after an accepted history commit", async () => {
-    const result: InferenceResult = {
-      chain: "ethereum",
-      K: 5,
-      artifact_id: "artifact-5",
-      head_block: 10,
-      head_hash: "0xhead",
-      selected_action_k: 1,
-      target_block: 12,
-      predicted_minimum_base_fee_per_gas: 20,
-    };
-    const acceptedRun: InferenceRun = {
-      id: "accepted-run",
-      ran_at: "2026-07-29T12:00:00.000Z",
-      ...result,
-    };
-    const firstSave = deferred<void>();
-    mocks.addRun.mockReturnValue([acceptedRun]);
-    mocks.saveRuns.mockImplementationOnce(() => firstSave.promise);
-
+  it("does not publish a result after the horizon changes and returns", async () => {
+    const result = inferenceResult();
     await renderApp();
-    expect(inferenceProps().state).toEqual({ status: "idle" });
 
     act(() => inferenceProps().onRun());
     expect(engines[0].engine.run).toHaveBeenCalledWith(5);
-    expect(inferenceProps().state).toEqual({ status: "loading" });
 
-    act(() => engines[0].resolveRun(result));
-    await vi.waitFor(() => expect(mocks.saveRuns).toHaveBeenCalledOnce());
-    expect(mocks.saveRuns).toHaveBeenLastCalledWith([acceptedRun]);
-
-    act(() => {
-      inferenceProps().onChainChange("polygon");
+    await act(async () => {
       inferenceProps().onHorizonChange(4);
-      inferenceProps().onChainChange("ethereum");
       inferenceProps().onHorizonChange(5);
+      await flushMicrotasks();
     });
     expect(inferenceProps()).toMatchObject({
       chain: "ethereum",
       horizon: 5,
-      state: { status: "loading" },
+      state: { status: "idle" },
     });
-    expect(engines).toHaveLength(1);
 
     await act(async () => {
-      firstSave.resolve();
+      engines[0].resolveRun(result);
       await flushMicrotasks();
     });
 
-    expect(mocks.saveRuns).toHaveBeenCalledOnce();
-    expect(inferenceProps()).toMatchObject({
-      chain: "ethereum",
-      horizon: 5,
-      snapshot: null,
-      state: { status: "success", result },
+    expect(inferenceProps().state).toEqual({ status: "idle" });
+    expect(mocks.addRun).not.toHaveBeenCalled();
+    expect(mocks.saveRuns).not.toHaveBeenCalled();
+  });
+
+  it("does not publish a result from a replaced engine", async () => {
+    const result = inferenceResult();
+    await renderApp();
+    act(() => inferenceProps().onRun());
+
+    await act(async () => {
+      inferenceProps().onChainChange("polygon");
+      await flushMicrotasks();
     });
-    expect(mocks.headerProps).toMatchObject({ status: "checking" });
-    expect(engines).toHaveLength(1);
-    act(() => bottomTabsProps().onSelect("analytics"));
-    expect(analyticsProps().runs).toEqual([acceptedRun]);
+    expect(inferenceProps().chain).toBe("polygon");
+    expect(engines).toHaveLength(2);
+
+    await act(async () => {
+      engines[0].resolveRun(result);
+      await flushMicrotasks();
+    });
+
+    expect(inferenceProps().state).toEqual({ status: "idle" });
+    expect(mocks.addRun).not.toHaveBeenCalled();
+    expect(mocks.saveRuns).not.toHaveBeenCalled();
   });
 });

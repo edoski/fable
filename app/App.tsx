@@ -58,10 +58,7 @@ export default function App() {
   const [storageError, setStorageError] = useState<string | null>(null);
   const activeEngine = useRef<ActiveEngine | null>(null);
   const selectionRevision = useRef(0);
-  const selection = useRef({
-    applied: INITIAL_SELECTION,
-    intended: INITIAL_SELECTION,
-  });
+  const selection = useRef(INITIAL_SELECTION);
   const runsRef = useRef<InferenceRun[]>([]);
   const serializeHistory = useRef(createSerialQueue()).current;
 
@@ -116,26 +113,18 @@ export default function App() {
   }
 
   useEffect(() => {
-    let active = true;
     void serializeHistory(async () => {
       try {
         const storedRuns = await loadRuns();
-        if (active) {
-          runsRef.current = storedRuns;
-          setRuns(storedRuns);
-          setStorageError(null);
-        }
+        runsRef.current = storedRuns;
+        setRuns(storedRuns);
+        setStorageError(null);
       } catch (error) {
-        if (active) {
-          setStorageError(
-            error instanceof Error ? error.message : String(error),
-          );
-        }
+        setStorageError(
+          error instanceof Error ? error.message : String(error),
+        );
       }
     });
-    return () => {
-      active = false;
-    };
   }, [serializeHistory]);
 
   useEffect(() => {
@@ -170,49 +159,34 @@ export default function App() {
     };
   }, [chain]);
 
-  function queueSelection() {
-    void serializeHistory(async () => {
-      const current = selection.current.applied;
-      const next = selection.current.intended;
-      const chainChanged = next.chain !== current.chain;
-      const horizonChanged = next.horizon !== current.horizon;
-      if (!chainChanged && !horizonChanged) return;
-
-      selection.current.applied = next;
-      selectionRevision.current += 1;
-      setInference({ status: "idle" });
-      if (chainChanged) {
-        activeEngine.current = null;
-        setRpcStatus("checking");
-        setSnapshot(null);
-        setChain(next.chain);
-      }
-      if (horizonChanged) {
-        setHorizon(next.horizon);
-      }
-    });
-  }
-
   function selectChain(nextChain: Chain) {
-    const intended = selection.current.intended;
-    if (nextChain === intended.chain) return;
-    selection.current.intended = { ...intended, chain: nextChain };
-    queueSelection();
+    const current = selection.current;
+    if (nextChain === current.chain) return;
+    selection.current = { ...current, chain: nextChain };
+    selectionRevision.current += 1;
+    activeEngine.current = null;
+    setInference({ status: "idle" });
+    setRpcStatus("checking");
+    setSnapshot(null);
+    setChain(nextChain);
   }
 
   function selectHorizon(nextHorizon: Horizon) {
-    const intended = selection.current.intended;
-    if (nextHorizon === intended.horizon) return;
-    selection.current.intended = {
-      ...intended,
+    const current = selection.current;
+    if (nextHorizon === current.horizon) return;
+    selection.current = {
+      ...current,
       horizon: nextHorizon,
     };
-    queueSelection();
+    selectionRevision.current += 1;
+    setInference({ status: "idle" });
+    setHorizon(nextHorizon);
   }
 
   async function runInference() {
+    const selected = selection.current;
     const current = activeEngine.current;
-    if (current === null || current.chain !== chain) {
+    if (current === null || current.chain !== selected.chain) {
       fail("Could not connect to the selected chain.");
       return;
     }
@@ -224,7 +198,7 @@ export default function App() {
     setInference({ status: "loading" });
     let result;
     try {
-      result = await current.engine.run(horizon);
+      result = await current.engine.run(selected.horizon);
     } catch (error) {
       if (isCurrent()) {
         fail(error instanceof Error ? error.message : String(error));
