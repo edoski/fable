@@ -25,8 +25,8 @@ completed canonical Corpus pair
         v
 strict workflow request --> CLI or direct Python call
         |
-        +--> tuning -----> Study
-        +--> fitting ----> native Lightning artifact
+        +--> candidate fitting -> Study
+        +--> selected fitting --> native Lightning artifact
         +--> evaluation -> observations.parquet
         |
         v
@@ -40,7 +40,6 @@ transient observation-derived reductions
 ```text
 cli / experiment runners / mobile exporter
   ├─> execution
-  ├─> tuning ─────> modeling, study
   ├─> modeling ───> corpus, study, temporal, min_block_fee
   └─> evaluation ─> corpus, temporal, modeling, min_block_fee
 
@@ -54,9 +53,8 @@ This diagram is generated from the production import direction at this revision.
 - `corpus` owns canonical `BlockFrame` row truth and completed Corpus association.
 - `temporal` owns causal feature state, fixed-block context/outcome geometry, and lazy historical examples.
 - `min_block_fee` owns target state, the fixed training loss, two-head output, and decode.
-- `modeling` owns request-bound Corpus-to-model fitting, the three concrete neural definitions,
-  Lightning fitting, and native checkpoint loading.
-- `tuning` owns one indexed candidate run through result retention.
+- `modeling` owns request-bound candidate and selected fitting, the three concrete neural
+  definitions, Lightning fitting, candidate retention, and native checkpoint loading.
 - `study` owns bounded candidate membership, ordered retained results, publication, and selected-Method loading.
 - `evaluation` owns canonical self-contained observations and transient reduction.
 
@@ -201,7 +199,10 @@ SmoothL1(e_i) = 0.5 * e_i^2 ≈ 0.015487
 total         = CE + SmoothL1(e_i) ≈ 0.821264
 ```
 
-For this one-origin batch, `mean_total = total`. In a larger batch every origin contributes native unweighted cross-entropy plus native default Smooth L1 once, with sample count `B` as the denominator. No loss definition, mode, scale, threshold, or fitted classification state is request or artifact authority.
+For this one-origin batch, the batch mean equals `total`. In a larger batch every origin
+contributes native unweighted cross-entropy plus native default Smooth L1 once, with sample count
+`B` as the denominator. No loss definition, mode, scale, threshold, or fitted classification state
+is request or artifact authority.
 
 ### 6. Decode and evaluate
 
@@ -432,7 +433,7 @@ r_i = smooth_l1(e_i)
 
 ```text
 t_i = c_i + r_i
-mean_total = (sum_i t_i) / B
+L_batch = (sum_i t_i) / B
 ```
 
 The denominator is the number of origins in the batch. These are training and validation losses only. The operative functions match PyTorch's [`cross_entropy`](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html) and [`smooth_l1_loss`](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.smooth_l1_loss.html).
@@ -544,7 +545,10 @@ Temporal preparation has two direct paths: historical fixed-block examples and l
 
 `prepare_fit_history(corpus, experiment)` validates complete context/outcome support, fits state from training support only, and returns training and validation `HistoricalDataset` values with `FeatureState` and `TargetState`. `prepare_historical_window(corpus, experiment, window, *, feature_state, target_state)` prepares an exact testing window with persisted state after complete validation outcomes.
 
-Preparation keeps one contiguous CPU backing of float32 feature rows and int64 fees/block numbers, plus per-origin positions, int64 `k_i*` labels, and float32 `z_i` targets. `HistoricalDataset.__getitem__()` slices one `[C,F]` input and `[K]` outcome on demand with scalar label, target, and origin.
+Preparation keeps the first backing block, contiguous CPU float32 feature rows, and int64 base
+fees. Each dataset stores its first origin row and sample count plus int64 `k_i*` labels and
+float32 `z_i` targets. `HistoricalDataset.__getitem__()` derives the origin row and block, then
+slices one `[C,F]` input and `[K]` outcome on demand.
 
 The ordered feature tuple is request authority. Raw features are assembled in that order as Float64; training-support population state uses `ddof=0`, rejects constants, and transforms to finite C-contiguous float32. Outcomes remain positive int64 `B_i(k)` values. The [scientific contract](#causal-features) owns formulas, causality, target construction, and complete-outcome role boundaries.
 
@@ -574,7 +578,10 @@ minimum. Its scientific interpretation is defined in the [theory](#targets-loss-
 - `fit_target_state(raw_minima)` requires a nonempty positive int64 vector, computes Float64
   `ell_i`, `mu_ell`, and `sigma_ell` with `ddof=0`, and rejects constant targets.
 - `standardize_target(raw_minima, state)` returns finite contiguous float32 `z_i` values.
-- `min_block_fee_loss(...)` trusts tensors owned by model and historical-preparation internals. It directly computes native unweighted cross-entropy and native default Smooth L1 per origin, returning detached per-origin totals and the gradient-carrying sample-denominator mean.
+- `min_block_fee_loss(...)` trusts tensors owned by model and historical-preparation internals. It
+  directly returns native unweighted cross-entropy plus native default Smooth L1 per origin.
+  Training takes the tensor mean for backpropagation; validation detaches and accumulates Float64
+  batch means weighted by origin count.
 - `decode_action(output)` applies the canonical action decode.
 
 The exact equations are in the [theory](#targets-loss-and-decode).
@@ -595,7 +602,11 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 
 #### Candidate run
 
-`run_candidate(storage_root, request, method_index)` loads the request's Corpus, prepares training history and state, fits the indexed Method through native Lightning, and retains one successful result. Method index `i` owns checkpoint scratch at `studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while fit or publication failure preserves it for `last.ckpt` resume.
+`modeling.run_candidate(storage_root, request, method_index)` loads the request's Corpus, prepares
+training history and state, fits the indexed Method through native Lightning, and retains one
+successful result. Method index `i` owns checkpoint scratch at
+`studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while
+fit or publication failure preserves it for `last.ckpt` resume.
 
 `RetainedResult` has three fields:
 
@@ -976,7 +987,13 @@ The code and non-asset tests implement this contract, but the twelve final artif
 
 ### Execution runtime
 
-The internal installed-executable profile sets `CUBLAS_WORKSPACE_CONFIG=:4096:8` before GPU work and fixes BF16 mixed-precision fitting, fit batch size 64, and evaluation batch size 512; four persistent pinned-memory loader workers with prefetch factor 2; deterministic Torch execution without benchmarking; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32 enabled for operations that remain float32. It is code, not a request, schema, YAML field, or public configuration surface.
+The internal installed-executable profile fixes BF16 mixed-precision fitting, fit batch size 64,
+and evaluation batch size 512; four persistent pinned-memory loader workers with prefetch factor
+2; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32 for operations
+that remain float32. Each fit calls `seed_everything(seed)` once. Lightning owns deterministic
+setup through `Trainer(deterministic=True)` and norm clipping through the configured
+`gradient_clip_norm`; shuffled loading uses the seeded global Torch RNG. These are code facts, not
+request, schema, YAML, or public configuration surfaces.
 
 ### Evaluation API
 

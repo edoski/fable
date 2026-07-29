@@ -18,9 +18,8 @@ from .config import (
 )
 from .evaluation import evaluate
 from .execution import CandidateProcessInput, submit_candidates, submit_workflows
-from .modeling import train
+from .modeling import run_candidate, train
 from .study import publish_study
-from .tuning import run_candidate
 
 app = typer.Typer(add_completion=False)
 remote_app = typer.Typer(add_completion=False)
@@ -68,7 +67,6 @@ def workflow_command() -> None:
 def candidate_command() -> None:
     candidate = CandidateProcessInput.model_validate_json(
         sys.stdin.buffer.read(),
-        strict=True,
     )
     storage_root = _resolve_storage_root()
     run_candidate(
@@ -83,7 +81,7 @@ def study_run_command(
     request_path: Annotated[Path, typer.Argument(metavar="TUNE_REQUEST.json")],
     method_index: Annotated[int, typer.Argument(metavar="METHOD_INDEX")],
 ) -> None:
-    request = TuneRequest.model_validate_json(request_path.read_bytes(), strict=True)
+    request = TuneRequest.model_validate_json(request_path.read_bytes())
     typer.echo(
         submit_candidates((CandidateProcessInput(request=request, method_index=method_index),))
     )

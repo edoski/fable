@@ -43,6 +43,7 @@ def fit_feature_state(
 ) -> FeatureState:
     raw = _raw_feature_rows(
         training_support.to_polars(),
+        chain_id=training_support.definition.chain_id,
         ordered_features=ordered_features,
     )
     means = raw.mean(axis=0, dtype=np.float64)
@@ -59,7 +60,11 @@ def transform_feature_rows(
     ordered_features: tuple[FeatureName, ...],
     state: FeatureState,
 ) -> NDArray[np.float32]:
-    raw = _raw_feature_rows(blocks.to_polars(), ordered_features=ordered_features)
+    raw = _raw_feature_rows(
+        blocks.to_polars(),
+        chain_id=blocks.definition.chain_id,
+        ordered_features=ordered_features,
+    )
     means = np.asarray(state.means, dtype=np.float64)
     standard_deviations = np.asarray(state.standard_deviations, dtype=np.float64)
     with np.errstate(over="ignore", invalid="ignore"):
@@ -75,26 +80,31 @@ def transform_feature_rows(
 def _raw_feature_rows(
     blocks: pl.DataFrame,
     *,
+    chain_id: int,
     ordered_features: tuple[FeatureName, ...],
 ) -> NDArray[np.float64]:
     needs_predecessor = "block_interval_seconds" in ordered_features
     columns = []
     for feature_name in ordered_features:
-        values = _feature_values(blocks, feature_name)
+        values = _feature_values(blocks, chain_id, feature_name)
         if needs_predecessor and feature_name != "block_interval_seconds":
             values = values[1:]
         columns.append(values)
     return np.ascontiguousarray(np.column_stack(columns), dtype=np.float64)
 
 
-def _feature_values(blocks: pl.DataFrame, feature_name: FeatureName) -> NDArray[np.float64]:
+def _feature_values(
+    blocks: pl.DataFrame,
+    chain_id: int,
+    feature_name: FeatureName,
+) -> NDArray[np.float64]:
     match feature_name:
         case "log_base_fee_per_gas":
             return np.log(_float_column(blocks, "base_fee_per_gas"))
         case "gas_utilization":
             return _float_column(blocks, "gas_used") / _float_column(blocks, "gas_limit")
         case "log_exact_forming_base_fee_per_gas":
-            if not (blocks["chain_id"] == 1).all():
+            if chain_id != 1:
                 raise ValueError("log_exact_forming_base_fee_per_gas is Ethereum-only")
             return _forming_base_fee_logs(blocks)
         case "log_gas_limit":
@@ -170,7 +180,6 @@ class _HistoricalBacking:
     first_block: int
     inputs: torch.Tensor
     base_fees: torch.Tensor
-    block_numbers: torch.Tensor
 
 
 class HistoricalDataset(Dataset[_HistoricalItem]):
@@ -179,7 +188,8 @@ class HistoricalDataset(Dataset[_HistoricalItem]):
     def __init__(
         self,
         backing: _HistoricalBacking,
-        origin_rows: _IntVector,
+        first_origin_row: int,
+        sample_count: int,
         labels: _IntVector,
         targets: NDArray[np.float32],
         *,
@@ -187,23 +197,27 @@ class HistoricalDataset(Dataset[_HistoricalItem]):
         horizon_blocks: int,
     ) -> None:
         self._backing = backing
-        self._origin_rows = torch.from_numpy(origin_rows)
+        self._first_origin_row = first_origin_row
+        self._sample_count = sample_count
         self._labels = torch.from_numpy(labels)
         self._targets = torch.from_numpy(targets)
         self._context_blocks = context_blocks
         self._horizon_blocks = horizon_blocks
 
     def __len__(self) -> int:
-        return self._origin_rows.numel()
+        return self._sample_count
 
     def __getitem__(self, index: int) -> _HistoricalItem:
-        origin = int(self._origin_rows[index])
+        origin = self._first_origin_row + index
         return {
             "inputs": self._backing.inputs[origin - self._context_blocks + 1 : origin + 1],
             "label": self._labels[index],
             "target": self._targets[index],
             "base_fees": self._backing.base_fees[origin + 1 : origin + 1 + self._horizon_blocks],
-            "origin_block": self._backing.block_numbers[origin],
+            "origin_block": torch.tensor(
+                self._backing.first_block + origin,
+                dtype=torch.int64,
+            ),
         }
 
 
@@ -311,12 +325,10 @@ def _build_backing(
     )
     frame = blocks.to_polars().slice(predecessor_blocks)
     base_fees = frame["base_fee_per_gas"].to_numpy(writable=True)
-    block_numbers = frame["block_number"].to_numpy(writable=True)
     return _HistoricalBacking(
         first_block=first_block,
         inputs=torch.from_numpy(inputs),
         base_fees=torch.from_numpy(base_fees),
-        block_numbers=torch.from_numpy(block_numbers),
     )
 
 
@@ -370,7 +382,8 @@ def _build_dataset(
     )
     return HistoricalDataset(
         backing,
-        origin_rows,
+        int(origin_rows[0]),
+        origin_rows.size,
         labels,
         standardize_target(minima, target_state),
         context_blocks=experiment.context_blocks,

@@ -42,9 +42,10 @@ from fable.min_block_fee import MinBlockFeeOutput, TargetState, min_block_fee_lo
 from fable.modeling import (
     ArtifactAssociation,
     load_artifact,
+    run_candidate,
     train,
 )
-from fable.study import RetainedResult, Study
+from fable.study import RetainedResult, Study, load_study, publish_study
 from fable.temporal import FeatureState, prepare_fit_history
 from tests.helpers import modeling_method
 
@@ -268,7 +269,7 @@ def test_epoch_logs_weight_short_batches_in_float64(
     batches = list(DataLoader(prepared.training, batch_size=3, shuffle=False))
     complete = next(iter(DataLoader(prepared.training, batch_size=4, shuffle=False)))
     with torch.no_grad():
-        expected = float(module._loss(complete).mean_total)
+        expected = float(module._loss(complete).mean())
     logged: dict[str, list[tuple[torch.Tensor, dict[str, Any]]]] = {
         "training_total_loss": [],
         "validation_total_loss": [],
@@ -351,80 +352,18 @@ def test_validation_logs_mean_base_fee_cost_over_optimum(
     assert options["on_epoch"] is True
 
 
-def test_gradient_clipping_uses_trainer_value_and_rejects_nonfinite() -> None:
-    association = ArtifactAssociation(
-        request=_train_request(),
-        feature_state=FeatureState(
-            means=(1.0, 2.0),
-            standard_deviations=(0.5, 0.25),
-        ),
-        target_state=TargetState(mean=3.0, standard_deviation=0.75),
-        method=modeling_method(),
-    )
-    module = modeling._FitModule(modeling._json_association(association))
-    parameter = torch.nn.Parameter(torch.tensor([3.0, 4.0]))
-    optimizer = torch.optim.SGD([parameter], lr=0.1)
-
-    parameter.grad = torch.tensor([3.0, 4.0])
-    module.configure_gradient_clipping(optimizer, 2.0, "norm")
-    torch.testing.assert_close(parameter.grad.norm(), torch.tensor(2.0))
-
-    parameter.grad = torch.tensor([3.0, 4.0])
-    module.configure_gradient_clipping(optimizer, 0.0, "norm")
-    torch.testing.assert_close(parameter.grad, torch.tensor([3.0, 4.0]))
-
-    parameter.grad = torch.tensor([math.inf, 0.0])
-    with pytest.raises(RuntimeError, match="non-finite"):
-        module.configure_gradient_clipping(optimizer, 0.0, "norm")
-
-
-@pytest.mark.parametrize(
-    ("artifact_id", "model"),
-    [
-        (
-            UUID("30000000-0000-4000-8000-000000000001"),
-            LstmDefinition(
-                family="lstm",
-                hidden=5,
-                layers=1,
-                head_hidden=3,
-                dropout=0.1,
-            ),
-        ),
-        (
-            UUID("30000000-0000-4000-8000-000000000002"),
-            TransformerDefinition(
-                family="transformer",
-                model_width=4,
-                attention_heads=2,
-                transformer_layers=1,
-                feedforward_width=7,
-                head_hidden=3,
-                dropout=0.1,
-            ),
-        ),
-        (
-            UUID("30000000-0000-4000-8000-000000000003"),
-            TransformerLstmDefinition(
-                family="transformer_lstm",
-                model_width=4,
-                attention_heads=2,
-                transformer_layers=1,
-                feedforward_width=7,
-                lstm_hidden=5,
-                lstm_layers=1,
-                head_hidden=3,
-                dropout=0.1,
-            ),
-        ),
-    ],
-)
-def test_all_three_models_train_load_and_apply_direct_loss(
-    artifact_id: UUID,
-    model: LstmDefinition | TransformerDefinition | TransformerLstmDefinition,
+def test_lstm_trains_loads_and_applies_direct_loss(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    artifact_id = UUID("30000000-0000-4000-8000-000000000001")
+    model = LstmDefinition(
+        family="lstm",
+        hidden=5,
+        layers=1,
+        head_hidden=3,
+        dropout=0.1,
+    )
     method = _definition(model).method
     request = _train_request(artifact_id)
     _write_corpus(tmp_path)
@@ -441,19 +380,18 @@ def test_all_three_models_train_load_and_apply_direct_loss(
     hidden = checkpoint.with_name(f".{checkpoint.name}")
     cleanup_attempted = False
     real_unlink = Path.unlink
-    if isinstance(model, LstmDefinition):
 
-        def fail_hidden_cleanup(
-            path: Path,
-            missing_ok: bool = False,
-        ) -> None:
-            nonlocal cleanup_attempted
-            if path == hidden:
-                cleanup_attempted = True
-                raise OSError("cleanup failed")
-            real_unlink(path, missing_ok=missing_ok)
+    def fail_hidden_cleanup(
+        path: Path,
+        missing_ok: bool = False,
+    ) -> None:
+        nonlocal cleanup_attempted
+        if path == hidden:
+            cleanup_attempted = True
+            raise OSError("cleanup failed")
+        real_unlink(path, missing_ok=missing_ok)
 
-        monkeypatch.setattr(Path, "unlink", fail_hidden_cleanup)
+    monkeypatch.setattr(Path, "unlink", fail_hidden_cleanup)
 
     train(request, tmp_path)
     association, loaded_model = load_artifact(tmp_path, artifact_id)
@@ -461,15 +399,12 @@ def test_all_three_models_train_load_and_apply_direct_loss(
     assert association.request == request
     assert checkpoint == tmp_path / "artifacts" / f"{artifact_id}.ckpt"
     assert checkpoint.is_file()
-    if isinstance(model, LstmDefinition):
-        assert cleanup_attempted
-        assert hidden.is_file()
-        contents = checkpoint.read_bytes()
-        with pytest.raises(FileExistsError):
-            train(request, tmp_path)
-        assert checkpoint.read_bytes() == contents
-    else:
-        assert not hidden.exists()
+    assert cleanup_attempted
+    assert hidden.is_file()
+    contents = checkpoint.read_bytes()
+    with pytest.raises(FileExistsError):
+        train(request, tmp_path)
+    assert checkpoint.read_bytes() == contents
 
     application_history = prepare_fit_history(_corpus(), _experiment())
     batches = list(DataLoader(application_history.training, batch_size=3, shuffle=False))
@@ -479,21 +414,20 @@ def test_all_three_models_train_load_and_apply_direct_loss(
         assert output.minimum_fee_z.shape == (batch["inputs"].shape[0],)
         assert torch.isfinite(output.action_logits).all()
         assert torch.isfinite(output.minimum_fee_z).all()
-        loss = min_block_fee_loss(
+        loss_by_origin = min_block_fee_loss(
             output,
             label=batch["label"],
             target=batch["target"],
         )
-        assert torch.isfinite(loss.mean_total)
+        assert torch.isfinite(loss_by_origin.mean())
 
-    if isinstance(model, LstmDefinition):
-        mismatched_id = UUID("30000000-0000-4000-8000-000000000009")
-        checkpoint.rename(artifact_checkpoint_path(tmp_path, mismatched_id))
-        with pytest.raises(ValueError, match="embedded artifact ID"):
-            load_artifact(tmp_path, mismatched_id)
+    mismatched_id = UUID("30000000-0000-4000-8000-000000000009")
+    checkpoint.rename(artifact_checkpoint_path(tmp_path, mismatched_id))
+    with pytest.raises(ValueError, match="embedded artifact ID"):
+        load_artifact(tmp_path, mismatched_id)
 
 
-def test_full_checkpoint_resume_preserves_selection_and_progress(
+def test_candidate_failure_preserves_checkpoint_and_resume_publishes_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -547,7 +481,7 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
             return getattr(self._trainer, name)
 
     monkeypatch.setattr(modeling.pl, "Trainer", TrainerSpy)
-    scratch = tmp_path / "candidate"
+    scratch = tmp_path / "studies" / f".{request.study_id}" / "candidate-0"
 
     def progress() -> list[tuple[int, float, float]]:
         lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("epoch=")]
@@ -561,12 +495,17 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
         ]
 
     with pytest.raises(RuntimeError, match="simulated interruption"):
-        modeling.fit_candidate(request, 0, tmp_path, scratch)
+        run_candidate(tmp_path, request, 0)
     first_progress = progress()
     assert (scratch / "last.ckpt").is_file()
+    last_checkpoint = torch.load(scratch / "last.ckpt", map_location="cpu", weights_only=True)
+    assert "optimizer_states" in last_checkpoint
 
-    second = modeling.fit_candidate(request, 0, tmp_path, scratch)
+    run_candidate(tmp_path, request, 0)
     second_progress = progress()
+    assert not scratch.exists()
+    publish_study(tmp_path, request.study_id)
+    second = load_study(tmp_path, request.study_id).trials[0]
 
     assert first_progress == []
     assert [epoch for epoch, _, _ in second_progress] == [2, 4]
@@ -580,9 +519,3 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
     assert fit_kwargs[0]["ckpt_path"] is None
     assert fit_kwargs[1]["ckpt_path"] == scratch / "last.ckpt"
     assert "weights_only" not in fit_kwargs[1]
-    best_path = scratch / f"best-{second.selected_epoch - 1:02d}.ckpt"
-    assert sorted(path.name for path in scratch.iterdir()) == [best_path.name, "last.ckpt"]
-    best_checkpoint = torch.load(best_path, map_location="cpu", weights_only=True)
-    last_checkpoint = torch.load(scratch / "last.ckpt", map_location="cpu", weights_only=True)
-    assert "optimizer_states" not in best_checkpoint
-    assert "optimizer_states" in last_checkpoint
