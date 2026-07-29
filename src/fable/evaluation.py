@@ -176,17 +176,11 @@ def _collect_observations(
                 "predicted_minimum_log_base_fee": predicted_logs_batch,
                 "minimum_action_k": minimum_actions_batch,
                 "immediate_base_fee_per_gas": immediate_batch,
-                "immediate_effective_priority_fee_per_gas_p50": (
-                    immediate_priority_fees_p50_batch
-                ),
+                "immediate_effective_priority_fee_per_gas_p50": (immediate_priority_fees_p50_batch),
                 "selected_base_fee_per_gas": selected_batch,
-                "selected_effective_priority_fee_per_gas_p50": (
-                    selected_priority_fees_p50_batch
-                ),
+                "selected_effective_priority_fee_per_gas_p50": (selected_priority_fees_p50_batch),
                 "deadline_base_fee_per_gas": deadline_batch,
-                "deadline_effective_priority_fee_per_gas_p50": (
-                    deadline_priority_fees_p50_batch
-                ),
+                "deadline_effective_priority_fee_per_gas_p50": (deadline_priority_fees_p50_batch),
                 "minimum_base_fee_per_gas": minimum_batch,
             }
             for name in OBSERVATION_SCHEMA:
