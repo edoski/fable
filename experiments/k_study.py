@@ -39,7 +39,7 @@ def prepare(storage_root: Path, hpo_experiment_id: UUID) -> None:
 
     rows: list[tuple[str, Path, UUID]] = []
     for entry in manifest.entries:
-        study_id = entry.require_study_id()
+        study_id = entry.record_id
         study = load_study(storage_root, study_id)
         selected_index, _ = study.best_result()
         for horizon in _HORIZONS:
@@ -70,7 +70,7 @@ def close(storage_root: Path, experiment_id: UUID) -> None:
     entries = tuple(
         ExperimentEntry(
             cell=row["cell"],
-            artifact_id=artifact_id,
+            record_id=artifact_id,
         )
         for row in rows
         if artifact_checkpoint_path(

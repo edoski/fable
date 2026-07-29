@@ -25,8 +25,8 @@ completed canonical Corpus pair
         v
 strict workflow request --> CLI or direct Python call
         |
-        +--> tuning -----> Study
-        +--> fitting ----> native Lightning artifact
+        +--> candidate fitting -> Study
+        +--> selected fitting --> native Lightning artifact
         +--> evaluation -> observations.parquet
         |
         v
@@ -40,7 +40,6 @@ transient observation-derived reductions
 ```text
 cli / experiment runners / mobile exporter
   ├─> execution
-  ├─> tuning ─────> modeling, study
   ├─> modeling ───> corpus, study, temporal, min_block_fee
   └─> evaluation ─> corpus, temporal, modeling, min_block_fee
 
@@ -49,18 +48,17 @@ corpus / study / min_block_fee / execution
          └────────> config and strict records
 ```
 
-This diagram is generated from the production import direction at this revision. Direct owner seams are:
+This high-level diagram summarizes the production import direction. Direct owner seams are:
 
 - `corpus` owns canonical `BlockFrame` row truth and completed Corpus association.
-- `temporal` owns causal feature state, fixed-block context/outcome geometry, and lazy historical examples.
+- `temporal` owns causal feature state, fixed-block context/outcome geometry, and historical batches.
 - `min_block_fee` owns target state, the fixed training loss, two-head output, and decode.
-- `modeling` owns request-bound Corpus-to-model fitting, the three concrete neural definitions,
-  Lightning fitting, and native checkpoint loading.
-- `tuning` owns one indexed candidate run through result retention.
+- `modeling` owns request-bound candidate and selected fitting, the three concrete neural
+  definitions, Lightning fitting, candidate retention, and native checkpoint loading.
 - `study` owns bounded candidate membership, ordered retained results, publication, and selected-Method loading.
 - `evaluation` owns canonical self-contained observations and transient reduction.
 
-The closed model union is LSTM, Transformer, or Transformer-LSTM. Historical preparation supplies one compact contiguous source for batched origin-index gathering; each model consumes float32 `[B,C,F]` and returns action logits `[B,K]` plus standardized minimum-fee prediction `[B]`. Architecture stays independent of target construction and evaluation accounting.
+The closed model union is LSTM, Transformer, or Transformer-LSTM. Historical preparation supplies one compact contiguous source for device-side origin-index gathering; each model consumes float32 `[B,C,F]` and returns action logits `[B,K]` plus standardized minimum-fee prediction `[B]`. Architecture stays independent of target construction and evaluation accounting.
 
 Corpus production is external. Native OpenSSH and Slurm begin at `fable.execution.submit_workflows()` ([ADR 0007](adr/0007-native-external-execution-boundary.md)). Completed objects own one exact request at direct canonical addresses; UUIDs identify instances and typed associations establish meaning ([ADR 0006](adr/0006-direct-durable-object-authority.md)).
 
@@ -201,7 +199,10 @@ SmoothL1(e_i) = 0.5 * e_i^2 ≈ 0.015487
 total         = CE + SmoothL1(e_i) ≈ 0.821264
 ```
 
-For this one-origin batch, `mean_total = total`. In a larger batch every origin contributes native unweighted cross-entropy plus native default Smooth L1 once, with sample count `B` as the denominator. No loss definition, mode, scale, threshold, or fitted classification state is request or artifact authority.
+For this one-origin batch, the batch mean equals `total`. In a larger batch every origin
+contributes native unweighted cross-entropy plus native default Smooth L1 once, with sample count
+`B` as the denominator. No loss definition, mode, scale, threshold, or fitted classification state
+is request or artifact authority.
 
 ### 6. Decode and evaluate
 
@@ -237,9 +238,10 @@ Reduction uses this row directly. Base-fee savings is `(25.5-20.0)/25.5 ≈ 0.21
 ### 7. Carry the same contract on device
 
 The exported manifest and model fix chain association, `C`, `K`, ordered features, feature state,
-target state, model definition, and weights. On Run, the app reads a fresh latest closed head,
-synchronizes the exact context, creates `[1,C,F]`, executes the bundled model, validates both
-outputs, and decodes the action in the same way.
+target state, model definition, and weights. Selection remains idle. On Run, the app reads a fresh
+latest closed head and exact `C`-block range, adding only the predecessor required by interval
+features. It creates `[1,C,F]`, loads or reuses the bundled model, validates both native outputs,
+and decodes the action in the same way. The first Run accepts model-load and RPC latency.
 
 Continuing the teaching values, the app result shape is:
 
@@ -432,7 +434,7 @@ r_i = smooth_l1(e_i)
 
 ```text
 t_i = c_i + r_i
-mean_total = (sum_i t_i) / B
+L_batch = (sum_i t_i) / B
 ```
 
 The denominator is the number of origins in the batch. These are training and validation losses only. The operative functions match PyTorch's [`cross_entropy`](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html) and [`smooth_l1_loss`](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.smooth_l1_loss.html).
@@ -495,9 +497,9 @@ base_fee_optimality_gap = mean_i ((B_i(hat{k}_i) - m_i) / m_i)
 
 All three economic metrics are mean per-origin fractions, not ratios of fee sums. Positive base fees make their denominators defined. Both savings metrics are higher-is-better; `base_fee_savings` remains base-fee-only, while `p50_fee_inclusive_savings` is a retrospective representative-cost proxy using each outcome block's included-transaction P50, not an inclusion guarantee. `base_fee_optimality_gap` is nonnegative and lower is better. Natural-log errors compare dimensionless coordinates relative to `u=1 wei/gas` and lower is better. Accuracy and macro-F1 are unitless and higher is better. Economic values remain fractions for later percentage formatting.
 
-Immediate and deadline policy baselines use the same classification and economic equations. They
-do not predict a minimum fee, so they have no log-fee regression metrics. The immediate policy
-always selects `k=0`; the deadline policy always selects `k=K-1`.
+Immediate and deadline baselines are economic reference policies. Their rows contain only base-fee
+savings, P50 fee-inclusive savings, and base-fee optimality gap. The immediate policy always
+selects `k=0`; the deadline policy always selects `k=K-1`.
 
 #### Fixed-deadline rolling comparison
 
@@ -544,11 +546,15 @@ Temporal preparation has two direct paths: historical fixed-block examples and l
 
 `prepare_fit_history(corpus, experiment)` validates complete context/outcome support, fits state from training support only, and returns training and validation `HistoricalDataset` values with `FeatureState` and `TargetState`. `prepare_historical_window(corpus, experiment, window, *, feature_state, target_state)` prepares an exact testing window with persisted state after complete validation outcomes.
 
-Preparation keeps one contiguous backing of float32 feature rows and int64 fees/block numbers, plus per-origin positions, int64 `k_i*` labels, and float32 `z_i` targets. Historical execution moves that compact state to the execution device once. Each loader batch gathers the required `[C,F]` inputs and `[K]` outcomes by origin index.
+Preparation keeps the first backing block, contiguous CPU float32 feature rows, and int64 base
+fees. Each dataset stores its first origin row and sample count plus int64 `k_i*` labels and
+float32 `z_i` targets. Historical execution moves that compact state to the execution device once.
+Each loader returns integer indices; device-side collation derives origin rows and blocks, then
+gathers batched `[C,F]` inputs and `[K]` outcomes.
 
 The ordered feature tuple is request authority. Raw features are assembled in that order as Float64; training-support population state uses `ddof=0`, rejects constants, and transforms to finite C-contiguous float32. Outcomes remain positive int64 `B_i(k)` values. The [scientific contract](#causal-features) owns formulas, causality, target construction, and complete-outcome role boundaries.
 
-For live inference, the app reads one closed head, synchronizes the exact context, reproduces the historical feature transform, and constructs float32 `[1,C,F]`; `block_interval_seconds` requires `C+1` raw blocks. The bundled cell fixes `C`, `K`, feature order, and fitted states. Decode returns target block `h_i+1+hat{k}_i` and positive finite `u * exp(hat{ell}_i)`. Historical preparation remains the parity authority; [Mobile deployment](#mobile-deployment) owns the build-time boundary.
+For live inference, each Run reads one closed head and one fresh exact context, reproduces the historical feature transform, and constructs float32 `[1,C,F]`; `block_interval_seconds` requires `C+1` raw blocks. The bundled cell fixes `C`, `K`, feature order, and fitted states. Decode returns target block `h_i+1+hat{k}_i` and positive finite `u * exp(hat{ell}_i)`. Historical preparation remains the parity authority; [Mobile deployment](#mobile-deployment) owns the build-time boundary.
 
 ### Minimum-block-fee task
 
@@ -574,7 +580,10 @@ minimum. Its scientific interpretation is defined in the [theory](#targets-loss-
 - `fit_target_state(raw_minima)` requires a nonempty positive int64 vector, computes Float64
   `ell_i`, `mu_ell`, and `sigma_ell` with `ddof=0`, and rejects constant targets.
 - `standardize_target(raw_minima, state)` returns finite contiguous float32 `z_i` values.
-- `min_block_fee_loss(...)` trusts tensors owned by model and historical-preparation internals. It directly computes native unweighted cross-entropy and native default Smooth L1 per origin, returning detached per-origin totals and the gradient-carrying sample-denominator mean.
+- `min_block_fee_loss(...)` trusts tensors owned by model and historical-preparation internals. It
+  directly returns native unweighted cross-entropy plus native default Smooth L1 per origin.
+  Training takes the tensor mean for backpropagation; validation detaches and accumulates Float64
+  batch means weighted by origin count.
 - `decode_action(output)` applies the canonical action decode.
 
 The exact equations are in the [theory](#targets-loss-and-decode).
@@ -595,7 +604,11 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 
 #### Candidate run
 
-`run_candidate(storage_root, request, method_index)` loads the request's Corpus, prepares training history and state, fits the indexed Method through native Lightning, and retains one successful result. Method index `i` owns checkpoint scratch at `studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while fit or publication failure preserves it for `last.ckpt` resume.
+`modeling.run_candidate(storage_root, request, method_index)` loads the request's Corpus, prepares
+training history and state, fits the indexed Method through native Lightning, and retains one
+successful result. Method index `i` owns checkpoint scratch at
+`studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while
+fit or publication failure preserves it for `last.ckpt` resume.
 
 `RetainedResult` has three fields:
 
@@ -641,9 +654,9 @@ The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical t
 
 #### Transient reduction
 
-`reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, expected nonnull row count, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. It requires all seven computed metrics to be finite. `reduce_baselines(storage_root, evaluation_id) -> polars.DataFrame` derives the same five classification and economic metrics for the immediate and deadline policies. Neither reducer reloads the artifact or Corpus or externally authenticates the horizon or source. Results have no evaluation ID, count, sums, supports, arrays, or auxiliary fields and are not persisted.
+`reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, expected nonnull row count, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. It requires all seven computed metrics to be finite. `reduce_baselines(storage_root, evaluation_id) -> polars.DataFrame` derives the three economic metrics for the immediate and deadline policies. Neither reducer reloads the artifact or Corpus or externally authenticates the horizon or source. Results have no evaluation ID, count, sums, supports, arrays, or auxiliary fields and are not persisted.
 
-Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps exactly nine human-readable architecture-chain cell names to mappings from horizons `2`, `3`, `4`, and `5` to their Evaluation UUIDs. The final experiment runner owns that scientific association. Reduction verifies exact schemas, nonnull consecutive origins, action ranges, and required decision-origin coverage. Its nine-row, six-metric DataFrame is transient and is not persisted.
+Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps human-readable architecture-chain cell names to the required horizon `2`, `3`, `4`, and `5` Evaluation UUIDs. The final experiment runner owns that scientific association and builds the nine declared cells. Reduction verifies exact schemas, nonnull consecutive origins, predicted-action ranges, and required decision-origin coverage. Its six-metric rows are transient and are not persisted.
 
 ## Exact reference
 
@@ -811,28 +824,31 @@ load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus
 
 #### Experiment manifest
 
-Each `experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>.json` contains the matching UUIDv4 `experiment_id` and a nonempty ordered `entries` tuple. Each entry has a nonempty `cell` label and at least one canonical `artifact_id`, `study_id`, or `evaluation_id` UUIDv4. Manifests group canonical references only; they do not duplicate metrics, results, or scientific definitions.
+Each `experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>.json` contains the matching UUIDv4 `experiment_id` and a nonempty ordered `entries` tuple. Each entry has a nonempty `cell` label and one canonical `record_id` UUIDv4. The manifest path and kind define whether that ID names a Study, artifact, or evaluation. Manifests group canonical references only; they do not duplicate metrics, results, or scientific definitions.
 
 `experiments/feature_ablation.py prepare STORAGE_ROOT` authors the frozen 102-cell request
 bundle under `experiments/feature_ablation/.<experiment_id>/`. For each architecture and chain it
 tests the full feature contract, each individual feature unit omitted, and a base-fee-only
 reference. Hour and day-of-week sine/cosine coordinates each remain one indivisible encoded unit.
-`experiments/launch.py candidates BUNDLE` submits its cells three at a time by default and accepts
-two-task packing for two-GPU nodes. After all canonical
+`experiments/launch.py candidates BUNDLE` submits its cells at a selected two- or three-GPU node
+capacity. It uses the fewest allocations and avoids a singleton tail when possible: seven pending
+cells at capacity three become `3 + 2 + 2`. After all canonical
 Studies exist, `close STORAGE_ROOT EXPERIMENT_ID` publishes the canonical manifest and removes
 the temporary bundle; `report` derives each chain/configuration mean from canonical Studies.
 
 Study bundles keep each complete Method roster inside its TuneRequest. Their `cells.tsv` rows
 carry the request path, zero-based `method_index`, and Study ID; they do not write separate Method
 JSON files. Packed launch writes temporary `jobs.tsv` rows containing job ID, zero-based slot,
-source-row index, and cell. A repeated launch skips recorded rows. The bundle's ordinary closure
-removes both TSV files.
+source-row index, and cell. Every successful allocation is appended, flushed, and synced before
+its job ID is printed. A repeated launch skips recorded rows; a failed submission leaves later
+groups pending. The bundle's ordinary closure removes both TSV files.
 
 `experiments/c_study.py` derives the full feature contract, authors the 45
-architecture-chain-context Studies for `C={25,50,100,200,400}`, and selects one context per
-chain by mean validation objective across the three architectures. `experiments/hpo.py` then authors
-the exact nine architecture-chain Studies and their ordered nine-Method L9 rosters. Its selector
-chooses the earliest minimum validation objective.
+architecture-chain-context Studies for `C={25,50,100,200,400}`, then publishes their canonical
+Study references. `experiments/hpo.py` loads that manifest, selects one context per chain by mean
+validation objective across the three architectures, reports the selected contexts, and authors
+the exact nine architecture-chain Studies with their ordered nine-Method L9 rosters. Its final
+selector chooses the earliest minimum validation objective.
 
 `experiments/k_study.py` derives each architecture-chain HPO result and authors 81 fresh
 selected-Study Train requests for `K={2,3,4,5,10,25,50,100,200}`. It publishes the K-study
@@ -956,9 +972,9 @@ export paths.
 
 ### Mobile deployment
 
-The isolated `tools/mobile-export` project pins Torch 2.11 and ExecuTorch 1.2 without changing FABLE's Torch 2.7.1 environment. Its strict `MOBILE.yaml` roster contains exactly `ethereum`, `polygon`, and `avalanche`, each with integer horizons `2…5` mapped to twelve distinct artifact UUIDv4 values.
+The isolated `tools/mobile-export` project pins Torch 2.11 and ExecuTorch 1.2 without changing FABLE's Torch 2.7.1 environment. Its strict `MOBILE.yaml` roster contains exactly `ethereum`, `polygon`, and `avalanche`, each with integer horizons `2…5` mapped to artifact UUIDv4 values.
 
-Every cell must match artifact identity, chain, horizon, supported features, native output semantics, eager-to-XNNPACK host parity, selected action, and decoded-fee tolerance. A chain's four cells must share context, ordered features, and feature state. The exporter rejects an occupied output before lowering, builds a hidden sibling directory, checks again immediately before rename, and removes scratch on failure. Publication is all twelve models plus one manifest:
+Every cell must match artifact identity, chain, horizon, shared feature contract, native output semantics, eager-to-XNNPACK host parity, selected action, and decoded-fee tolerance. At least one delegate across the exported program's execution plans must have exact ID `XnnpackBackend`. The exporter reads only the Corpus request needed for chain identity, rejects an occupied output before lowering, builds a hidden sibling directory, checks again immediately before rename, and removes scratch on failure. Publication is all twelve models plus one manifest:
 
 ```text
 app/assets/models/
@@ -970,13 +986,25 @@ app/assets/models/
 
 The manifest owns shared context and feature state plus each model's artifact UUID and target state. The app trusts this build-time bundle through typed direct lookups and twelve static `.pte` requires. It has no download, alternate runtime, or remote inference fallback.
 
-Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares the exact closed-head context, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call supplies both features. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
+Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; session disposal unwatches without aborting in-flight reads. App's one engine-and-selection identity gate protects visible results and history commits. The model runtime serializes native load, forward, replacement, and disposal; the history queue serializes persistence and outcome retries. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call supplies both features and must begin at the first context block. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
 
-The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real `MOBILE.yaml`, generated assets, and native parity evidence do not yet exist. Exporter retirement and final acceptance remain deferred to A01. The [README](../README.md#mobile-demo) owns build commands; the [on-device decision](research/on-device-inference.md) owns rationale and acceptance boundaries.
+The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real
+`MOBILE.yaml`, generated assets, and device-acceptance evidence do not yet exist. The
+[README](../README.md#mobile-demo) owns build commands; the
+[on-device decision](research/on-device-inference.md) owns rationale and the deferred
+real-artifact acceptance boundary.
 
 ### Execution runtime
 
-The internal installed-executable profile sets `CUBLAS_WORKSPACE_CONFIG=:4096:8` before GPU work and fixes BF16 mixed-precision fitting, fit batch size 64, and evaluation batch size 512. Historical execution keeps one contiguous feature and outcome source on the accelerator and gathers each batch by origin index, without materializing every overlapping context window. Torch execution is deterministic without benchmarking, float32 matrix-multiplication precision is `high`, and CUDA matmul and cuDNN TF32 remain enabled for operations that stay float32. This profile is code, not a request, schema, YAML field, or public configuration surface.
+The internal installed-executable profile fixes BF16 mixed-precision fitting, fit batch size 64,
+and evaluation batch size 512. Historical execution keeps one contiguous feature and outcome
+source on the accelerator and gathers each batch by origin index without materializing every
+overlapping context window. Float32 matrix-multiplication precision is `high`; CUDA matmul and
+cuDNN TF32 remain enabled for operations that stay float32. Each fit calls
+`seed_everything(seed)` once. Lightning owns deterministic setup through
+`Trainer(deterministic=True)` and norm clipping through the configured `gradient_clip_norm`;
+shuffled loading uses the seeded global Torch RNG. These are code facts, not request, schema,
+YAML, or public configuration surfaces.
 
 ### Evaluation API
 
@@ -1046,12 +1074,14 @@ Regression compares `predicted_minimum_log_base_fee` (`hat{ell}_i`) with
 ratios of sums. `p50_fee_inclusive_savings` is retrospective and does not claim inclusion.
 
 `reduce_baselines()` returns two rows, ordered `immediate` then `deadline`, with `policy`,
-`accuracy`, `f1_macro`, `base_fee_savings`, `p50_fee_inclusive_savings`, and
-`base_fee_optimality_gap`. `experiments/held_out.py baselines` prefixes each row with its cell.
+`base_fee_savings`, `p50_fee_inclusive_savings`, and `base_fee_optimality_gap`.
+`experiments/held_out.py baselines` prefixes each row with its cell.
 
 #### Rolling comparison result
 
-Destination: none. The rolling reduction returns one row per explicit architecture-chain cell and requires exactly nine rows. Status: derived, transient, noncanonical, nonnull.
+Destination: none. The rolling reduction returns one row per supplied architecture-chain cell.
+The held-out stage supplies the nine declared cells. Status: derived, transient, noncanonical,
+nonnull.
 
 | # | Field | Type | Unit/direction |
 | ---: | --- | --- | --- |

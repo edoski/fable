@@ -30,7 +30,9 @@ export function HorizonSlider({
       maximumValue={maximum}
       minimumTrackTintColor={colors.blue}
       minimumValue={minimum}
-      onValueChange={(nextValue: number) => onChange(nextValue as Horizon)}
+      onSlidingComplete={(nextValue: number) =>
+        onChange(nextValue as Horizon)
+      }
       step={1}
       style={styles.horizonSlider}
       thumbTintColor={colors.blue}

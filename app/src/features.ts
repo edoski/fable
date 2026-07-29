@@ -1,4 +1,4 @@
-import type { BlockRow } from "./rpc";
+import type { BlockRow } from "./domain";
 
 export const FEATURE_NAMES = [
   "log_base_fee_per_gas",
@@ -60,7 +60,7 @@ export function buildModelInput(
       const raw = rawFeature(
         feature.name,
         block,
-        needsPredecessor ? blocks[blockIndex - 1] : null,
+        blocks[blockIndex - 1],
         priorityFeeRewards?.[row],
       );
       const index = row * featureCount + column;
@@ -78,7 +78,7 @@ export function buildModelInput(
 function rawFeature(
   feature: FeatureName,
   block: BlockRow,
-  predecessor: BlockRow | null,
+  predecessor: BlockRow,
   priorityFeeRewards: PriorityFeeRewards | undefined,
 ): number {
   switch (feature) {
@@ -107,14 +107,7 @@ function rawFeature(
       return Math.log1p(Number(reward));
     }
     case INTERVAL_FEATURE: {
-      if (predecessor === null) {
-        throw new Error("block_interval_seconds requires a predecessor block");
-      }
-      const interval = block.timestamp - predecessor.timestamp;
-      if (interval < 0n) {
-        throw new Error("block_interval_seconds values must be nonnegative");
-      }
-      return Number(interval);
+      return Number(block.timestamp - predecessor.timestamp);
     }
     case "hour_sin":
       return Math.sin(hourAngle(block.timestamp));
@@ -132,23 +125,11 @@ function positiveLog(value: bigint): number {
 }
 
 function gasUtilization(block: BlockRow): number {
-  if (block.gasLimit <= 0n) {
-    throw new Error("gasLimit must be positive");
-  }
-  if (block.gasUsed < 0n || block.gasUsed > block.gasLimit) {
-    throw new Error("gasUsed must be between zero and gasLimit");
-  }
-  return (
-    Number(block.gasUsed) /
-    Number(block.gasLimit)
-  );
+  return Number(block.gasUsed) / Number(block.gasLimit);
 }
 
 function formingChildBaseFee(block: BlockRow): bigint {
   const gasTarget = block.gasLimit / 2n;
-  if (gasTarget <= 0n) {
-    throw new Error("gas target must be positive");
-  }
   if (block.gasUsed === gasTarget) {
     return block.baseFeePerGas;
   }

@@ -16,16 +16,14 @@ _C_SCRIPT = _ROOT / "experiments" / "c_study.py"
 def _publish_studies(
     storage_root: Path,
     rows: list[dict[str, str]],
-    objectives: dict[tuple[str, str], float],
 ) -> None:
     for row in rows:
         request = TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
-        parts = row["cell"].split(".")
         study = Study(
             request=request,
             trials=(
                 RetainedResult(
-                    objective=objectives.get((parts[0], parts[-1]), 2.0),
+                    objective=2.0,
                     selected_epoch=1,
                     completed_epochs=1,
                 ),
@@ -36,7 +34,7 @@ def _publish_studies(
         path.write_text(study.model_dump_json(), encoding="utf-8")
 
 
-def test_context_study_uses_full_features_and_reports_chain_winners(
+def test_context_study_uses_full_features_and_publishes_all_studies(
     tmp_path: Path,
 ) -> None:
     feature_experiment_id = UUID(
@@ -48,11 +46,7 @@ def test_context_study_uses_full_features_and_reports_chain_winners(
     )
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
     feature_rows = read_tsv_rows(feature_bundle / "cells.tsv")
-    _publish_studies(
-        tmp_path,
-        feature_rows,
-        {},
-    )
+    _publish_studies(tmp_path, feature_rows)
     run_script(_FEATURE_SCRIPT, "close", tmp_path, feature_experiment_id)
 
     result = run_script(
@@ -104,25 +98,16 @@ def test_context_study_uses_full_features_and_reports_chain_winners(
         "log1p_effective_priority_fee_per_gas_p90",
     )
 
-    _publish_studies(
-        tmp_path,
-        rows,
-        {
-            ("ethereum", "C50"): 0.25,
-            ("polygon", "C100"): 0.25,
-            ("avalanche", "C200"): 0.25,
-        },
-    )
-    result = run_script(_C_SCRIPT, "select", tmp_path, experiment_id)
+    _publish_studies(tmp_path, rows)
+    result = run_script(_C_SCRIPT, "close", tmp_path, experiment_id)
 
-    assert result.stdout.splitlines() == [
-        "ethereum\t50\t0.25",
-        "polygon\t100\t0.25",
-        "avalanche\t200\t0.25",
-    ]
+    assert result.stdout.strip() == str(experiment_id)
     manifest = ExperimentManifest.model_validate_json(
         (tmp_path / "experiments" / "c_study" / f"{experiment_id}.json").read_bytes(),
         strict=True,
     )
     assert len(manifest.entries) == 45
+    assert [str(entry.record_id) for entry in manifest.entries] == [
+        row["study_id"] for row in rows
+    ]
     assert not bundle.exists()

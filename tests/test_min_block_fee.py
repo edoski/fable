@@ -38,7 +38,7 @@ def test_target_and_native_loss_match_hand_derived_fixture() -> None:
     predictions = (targets + torch.tensor([0.0, 0.5, 1.0, 2.0])).detach().requires_grad_()
     output = MinBlockFeeOutput(action_logits=logits, minimum_fee_z=predictions)
 
-    loss = min_block_fee_loss(
+    loss_by_origin = min_block_fee_loss(
         output,
         label=labels,
         target=targets,
@@ -46,12 +46,10 @@ def test_target_and_native_loss_match_hand_derived_fixture() -> None:
     log_three = math.log(3.0)
     expected_total = torch.tensor([log_three, log_three + 0.125, log_three + 0.5, log_three + 1.5])
 
-    torch.testing.assert_close(loss.total_by_origin, expected_total)
-    torch.testing.assert_close(loss.mean_total, expected_total.sum() / 4.0)
-    assert loss.mean_total.requires_grad
-    assert not loss.total_by_origin.requires_grad
+    torch.testing.assert_close(loss_by_origin, expected_total)
+    assert loss_by_origin.requires_grad
 
-    loss.mean_total.backward()
+    loss_by_origin.mean().backward()
     expected_logits_grad = torch.full_like(logits, 1.0 / 12.0)
     expected_logits_grad[torch.arange(labels.shape[0]), labels] = -1.0 / 6.0
     torch.testing.assert_close(logits.grad, expected_logits_grad)

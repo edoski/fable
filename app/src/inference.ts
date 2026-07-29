@@ -1,6 +1,5 @@
-import { abortError } from "./abort";
 import { buildModelInput } from "./features";
-import type { Chain, Horizon } from "./domain";
+import type { BlockRow, Chain, Horizon } from "./domain";
 import { createDefaultModelCatalog, createModelRuntime } from "./model";
 import type {
   ModelCatalog,
@@ -9,7 +8,7 @@ import type {
   ModelSelection,
 } from "./model";
 import { createChainSession } from "./rpc";
-import type { BlockRow, ChainSession } from "./rpc";
+import type { ChainSession } from "./rpc";
 
 export type InferenceResult = {
   chain: Chain;
@@ -33,8 +32,7 @@ export type InferenceOutcome = {
 };
 
 export type InferenceEngine = {
-  prepare(K: Horizon): Promise<void>;
-  startPolling(
+  watchBlocks(
     onSnapshot: (snapshot: ChainSnapshot) => void,
     onError?: (error: unknown) => void,
   ): void;
@@ -62,56 +60,13 @@ export function createInferenceEngine(
 ): InferenceEngine {
   const { chain, catalog, model, session } =
     typeof input === "string" ? defaultDependencies(input) : input;
-  let selectedHorizon: Horizon | null = null;
-  let selectionRevision = 0;
-  let disposed = false;
   let disposal: Promise<void> | null = null;
 
-  function beginSelection(K: Horizon): number {
-    requireActive();
-    if (selectedHorizon !== K) {
-      selectedHorizon = K;
-      selectionRevision += 1;
-    }
-    return selectionRevision;
-  }
-
-  function requireActive(): void {
-    if (disposed) throw abortError("Inference engine is disposed");
-  }
-
-  function requireCurrent(revision: number): void {
-    requireActive();
-    if (revision !== selectionRevision) {
-      throw abortError("Inference selection changed");
-    }
-  }
-
-  async function prepare(K: Horizon): Promise<void> {
-    const revision = beginSelection(K);
-    const selection = catalog.select(chain, K);
-    const results = await Promise.allSettled([
-      session.sync(),
-      model.prepare(selection),
-    ]);
-    const requireFulfilled = (result: PromiseSettledResult<unknown>) => {
-      if (result.status === "rejected") throw result.reason;
-    };
-    results.forEach(requireFulfilled);
-    requireCurrent(revision);
-  }
-
   async function run(K: Horizon): Promise<InferenceResult> {
-    const revision = beginSelection(K);
     const selection = catalog.select(chain, K);
-    await attempt("Could not load the selected model.", () =>
-      model.prepare(selection),
-    );
-    requireCurrent(revision);
     const context = await attempt("Could not read the selected chain.", () =>
       session.sync(),
     );
-    requireCurrent(revision);
 
     const head = context.blocks[context.blocks.length - 1];
     const input = await attempt(
@@ -131,7 +86,6 @@ export function createInferenceEngine(
           await model.execute(selection, input),
         ),
     );
-    requireCurrent(revision);
     return attempt(
       "Chain data is incomplete or invalid.",
       async () =>
@@ -144,13 +98,11 @@ export function createInferenceEngine(
     );
   }
 
-  function startPolling(
+  function watchBlocks(
     onSnapshot: (snapshot: ChainSnapshot) => void,
     onError?: (error: unknown) => void,
   ): void {
-    requireActive();
-    session.startPolling((block) => {
-      requireActive();
+    session.watchBlocks((block) => {
       onSnapshot({
         head_block: safeBigInt(block.number, "head block"),
         current_base_fee_per_gas: safeBigInt(
@@ -165,11 +117,9 @@ export function createInferenceEngine(
     immediateBlock: number,
     selectedBlock: number,
   ): Promise<InferenceOutcome> {
-    requireActive();
     const immediate = BigInt(immediateBlock);
     const selected = BigInt(selectedBlock);
     const outcome = await session.readOutcome(immediate, selected);
-    requireActive();
     return {
       immediate_base_fee_per_gas: safeBigInt(
         outcome.immediateBaseFeePerGas,
@@ -184,8 +134,6 @@ export function createInferenceEngine(
 
   function dispose(): Promise<void> {
     if (disposal !== null) return disposal;
-    disposed = true;
-    selectionRevision += 1;
     let sessionError: unknown;
     try {
       session.dispose();
@@ -199,8 +147,7 @@ export function createInferenceEngine(
   }
 
   return {
-    prepare,
-    startPolling,
+    watchBlocks,
     run,
     resolveOutcome,
     dispose,
@@ -289,8 +236,5 @@ async function attempt<T>(
 }
 
 function inferenceFailure(message: string, cause: unknown): Error {
-  if (cause instanceof Error && cause.name === "AbortError") {
-    return cause;
-  }
   return new Error(message, { cause });
 }

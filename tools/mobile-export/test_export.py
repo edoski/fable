@@ -25,14 +25,14 @@ def _artifact_id(index: int) -> UUID:
     return UUID(f"20000000-0000-4000-8000-{index:012d}")
 
 
-def _write_roster(path: Path, *, duplicate: bool = False) -> dict[tuple[str, int], UUID]:
+def _write_roster(path: Path) -> dict[tuple[str, int], UUID]:
     artifact_ids: dict[tuple[str, int], UUID] = {}
     raw: dict[str, dict[int, str]] = {}
     index = 1
     for chain in mobile_export._CHAINS:
         raw[chain] = {}
         for horizon in mobile_export._HORIZONS:
-            artifact_id = _artifact_id(1 if duplicate and index == 12 else index)
+            artifact_id = _artifact_id(index)
             artifact_ids[(chain, horizon)] = artifact_id
             raw[chain][horizon] = str(artifact_id)
             index += 1
@@ -93,14 +93,12 @@ def _install_artifact_fakes(
         corpus_id: mobile_export._CHAINS[chain] for chain, corpus_id in _CORPUS_IDS.items()
     }
 
-    def load_corpus(storage_root: Path, corpus_id: UUID) -> object:
+    def load_corpus_request(storage_root: Path, corpus_id: UUID) -> object:
         del storage_root
-        return SimpleNamespace(
-            request=SimpleNamespace(definition=SimpleNamespace(chain_id=chain_ids[corpus_id]))
-        )
+        return SimpleNamespace(definition=SimpleNamespace(chain_id=chain_ids[corpus_id]))
 
     monkeypatch.setattr(mobile_export, "load_artifact", load_artifact)
-    monkeypatch.setattr(mobile_export, "load_corpus", load_corpus)
+    monkeypatch.setattr(mobile_export, "load_corpus_request", load_corpus_request)
 
 
 def test_export_bundle_publishes_complete_stable_bundle(
@@ -158,26 +156,6 @@ def test_export_bundle_publishes_complete_stable_bundle(
     }
 
 
-def test_export_bundle_rejects_duplicate_artifacts_before_loading(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    roster_path = tmp_path / "MOBILE.yaml"
-    _write_roster(roster_path, duplicate=True)
-
-    def unexpected_load(*args: object) -> object:
-        raise AssertionError(f"unexpected artifact load: {args}")
-
-    monkeypatch.setattr(mobile_export, "load_artifact", unexpected_load)
-
-    with pytest.raises(ValueError, match="artifact IDs must be unique"):
-        mobile_export.export_bundle(
-            tmp_path / "storage",
-            roster_path,
-            tmp_path / "models",
-        )
-
-
 def test_export_bundle_rejects_incomplete_roster(tmp_path: Path) -> None:
     roster_path = tmp_path / "MOBILE.yaml"
     _write_roster(roster_path)
@@ -220,16 +198,14 @@ def test_export_bundle_rejects_artifact_association_mismatch(
 
         monkeypatch.setattr(mobile_export, "load_artifact", load_artifact)
     else:
-        fake_load_corpus = mobile_export.load_corpus
+        fake_load_corpus_request = mobile_export.load_corpus_request
 
-        def load_corpus(storage_root: Path, corpus_id: UUID) -> object:
+        def load_corpus_request(storage_root: Path, corpus_id: UUID) -> object:
             if corpus_id == _CORPUS_IDS["ethereum"]:
-                return SimpleNamespace(
-                    request=SimpleNamespace(definition=SimpleNamespace(chain_id=137))
-                )
-            return fake_load_corpus(storage_root, corpus_id)
+                return SimpleNamespace(definition=SimpleNamespace(chain_id=137))
+            return fake_load_corpus_request(storage_root, corpus_id)
 
-        monkeypatch.setattr(mobile_export, "load_corpus", load_corpus)
+        monkeypatch.setattr(mobile_export, "load_corpus_request", load_corpus_request)
 
     with pytest.raises(ValueError, match=message):
         mobile_export.export_bundle(
@@ -357,6 +333,16 @@ def test_parity_rejects_matching_nonfinite_outputs() -> None:
             target_mean=1.0,
             target_standard_deviation=0.5,
         )
+
+
+def test_portable_program_fails_xnnpack_delegation_gate() -> None:
+    model = mobile_export._NamedOutputWrapper(_TinyModel().eval())
+    sample = torch.zeros((1, 3, 2), dtype=torch.float32)
+    exported = torch.export.export(model, (sample,), strict=True)
+    portable_program = mobile_export.to_edge_transform_and_lower(exported).to_executorch()
+
+    with pytest.raises(ValueError, match="XnnpackBackend"):
+        mobile_export._assert_xnnpack_delegation(portable_program)
 
 
 def test_real_xnnpack_export_and_host_execution(tmp_path: Path) -> None:

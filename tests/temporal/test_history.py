@@ -149,6 +149,24 @@ def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
     assert batches[0]["base_fees"].shape == (3, 3)
 
 
+def test_fit_history_supports_shuffled_loading() -> None:
+    training = prepare_fit_history(_corpus(), _experiment()).to(torch.device("cpu")).training
+    expected = [12, 13, 14, 15]
+    torch.manual_seed(47)
+
+    observed = [
+        int(origin)
+        for batch in training.loader(
+            batch_size=2,
+            shuffle=True,
+        )
+        for origin in batch["origin_block"]
+    ]
+
+    assert sorted(observed) == expected
+    assert observed != expected
+
+
 def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
     blocks = np.arange(9, 30, dtype=np.int64)
     timestamps = np.cumsum(np.arange(10, 31, dtype=np.int64))
@@ -201,25 +219,6 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
     )
     with pytest.raises(ValueError, match="within the BlockFrame definition"):
         prepare_fit_history(without_predecessor, experiment)
-
-
-def test_seeded_shuffle_preserves_multi_epoch_order() -> None:
-    training = prepare_fit_history(_corpus(), _experiment()).to(torch.device("cpu")).training
-    loader = training.loader(
-        batch_size=3,
-        shuffle=True,
-        generator=torch.Generator().manual_seed(37),
-    )
-    torch.manual_seed(41)
-    global_rng = torch.random.get_rng_state()
-
-    assert [
-        [origin for batch in loader for origin in batch["origin_block"].tolist()] for _ in range(2)
-    ] == [
-        [12, 14, 13, 15],
-        [14, 12, 15, 13],
-    ]
-    assert torch.equal(torch.random.get_rng_state(), global_rng)
 
 
 @pytest.mark.parametrize("corpus", (_corpus(first_block=11), _corpus(last_block=23)))

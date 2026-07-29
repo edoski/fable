@@ -1,28 +1,21 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import type { Chain, Horizon } from "./domain";
-import type { InferenceEngine, InferenceResult } from "./inference";
+import type { Chain } from "./domain";
+import type {
+  InferenceEngine,
+  InferenceOutcome,
+  InferenceResult,
+} from "./inference";
 
 const STORAGE_KEY = "fable.runs";
 
-export type InferenceRun = {
+export type InferenceRun = InferenceResult & {
   id: string;
   ran_at: string;
-  chain: Chain;
-  K: Horizon;
-  artifact_id: string;
-  head_block: number;
-  head_hash: string;
-  selected_action_k: number;
-  target_block: number;
-  predicted_minimum_base_fee_per_gas: number;
   outcome?: RunOutcome;
 };
 
-export type RunOutcome = {
-  immediate_base_fee_per_gas: number;
-  selected_base_fee_per_gas: number;
-};
+export type RunOutcome = InferenceOutcome;
 
 export type OutcomeResolver = InferenceEngine["resolveOutcome"];
 
@@ -41,15 +34,7 @@ function createRun(result: InferenceResult): InferenceRun {
   return {
     id: `${ranAt}:${runSequence}:${result.chain}:${result.K}:${result.head_hash}`,
     ran_at: ranAt,
-    chain: result.chain,
-    K: result.K,
-    artifact_id: result.artifact_id,
-    head_block: result.head_block,
-    head_hash: result.head_hash,
-    selected_action_k: result.selected_action_k,
-    target_block: result.target_block,
-    predicted_minimum_base_fee_per_gas:
-      result.predicted_minimum_base_fee_per_gas,
+    ...result,
   };
 }
 
@@ -74,10 +59,7 @@ export async function resolvePendingRuns(
       );
       return {
         ...run,
-        outcome: {
-          immediate_base_fee_per_gas: outcome.immediate_base_fee_per_gas,
-          selected_base_fee_per_gas: outcome.selected_base_fee_per_gas,
-        },
+        outcome: { ...outcome },
       };
     }),
   );

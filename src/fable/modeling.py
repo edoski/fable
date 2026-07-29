@@ -31,7 +31,6 @@ from .config import (
 )
 from .corpus import load_corpus
 from .min_block_fee import (
-    MinBlockFeeLoss,
     MinBlockFeeOutput,
     TargetState,
     decode_action,
@@ -40,7 +39,9 @@ from .min_block_fee import (
 from .records import StrictFrozenRecord
 from .study import (
     RetainedResult,
+    candidate_scratch_directory,
     load_selected_method,
+    retain_result,
 )
 from .temporal import FeatureState, HistoricalPreparation, prepare_fit_history
 
@@ -295,7 +296,7 @@ class _FitModule(pl.LightningModule):
     def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
         return self.model(inputs)
 
-    def _loss(self, batch: Mapping[str, torch.Tensor]) -> MinBlockFeeLoss:
+    def _loss(self, batch: Mapping[str, torch.Tensor]) -> torch.Tensor:
         return min_block_fee_loss(
             self(batch["inputs"]),
             label=batch["label"],
@@ -305,9 +306,9 @@ class _FitModule(pl.LightningModule):
     def _log_epoch_loss(
         self,
         role: Literal["training", "validation"],
-        losses: MinBlockFeeLoss,
+        loss_by_origin: torch.Tensor,
     ) -> None:
-        loss = losses.total_by_origin.mean(dtype=torch.float64)
+        loss = loss_by_origin.detach().mean(dtype=torch.float64)
         self.log(
             f"{role}_total_loss",
             loss,
@@ -315,7 +316,7 @@ class _FitModule(pl.LightningModule):
             on_epoch=True,
             logger=False,
             sync_dist=False,
-            batch_size=losses.total_by_origin.numel(),
+            batch_size=loss_by_origin.numel(),
         )
 
     def training_step(
@@ -324,9 +325,9 @@ class _FitModule(pl.LightningModule):
         batch_idx: int,
     ) -> torch.Tensor:
         del batch_idx
-        losses = self._loss(batch)
-        self._log_epoch_loss("training", losses)
-        return losses.mean_total
+        loss_by_origin = self._loss(batch)
+        self._log_epoch_loss("training", loss_by_origin)
+        return loss_by_origin.mean()
 
     def validation_step(
         self,
@@ -335,12 +336,12 @@ class _FitModule(pl.LightningModule):
     ) -> None:
         del batch_idx
         output = self(batch["inputs"])
-        losses = min_block_fee_loss(
+        loss_by_origin = min_block_fee_loss(
             output,
             label=batch["label"],
             target=batch["target"],
         )
-        self._log_epoch_loss("validation", losses)
+        self._log_epoch_loss("validation", loss_by_origin)
         actions = decode_action(output)
         selected = batch["base_fees"].gather(1, actions.unsqueeze(1)).squeeze(1)
         minimum = batch["base_fees"].amin(dim=1)
@@ -378,25 +379,6 @@ class _FitModule(pl.LightningModule):
             self.parameters(),
             lr=fit.learning_rate,
             weight_decay=fit.weight_decay,
-        )
-
-    def configure_gradient_clipping(
-        self,
-        optimizer: torch.optim.Optimizer,
-        gradient_clip_val: int | float | None = None,
-        gradient_clip_algorithm: str | None = None,
-    ) -> None:
-        del gradient_clip_algorithm
-        parameters = (
-            parameter
-            for group in optimizer.param_groups
-            for parameter in group["params"]
-            if parameter.grad is not None
-        )
-        torch.nn.utils.clip_grad_norm_(
-            parameters,
-            max_norm=gradient_clip_val or math.inf,
-            error_if_nonfinite=True,
         )
 
 
@@ -456,8 +438,7 @@ def _fit(
     scratch.mkdir(parents=True, exist_ok=True)
     _runtime.configure_torch()
     fit = definition.method.fit
-    pl.seed_everything(fit.seed, workers=True)
-    generator = torch.Generator(device="cpu").manual_seed(fit.seed)
+    pl.seed_everything(fit.seed)
 
     module = _FitModule(_json_association(association))
     early_stopping, best, last = _callbacks(scratch, definition)
@@ -469,9 +450,7 @@ def _fit(
         check_val_every_n_epoch=fit.validate_every_completed_epoch,
         accumulate_grad_batches=fit.accumulation,
         gradient_clip_val=fit.gradient_clip_norm,
-        gradient_clip_algorithm="norm",
-        deterministic=_runtime.DETERMINISTIC,
-        benchmark=_runtime.BENCHMARK,
+        deterministic=True,
         num_sanity_val_steps=0,
         logger=False,
         enable_progress_bar=False,
@@ -482,7 +461,6 @@ def _fit(
     training_loader = prepared.training.loader(
         batch_size=_runtime.FIT_BATCH_SIZE,
         shuffle=True,
-        generator=generator,
     )
     validation_loader = prepared.validation.loader(
         batch_size=_runtime.FIT_BATCH_SIZE,
@@ -551,7 +529,7 @@ def train(
     _publish_artifact(storage_root, request.artifact_id, scratch, outcome)
 
 
-def fit_candidate(
+def _fit_candidate(
     request: TuneRequest,
     method_index: int,
     storage_root: Path,
@@ -573,6 +551,21 @@ def fit_candidate(
         selected_epoch=outcome.selected_epoch,
         completed_epochs=outcome.completed_epochs,
     )
+
+
+def run_candidate(
+    storage_root: Path,
+    request: TuneRequest,
+    method_index: int,
+) -> None:
+    candidate_scratch = candidate_scratch_directory(
+        storage_root,
+        request.study_id,
+        method_index,
+    )
+    result = _fit_candidate(request, method_index, storage_root, candidate_scratch)
+    retain_result(storage_root, request, method_index, result)
+    shutil.rmtree(candidate_scratch)
 
 
 def load_artifact(

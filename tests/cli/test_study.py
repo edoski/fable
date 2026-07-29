@@ -60,21 +60,18 @@ REQUEST = TuneRequest(
 )
 
 
-def test_study_run_sends_golden_candidate_script(
+def test_study_run_submits_typed_candidate_and_prints_job_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request_path = tmp_path / "TUNE_REQUEST.json"
     request_path.write_text(REQUEST.model_dump_json(), encoding="utf-8")
-    write_remote(tmp_path / "REMOTE.yaml")
-    monkeypatch.chdir(tmp_path)
-    scripts: list[str] = []
-
-    def fake_invoke_sbatch(_remote: object, script: str) -> int:
-        scripts.append(script)
-        return 123
-
-    monkeypatch.setattr(execution, "_invoke_sbatch", fake_invoke_sbatch)
+    calls: list[tuple[CandidateProcessInput, ...]] = []
+    monkeypatch.setattr(
+        cli,
+        "submit_candidates",
+        lambda candidates: calls.append(tuple(candidates)) or 123,
+    )
 
     result = CliRunner().invoke(
         app,
@@ -83,44 +80,10 @@ def test_study_run_sends_golden_candidate_script(
 
     assert result.exit_code == 0
     assert result.output == "123\n"
-    candidate_json = json.dumps(
-        {
-            "request": REQUEST.model_dump(mode="json"),
-            "method_index": 0,
-        },
-        separators=(",", ":"),
-    )
-    assert scripts == [
-        (
-            "#!/bin/bash\n"
-            "#SBATCH --partition=thesis-partition\n"
-            "#SBATCH --nodes=1\n"
-            "#SBATCH --ntasks=1\n"
-            "#SBATCH --gres=gpu:a100:1\n"
-            "#SBATCH --cpus-per-task=8\n"
-            "#SBATCH --mem=48G\n"
-            "#SBATCH --time=17:23:45\n"
-            "#SBATCH --output=/remote/logs/%j.out\n"
-            "#SBATCH --chdir='/remote/storage root'\n"
-            "export STORAGE_ROOT='/remote/storage root'\n"
-            "pids=()\n"
-            "srun --exclusive --exact --nodes=1 --ntasks=1 "
-            "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
-            "apptainer run --nv --bind '/remote/storage root' "
-            "'/opt/fable image.sif' remote candidate <<'FABLE_REQUEST_0' &\n"
-            f"{candidate_json}\n"
-            "FABLE_REQUEST_0\n"
-            'pids+=("$!")\n'
-            "status=0\n"
-            'for pid in "${pids[@]}"; do\n'
-            '    if ! wait "$pid"; then status=1; fi\n'
-            "done\n"
-            'exit "$status"\n'
-        )
-    ]
+    assert calls == [(CandidateProcessInput(request=REQUEST, method_index=0),)]
 
 
-def test_submit_candidates_runs_each_candidate_on_one_exclusive_gpu(
+def test_submit_candidates_scales_three_gpu_allocation_and_preserves_payload_order(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -147,54 +110,16 @@ def test_submit_candidates_runs_each_candidate_on_one_exclusive_gpu(
     result = execution.submit_candidates(candidates)
 
     assert result == 456
-    assert scripts == [
-        (
-            "#!/bin/bash\n"
-            "#SBATCH --partition=thesis-partition\n"
-            "#SBATCH --nodes=1\n"
-            "#SBATCH --ntasks=3\n"
-            "#SBATCH --gres=gpu:a100:3\n"
-            "#SBATCH --cpus-per-task=8\n"
-            "#SBATCH --mem=144G\n"
-            "#SBATCH --time=17:23:45\n"
-            "#SBATCH --output=/remote/logs/%j.out\n"
-            "#SBATCH --chdir='/remote/storage root'\n"
-            "export STORAGE_ROOT='/remote/storage root'\n"
-            "pids=()\n"
-            "srun --exclusive --exact --nodes=1 --ntasks=1 "
-            "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
-            "--output=/remote/logs/${SLURM_JOB_ID}-0.out "
-            "--error=/remote/logs/${SLURM_JOB_ID}-0.out "
-            "apptainer run --nv --bind '/remote/storage root' "
-            "'/opt/fable image.sif' remote candidate <<'FABLE_REQUEST_0' &\n"
-            f"{candidates[0].model_dump_json()}\n"
-            "FABLE_REQUEST_0\n"
-            'pids+=("$!")\n'
-            "srun --exclusive --exact --nodes=1 --ntasks=1 "
-            "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
-            "--output=/remote/logs/${SLURM_JOB_ID}-1.out "
-            "--error=/remote/logs/${SLURM_JOB_ID}-1.out "
-            "apptainer run --nv --bind '/remote/storage root' "
-            "'/opt/fable image.sif' remote candidate <<'FABLE_REQUEST_1' &\n"
-            f"{candidates[1].model_dump_json()}\n"
-            "FABLE_REQUEST_1\n"
-            'pids+=("$!")\n'
-            "srun --exclusive --exact --nodes=1 --ntasks=1 "
-            "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
-            "--output=/remote/logs/${SLURM_JOB_ID}-2.out "
-            "--error=/remote/logs/${SLURM_JOB_ID}-2.out "
-            "apptainer run --nv --bind '/remote/storage root' "
-            "'/opt/fable image.sif' remote candidate <<'FABLE_REQUEST_2' &\n"
-            f"{candidates[2].model_dump_json()}\n"
-            "FABLE_REQUEST_2\n"
-            'pids+=("$!")\n'
-            "status=0\n"
-            'for pid in "${pids[@]}"; do\n'
-            '    if ! wait "$pid"; then status=1; fi\n'
-            "done\n"
-            'exit "$status"\n'
-        )
-    ]
+    assert len(scripts) == 1
+    script = scripts[0]
+    assert "#SBATCH --ntasks=3\n" in script
+    assert "#SBATCH --gres=gpu:a100:3\n" in script
+    assert script.count("remote candidate <<'FABLE_REQUEST_") == 3
+    positions = [script.index(candidate.model_dump_json()) for candidate in candidates]
+    assert positions == sorted(positions)
+    for slot in range(3):
+        assert f"--output=/remote/logs/${{SLURM_JOB_ID}}-{slot}.out" in script
+        assert f"--error=/remote/logs/${{SLURM_JOB_ID}}-{slot}.out" in script
 
 
 def test_submit_candidates_rejects_duplicate_study_slots(

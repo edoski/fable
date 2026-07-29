@@ -132,7 +132,10 @@ def _methods(family: str) -> tuple[Method, ...]:
 def _selected_context_studies(
     storage_root: Path,
     experiment_id: UUID,
-) -> dict[tuple[str, str], Study]:
+) -> tuple[
+    dict[tuple[str, str], Study],
+    tuple[tuple[str, int, float], ...],
+]:
     manifest = load_experiment_manifest(
         storage_root,
         ExperimentKind.C_STUDY,
@@ -143,26 +146,28 @@ def _selected_context_studies(
     for entry in manifest.entries:
         chain, family, context_label = entry.cell.split(".")
         context = int(context_label.removeprefix("C"))
-        study = load_study(storage_root, entry.require_study_id())
+        study = load_study(storage_root, entry.record_id)
         studies[chain, family, context] = study
         objectives.setdefault((chain, context), []).append(study.trials[0].objective)
 
     selected: dict[tuple[str, str], Study] = {}
+    winners: list[tuple[str, int, float]] = []
     for chain in _CHAINS:
         contexts = {context for candidate_chain, _, context in studies if candidate_chain == chain}
         winner = min(
             contexts,
             key=lambda context: (fmean(objectives[chain, context]), context),
         )
+        winners.append((chain, winner, fmean(objectives[chain, winner])))
         for family in _FAMILIES:
             selected[chain, family] = studies[chain, family, winner]
-    return selected
+    return selected, tuple(winners)
 
 
 def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
     experiment_id = uuid4()
     storage_root = storage_root.resolve()
-    selected = _selected_context_studies(storage_root, c_experiment_id)
+    selected, context_winners = _selected_context_studies(storage_root, c_experiment_id)
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
     requests.mkdir(parents=True)
@@ -196,6 +201,8 @@ def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
         rows,
     )
 
+    for chain, context, mean in context_winners:
+        typer.echo(f"{chain}\t{context}\t{mean:g}", err=True)
     print(experiment_id)
 
 
@@ -214,7 +221,7 @@ def select(storage_root: Path, experiment_id: UUID) -> None:
         seen.add(study_id)
         study = load_study(storage_root, study_id)
         selected_index, result = study.best_result()
-        entries.append(ExperimentEntry(cell=row["cell"], study_id=study_id))
+        entries.append(ExperimentEntry(cell=row["cell"], record_id=study_id))
         selections.append((row["cell"], selected_index, result.objective))
 
     write_experiment_manifest(

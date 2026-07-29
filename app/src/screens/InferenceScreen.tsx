@@ -14,7 +14,7 @@ import { HorizonSlider } from "../components/HorizonSlider";
 import { NetworkIcon } from "../components/NetworkIcon";
 import {
   CHAINS,
-  CHAIN_DETAILS,
+  CHAIN_LABELS,
   type Chain,
   type Horizon,
 } from "../domain";
@@ -26,7 +26,6 @@ import { styles } from "../styles";
 import { colors } from "../theme";
 
 export type InferenceState =
-  | { status: "preparing" }
   | { status: "idle" }
   | { status: "loading" }
   | { status: "success"; result: InferenceResult }
@@ -56,7 +55,7 @@ function NetworkChoices({
     <View style={styles.networkRow}>
       {CHAINS.map((choice) => {
         const active = choice === chain;
-        const details = CHAIN_DETAILS[choice];
+        const label = CHAIN_LABELS[choice];
         return (
           <Pressable
             accessibilityRole="radio"
@@ -80,7 +79,7 @@ function NetworkChoices({
             )}
             <NetworkIcon chain={choice} />
             <Text numberOfLines={1} style={styles.networkLabel}>
-              {details.label}
+              {label}
             </Text>
           </Pressable>
         );
@@ -226,8 +225,6 @@ function Setup({
   onRunAgain,
 }: Props) {
   const loading = state.status === "loading";
-  const preparing = state.status === "preparing";
-  const runDisabled = loading || preparing;
   return (
     <>
       <ScrollView
@@ -260,23 +257,19 @@ function Setup({
 
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ disabled: runDisabled }}
-          disabled={runDisabled}
+          accessibilityState={{ disabled: loading }}
+          disabled={loading}
           onPress={onRun}
           style={[
             styles.button,
             styles.primaryButton,
             styles.setupButton,
-            runDisabled && styles.buttonDisabled,
+            loading && styles.buttonDisabled,
           ]}
         >
-          {runDisabled && <ActivityIndicator color={colors.surface} />}
+          {loading && <ActivityIndicator color={colors.surface} />}
           <Text style={styles.buttonText}>
-            {preparing
-              ? "Preparing…"
-              : loading
-                ? "Generating…"
-                : "Get recommendation"}
+            {loading ? "Generating…" : "Get recommendation"}
           </Text>
         </Pressable>
       </ScrollView>
@@ -370,7 +363,7 @@ function Result({
 
       <View style={[styles.surface, styles.detailsCard]}>
         <Text style={styles.detailsTitle}>Technical details</Text>
-        <DetailRow label="Network" value={CHAIN_DETAILS[result.chain].label} />
+        <DetailRow label="Network" value={CHAIN_LABELS[result.chain]} />
         <DetailRow label="Horizon" value={`${result.K} blocks`} />
         <DetailRow
           label="Action offset"

@@ -93,7 +93,7 @@ def _publish_hpo(storage_root: Path) -> None:
         path = storage_root / "studies" / f"{study_id}.json"
         path.parent.mkdir(exist_ok=True)
         path.write_text(study.model_dump_json(), encoding="utf-8")
-        entries.append(ExperimentEntry(cell=cell, study_id=study_id))
+        entries.append(ExperimentEntry(cell=cell, record_id=study_id))
     write_experiment_manifest(
         storage_root,
         ExperimentKind.HPO,
@@ -166,6 +166,9 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
         strict=True,
     )
     assert len(manifest.entries) == 81
+    assert [str(entry.record_id) for entry in manifest.entries] == [
+        row["artifact_id"] for row in rows
+    ]
     assert not bundle.exists()
 
     corpus = {
@@ -216,4 +219,7 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
         strict=True,
     )
     assert len(held_out_manifest.entries) == 81
+    assert [str(entry.record_id) for entry in held_out_manifest.entries] == [
+        row["evaluation_id"] for row in evaluation_rows
+    ]
     assert not held_out.exists()

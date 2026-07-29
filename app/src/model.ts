@@ -9,7 +9,6 @@ import type {
 } from "react-native-executorch";
 import { ExpoResourceFetcher } from "react-native-executorch-expo-resource-fetcher";
 
-import { abortError } from "./abort";
 import type { ChainManifest } from "./features";
 import type { Chain, Horizon } from "./domain";
 import { createSerialQueue } from "./serialQueue";
@@ -56,7 +55,6 @@ export type ModelOutput = {
 };
 
 export type ModelRuntime = {
-  prepare(selection: ModelSelection): Promise<void>;
   execute(
     selection: ModelSelection,
     input: Float32Array,
@@ -66,7 +64,7 @@ export type ModelRuntime = {
 
 type NativeModule = {
   load(source: ResourceSource): Promise<void>;
-  forward(inputs: TensorPtr[]): Promise<unknown>;
+  forward(inputs: TensorPtr[]): Promise<TensorPtr[]>;
   delete(): void;
 };
 
@@ -129,27 +127,18 @@ export function createModelRuntime(
   createNativeModule: NativeModuleFactory = () => new ExecutorchModule(),
 ): ModelRuntime {
   let current: LoadedModel | null = null;
-  let desiredKey: string | null = null;
   let disposed = false;
   let disposal: Promise<void> | null = null;
   const serialize = createSerialQueue();
 
   function requireActive(): void {
-    if (disposed) throw abortError("Model runtime is disposed");
-  }
-
-  function requireDesired(key: string): void {
-    requireActive();
-    if (desiredKey !== key) {
-      throw abortError("Model selection changed");
-    }
+    if (disposed) throw new Error("Model runtime is disposed");
   }
 
   async function ensureLoaded(
     selection: ModelSelection,
     key: string,
   ): Promise<LoadedModel> {
-    requireDesired(key);
     if (current?.key === key) return current;
 
     if (current !== null) {
@@ -158,11 +147,9 @@ export function createModelRuntime(
       previous.module.delete();
     }
 
-    requireDesired(key);
     const module = createNativeModule();
     try {
       await module.load(selection.source);
-      requireDesired(key);
     } catch (error) {
       module.delete();
       throw error;
@@ -176,25 +163,15 @@ export function createModelRuntime(
     return loaded;
   }
 
-  function prepare(selection: ModelSelection): Promise<void> {
-    requireActive();
-    const key = selectionKey(selection);
-    desiredKey = key;
-    return serialize(async () => {
-      await ensureLoaded(selection, key);
-    });
-  }
-
-  async function execute(
+  function execute(
     selection: ModelSelection,
     input: Float32Array,
   ): Promise<ModelOutput> {
     requireActive();
     const key = selectionKey(selection);
-    desiredKey = key;
-    const outputs = await serialize(async () => {
+    return serialize(async () => {
       const model = await ensureLoaded(selection, key);
-      const result = await model.module.forward([
+      const outputs = await model.module.forward([
         {
           dataPtr: input,
           sizes: [
@@ -205,16 +182,13 @@ export function createModelRuntime(
           scalarType: ScalarType.FLOAT,
         },
       ]);
-      requireDesired(key);
-      return result;
+      return decodeOutputs(outputs, selection.K);
     });
-    return decodeOutputs(outputs, selection.K);
   }
 
   function dispose(): Promise<void> {
     if (disposal !== null) return disposal;
     disposed = true;
-    desiredKey = null;
     disposal = serialize(async () => {
       if (current === null) return;
       const model = current;
@@ -224,27 +198,30 @@ export function createModelRuntime(
     return disposal;
   }
 
-  return { prepare, execute, dispose };
+  return { execute, dispose };
 }
 
 function selectionKey(selection: ModelSelection): string {
   return `${selection.chain}:${selection.K}:${selection.modelManifest.artifact_id}`;
 }
 
-function decodeOutputs(outputs: unknown, K: Horizon): ModelOutput {
-  if (!Array.isArray(outputs) || outputs.length !== 2) {
+function decodeOutputs(
+  outputs: readonly TensorPtr[],
+  K: Horizon,
+): ModelOutput {
+  if (outputs.length !== 2) {
     throw new Error(
       "ExecuTorch model must return exactly two float32 tensors",
     );
   }
   const actionLogits = readFloatTensor(
     outputs[0],
-    K,
+    [1, K],
     "action logits",
   );
   const minimumFee = readFloatTensor(
     outputs[1],
-    1,
+    [1],
     "minimum fee z",
   );
   return {
@@ -254,28 +231,26 @@ function decodeOutputs(outputs: unknown, K: Horizon): ModelOutput {
 }
 
 function readFloatTensor(
-  value: unknown,
-  expectedLength: number,
+  tensor: TensorPtr,
+  shape: readonly number[],
   label: string,
 ): Float32Array {
-  if (typeof value !== "object" || value === null) {
-    throw new Error(`${label} output must be a tensor`);
-  }
-  const tensor = value as Partial<TensorPtr>;
   if (tensor.scalarType !== ScalarType.FLOAT) {
     throw new Error(`${label} output must be float32`);
   }
-  let values: Float32Array;
-  if (tensor.dataPtr instanceof Float32Array) {
-    values = tensor.dataPtr;
-  } else if (tensor.dataPtr instanceof ArrayBuffer) {
-    if (tensor.dataPtr.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
-      throw new Error(`${label} output has an invalid float32 buffer`);
-    }
-    values = new Float32Array(tensor.dataPtr);
-  } else {
-    throw new Error(`${label} output must contain float32 data`);
+  if (
+    tensor.sizes.length !== shape.length ||
+    tensor.sizes.some((size, index) => size !== shape[index])
+  ) {
+    throw new Error(
+      `${label} output must have shape [${shape.join(", ")}]`,
+    );
   }
+  const values = new Float32Array(tensor.dataPtr as ArrayBuffer);
+  const expectedLength = shape.reduce(
+    (size, dimension) => size * dimension,
+    1,
+  );
   if (values.length !== expectedLength) {
     throw new Error(
       `${label} output must contain exactly ${expectedLength} values`,
@@ -286,5 +261,5 @@ function readFloatTensor(
       throw new Error(`${label} output values must be finite`);
     }
   }
-  return new Float32Array(values);
+  return values.slice();
 }

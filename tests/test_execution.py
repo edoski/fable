@@ -147,8 +147,10 @@ def test_submit_workflows_uses_one_isolated_gpu_step_per_request(
     assert "#SBATCH --ntasks=2\n" in script
     assert "#SBATCH --gres=gpu:a100:2\n" in script
     assert script.count("remote workflow <<'FABLE_REQUEST_") == 2
-    assert first.model_dump_json() in script
-    assert second.model_dump_json() in script
+    assert script.index(first.model_dump_json()) < script.index(second.model_dump_json())
+    for slot in range(2):
+        assert f"--output=/remote/logs/${{SLURM_JOB_ID}}-{slot}.out" in script
+        assert f"--error=/remote/logs/${{SLURM_JOB_ID}}-{slot}.out" in script
 
 
 def test_submit_workflows_rejects_duplicate_durable_identities(

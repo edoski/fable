@@ -31,25 +31,37 @@ import { colors } from "./src/theme";
 type ActiveEngine = {
   chain: Chain;
   engine: InferenceEngine;
-  outcomesRunning: boolean;
-  revision: number;
+};
+
+type Selection = {
+  chain: Chain;
+  horizon: Horizon;
+};
+
+const INITIAL_SELECTION: Selection = {
+  chain: "ethereum",
+  horizon: 5,
 };
 
 export default function App() {
   const [tab, setTab] = useState<AppTab>("inference");
-  const [chain, setChain] = useState<Chain>("ethereum");
-  const [horizon, setHorizon] = useState<Horizon>(5);
+  const [chain, setChain] = useState<Chain>(INITIAL_SELECTION.chain);
+  const [horizon, setHorizon] = useState<Horizon>(
+    INITIAL_SELECTION.horizon,
+  );
   const [inference, setInference] = useState<InferenceState>({
-    status: "preparing",
+    status: "idle",
   });
   const [rpcStatus, setRpcStatus] = useState<RpcStatus>("checking");
   const [snapshot, setSnapshot] = useState<ChainSnapshot | null>(null);
   const [runs, setRuns] = useState<InferenceRun[]>([]);
   const [storageError, setStorageError] = useState<string | null>(null);
-  const [engineRevision, setEngineRevision] = useState(0);
   const activeEngine = useRef<ActiveEngine | null>(null);
-  const engineRevisionSequence = useRef(0);
   const selectionRevision = useRef(0);
+  const selection = useRef({
+    applied: INITIAL_SELECTION,
+    intended: INITIAL_SELECTION,
+  });
   const runsRef = useRef<InferenceRun[]>([]);
   const serializeHistory = useRef(createSerialQueue()).current;
 
@@ -89,27 +101,18 @@ export default function App() {
   }
 
   function resolveOutcomes(engine: ActiveEngine, headBlock: number): void {
-    if (engine.outcomesRunning) return;
-
-    engine.outcomesRunning = true;
-    void (async () => {
-      try {
-        await commitRuns(
-          (current) =>
-            resolvePendingRuns(
-              current,
-              engine.chain,
-              headBlock,
-              engine.engine.resolveOutcome,
-            ),
-          () => activeEngine.current === engine,
-        );
-      } catch {
-        // Pending chain outcomes remain retryable on the next successful poll.
-      } finally {
-        engine.outcomesRunning = false;
-      }
-    })();
+    void commitRuns(
+      (current) =>
+        resolvePendingRuns(
+          current,
+          engine.chain,
+          headBlock,
+          engine.engine.resolveOutcome,
+        ),
+      () => activeEngine.current === engine,
+    ).catch(() => {
+      // Pending chain outcomes remain retryable on the next successful poll.
+    });
   }
 
   useEffect(() => {
@@ -137,13 +140,9 @@ export default function App() {
 
   useEffect(() => {
     const engine = createInferenceEngine(chain);
-    const revision = engineRevisionSequence.current + 1;
-    engineRevisionSequence.current = revision;
     const current: ActiveEngine = {
       chain,
       engine,
-      outcomesRunning: false,
-      revision,
     };
     activeEngine.current = current;
     setRpcStatus("checking");
@@ -152,7 +151,7 @@ export default function App() {
       setRpcStatus(status);
       if (status === "offline") setSnapshot(null);
     };
-    engine.startPolling(
+    engine.watchBlocks(
       (nextSnapshot) => {
         if (activeEngine.current !== current) return;
         onStatus("live");
@@ -161,7 +160,6 @@ export default function App() {
       },
       () => onStatus("offline"),
     );
-    setEngineRevision(revision);
 
     return () => {
       selectionRevision.current += 1;
@@ -172,53 +170,44 @@ export default function App() {
     };
   }, [chain]);
 
-  useEffect(() => {
-    const current = activeEngine.current;
-    if (
-      current === null ||
-      current.chain !== chain ||
-      current.revision !== engineRevision
-    ) {
-      return;
-    }
+  function queueSelection() {
+    void serializeHistory(async () => {
+      const current = selection.current.applied;
+      const next = selection.current.intended;
+      const chainChanged = next.chain !== current.chain;
+      const horizonChanged = next.horizon !== current.horizon;
+      if (!chainChanged && !horizonChanged) return;
 
-    const revision = selectionRevision.current + 1;
-    selectionRevision.current = revision;
-    let active = true;
-    setInference({ status: "preparing" });
-    const settlePreparation = () => {
-      if (
-        active &&
-        activeEngine.current === current &&
-        selectionRevision.current === revision
-      ) {
-        setInference({ status: "idle" });
+      selection.current.applied = next;
+      selectionRevision.current += 1;
+      setInference({ status: "idle" });
+      if (chainChanged) {
+        activeEngine.current = null;
+        setRpcStatus("checking");
+        setSnapshot(null);
+        setChain(next.chain);
       }
-    };
-    void current.engine.prepare(horizon).then(
-      settlePreparation,
-      settlePreparation,
-    );
-    return () => {
-      active = false;
-    };
-  }, [chain, engineRevision, horizon]);
+      if (horizonChanged) {
+        setHorizon(next.horizon);
+      }
+    });
+  }
 
   function selectChain(nextChain: Chain) {
-    if (nextChain === chain) return;
-    activeEngine.current = null;
-    selectionRevision.current += 1;
-    setInference({ status: "preparing" });
-    setRpcStatus("checking");
-    setSnapshot(null);
-    setChain(nextChain);
+    const intended = selection.current.intended;
+    if (nextChain === intended.chain) return;
+    selection.current.intended = { ...intended, chain: nextChain };
+    queueSelection();
   }
 
   function selectHorizon(nextHorizon: Horizon) {
-    if (nextHorizon === horizon) return;
-    selectionRevision.current += 1;
-    setInference({ status: "preparing" });
-    setHorizon(nextHorizon);
+    const intended = selection.current.intended;
+    if (nextHorizon === intended.horizon) return;
+    selection.current.intended = {
+      ...intended,
+      horizon: nextHorizon,
+    };
+    queueSelection();
   }
 
   async function runInference() {
@@ -237,10 +226,7 @@ export default function App() {
     try {
       result = await current.engine.run(horizon);
     } catch (error) {
-      if (
-        isCurrent() &&
-        !(error instanceof Error && error.name === "AbortError")
-      ) {
+      if (isCurrent()) {
         fail(error instanceof Error ? error.message : String(error));
       }
       return;

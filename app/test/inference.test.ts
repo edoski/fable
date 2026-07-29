@@ -14,7 +14,7 @@ import {
   createInferenceEngine,
   type InferenceEngineDependencies,
 } from "../src/inference";
-import type { Horizon } from "../src/domain";
+import type { BlockRow, Horizon } from "../src/domain";
 import type {
   MobileChainManifest,
   ModelCatalog,
@@ -24,12 +24,11 @@ import type {
   ModelSelection,
 } from "../src/model";
 import type {
-  BlockRow,
   ChainOutcome,
   ChainSession,
   PreparedChainContext,
 } from "../src/rpc";
-import { deferred, hashOf } from "./helpers";
+import { hashOf } from "./helpers";
 
 function block(
   number: bigint,
@@ -118,7 +117,7 @@ function session(
         selectedBaseFeePerGas: 18n,
       }),
     ),
-    startPolling: vi.fn(() => () => undefined),
+    watchBlocks: vi.fn(),
     dispose: vi.fn(),
   };
 }
@@ -130,7 +129,6 @@ function runtime(
   },
 ): ModelRuntime {
   return {
-    prepare: vi.fn(async () => undefined),
     execute: vi.fn(async () => output),
     dispose: vi.fn(async () => undefined),
   };
@@ -153,25 +151,32 @@ function createTestEngine(
 }
 
 describe("InferenceEngine", () => {
-  it("final-syncs fresh context, builds input, and decodes the run", async () => {
-    const chainSession = session();
-    vi.mocked(chainSession.sync)
-      .mockResolvedValueOnce(context(10n, 20n))
-      .mockResolvedValueOnce(context(11n, 40n));
+  it("synchronizes, builds input, and executes the selected model on Run", async () => {
+    const events: string[] = [];
+    const chainSession = session(async () => {
+      events.push("sync");
+      return context(11n, 40n);
+    });
     const model = runtime({
       actionLogits: new Float32Array([-1, 4, 1, 0]),
       minimumFeeZ: 2,
+    });
+    vi.mocked(model.execute).mockImplementation(async () => {
+      events.push("execute");
+      return {
+        actionLogits: new Float32Array([-1, 4, 1, 0]),
+        minimumFeeZ: 2,
+      };
     });
     const { engine } = createTestEngine({
       session: chainSession,
       model,
     });
 
-    await engine.prepare(4);
     const result = await engine.run(4);
 
-    expect(chainSession.sync).toHaveBeenCalledTimes(2);
-    expect(model.prepare).toHaveBeenCalledTimes(2);
+    expect(events).toEqual(["sync", "execute"]);
+    expect(chainSession.sync).toHaveBeenCalledOnce();
     expect(model.execute).toHaveBeenCalledWith(
       selection(4),
       new Float32Array([
@@ -194,43 +199,7 @@ describe("InferenceEngine", () => {
     await engine.dispose();
   });
 
-  it("retries through run after preparation fails", async () => {
-    const synchronized = deferred<PreparedChainContext>();
-    const chainSession = session();
-    vi.mocked(chainSession.sync)
-      .mockImplementationOnce(() => synchronized.promise)
-      .mockResolvedValue(context(10n));
-    const model = runtime();
-    vi.mocked(model.prepare)
-      .mockRejectedValueOnce(new Error("load failed"))
-      .mockResolvedValue(undefined);
-    const { engine } = createTestEngine({
-      model,
-      session: chainSession,
-    });
-
-    let rejected = false;
-    const preparing = engine.prepare(2).catch((error: unknown) => {
-      rejected = true;
-      throw error;
-    });
-    await vi.waitFor(() => expect(model.prepare).toHaveBeenCalledOnce());
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(rejected).toBe(false);
-
-    synchronized.resolve(context(10n));
-    await expect(preparing).rejects.toThrow("load failed");
-    await expect(engine.run(2)).resolves.toMatchObject({
-      chain: "ethereum",
-      K: 2,
-    });
-    expect(model.prepare).toHaveBeenCalledTimes(2);
-    expect(model.execute).toHaveBeenCalledOnce();
-    await engine.dispose();
-  });
-
-  it("returns short chain, model-load, and run failures with their causes", async () => {
+  it("returns short chain and model failures with their causes", async () => {
     const unavailable = session(async () => {
       throw new Error("HTTP transport details");
     });
@@ -242,61 +211,15 @@ describe("InferenceEngine", () => {
     await chainFailure.engine.dispose();
 
     const model = runtime();
-    vi.mocked(model.prepare).mockRejectedValue(new Error("native load details"));
+    vi.mocked(model.execute).mockRejectedValue(
+      new Error("native load details"),
+    );
     const modelFailure = createTestEngine({ model });
     await expect(modelFailure.engine.run(2)).rejects.toMatchObject({
-      message: "Could not load the selected model.",
+      message: "Could not run the selected model.",
       cause: expect.objectContaining({ message: "native load details" }),
     });
     await modelFailure.engine.dispose();
-
-    const execution = runtime();
-    vi.mocked(execution.execute).mockRejectedValue(
-      new Error("native execution details"),
-    );
-    const executionFailure = createTestEngine({ model: execution });
-    await expect(executionFailure.engine.run(2)).rejects.toMatchObject({
-      message: "Could not run the selected model.",
-      cause: expect.objectContaining({ message: "native execution details" }),
-    });
-    await executionFailure.engine.dispose();
-  });
-
-  it("suppresses native work completed after a selection change", async () => {
-    const completed = deferred<ModelOutput>();
-    const model = runtime();
-    vi.mocked(model.execute).mockImplementation(() => completed.promise);
-    const { engine } = createTestEngine({ model });
-
-    const running = engine.run(5);
-    await vi.waitFor(() => expect(model.execute).toHaveBeenCalledOnce());
-    await engine.prepare(2);
-    completed.resolve({
-      actionLogits: new Float32Array([0, 0, 0, 0, 1]),
-      minimumFeeZ: 0,
-    });
-
-    await expect(running).rejects.toMatchObject({ name: "AbortError" });
-    await engine.dispose();
-  });
-
-  it("suppresses native work completed after disposal", async () => {
-    const completed = deferred<ModelOutput>();
-    const model = runtime();
-    vi.mocked(model.execute).mockImplementation(() => completed.promise);
-    const { engine, dependencies } = createTestEngine({ model });
-
-    const running = engine.run(2);
-    await vi.waitFor(() => expect(model.execute).toHaveBeenCalledOnce());
-    await engine.dispose();
-    completed.resolve({
-      actionLogits: new Float32Array([0, 1]),
-      minimumFeeZ: 0,
-    });
-
-    await expect(running).rejects.toMatchObject({ name: "AbortError" });
-    expect(dependencies.session.dispose).toHaveBeenCalledOnce();
-    expect(model.dispose).toHaveBeenCalledOnce();
   });
 
   it("rejects a nonfinite decoded fee", async () => {
