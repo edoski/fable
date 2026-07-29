@@ -496,9 +496,9 @@ base_fee_optimality_gap = mean_i ((B_i(hat{k}_i) - m_i) / m_i)
 
 All three economic metrics are mean per-origin fractions, not ratios of fee sums. Positive base fees make their denominators defined. Both savings metrics are higher-is-better; `base_fee_savings` remains base-fee-only, while `p50_fee_inclusive_savings` is a retrospective representative-cost proxy using each outcome block's included-transaction P50, not an inclusion guarantee. `base_fee_optimality_gap` is nonnegative and lower is better. Natural-log errors compare dimensionless coordinates relative to `u=1 wei/gas` and lower is better. Accuracy and macro-F1 are unitless and higher is better. Economic values remain fractions for later percentage formatting.
 
-Immediate and deadline policy baselines use the same classification and economic equations. They
-do not predict a minimum fee, so they have no log-fee regression metrics. The immediate policy
-always selects `k=0`; the deadline policy always selects `k=K-1`.
+Immediate and deadline baselines are economic reference policies. Their rows contain only base-fee
+savings, P50 fee-inclusive savings, and base-fee optimality gap. The immediate policy always
+selects `k=0`; the deadline policy always selects `k=K-1`.
 
 #### Fixed-deadline rolling comparison
 
@@ -652,9 +652,9 @@ The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical t
 
 #### Transient reduction
 
-`reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, expected nonnull row count, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. It requires all seven computed metrics to be finite. `reduce_baselines(storage_root, evaluation_id) -> polars.DataFrame` derives the same five classification and economic metrics for the immediate and deadline policies. Neither reducer reloads the artifact or Corpus or externally authenticates the horizon or source. Results have no evaluation ID, count, sums, supports, arrays, or auxiliary fields and are not persisted.
+`reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, expected nonnull row count, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. It requires all seven computed metrics to be finite. `reduce_baselines(storage_root, evaluation_id) -> polars.DataFrame` derives the three economic metrics for the immediate and deadline policies. Neither reducer reloads the artifact or Corpus or externally authenticates the horizon or source. Results have no evaluation ID, count, sums, supports, arrays, or auxiliary fields and are not persisted.
 
-Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps exactly nine human-readable architecture-chain cell names to mappings from horizons `2`, `3`, `4`, and `5` to their Evaluation UUIDs. The final experiment runner owns that scientific association. Reduction verifies exact schemas, nonnull consecutive origins, action ranges, and required decision-origin coverage. Its nine-row, six-metric DataFrame is transient and is not persisted.
+Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps human-readable architecture-chain cell names to the required horizon `2`, `3`, `4`, and `5` Evaluation UUIDs. The final experiment runner owns that scientific association and builds the nine declared cells. Reduction verifies exact schemas, nonnull consecutive origins, predicted-action ranges, and required decision-origin coverage. Its six-metric rows are transient and are not persisted.
 
 ## Exact reference
 
@@ -1066,12 +1066,14 @@ Regression compares `predicted_minimum_log_base_fee` (`hat{ell}_i`) with
 ratios of sums. `p50_fee_inclusive_savings` is retrospective and does not claim inclusion.
 
 `reduce_baselines()` returns two rows, ordered `immediate` then `deadline`, with `policy`,
-`accuracy`, `f1_macro`, `base_fee_savings`, `p50_fee_inclusive_savings`, and
-`base_fee_optimality_gap`. `experiments/held_out.py baselines` prefixes each row with its cell.
+`base_fee_savings`, `p50_fee_inclusive_savings`, and `base_fee_optimality_gap`.
+`experiments/held_out.py baselines` prefixes each row with its cell.
 
 #### Rolling comparison result
 
-Destination: none. The rolling reduction returns one row per explicit architecture-chain cell and requires exactly nine rows. Status: derived, transient, noncanonical, nonnull.
+Destination: none. The rolling reduction returns one row per supplied architecture-chain cell.
+The held-out stage supplies the nine declared cells. Status: derived, transient, noncanonical,
+nonnull.
 
 | # | Field | Type | Unit/direction |
 | ---: | --- | --- | --- |

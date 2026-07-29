@@ -43,6 +43,14 @@ _RESULT_SCHEMA = pl.Schema(
         "base_fee_optimality_gap": pl.Float64,
     }
 )
+_BASELINE_RESULT_SCHEMA = pl.Schema(
+    {
+        "policy": pl.String,
+        "base_fee_savings": pl.Float64,
+        "p50_fee_inclusive_savings": pl.Float64,
+        "base_fee_optimality_gap": pl.Float64,
+    }
+)
 
 
 def _request(
@@ -144,19 +152,16 @@ def test_reduce_baselines_derives_immediate_and_deadline_metrics(
 
     result = reduce_baselines(tmp_path, _EVALUATION_ID)
 
+    assert result.schema == _BASELINE_RESULT_SCHEMA
     assert result["policy"].to_list() == ["immediate", "deadline"]
     assert result.select(pl.exclude("policy")).rows() == pytest.approx(
         [
             (
-                2.0 / 7.0,
-                1.0 / 9.0,
                 0.0,
                 0.0,
                 19.0 / 14.0,
             ),
             (
-                1.0 / 7.0,
-                1.0 / 16.0,
                 -33.0 / 140.0,
                 -151.0 / 490.0,
                 8.0 / 7.0,

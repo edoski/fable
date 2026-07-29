@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 from uuid import UUID
 
+import numpy as np
 import polars as pl
 import pytest
 
@@ -32,143 +33,169 @@ def _publish_evaluation(
     *,
     first_origin: int,
     actions: list[int],
-    selected_base_fees: list[int],
-    selected_priority_fees: list[int],
+    base_fees: dict[int, int],
+    priority_fees: dict[int, int],
 ) -> None:
     evaluation_id = _EVALUATION_IDS[horizon]
-    rows = [
-        {
-            "origin_block": origin,
-            "predicted_action_k": action,
-            "predicted_minimum_log_base_fee": math.log(20),
-            "minimum_action_k": 0,
-            "deadline_action_k": horizon - 1,
-            "immediate_base_fee_per_gas": 100,
-            "immediate_effective_priority_fee_per_gas_p50": 10,
-            "selected_base_fee_per_gas": selected_base_fee,
-            "selected_effective_priority_fee_per_gas_p50": selected_priority_fee,
-            "deadline_base_fee_per_gas": 100,
-            "deadline_effective_priority_fee_per_gas_p50": 10,
-            "minimum_base_fee_per_gas": 20,
-        }
-        for origin, action, selected_base_fee, selected_priority_fee in zip(
-            range(first_origin, first_origin + len(actions)),
-            actions,
-            selected_base_fees,
-            selected_priority_fees,
-            strict=True,
+    rows = []
+    for origin, action in zip(
+        range(first_origin, first_origin + len(actions)),
+        actions,
+        strict=True,
+    ):
+        outcome_blocks = range(origin + 1, origin + horizon + 1)
+        outcome_base_fees = [base_fees[block] for block in outcome_blocks]
+        minimum_action = int(np.argmin(outcome_base_fees))
+        selected_block = origin + 1 + action
+        deadline_block = origin + horizon
+        rows.append(
+            {
+                "origin_block": origin,
+                "predicted_action_k": action,
+                "predicted_minimum_log_base_fee": math.log(outcome_base_fees[minimum_action]),
+                "minimum_action_k": minimum_action,
+                "deadline_action_k": horizon - 1,
+                "immediate_base_fee_per_gas": base_fees[origin + 1],
+                "immediate_effective_priority_fee_per_gas_p50": priority_fees[origin + 1],
+                "selected_base_fee_per_gas": base_fees[selected_block],
+                "selected_effective_priority_fee_per_gas_p50": priority_fees[selected_block],
+                "deadline_base_fee_per_gas": base_fees[deadline_block],
+                "deadline_effective_priority_fee_per_gas_p50": priority_fees[deadline_block],
+                "minimum_base_fee_per_gas": outcome_base_fees[minimum_action],
+            }
         )
-    ]
     directory = evaluation_directory(storage_root, evaluation_id)
     directory.mkdir(parents=True)
     pl.DataFrame(rows, schema=OBSERVATION_SCHEMA).write_parquet(directory / "observations.parquet")
 
 
-def _publish_rolling_evaluations(storage_root: Path) -> None:
+def _publish_all_terminal_evaluations(storage_root: Path) -> None:
+    base_fees = {
+        101: 100,
+        102: 80,
+        103: 60,
+        104: 40,
+        105: 20,
+    }
+    priority_fees = {
+        101: 10,
+        102: 8,
+        103: 6,
+        104: 4,
+        105: 2,
+    }
     _publish_evaluation(
         storage_root,
         5,
         first_origin=100,
-        actions=[0, 4, 0, 4, 0],
-        selected_base_fees=[90, 80, 70, 60, 50],
-        selected_priority_fees=[9, 8, 7, 6, 5],
+        actions=[4],
+        base_fees=base_fees,
+        priority_fees=priority_fees,
     )
     _publish_evaluation(
         storage_root,
         4,
         first_origin=100,
-        actions=[1, 0, 3, 0, 0, 0],
-        selected_base_fees=[1_000] * 6,
-        selected_priority_fees=[100] * 6,
+        actions=[0, 3],
+        base_fees=base_fees,
+        priority_fees=priority_fees,
     )
     _publish_evaluation(
         storage_root,
         3,
         first_origin=100,
-        actions=[2, 0, 0, 2, 2, 0, 0],
-        selected_base_fees=[1_000] * 7,
-        selected_priority_fees=[100] * 7,
+        actions=[0, 0, 2],
+        base_fees=base_fees,
+        priority_fees=priority_fees,
     )
     _publish_evaluation(
         storage_root,
         2,
         first_origin=100,
-        actions=[0, 0, 0, 0, 1, 0, 0, 0],
-        selected_base_fees=[1_000, 90, 1_000, 1_000, 20, 40, 1_000, 1_000],
-        selected_priority_fees=[100, 9, 100, 100, 2, 4, 100, 100],
+        actions=[0, 0, 0, 1],
+        base_fees=base_fees,
+        priority_fees=priority_fees,
     )
 
 
 def _roster() -> dict[str, dict[int, UUID]]:
-    return {f"cell-{index}": dict(_EVALUATION_IDS) for index in range(9)}
+    return {"lstm.ethereum": dict(_EVALUATION_IDS)}
 
 
 def _observations_path(storage_root: Path, horizon: int) -> Path:
     return evaluation_directory(storage_root, _EVALUATION_IDS[horizon]) / "observations.parquet"
 
 
-def test_reduce_rolling_confirms_each_smaller_horizon_and_six_metrics(tmp_path: Path) -> None:
-    _publish_rolling_evaluations(tmp_path)
+def test_reduce_rolling_all_terminal_actions_end_at_original_deadline(tmp_path: Path) -> None:
+    _publish_all_terminal_evaluations(tmp_path)
 
     result = reduce_rolling(tmp_path, _roster())
 
     assert result.schema == _RESULT_SCHEMA
-    assert result.shape == (9, 7)
-    assert result["cell"].to_list() == [f"cell-{index}" for index in range(9)]
-    for row in result.iter_rows(named=True):
-        assert tuple(value for name, value in row.items() if name != "cell") == pytest.approx(
-            (0.3, 0.58, 0.3, 0.58, 2.5, 1.1)
+    assert result["cell"].to_list() == ["lstm.ethereum"]
+    assert result.select(pl.exclude("cell")).row(0) == pytest.approx((0.8, 0.8, 0.8, 0.8, 0.0, 0.0))
+
+
+def test_reduce_rolling_all_nonterminal_actions_keep_origin_and_k2_is_final(
+    tmp_path: Path,
+) -> None:
+    base_fees = {101: 100, 102: 40, 103: 60, 104: 80, 105: 20}
+    priority_fees = {101: 10, 102: 4, 103: 6, 104: 8, 105: 2}
+    for horizon, actions in ((5, [3]), (4, [2]), (3, [1]), (2, [0])):
+        _publish_evaluation(
+            tmp_path,
+            horizon,
+            first_origin=100,
+            actions=actions,
+            base_fees=base_fees,
+            priority_fees=priority_fees,
         )
+
+    result = reduce_rolling(tmp_path, _roster())
+
+    assert result.select(pl.exclude("cell")).row(0) == pytest.approx((0.2, 0.0, 0.2, 0.0, 3.0, 4.0))
 
 
 @pytest.mark.parametrize(
     ("case", "message"),
     [
-        ("cells", "exactly nine named cells"),
-        ("horizons", "must name exactly the K=2"),
         ("schema", "canonical ordered schema"),
         ("origins", "consecutive unique origins"),
-        ("shift", "lacks required decision origins"),
+        ("missing", "lacks required decision origins"),
         ("action", "K=3 predicted_action_k values must be valid actions"),
     ],
 )
-def test_reduce_rolling_rejects_invalid_rosters_and_observations(
+def test_reduce_rolling_rejects_invalid_observations(
     tmp_path: Path,
     case: str,
     message: str,
 ) -> None:
-    _publish_rolling_evaluations(tmp_path)
-    roster = _roster()
-    if case == "cells":
-        roster.pop("cell-8")
-    elif case == "horizons":
-        roster["cell-0"].pop(2)
-    else:
-        horizon = 2 if case == "shift" else 3
-        observations_path = _observations_path(tmp_path, horizon)
-        observations = pl.read_parquet(observations_path)
-        if case == "schema":
-            observations = observations.select(
-                "predicted_action_k",
-                *[name for name in OBSERVATION_SCHEMA if name != "predicted_action_k"],
-            )
-        elif case == "origins":
-            observations = observations.with_columns(
-                pl.when(pl.col("origin_block") == 103)
-                .then(102)
-                .otherwise(pl.col("origin_block"))
-                .alias("origin_block")
-            )
-        elif case == "shift":
-            observations = observations.filter(pl.col("origin_block") >= 104)
-        elif case == "action":
-            observations = observations.with_columns(
-                pl.when(pl.col("origin_block") == 102)
-                .then(3)
-                .otherwise(pl.col("predicted_action_k"))
-                .alias("predicted_action_k")
-            )
-        observations.write_parquet(observations_path)
+    _publish_all_terminal_evaluations(tmp_path)
+    horizon = 2 if case == "missing" else 3
+    observations_path = _observations_path(tmp_path, horizon)
+    observations = pl.read_parquet(observations_path)
+    if case == "schema":
+        observations = observations.select(
+            "predicted_action_k",
+            *[name for name in OBSERVATION_SCHEMA if name != "predicted_action_k"],
+        )
+    elif case == "origins":
+        observations = observations.with_columns(
+            pl.when(pl.col("origin_block") == 102)
+            .then(101)
+            .otherwise(pl.col("origin_block"))
+            .alias("origin_block")
+        )
+    elif case == "missing":
+        observations = observations.filter(pl.col("origin_block") < 103)
+    elif case == "action":
+        observations = observations.with_columns(
+            pl.when(pl.col("origin_block") == 102)
+            .then(3)
+            .otherwise(pl.col("predicted_action_k"))
+            .alias("predicted_action_k")
+        )
+    observations.write_parquet(observations_path)
 
     with pytest.raises(ValueError, match=message):
-        reduce_rolling(tmp_path, roster)
+        reduce_rolling(tmp_path, _roster())

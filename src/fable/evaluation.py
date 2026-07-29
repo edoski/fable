@@ -55,14 +55,11 @@ _RESULT_SCHEMA = pl.Schema(
 _BASELINE_RESULT_SCHEMA = pl.Schema(
     {
         "policy": pl.String,
-        "accuracy": pl.Float64,
-        "f1_macro": pl.Float64,
         "base_fee_savings": pl.Float64,
         "p50_fee_inclusive_savings": pl.Float64,
         "base_fee_optimality_gap": pl.Float64,
     }
 )
-_ROLLING_HORIZONS = (2, 3, 4, 5)
 _ROLLING_RESULT_SCHEMA = pl.Schema(
     {
         "cell": pl.String,
@@ -206,7 +203,6 @@ def reduce_baselines(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     """Derive immediate and deadline policy metrics from one testing evaluation."""
 
     observations = _load_evaluation(storage_root, evaluation_id)
-    minimum_actions = observations["minimum_action_k"].to_numpy()
     immediate_fees = observations["immediate_base_fee_per_gas"].to_numpy()
     immediate_priority_fees = observations[
         "immediate_effective_priority_fee_per_gas_p50"
@@ -216,28 +212,23 @@ def reduce_baselines(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     policies = (
         (
             "immediate",
-            np.zeros_like(minimum_actions),
             immediate_fees,
             immediate_priority_fees,
         ),
         (
             "deadline",
-            observations["deadline_action_k"].to_numpy(),
             observations["deadline_base_fee_per_gas"].to_numpy(),
             observations["deadline_effective_priority_fee_per_gas_p50"].to_numpy(),
         ),
     )
     rows = []
-    for policy, actions, selected_fees, selected_priority_fees in policies:
-        metrics = _classification_metrics(actions, minimum_actions)
-        metrics.update(
-            _economic_metrics(
-                immediate_fees,
-                immediate_priority_fees,
-                selected_fees,
-                selected_priority_fees,
-                minimum_fees,
-            )
+    for policy, selected_fees, selected_priority_fees in policies:
+        metrics = _economic_metrics(
+            immediate_fees,
+            immediate_priority_fees,
+            selected_fees,
+            selected_priority_fees,
+            minimum_fees,
         )
         if not np.isfinite(tuple(metrics.values())).all():
             raise ValueError("baseline reduction must contain only finite metrics")
@@ -249,10 +240,7 @@ def reduce_rolling(
     storage_root: Path,
     roster: Mapping[str, Mapping[int, UUID]],
 ) -> pl.DataFrame:
-    """Compare one-shot and rolling economics for nine explicit K-study cells."""
-
-    if len(roster) != 9 or any(not cell for cell in roster):
-        raise ValueError("rolling roster must contain exactly nine named cells")
+    """Compare one-shot and rolling economics for explicit K-study cells."""
 
     rows = [
         _reduce_rolling_cell(storage_root, cell, evaluation_ids)
@@ -360,9 +348,6 @@ def _reduce_rolling_cell(
     cell: str,
     evaluation_ids: Mapping[int, UUID],
 ) -> dict[str, str | float]:
-    if tuple(sorted(evaluation_ids)) != _ROLLING_HORIZONS:
-        raise ValueError(f"{cell} must name exactly the K=2, K=3, K=4, and K=5 evaluations")
-
     initial_frame = _load_rolling_observations(storage_root, evaluation_ids[5])
     current_origins = initial_frame["origin_block"].to_numpy().copy()
     initial = _rolling_arrays(
@@ -372,14 +357,22 @@ def _reduce_rolling_cell(
         horizon=5,
     )
     current_origins += initial["predicted_action_k"] == 4
-    for horizon in (4, 3):
-        current = _rolling_arrays(
-            _load_rolling_observations(storage_root, evaluation_ids[horizon]),
-            decision_origins=current_origins,
-            cell=cell,
-            horizon=horizon,
-        )
-        current_origins += current["predicted_action_k"] == horizon - 1
+
+    horizon_four = _rolling_arrays(
+        _load_rolling_observations(storage_root, evaluation_ids[4]),
+        decision_origins=current_origins,
+        cell=cell,
+        horizon=4,
+    )
+    current_origins += horizon_four["predicted_action_k"] == 3
+
+    horizon_three = _rolling_arrays(
+        _load_rolling_observations(storage_root, evaluation_ids[3]),
+        decision_origins=current_origins,
+        cell=cell,
+        horizon=3,
+    )
+    current_origins += horizon_three["predicted_action_k"] == 2
 
     final = _rolling_arrays(
         _load_rolling_observations(storage_root, evaluation_ids[2]),
@@ -434,10 +427,9 @@ def _rolling_arrays(
     cell: str,
     horizon: int,
 ) -> dict[str, np.ndarray]:
-    for column in ("predicted_action_k", "minimum_action_k"):
-        actions = observations[column].to_numpy()
-        if np.any((actions < 0) | (actions >= horizon)):
-            raise ValueError(f"{cell} K={horizon} {column} values must be valid actions")
+    actions = observations["predicted_action_k"].to_numpy()
+    if np.any((actions < 0) | (actions >= horizon)):
+        raise ValueError(f"{cell} K={horizon} predicted_action_k values must be valid actions")
 
     origins = observations["origin_block"].to_numpy()
     rows = decision_origins - int(origins[0])
