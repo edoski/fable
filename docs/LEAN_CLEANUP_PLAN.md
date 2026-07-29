@@ -109,8 +109,8 @@ baseline and head SHAs, checks, findings, and status before proceeding.
 | 4 | App inference and model lifecycle | GREEN LIGHT | `b7e26671` | `019fadb6-2d6f-75e3-b3ed-7059843f6ec1` / `0226dcc4..ea0b664b` | `019fadc0-a253-7a23-998d-7ee44c3471e4` |
 | 5 | App RPC and feature input path | GREEN LIGHT | `41216ba4` | `019fade1-2207-7490-bc92-05d28d465848` / `51b7a4d0` | `019fadec-9614-7882-a227-278c006c85e6` |
 | 6 | Mobile exporter | accepted; doc re-review waived | `9fb7d793` | `019fadf3-86fe-75f0-98b7-245a78957396` / `7b65b3af..ea1087c2` | `019fadf8-60c4-7361-88ab-a9b616a7daf6` |
-| 7 | Documentation truth pass | ready | pending | pending | pending |
-| 8 | Compact-CUDA parity | blocked by 7 | pending | pending | pending |
+| 7 | Documentation truth pass | accepted; review waived | `e5a88fda` | `019fae02-f769-7181-a578-334c67bdad37` / `90fc2263` | user-waived |
+| 8 | Compact-CUDA parity | ready | pending | pending | pending |
 
 Slice 1 review: Standards 0 findings; Spec 0 findings. Focused tests: 22 passed. Full Python
 suite: 117 passed. Ruff, Pyright, Vulture, and `git diff --check`: passed. The reviewer directly
@@ -149,6 +149,13 @@ real `XnnpackBackend` delegate succeeds. Exporter tests: 11 passed. Full Python 
 Ruff, Pyright, Vulture, and `git diff --check`: passed. The same implementer corrected the single
 sentence to state the program-wide existential delegate rule in `ea1087c2`; the user explicitly
 waived another review round for this documentation-only correction.
+
+Slice 7 implementation: accepted without a reviewer by explicit user direction. The truth pass
+corrected README submission wording, labeled the architecture diagram as high-level, removed
+unexplained `A01`, separated host parity from deferred device acceptance, and reduced the ADR index
+to existing ADRs 0006 and 0007. Full Python suite: 125 passed. App tests: 32 passed. Exporter tests:
+11 passed. Ruff, Pyright, Vulture, typecheck, Expo Doctor 19/19, manual link inspection, and
+`git diff --check`: passed.
 
 ## Slice 1 — Training core and tuning
 
