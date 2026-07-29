@@ -92,6 +92,10 @@ def test_prepare_authors_full_leave_one_out_and_base_only_matrix(
         "log1p_effective_priority_fee_per_gas_p90"
     )
     assert requests[11].experiment.ordered_features == ("log_base_fee_per_gas",)
+    assert requests[-1].experiment.training_window.model_dump() == {
+        "first_parent_block": 75_191_113,
+        "last_parent_block": 79_663_626,
+    }
     assert requests[-2].experiment.ordered_features == (
         "log_base_fee_per_gas",
         "gas_utilization",
