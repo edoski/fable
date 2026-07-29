@@ -107,8 +107,8 @@ baseline and head SHAs, checks, findings, and status before proceeding.
 | 2 | Experiment manifests, selection, and packed launch | GREEN LIGHT | `1a141fa4` | `019fad98-e122-71c3-b9a5-4a33384fc860` / `2d506cf6` | `019fada3-ec16-7552-becb-6fdaf9a819e3` |
 | 3 | Evaluation and rolling reduction | GREEN LIGHT | `e755fbdd` | `019fadaa-4725-7323-813b-21f8760f16e5` / `836577f6` | `019fadb1-9646-7b31-8700-00d2dd9006be` |
 | 4 | App inference and model lifecycle | GREEN LIGHT | `b7e26671` | `019fadb6-2d6f-75e3-b3ed-7059843f6ec1` / `0226dcc4..ea0b664b` | `019fadc0-a253-7a23-998d-7ee44c3471e4` |
-| 5 | App RPC and feature input path | blocked by 4 | pending | pending | pending |
-| 6 | Mobile exporter | blocked by 5 | pending | pending | pending |
+| 5 | App RPC and feature input path | GREEN LIGHT | `41216ba4` | `019fade1-2207-7490-bc92-05d28d465848` / `51b7a4d0` | `019fadec-9614-7882-a227-278c006c85e6` |
+| 6 | Mobile exporter | ready | pending | pending | pending |
 | 7 | Documentation truth pass | blocked by 6 | pending | pending | pending |
 | 8 | Compact-CUDA parity | blocked by 7 | pending | pending | pending |
 | 9 | Remove checkpoint resume | blocked by issue #147 gate | n/a | not started | not started |
@@ -134,6 +134,14 @@ latest-selection loss against stale rendered state. Final review confirmed one A
 intended/applied selection record, latest-intent coalescing, single-write FIFO history, no rollback,
 and closure of both P1s. App tests: 47 passed. Typecheck, Expo Doctor 19/19, and
 `git diff --check`: passed.
+
+Slice 5 review: Standards 0 findings; Spec 0 findings. The reviewer checked installed Viem 2.55.8
+against the implementation and confirmed default-chain transport selection, batches capped at
+forty requests, a transport-owned ten-second timeout, zero retries, watcher error forwarding, and
+unwatch disposal. Fresh exact-range reads retain parent continuity, fee-history alignment, exact
+integer forming-fee arithmetic, and final Float32 finiteness. App tests: 32 passed. Typecheck, Expo
+Doctor 19/19, Vulture, and `git diff --check`: passed. Tests used stubbed fetch; no live RPC was
+contacted.
 
 ## Slice 1 — Training core and tuning
 
