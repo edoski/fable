@@ -103,14 +103,19 @@ baseline and head SHAs, checks, findings, and status before proceeding.
 
 | Slice | Scope | Status | Baseline | Implementer | Reviewer |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Training core and tuning | ready | pending | pending | pending |
+| 1 | Training core and tuning | GREEN LIGHT | `ffd7c368` | `019fad88-4411-7892-963a-301075fb96f7` / `44435ddf` | `019fad92-f093-75f3-99af-4f93de395d1f` |
 | 2 | Experiment manifests, selection, and packed launch | blocked by 1 | pending | pending | pending |
 | 3 | Evaluation and rolling reduction | blocked by 2 | pending | pending | pending |
 | 4 | App inference and model lifecycle | blocked by 3 | pending | pending | pending |
 | 5 | App RPC and feature input path | blocked by 4 | pending | pending | pending |
 | 6 | Mobile exporter | blocked by 5 | pending | pending | pending |
 | 7 | Documentation truth pass | blocked by 6 | pending | pending | pending |
-| 8 | Remove checkpoint resume | blocked by issue #147 gate | n/a | not started | not started |
+| 8 | Compact-CUDA parity | blocked by 7 | pending | pending | pending |
+| 9 | Remove checkpoint resume | blocked by issue #147 gate | n/a | not started | not started |
+
+Slice 1 review: Standards 0 findings; Spec 0 findings. Focused tests: 22 passed. Full Python
+suite: 117 passed. Ruff, Pyright, Vulture, and `git diff --check`: passed. The reviewer directly
+confirmed interrupted-fit resume and publication-failure scratch preservation.
 
 ## Slice 1 — Training core and tuning
 
@@ -649,7 +654,78 @@ cd ../tools/mobile-export
 uv run pytest
 ```
 
-## Slice 8 — Conditional checkpoint-resume removal
+## Slice 8 — Compact-CUDA parity
+
+This slice runs only after Slices 1–7 are green on `main`. It reconciles
+`codex/compact-cuda-execution` with finished `main`; it does not bring compact-CUDA behavior into
+`main`.
+
+### Branch operation
+
+1. Record the pre-merge compact branch head and finished `main` head.
+2. In the saved checkout, switch from clean `main` to `codex/compact-cuda-execution`.
+3. Merge finished `main` into the compact branch. Do not rebase or rewrite the existing compact
+   commit. Resolve every conflict so common code equals `main`; preserve only the explicit
+   device-resident historical batching delta.
+4. Commit the reconciliation on the compact branch.
+5. After review, return the saved checkout to clean `main`.
+
+No worktree is used.
+
+### Allowed branch difference
+
+`git diff main...codex/compact-cuda-execution` may contain only:
+
+- `src/fable/_runtime.py`: removal of CPU DataLoader worker/pin/prefetch machinery that the compact
+  path does not use;
+- `src/fable/temporal.py`: shared backing moved once to the target device, index-returning dataset,
+  and device-side batched collation/gather;
+- `src/fable/modeling.py`: move prepared fit history to the Lightning root device and obtain
+  training/validation loaders from the prepared datasets;
+- `src/fable/evaluation.py`: move the evaluation dataset to CUDA and obtain its loader there;
+- `tests/temporal/test_history.py`, `tests/test_modeling.py`, and
+  `tests/evaluation/test_evaluate.py`: direct tests of those branch-only semantics;
+- `docs/FABLE.md`: a compact-branch-specific description of device-resident batching, only if the
+  code difference needs documentation.
+
+Every other source, test, script, app, exporter, configuration, and documentation file must be
+identical to `main`. Within the allowed files, all non-DataLoader behavior from Slices 1–7 must
+also match `main`: loss ownership, deterministic/clipping ownership, tuning ownership, evaluation
+semantics, guards, durable formats, and public interfaces.
+
+### Review gate
+
+The reviewer performs both:
+
+- the normal Standards/Spec review of
+  `git diff <pre-merge-compact-head>...<reconciled-compact-head>`;
+- a line-by-line parity audit of
+  `git diff main...<reconciled-compact-head>` against the allowed difference above.
+
+`GREEN LIGHT` requires zero unrelated differences, not merely an allowed filename set.
+
+### Required verification
+
+Run the complete Python checks on the compact branch:
+
+```text
+uv run ruff check .
+uv run pyright
+uv run vulture
+uv run pytest
+git diff --check
+```
+
+Then return to `main`, verify a clean checkout, and record both heads and the exact remaining diff
+in this ledger.
+
+### Expected outcome
+
+The compact branch equals finished `main` except for one isolated, reviewable implementation
+choice: CPU-backed lazy loading on `main` versus device-resident historical batching on the compact
+branch.
+
+## Slice 9 — Conditional checkpoint-resume removal
 
 This slice is not authorized to start merely because Slices 1–7 pass. It is fully specified in
 [issue #147](https://github.com/edoski/fable/issues/147).
@@ -666,8 +742,10 @@ scratch behavior, resume-only tests, and resume documentation in one clean break
 seeds, early stopping, weights-only best checkpoints, selected-epoch semantics, accepted outputs,
 and atomic publication. Exact scratch deletion is a separate explicitly verified destructive step.
 
-The same implementer/reviewer protocol applies. The slice baseline must be the then-current
-surviving mainline, not the temporary compact-CUDA branch.
+The same implementer/reviewer protocol applies directly on `main`. If this slice occurs after
+compact-CUDA parity, repeat the parity procedure for its small resume deletion or retire the
+temporary compact branch first under explicit user direction; do not let the branches drift
+silently.
 
 ## Final acceptance
 
@@ -680,4 +758,5 @@ The cleanup is complete only when:
 - `git diff --check` passes;
 - durable object and manuscript contracts listed above remain intact;
 - the plan ledger contains final SHAs and review outcomes;
-- Slice 8 is either completed after its gate or remains explicitly blocked by issue #147.
+- Slice 8 leaves no non-DataLoader drift between `main` and the compact branch;
+- Slice 9 is either completed after its gate or remains explicitly blocked by issue #147.
