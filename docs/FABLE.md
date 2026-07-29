@@ -971,9 +971,9 @@ export paths.
 
 ### Mobile deployment
 
-The isolated `tools/mobile-export` project pins Torch 2.11 and ExecuTorch 1.2 without changing FABLE's Torch 2.7.1 environment. Its strict `MOBILE.yaml` roster contains exactly `ethereum`, `polygon`, and `avalanche`, each with integer horizons `2…5` mapped to twelve distinct artifact UUIDv4 values.
+The isolated `tools/mobile-export` project pins Torch 2.11 and ExecuTorch 1.2 without changing FABLE's Torch 2.7.1 environment. Its strict `MOBILE.yaml` roster contains exactly `ethereum`, `polygon`, and `avalanche`, each with integer horizons `2…5` mapped to artifact UUIDv4 values.
 
-Every cell must match artifact identity, chain, horizon, supported features, native output semantics, eager-to-XNNPACK host parity, selected action, and decoded-fee tolerance. A chain's four cells must share context, ordered features, and feature state. The exporter rejects an occupied output before lowering, builds a hidden sibling directory, checks again immediately before rename, and removes scratch on failure. Publication is all twelve models plus one manifest:
+Every cell must match artifact identity, chain, horizon, shared feature contract, native output semantics, eager-to-XNNPACK host parity, selected action, and decoded-fee tolerance. Each exported execution plan must contain at least one `XnnpackBackend` delegate. The exporter reads only the Corpus request needed for chain identity, rejects an occupied output before lowering, builds a hidden sibling directory, checks again immediately before rename, and removes scratch on failure. Publication is all twelve models plus one manifest:
 
 ```text
 app/assets/models/

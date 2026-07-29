@@ -15,13 +15,13 @@ import yaml
 from executorch.backends.xnnpack.partition.xnnpack_partitioner import (
     XnnpackPartitioner,
 )
-from executorch.exir import to_edge_transform_and_lower
+from executorch.exir import ExecutorchProgramManager, to_edge_transform_and_lower
 from executorch.runtime import Runtime
 from pydantic import UUID4, Field, TypeAdapter
 from torch import nn
 
-from fable.config import FeatureName
-from fable.corpus import Corpus, load_corpus
+from fable.config import CorpusRequest, FeatureName
+from fable.corpus import load_corpus_request
 from fable.modeling import ArtifactAssociation, load_artifact
 
 _Chain = Literal["ethereum", "polygon", "avalanche"]
@@ -70,21 +70,12 @@ class _NamedOutputWrapper(nn.Module):
 
 def _load_roster(roster_path: Path) -> _Roster:
     raw = yaml.safe_load(roster_path.read_bytes())
-    roster = _ROSTER_ADAPTER.validate_json(json.dumps(raw), strict=True)
-    artifact_ids = tuple(roster[chain][horizon] for chain in _CHAINS for horizon in _HORIZONS)
-    if len(set(artifact_ids)) != len(artifact_ids):
-        raise ValueError("roster artifact IDs must be unique")
-    return roster
+    return _ROSTER_ADAPTER.validate_json(json.dumps(raw), strict=True)
 
 
-def _feature_contract(
-    association: ArtifactAssociation,
-    chain: str,
-) -> _FeatureContract:
+def _feature_contract(association: ArtifactAssociation) -> _FeatureContract:
     experiment = association.training_definition.experiment
     names = tuple(experiment.ordered_features)
-    if chain != "ethereum" and "log_exact_forming_base_fee_per_gas" in names:
-        raise ValueError("exact forming base fee is Ethereum-only")
     return _FeatureContract(
         context_blocks=experiment.context_blocks,
         names=names,
@@ -97,7 +88,7 @@ def _load_cells(
     storage_root: Path,
     roster: _Roster,
 ) -> dict[str, dict[int, _Cell]]:
-    corpora: dict[UUID, Corpus] = {}
+    corpus_requests: dict[UUID, CorpusRequest] = {}
     cells: dict[str, dict[int, _Cell]] = {}
     for chain, chain_id in _CHAINS.items():
         cells[chain] = {}
@@ -111,13 +102,13 @@ def _load_cells(
                 raise ValueError(f"{chain} K={horizon} artifact has the wrong horizon")
 
             corpus_id = association.request.source.corpus_id
-            if corpus_id not in corpora:
-                corpora[corpus_id] = load_corpus(storage_root, corpus_id)
-            artifact_chain_id = corpora[corpus_id].request.definition.chain_id
+            if corpus_id not in corpus_requests:
+                corpus_requests[corpus_id] = load_corpus_request(storage_root, corpus_id)
+            artifact_chain_id = corpus_requests[corpus_id].definition.chain_id
             if artifact_chain_id != chain_id:
                 raise ValueError(f"{chain} K={horizon} artifact has the wrong chain")
 
-            features = _feature_contract(association, chain)
+            features = _feature_contract(association)
             if shared_features is None:
                 shared_features = features
             elif features != shared_features:
@@ -178,6 +169,15 @@ def _assert_parity(
         raise ValueError("eager and ExecuTorch decoded fees differ by at least 0.1%")
 
 
+def _assert_xnnpack_delegation(program: ExecutorchProgramManager) -> None:
+    if not any(
+        delegate.id == "XnnpackBackend"
+        for plan in program.executorch_program.execution_plan
+        for delegate in plan.delegates
+    ):
+        raise ValueError("ExecuTorch program must contain an XnnpackBackend delegate")
+
+
 def _export_model(cell: _Cell, destination: Path) -> None:
     model = _NamedOutputWrapper(cell.model.cpu().float().eval())
     samples = _example_inputs(cell.features)
@@ -189,6 +189,7 @@ def _export_model(cell: _Cell, destination: Path) -> None:
         exported,
         partitioner=[XnnpackPartitioner()],
     ).to_executorch()
+    _assert_xnnpack_delegation(program)
     destination.write_bytes(program.buffer)
 
     method = Runtime.get().load_program(destination).load_method("forward")
