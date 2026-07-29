@@ -599,7 +599,7 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 
 #### Request and membership
 
-`TuneRequest` fixes a Study UUID, Corpus UUID, `ExperimentSemantics`, and a nonempty tuple of unique complete Methods. Every Method uses the same model family and owns one `ModelDefinition` plus its complete fit policy. Candidate input carries a validated zero-based index; fitting derives the Method from `request.methods[method_index]` and builds `TrainingDefinition(experiment=request.experiment, method=method)` as the association's derived property.
+`TuneRequest` fixes a Study UUID, Corpus UUID, `ExperimentSemantics`, and a nonempty tuple of unique complete Methods. Every Method uses the same model family and owns one `ModelDefinition` plus its complete fit policy. Candidate fitting resolves a validated zero-based index through `request.method_at(method_index)` and passes `TrainingDefinition(experiment=request.experiment, method=method)` directly as its checkpoint association. Canonical artifacts instead retain their full `ArtifactAssociation`.
 
 #### Candidate run
 
@@ -607,7 +607,8 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 training history and state, fits the indexed Method through native Lightning, and retains one
 successful result. Method index `i` owns checkpoint scratch at
 `studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while
-fit or publication failure preserves it for `last.ckpt` resume.
+fit or publication failure preserves it for full-state `last.ckpt` resume. Candidate checkpoints
+embed only the `TrainingDefinition` needed to rebuild the candidate model.
 
 `RetainedResult` has three fields:
 
@@ -622,7 +623,7 @@ The selected epoch cannot exceed completed epochs. The enclosing Study requires 
 
 Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary sibling. Each private result envelope carries the full request, method index, and retained metrics.
 
-`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first result. All files must carry the identical request and an embedded index matching the filename. Publication assembles metrics in `request.methods` order, writes hidden sibling `studies/.<study_id>.json`, removes scratch directory `studies/.<study_id>/`, and creates `studies/<study_id>.json` with `os.link()`. An occupied canonical path makes the link fail without overwrite. After a successful link, hidden-file cleanup is best-effort and cannot retract the canonical Study.
+`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first result. All files must carry the identical request and an embedded index matching the filename. Publication assembles metrics in `request.methods` order at `studies/.<study_id>/study.json`, creates `studies/<study_id>.json` directly with `os.link()`, then removes scratch. An occupied canonical path makes the link fail without overwrite. Failed cleanup after a successful link can leave scratch beside the valid canonical Study.
 
 #### Selected training
 
@@ -873,7 +874,7 @@ Each `RetainedResult` has exact ordered fields:
 | `target_state` | Float64 finite mean and positive standard deviation |
 | `method` | exact selected Method |
 
-Fitting uses hidden sibling scratch at `artifacts/.<artifact_id>/`. Publication moves the completed best checkpoint to `artifacts/.<artifact_id>.ckpt`, removes scratch, and creates the canonical path with `os.link()`. An occupied target fails without overwrite; cleanup of the hidden checkpoint is best-effort only after the canonical link exists.
+Fitting uses hidden scratch at `artifacts/.<artifact_id>/`. Publication hardlinks the selected best checkpoint directly from that scratch to `artifacts/<artifact_id>.ckpt`, then removes scratch. An occupied target fails without overwrite. Failed cleanup after a successful link can leave scratch beside the valid canonical artifact.
 
 Direct loader:
 

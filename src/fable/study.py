@@ -107,17 +107,13 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
             raise ValueError("result method index does not match file index")
         trials.append(candidate.result)
 
-    hidden = canonical.with_name(f".{canonical.name}")
-    hidden.write_text(
+    completed = scratch / "study.json"
+    completed.write_text(
         Study(request=request, trials=tuple(trials)).model_dump_json(),
         encoding="utf-8",
     )
+    os.link(completed, canonical)
     shutil.rmtree(scratch)
-    os.link(hidden, canonical)
-    try:
-        hidden.unlink()
-    except OSError:
-        pass
 
 
 def load_study(storage_root: Path, study_id: UUID) -> Study:

@@ -70,30 +70,7 @@ class ArtifactAssociation(StrictFrozenRecord):
         return self
 
 
-class _CandidateAssociation(StrictFrozenRecord):
-    request: TuneRequest
-    method_index: int
-    feature_state: FeatureState
-    target_state: TargetState
-
-    @model_validator(mode="after")
-    def validate_method_index(self) -> Self:
-        self.request.method_at(self.method_index)
-        return self
-
-    @property
-    def method(self) -> Method:
-        return self.request.methods[self.method_index]
-
-    @property
-    def training_definition(self) -> TrainingDefinition:
-        return TrainingDefinition(
-            experiment=self.request.experiment,
-            method=self.method,
-        )
-
-
-_Association = ArtifactAssociation | _CandidateAssociation
+_Association = ArtifactAssociation | TrainingDefinition
 _ASSOCIATION_ADAPTER = TypeAdapter(_Association)
 
 
@@ -104,6 +81,12 @@ def _json_association(association: _Association) -> dict[str, object]:
 def _hydrate_association(raw: object) -> _Association:
     encoded = json.dumps(raw, allow_nan=False)
     return _ASSOCIATION_ADAPTER.validate_json(encoded, strict=True)
+
+
+def _training_definition(association: _Association) -> TrainingDefinition:
+    if isinstance(association, ArtifactAssociation):
+        return association.training_definition
+    return association
 
 
 class _Heads(nn.Module):
@@ -271,7 +254,7 @@ class _FitModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters(logger=False)
         self.association = _hydrate_association(association)
-        self.definition = self.association.training_definition
+        self.definition = _training_definition(self.association)
 
         experiment = self.definition.experiment
         model = self.definition.method.model
@@ -317,7 +300,6 @@ class _FitModule(pl.LightningModule):
             on_step=False,
             on_epoch=True,
             logger=False,
-            sync_dist=False,
             batch_size=loss_by_origin.numel(),
         )
 
@@ -354,7 +336,6 @@ class _FitModule(pl.LightningModule):
             on_step=False,
             on_epoch=True,
             logger=False,
-            sync_dist=False,
             batch_size=gap.numel(),
         )
 
@@ -399,10 +380,8 @@ def _callbacks(
     fit = definition.method.fit
     early_stopping = EarlyStopping(
         monitor="validation_total_loss",
-        mode="min",
         min_delta=fit.min_delta,
         patience=fit.patience,
-        strict=True,
         check_finite=False,
         check_on_train_epoch_end=False,
     )
@@ -410,8 +389,6 @@ def _callbacks(
         dirpath=scratch,
         filename="best-{epoch:02d}",
         monitor="validation_base_fee_optimality_gap",
-        mode="min",
-        save_top_k=1,
         save_weights_only=True,
         every_n_epochs=1,
         save_on_train_epoch_end=False,
@@ -421,7 +398,6 @@ def _callbacks(
     last = ModelCheckpoint(
         dirpath=scratch,
         filename="last",
-        save_top_k=1,
         save_weights_only=False,
         every_n_epochs=1,
         save_on_train_epoch_end=True,
@@ -442,7 +418,7 @@ def _fit(
     prepared: HistoricalPreparation,
     scratch: Path,
 ) -> _FitOutcome:
-    definition = association.training_definition
+    definition = _training_definition(association)
     scratch.mkdir(parents=True, exist_ok=True)
     _runtime.configure_torch()
     fit = definition.method.fit
@@ -502,14 +478,8 @@ def _publish_artifact(
     outcome: _FitOutcome,
 ) -> None:
     canonical = artifact_checkpoint_path(storage_root, artifact_id)
-    completed = canonical.with_name(f".{canonical.name}")
-    outcome.best_checkpoint.rename(completed)
+    os.link(outcome.best_checkpoint, canonical)
     shutil.rmtree(scratch)
-    os.link(completed, canonical)
-    try:
-        completed.unlink()
-    except OSError:
-        pass
 
 
 def train(
@@ -548,13 +518,11 @@ def _fit_candidate(
         load_corpus(storage_root, request.corpus_id),
         request.experiment,
     )
-    association = _CandidateAssociation(
-        request=request,
-        method_index=method_index,
-        feature_state=prepared.feature_state,
-        target_state=prepared.target_state,
+    definition = TrainingDefinition(
+        experiment=request.experiment,
+        method=request.method_at(method_index),
     )
-    outcome = _fit(association, prepared, candidate_scratch)
+    outcome = _fit(definition, prepared, candidate_scratch)
     return RetainedResult(
         objective=outcome.objective,
         selected_epoch=outcome.selected_epoch,
