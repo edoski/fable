@@ -12,10 +12,13 @@ import type {
   InferenceEngine,
   InferenceResult,
 } from "../src/inference";
-import { deferred } from "./helpers";
+import type { InferenceRun } from "../src/history";
+import { deferred, flushMicrotasks } from "./helpers";
 
 const mocks = vi.hoisted(() => ({
   addRun: vi.fn(),
+  analyticsProps: null as Record<string, unknown> | null,
+  bottomTabsProps: null as Record<string, unknown> | null,
   createInferenceEngine: vi.fn(),
   inferenceProps: null as Record<string, unknown> | null,
   headerProps: null as Record<string, unknown> | null,
@@ -49,11 +52,17 @@ vi.mock("../src/components/AppHeader", () => ({
 }));
 
 vi.mock("../src/components/BottomTabs", () => ({
-  BottomTabs: () => null,
+  BottomTabs: (props: Record<string, unknown>) => {
+    mocks.bottomTabsProps = props;
+    return null;
+  },
 }));
 
 vi.mock("../src/screens/AnalyticsScreen", () => ({
-  AnalyticsScreen: () => null,
+  AnalyticsScreen: (props: Record<string, unknown>) => {
+    mocks.analyticsProps = props;
+    return null;
+  },
 }));
 
 vi.mock("../src/screens/InferenceScreen", () => ({
@@ -121,6 +130,18 @@ function inferenceProps(): {
   return mocks.inferenceProps as ReturnType<typeof inferenceProps>;
 }
 
+function bottomTabsProps(): {
+  onSelect(tab: "inference" | "analytics"): void;
+} {
+  return mocks.bottomTabsProps as ReturnType<typeof bottomTabsProps>;
+}
+
+function analyticsProps(): {
+  runs: readonly InferenceRun[];
+} {
+  return mocks.analyticsProps as ReturnType<typeof analyticsProps>;
+}
+
 beforeEach(() => {
   (
     globalThis as typeof globalThis & {
@@ -128,6 +149,8 @@ beforeEach(() => {
     }
   ).IS_REACT_ACT_ENVIRONMENT = true;
   engines.length = 0;
+  mocks.analyticsProps = null;
+  mocks.bottomTabsProps = null;
   mocks.inferenceProps = null;
   mocks.headerProps = null;
   mocks.addRun.mockReset();
@@ -155,7 +178,28 @@ async function renderApp(): Promise<void> {
 }
 
 describe("App engine selection", () => {
-  it("does not publish a completed result from an old selection", async () => {
+  it("removes a persisted result made stale during save", async () => {
+    const result: InferenceResult = {
+      chain: "ethereum",
+      K: 5,
+      artifact_id: "artifact-5",
+      head_block: 10,
+      head_hash: "0xhead",
+      selected_action_k: 1,
+      target_block: 12,
+      predicted_minimum_base_fee_per_gas: 20,
+    };
+    const staleRun: InferenceRun = {
+      id: "stale-run",
+      ran_at: "2026-07-29T12:00:00.000Z",
+      ...result,
+    };
+    const firstSave = deferred<void>();
+    mocks.addRun.mockReturnValue([staleRun]);
+    mocks.saveRuns
+      .mockImplementationOnce(() => firstSave.promise)
+      .mockResolvedValue(undefined);
+
     await renderApp();
     expect(inferenceProps().state).toEqual({ status: "idle" });
 
@@ -163,23 +207,21 @@ describe("App engine selection", () => {
     expect(engines[0].engine.run).toHaveBeenCalledWith(5);
     expect(inferenceProps().state).toEqual({ status: "loading" });
 
+    act(() => engines[0].resolveRun(result));
+    await vi.waitFor(() => expect(mocks.saveRuns).toHaveBeenCalledOnce());
+    expect(mocks.saveRuns).toHaveBeenLastCalledWith([staleRun]);
+
     act(() => {
       inferenceProps().onHorizonChange(4);
       inferenceProps().onChainChange("polygon");
     });
     await act(async () => {
-      engines[0].resolveRun({
-        chain: "ethereum",
-        K: 5,
-        artifact_id: "artifact-5",
-        head_block: 10,
-        head_hash: "0xhead",
-        selected_action_k: 1,
-        target_block: 12,
-        predicted_minimum_base_fee_per_gas: 20,
-      });
+      firstSave.resolve();
+      await flushMicrotasks();
     });
 
+    expect(mocks.saveRuns).toHaveBeenCalledTimes(2);
+    expect(mocks.saveRuns).toHaveBeenLastCalledWith([]);
     expect(inferenceProps()).toMatchObject({
       chain: "polygon",
       horizon: 4,
@@ -188,7 +230,7 @@ describe("App engine selection", () => {
     });
     expect(mocks.headerProps).toMatchObject({ status: "checking" });
     expect(engines).toHaveLength(2);
-    expect(mocks.addRun).not.toHaveBeenCalled();
-    expect(mocks.saveRuns).not.toHaveBeenCalled();
+    act(() => bottomTabsProps().onSelect("analytics"));
+    expect(analyticsProps().runs).toEqual([]);
   });
 });

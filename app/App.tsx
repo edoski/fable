@@ -72,6 +72,11 @@ export default function App() {
       }
       try {
         await saveRuns(next);
+        if (!isCurrent()) {
+          await saveRuns(current);
+          setStorageError(null);
+          return;
+        }
       } catch (error) {
         setStorageError(
           error instanceof Error ? error.message : String(error),
