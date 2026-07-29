@@ -159,6 +159,43 @@ def _definition(
     )
 
 
+def test_fit_precision_follows_model_family() -> None:
+    assert modeling._fit_precision("lstm") == "32-true"
+    assert modeling._fit_precision("transformer") == "bf16-mixed"
+    assert modeling._fit_precision("transformer_lstm") == "bf16-mixed"
+
+
+def test_transformer_lstm_uses_exportable_float32_recurrence() -> None:
+    definition = TransformerLstmDefinition(
+        family="transformer_lstm",
+        model_width=4,
+        attention_heads=2,
+        transformer_layers=1,
+        feedforward_width=8,
+        lstm_hidden=5,
+        lstm_layers=1,
+        head_hidden=3,
+        dropout=0.0,
+    )
+    model = modeling._TransformerLstmModel(
+        definition,
+        context_blocks=3,
+        feature_count=2,
+        actions=2,
+    ).eval()
+    inputs = torch.zeros((2, 3, 2))
+    torch.export.export(model, (inputs,), strict=True)
+    input_dtypes: list[torch.dtype] = []
+    model.lstm.register_forward_pre_hook(
+        lambda _module, inputs: input_dtypes.append(inputs[0].dtype)
+    )
+
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        model(inputs)
+
+    assert input_dtypes == [torch.float32]
+
+
 def _train_request(artifact_id: UUID = ARTIFACT_ID) -> TrainRequest:
     return TrainRequest(
         workflow="train",

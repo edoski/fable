@@ -995,10 +995,11 @@ real-artifact acceptance boundary.
 
 ### Execution runtime
 
-The internal installed-executable profile fixes BF16 mixed-precision fitting, fit batch size 64,
-and evaluation batch size 512; four persistent pinned-memory loader workers with prefetch factor
-2; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32 for operations
-that remain float32. Each fit calls `seed_everything(seed)` once. Lightning owns deterministic
+The internal installed-executable profile fits LSTMs in `32-true`, Transformers in BF16 mixed
+precision, and Transformer-LSTMs in BF16 with their recurrent layer in float32. It also fixes fit
+batch size 64 and evaluation batch size 512; four persistent pinned-memory loader workers with
+prefetch factor 2; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32
+for float32 operations. Each fit calls `seed_everything(seed)` once. Lightning owns deterministic
 setup through `Trainer(deterministic=True)` and norm clipping through the configured
 `gradient_clip_norm`; shuffled loading uses the seeded global Torch RNG. These are code facts, not
 request, schema, YAML, or public configuration surfaces.
