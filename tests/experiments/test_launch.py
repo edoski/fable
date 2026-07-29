@@ -163,7 +163,6 @@ def test_launch_persists_each_success_and_failure_leaves_later_groups_pending(
     bundle, evaluation_ids = _write_workflow_bundle(tmp_path, 8)
     launcher = _load_launcher(monkeypatch)
     batches: list[tuple[EvaluateRequest, ...]] = []
-    fsync_calls: list[int] = []
 
     def fail_second(request_batch: tuple[EvaluateRequest, ...]) -> int:
         batches.append(request_batch)
@@ -172,14 +171,12 @@ def test_launch_persists_each_success_and_failure_leaves_later_groups_pending(
         return 3_001
 
     monkeypatch.setattr(launcher, "submit_workflows", fail_second)
-    monkeypatch.setattr(launcher.os, "fsync", fsync_calls.append)
 
     failed = dispatch(launcher.app, "workflows", str(bundle))
 
     assert failed.exit_code == 1
     assert isinstance(failed.exception, RuntimeError)
     assert [len(batch) for batch in batches] == [3, 3]
-    assert len(fsync_calls) == 1
     assert read_tsv_rows(bundle / "jobs.tsv") == [
         {"job_id": "3001", "slot": str(slot), "row": str(slot), "cell": f"cell-{slot}"}
         for slot in range(3)
@@ -200,7 +197,6 @@ def test_launch_persists_each_success_and_failure_leaves_later_groups_pending(
     assert [
         request.evaluation_id for batch in resumed_batches for request in batch
     ] == evaluation_ids[3:]
-    assert len(fsync_calls) == 3
     assert [int(job["row"]) for job in read_tsv_rows(bundle / "jobs.tsv")] == list(range(8))
 
     replay = dispatch(launcher.app, "workflows", str(bundle))

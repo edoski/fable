@@ -7,7 +7,7 @@ import pytest
 
 from fable.config import TuneRequest
 from fable.experiments import ExperimentManifest
-from fable.study import RetainedResult, Study
+from tests.experiments.helpers import publish_generated_studies
 from tests.helpers import read_tsv_rows, run_script
 
 _ROOT = Path(__file__).parents[2]
@@ -112,28 +112,17 @@ def test_close_publishes_all_studies_and_report_averages_each_configuration(
     experiment_id = UUID(run_script(_SCRIPT, "prepare", tmp_path).stdout.strip())
     bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
     objectives = {
-        "ethereum": {"full": 1.0, "without_hour": 0.75},
-        "polygon": {"without_priority_fee_p90": 0.5},
-        "avalanche": {"base_only": 0.25},
+        f"{chain}.{family}.{configuration}": objective
+        for chain, configuration, objective in (
+            ("ethereum", "full", 1.0),
+            ("ethereum", "without_hour", 0.75),
+            ("polygon", "without_priority_fee_p90", 0.5),
+            ("avalanche", "base_only", 0.25),
+        )
+        for family in ("lstm", "transformer", "transformer_lstm")
     }
     rows = read_tsv_rows(bundle / "cells.tsv")
-    for row in rows:
-        chain, _, configuration = row["cell"].split(".")
-        request = TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
-        objective = objectives.get(chain, {}).get(configuration, 2.0)
-        study = Study(
-            request=request,
-            trials=(
-                RetainedResult(
-                    objective=objective,
-                    selected_epoch=1,
-                    completed_epochs=1,
-                ),
-            ),
-        )
-        path = tmp_path / "studies" / f"{request.study_id}.json"
-        path.parent.mkdir(exist_ok=True)
-        path.write_text(study.model_dump_json(), encoding="utf-8")
+    publish_generated_studies(tmp_path, rows, default_objective=2.0, objectives=objectives)
 
     result = run_script(_SCRIPT, "close", tmp_path, experiment_id)
 
