@@ -1,6 +1,6 @@
 # Lean cleanup implementation plan
 
-Status: active orchestration plan
+Status: completed
 
 Initial code baseline: `f08b707cb44dc06c6abe50a20b6b3fe1fe024496`
 
@@ -110,7 +110,7 @@ baseline and head SHAs, checks, findings, and status before proceeding.
 | 5 | App RPC and feature input path | GREEN LIGHT | `41216ba4` | `019fade1-2207-7490-bc92-05d28d465848` / `51b7a4d0` | `019fadec-9614-7882-a227-278c006c85e6` |
 | 6 | Mobile exporter | accepted; doc re-review waived | `9fb7d793` | `019fadf3-86fe-75f0-98b7-245a78957396` / `7b65b3af..ea1087c2` | `019fadf8-60c4-7361-88ab-a9b616a7daf6` |
 | 7 | Documentation truth pass | accepted; review waived | `e5a88fda` | `019fae02-f769-7181-a578-334c67bdad37` / `90fc2263` | user-waived |
-| 8 | Compact-CUDA parity | ready | pending | pending | pending |
+| 8 | Compact-CUDA parity | GREEN LIGHT | `main 541854cd`; `compact 8d8eb5dc` | `019fae08-c35b-7a22-af06-881100eb47fa` / `9e5432c8..88153cbd` | `019fae0f-bb0e-70c0-aea9-ed0b9c9b56b3` |
 
 Slice 1 review: Standards 0 findings; Spec 0 findings. Focused tests: 22 passed. Full Python
 suite: 117 passed. Ruff, Pyright, Vulture, and `git diff --check`: passed. The reviewer directly
@@ -156,6 +156,14 @@ unexplained `A01`, separated host parity from deferred device acceptance, and re
 to existing ADRs 0006 and 0007. Full Python suite: 125 passed. App tests: 32 passed. Exporter tests:
 11 passed. Ruff, Pyright, Vulture, typecheck, Expo Doctor 19/19, manual link inspection, and
 `git diff --check`: passed.
+
+Slice 8 review: final Standards 0 findings; final Spec 0 findings. The merge reconciliation retained
+every Slice 1–7 owner and left exactly eight permitted compact-residency files different from
+finished `main`. The first review found one P2 documentation reversal between integer dataset items
+and collated tensor batches. The same implementer corrected only that prose in `88153cbd`; the same
+reviewer inspected only the correction range and green-lit it. Full Python suite: 125 passed.
+Focused compact tests: 16 passed. Ruff, Pyright, Vulture, both scoped `git diff --check` commands,
+and a conflict-marker sweep passed. No CUDA experiment or Slurm/university operation ran.
 
 ## Slice 1 — Training core and tuning
 
