@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
 
 import typer
-from bundle import bundle_path, read_cells, write_cells
+from bundle import StorageRoot, bundle_path, close_study_bundle, write_cells
 
 from fable.config import (
     BlockWindow,
@@ -22,11 +21,8 @@ from fable.config import (
     TuneRequest,
 )
 from fable.experiments import (
-    ExperimentEntry,
     ExperimentKind,
-    ExperimentManifest,
     load_experiment_manifest,
-    write_experiment_manifest,
 )
 from fable.study import load_study
 
@@ -160,9 +156,8 @@ def _flatten_units(
     return tuple(features)
 
 
-def prepare(storage_root: Path) -> None:
+def prepare(storage_root: StorageRoot) -> None:
     experiment_id = uuid4()
-    storage_root = storage_root.resolve()
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
     requests.mkdir(parents=True)
@@ -199,28 +194,11 @@ def prepare(storage_root: Path) -> None:
     print(experiment_id)
 
 
-def close(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
-    bundle = bundle_path(storage_root, _KIND, experiment_id)
-    rows = read_cells(bundle)
-
-    entries: list[ExperimentEntry] = []
-    for row in rows:
-        study_id = UUID(row["study_id"])
-        load_study(storage_root, study_id)
-        entries.append(ExperimentEntry(cell=row["cell"], record_id=study_id))
-
-    write_experiment_manifest(
-        storage_root,
-        _KIND,
-        ExperimentManifest(experiment_id=experiment_id, entries=tuple(entries)),
-    )
-    shutil.rmtree(bundle)
-    print(experiment_id)
+def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
+    close_study_bundle(storage_root, _KIND, experiment_id)
 
 
-def report(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
+def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     objectives: dict[tuple[str, str], list[float]] = {}
     for entry in manifest.entries:

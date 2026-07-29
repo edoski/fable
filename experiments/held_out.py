@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 import polars as pl
 import typer
-from bundle import bundle_path, read_cells, write_cells
+from bundle import StorageRoot, bundle_path, read_cells, write_cells
 
 from fable.addresses import evaluation_directory
 from fable.config import BlockWindow, EvaluateRequest
@@ -28,12 +28,11 @@ _KIND = ExperimentKind.HELD_OUT
 
 
 def prepare(
-    storage_root: Path,
+    storage_root: StorageRoot,
     hpo_experiment_id: UUID,
     k_experiment_id: UUID,
 ) -> None:
     experiment_id = uuid4()
-    storage_root = storage_root.resolve()
     hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_experiment_id)
     studies = {entry.cell: load_study(storage_root, entry.record_id) for entry in hpo.entries}
@@ -68,8 +67,7 @@ def prepare(
     print(experiment_id)
 
 
-def close(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
+def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 
@@ -92,8 +90,7 @@ def close(storage_root: Path, experiment_id: UUID) -> None:
     print(experiment_id)
 
 
-def report(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
+def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     results = [
         pl.DataFrame({"cell": [entry.cell]}).hstack(
@@ -104,8 +101,7 @@ def report(storage_root: Path, experiment_id: UUID) -> None:
     print(pl.concat(results).write_csv(None, separator="\t"), end="")
 
 
-def baselines(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
+def baselines(storage_root: StorageRoot, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     results = []
     for entry in manifest.entries:
@@ -114,8 +110,7 @@ def baselines(storage_root: Path, experiment_id: UUID) -> None:
     print(pl.concat(results).write_csv(None, separator="\t"), end="")
 
 
-def rolling(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
+def rolling(storage_root: StorageRoot, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     roster: dict[str, dict[int, UUID]] = {}
     for entry in manifest.entries:

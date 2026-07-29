@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
+import pytest
+
 from fable.config import TuneRequest
 from fable.experiments import ExperimentManifest
 from fable.study import RetainedResult, Study
@@ -12,8 +14,12 @@ _ROOT = Path(__file__).parents[2]
 _SCRIPT = _ROOT / "experiments" / "feature_ablation.py"
 
 
-def test_prepare_authors_full_leave_one_out_and_base_only_matrix(tmp_path: Path) -> None:
-    result = run_script(_SCRIPT, "prepare", tmp_path)
+def test_prepare_authors_full_leave_one_out_and_base_only_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path.parent)
+    result = run_script(_SCRIPT, "prepare", tmp_path.name)
     experiment_id = UUID(result.stdout.strip())
 
     bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"

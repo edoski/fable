@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import typer
-from bundle import bundle_path, read_cells, write_cells
+from bundle import StorageRoot, bundle_path, read_cells, write_cells
 
 from fable.addresses import artifact_checkpoint_path
 from fable.config import SelectedStudySource, TrainRequest
@@ -24,9 +24,8 @@ _KIND = ExperimentKind.K_STUDY
 _HORIZONS = (2, 3, 4, 5, 10, 25, 50, 100, 200)
 
 
-def prepare(storage_root: Path, hpo_experiment_id: UUID) -> None:
+def prepare(storage_root: StorageRoot, hpo_experiment_id: UUID) -> None:
     experiment_id = uuid4()
-    storage_root = storage_root.resolve()
     manifest = load_experiment_manifest(
         storage_root,
         ExperimentKind.HPO,
@@ -61,8 +60,7 @@ def prepare(storage_root: Path, hpo_experiment_id: UUID) -> None:
     print(experiment_id)
 
 
-def close(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
+def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 

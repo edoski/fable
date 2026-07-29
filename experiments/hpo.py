@@ -9,7 +9,7 @@ from statistics import fmean
 from uuid import UUID, uuid4
 
 import typer
-from bundle import bundle_path, read_cells, write_cells
+from bundle import StorageRoot, bundle_path, read_cells, write_cells
 
 from fable.config import (
     FitMethod,
@@ -164,9 +164,8 @@ def _selected_context_studies(
     return selected, tuple(winners)
 
 
-def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
+def prepare(storage_root: StorageRoot, c_experiment_id: UUID) -> None:
     experiment_id = uuid4()
-    storage_root = storage_root.resolve()
     selected, context_winners = _selected_context_studies(storage_root, c_experiment_id)
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
@@ -206,8 +205,7 @@ def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
     print(experiment_id)
 
 
-def select(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
+def select(storage_root: StorageRoot, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 
