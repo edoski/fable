@@ -1,6 +1,6 @@
 # Lean cleanup implementation ledger
 
-Status: active
+Status: main green; CUDA propagation pending
 
 ## Run constraints
 
@@ -26,7 +26,7 @@ Status: active
 | Slice 4 — Operator edge | `c23cf37` | `8e1378d` | `/root/slice4_impl` | `/root/slice4_review` | 0 | GREEN |
 | Slice 5 — Python tests | `b36532f` | `d992476` | `/root/slice5_impl` | `/root/slice5_review` | 0 | GREEN |
 | Slice 6 — Demo app | `5912e44` | `2fcbd7b` | `/root/slice6_impl` | `/root/slice6_review` | 0 | GREEN |
-| Slice 7 — Temporal | pending | pending | pending | pending | pending | pending |
+| Slice 7 — Temporal | `b90eac1` | `69e6b0b` | `/root/slice7_impl` | `/root/slice7_review` | 0 | GREEN |
 | CUDA branch propagation | pending | pending | pending | pending | pending | pending |
 
 ## Decisions
@@ -108,3 +108,27 @@ checks.
 - Orchestrator check: focused App tests, 2 passed.
 - Combined Slices 5–6 integration gate: full pytest 124 passed; app tests 32 passed; app
   typecheck passed.
+
+### Slice 7 — Temporal
+
+- Implementation branch commit: `ab28f6ed6f8beabcef051d22c2aaa8172fbe7aae`.
+- Integrated `main` commit: `69e6b0bb9e9df189b890066e9b5bdf48fffc3ac6`.
+- Implementer checks: focused pytest 25 passed; full pytest 124 passed; Ruff, Pyright, and Vulture
+  passed.
+- Reviewer: Standards 0 findings; Spec 0 findings; `GREEN LIGHT`.
+- Orchestrator check: temporal history tests, 6 passed.
+- Existing tests already owned dataset length, batch contents, ordering, and collation; no
+  transition or deleted-field test was added.
+
+## Main integrated gate
+
+- Head: `69e6b0bb9e9df189b890066e9b5bdf48fffc3ac6`.
+- Python: 124 tests passed.
+- Ruff: passed.
+- Pyright: passed.
+- Vulture: no findings.
+- App: 32 tests passed.
+- App typecheck: passed.
+- Removed-concept search: no live code, test, app, FABLE-doc, or ADR references.
+- External execution: no experiments, GPU work, Slurm submission, remote mutation, queued-work
+  mutation, or university-checkout update.
