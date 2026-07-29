@@ -59,7 +59,6 @@ def prepare(
         for family in _FAMILIES:
             source = selected[chain, family]
             method = source.request.methods[0]
-            method_index = 0
             for context in _CONTEXTS:
                 request = fresh_tune_request(
                     source.request.corpus_id,
@@ -72,7 +71,7 @@ def prepare(
                     (
                         f"{chain}.{family}.C{context}",
                         request_path,
-                        method_index,
+                        0,
                         request.study_id,
                     )
                 )

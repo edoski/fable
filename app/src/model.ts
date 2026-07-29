@@ -9,6 +9,7 @@ import type {
 } from "react-native-executorch";
 import { ExpoResourceFetcher } from "react-native-executorch-expo-resource-fetcher";
 
+import { abortError } from "./abort";
 import type { ChainManifest } from "./features";
 import type { Chain, Horizon } from "./domain";
 import { createSerialQueue } from "./serialQueue";
@@ -300,10 +301,4 @@ function readFloatTensor(
     }
   }
   return new Float32Array(values);
-}
-
-function abortError(message: string): Error {
-  const error = new Error(message);
-  error.name = "AbortError";
-  return error;
 }

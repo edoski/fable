@@ -35,31 +35,17 @@ export function runsForSelection(
 }
 
 export function summarizeRuns(runs: readonly InferenceRun[]): RunSummary {
-  let averageWait = 0;
-  let averageSavings = 0;
-  let realizedCount = 0;
-  let waitedCount = 0;
-  let winCount = 0;
-
-  for (const [index, run] of runs.entries()) {
-    averageWait += (run.selected_action_k - averageWait) / (index + 1);
+  const realized = runs.flatMap((run) => {
     const savings = realizedSavingsPercent(run);
-    if (savings === null) {
-      continue;
-    }
-    realizedCount += 1;
-    averageSavings += (savings - averageSavings) / realizedCount;
-    if (run.selected_action_k !== 0) {
-      waitedCount += 1;
-      winCount += Number(savings > 0);
-    }
-  }
+    return savings === null ? [] : [[run.selected_action_k, savings] as const];
+  });
+  const waited = realized.filter(([action]) => action !== 0);
+  const winFraction = mean(waited.map(([, savings]) => Number(savings > 0)));
 
   return {
-    averageWait: runs.length === 0 ? null : averageWait,
-    averageSavingsPercent:
-      realizedCount === 0 ? null : averageSavings,
-    winPercent: waitedCount === 0 ? null : (winCount / waitedCount) * 100,
+    averageWait: mean(runs.map((run) => run.selected_action_k)),
+    averageSavingsPercent: mean(realized.map(([, savings]) => savings)),
+    winPercent: winFraction === null ? null : winFraction * 100,
   };
 }
 

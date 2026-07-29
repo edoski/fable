@@ -150,9 +150,6 @@ def _render_allocation_script(
     process_inputs_json: tuple[str, ...],
     leaf: Literal["workflow", "candidate"],
 ) -> str:
-    if not 1 <= len(process_inputs_json) <= MAX_PACKED_PROCESS_COUNT:
-        raise ValueError("an allocation requires one to three process inputs")
-
     resources = remote.resources
     task_count = len(process_inputs_json)
     lines = [

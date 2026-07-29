@@ -21,7 +21,6 @@ from torch import nn
 from . import _runtime
 from .addresses import artifact_checkpoint_path
 from .config import (
-    ExperimentSemantics,
     LstmDefinition,
     Method,
     TrainingDefinition,
@@ -527,14 +526,6 @@ def _publish_artifact(
         pass
 
 
-def _load_fit_history(
-    storage_root: Path,
-    corpus_id: UUID,
-    experiment: ExperimentSemantics,
-) -> HistoricalPreparation:
-    return prepare_fit_history(load_corpus(storage_root, corpus_id), experiment)
-
-
 def train(
     request: TrainRequest,
     storage_root: Path,
@@ -545,7 +536,10 @@ def train(
         raise FileExistsError(canonical)
 
     method = load_selected_method(storage_root, source)
-    prepared = _load_fit_history(storage_root, source.corpus_id, source.experiment)
+    prepared = prepare_fit_history(
+        load_corpus(storage_root, source.corpus_id),
+        source.experiment,
+    )
     association = ArtifactAssociation(
         request=request,
         feature_state=prepared.feature_state,
@@ -564,7 +558,10 @@ def fit_candidate(
     storage_root: Path,
     candidate_scratch: Path,
 ) -> RetainedResult:
-    prepared = _load_fit_history(storage_root, request.corpus_id, request.experiment)
+    prepared = prepare_fit_history(
+        load_corpus(storage_root, request.corpus_id),
+        request.experiment,
+    )
     association = _CandidateAssociation(
         request=request,
         method_index=method_index,

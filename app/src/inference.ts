@@ -1,3 +1,4 @@
+import { abortError } from "./abort";
 import { buildModelInput } from "./features";
 import type { Chain, Horizon } from "./domain";
 import { createDefaultModelCatalog, createModelRuntime } from "./model";
@@ -274,12 +275,6 @@ function safeBigInt(value: bigint, label: string): number {
     throw new Error(`${label} exceeds the safe integer range`);
   }
   return Number(value);
-}
-
-function abortError(message: string): Error {
-  const error = new Error(message);
-  error.name = "AbortError";
-  return error;
 }
 
 async function attempt<T>(

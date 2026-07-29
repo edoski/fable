@@ -2,6 +2,7 @@ import { createPublicClient, http } from "viem";
 import type { Hash, Transport } from "viem";
 import { avalanche, mainnet, polygon } from "viem/chains";
 
+import { abortError } from "./abort";
 import type { Chain } from "./domain";
 import {
   INTERVAL_FEATURE,
@@ -96,7 +97,7 @@ export function createChainSession(
   const serializeSync = createSerialQueue();
 
   function requireActive(): void {
-    if (disposed) throw abortError();
+    if (disposed) throw abortError("Chain session is disposed");
   }
 
   async function verifyChain(): Promise<void> {
@@ -397,10 +398,4 @@ function requireBigInt(
     throw new Error(`RPC returned block ${blockNumber} without ${name}`);
   }
   return value;
-}
-
-function abortError(): Error {
-  const error = new Error("Chain session is disposed");
-  error.name = "AbortError";
-  return error;
 }
