@@ -37,9 +37,7 @@ def prepare(
     storage_root = storage_root.resolve()
     hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_experiment_id)
-    studies = {
-        entry.cell: load_study(storage_root, entry.record_id) for entry in hpo.entries
-    }
+    studies = {entry.cell: load_study(storage_root, entry.record_id) for entry in hpo.entries}
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
     requests.mkdir(parents=True)
@@ -113,9 +111,7 @@ def baselines(storage_root: Path, experiment_id: UUID) -> None:
     results = []
     for entry in manifest.entries:
         result = reduce_baselines(storage_root, entry.record_id)
-        results.append(
-            pl.DataFrame({"cell": [entry.cell] * result.height}).hstack(result)
-        )
+        results.append(pl.DataFrame({"cell": [entry.cell] * result.height}).hstack(result))
     print(pl.concat(results).write_csv(None, separator="\t"), end="")
 
 

@@ -1,12 +1,9 @@
 """Fixed runtime profile owned by the installed executable."""
 
-from typing import Literal
-
 import torch
 
 FIT_BATCH_SIZE = 64
 EVALUATION_BATCH_SIZE = 512
-FIT_PRECISION: Literal["bf16-mixed"] = "bf16-mixed"
 
 FLOAT32_MATMUL_PRECISION = "high"
 CUDA_MATMUL_ALLOW_TF32 = True

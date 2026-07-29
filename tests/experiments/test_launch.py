@@ -72,9 +72,7 @@ def test_candidates_submit_typed_inputs_and_restart_skips_recorded_rows(
     assert result.output.splitlines() == [str(job_id) for job_id in range(1_001, 1_035)]
     assert [len(batch) for batch in batches] == [3] * 34
     assert all(
-        isinstance(candidate, CandidateProcessInput)
-        for batch in batches
-        for candidate in batch
+        isinstance(candidate, CandidateProcessInput) for batch in batches for candidate in batch
     )
     jobs = read_tsv_rows(bundle / "jobs.tsv")
     assert len(jobs) == 102

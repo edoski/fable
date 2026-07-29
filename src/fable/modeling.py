@@ -260,7 +260,9 @@ class _TransformerLstmModel(_TransformerBackbone):
         )
 
     def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
-        sequence, _ = self.lstm(self._encode(inputs))
+        encoded = self._encode(inputs)
+        with torch.autocast(encoded.device.type, enabled=False):
+            sequence, _ = self.lstm(encoded.float())
         return self.heads(sequence[:, -1])
 
 
@@ -429,6 +431,12 @@ def _callbacks(
     return early_stopping, best, last
 
 
+def _fit_precision(
+    family: Literal["lstm", "transformer", "transformer_lstm"],
+) -> Literal["32-true", "bf16-mixed"]:
+    return "32-true" if family == "lstm" else "bf16-mixed"
+
+
 def _fit(
     association: _Association,
     prepared: HistoricalPreparation,
@@ -445,7 +453,7 @@ def _fit(
     trainer = pl.Trainer(
         accelerator="gpu",
         devices=1,
-        precision=_runtime.FIT_PRECISION,
+        precision=_fit_precision(definition.method.model.family),
         max_epochs=fit.max_epochs,
         check_val_every_n_epoch=fit.validate_every_completed_epoch,
         accumulate_grad_batches=fit.accumulation,

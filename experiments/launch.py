@@ -111,10 +111,7 @@ def _load_submitted_rows(jobs_path: Path) -> set[int]:
         return set()
 
     with jobs_path.open(newline="", encoding="utf-8") as source:
-        return {
-            int(job["row"])
-            for job in csv.DictReader(source, delimiter="\t")
-        }
+        return {int(job["row"]) for job in csv.DictReader(source, delimiter="\t")}
 
 
 app = typer.Typer(add_completion=False)
