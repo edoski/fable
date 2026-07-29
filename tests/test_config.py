@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 import pytest
@@ -9,10 +10,13 @@ from fable.config import (
     WORKFLOW_REQUEST_ADAPTER,
     BlockWindow,
     CorpusDefinition,
+    EvaluateRequest,
     ExperimentSemantics,
     FitMethod,
     LstmDefinition,
     Method,
+    SelectedStudySource,
+    TrainRequest,
     TransformerDefinition,
     TuneRequest,
 )
@@ -167,3 +171,38 @@ def test_domain_contract_rejects_invalid_values(
 def test_workflow_request_rejects_tune_json() -> None:
     with pytest.raises(ValidationError, match="tune"):
         WORKFLOW_REQUEST_ADAPTER.validate_json('{"workflow":"tune"}')
+
+
+def test_request_defaults_mint_and_persist_destination_identity() -> None:
+    experiment = _experiment()
+    train = TrainRequest(
+        source=SelectedStudySource(
+            corpus_id=CORPUS_ID,
+            study_id=STUDY_ID,
+            study_result_index=0,
+            experiment=experiment,
+        )
+    )
+    tune = TuneRequest(
+        corpus_id=CORPUS_ID,
+        experiment=experiment,
+        methods=(_method(),),
+    )
+    evaluate = EvaluateRequest(
+        artifact_id=train.artifact_id,
+        corpus_id=CORPUS_ID,
+        testing_window=_window(),
+    )
+
+    for request, destination_field in (
+        (train, "artifact_id"),
+        (tune, "study_id"),
+        (evaluate, "evaluation_id"),
+    ):
+        serialized = request.model_dump_json()
+        payload = json.loads(serialized)
+
+        assert payload["workflow"] == request.workflow
+        assert payload[destination_field] == str(getattr(request, destination_field))
+        assert getattr(request, destination_field).version == 4
+        assert type(request).model_validate_json(serialized, strict=True) == request

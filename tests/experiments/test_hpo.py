@@ -101,6 +101,8 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
     assert [row["cell"] for row in rows[:9]] == ["ethereum.lstm"] * 9
     assert [row["method_index"] for row in rows[:9]] == [str(index) for index in range(9)]
     assert rows[-1]["cell"] == "avalanche.transformer_lstm"
+    assert len({request.study_id for request in requests.values()}) == 9
+    assert {request.study_id.version for request in requests.values()} == {4}
     assert {len(request.methods) for request in requests.values()} == {9}
     assert {
         chain: {

@@ -11,7 +11,7 @@ import typer
 from bundle import bundle_path, read_cells, write_cells
 
 from fable.addresses import evaluation_directory
-from fable.config import BlockWindow
+from fable.config import BlockWindow, EvaluateRequest
 from fable.corpus import load_corpus_request
 from fable.evaluation import reduce_baselines, reduce_evaluation, reduce_rolling
 from fable.experiments import (
@@ -21,7 +21,6 @@ from fable.experiments import (
     load_experiment_manifest,
     write_experiment_manifest,
 )
-from fable.requests import fresh_evaluate_request
 from fable.study import load_study
 
 _MAX_HORIZON = 200
@@ -52,10 +51,10 @@ def prepare(
         corpus_request = load_corpus_request(storage_root, study.request.corpus_id)
         first_parent = validation_end + _MAX_HORIZON + 1
         last_parent = corpus_request.definition.last_block - _MAX_HORIZON + max(0, 5 - horizon)
-        request = fresh_evaluate_request(
-            artifact_id,
-            study.request.corpus_id,
-            BlockWindow(
+        request = EvaluateRequest(
+            artifact_id=artifact_id,
+            corpus_id=study.request.corpus_id,
+            testing_window=BlockWindow(
                 first_parent_block=first_parent,
                 last_parent_block=last_parent,
             ),

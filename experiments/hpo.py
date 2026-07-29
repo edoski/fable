@@ -18,6 +18,7 @@ from fable.config import (
     ModelDefinition,
     TransformerDefinition,
     TransformerLstmDefinition,
+    TuneRequest,
 )
 from fable.experiments import (
     ExperimentEntry,
@@ -26,7 +27,6 @@ from fable.experiments import (
     load_experiment_manifest,
     write_experiment_manifest,
 )
-from fable.requests import fresh_tune_request
 from fable.study import Study, load_study
 
 _KIND = ExperimentKind.HPO
@@ -177,10 +177,10 @@ def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
     rows: list[tuple[str, Path, int, UUID]] = []
     for index, (chain, family) in enumerate(product(_CHAINS, _FAMILIES)):
         source = selected[chain, family]
-        request = fresh_tune_request(
-            source.request.corpus_id,
-            source.request.experiment,
-            methods_by_family[family],
+        request = TuneRequest(
+            corpus_id=source.request.corpus_id,
+            experiment=source.request.experiment,
+            methods=methods_by_family[family],
         )
         request_path = requests / f"{index}.json"
         request_path.write_text(request.model_dump_json(), encoding="utf-8")

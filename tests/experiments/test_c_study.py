@@ -73,6 +73,8 @@ def test_context_study_uses_full_features_and_publishes_all_studies(
         "ethereum.lstm.C400",
     ]
     assert rows[-1]["cell"] == "avalanche.transformer_lstm.C400"
+    assert len({request.study_id for request in requests}) == 45
+    assert {request.study_id.version for request in requests} == {4}
     assert {row["method_index"] for row in rows} == {"0"}
     assert [request.experiment.context_blocks for request in requests[:5]] == [
         25,

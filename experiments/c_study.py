@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import typer
 from bundle import bundle_path, read_cells, write_cells
 
+from fable.config import TuneRequest
 from fable.experiments import (
     ExperimentEntry,
     ExperimentKind,
@@ -16,7 +17,6 @@ from fable.experiments import (
     load_experiment_manifest,
     write_experiment_manifest,
 )
-from fable.requests import fresh_tune_request
 from fable.study import Study, load_study
 
 _KIND = ExperimentKind.C_STUDY
@@ -59,10 +59,12 @@ def prepare(
             source = selected[chain, family]
             method = source.request.methods[0]
             for context in _CONTEXTS:
-                request = fresh_tune_request(
-                    source.request.corpus_id,
-                    source.request.experiment.model_copy(update={"context_blocks": context}),
-                    (method,),
+                request = TuneRequest(
+                    corpus_id=source.request.corpus_id,
+                    experiment=source.request.experiment.model_copy(
+                        update={"context_blocks": context}
+                    ),
+                    methods=(method,),
                 )
                 request_path = requests / f"{len(rows):02d}.json"
                 request_path.write_text(request.model_dump_json(), encoding="utf-8")

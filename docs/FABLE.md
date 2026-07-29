@@ -33,7 +33,7 @@ strict workflow request --> CLI or direct Python call
 transient observation-derived reductions
 ```
 
-`fable.config` owns frozen Pydantic values and small discriminated unions. `fable.requests` mints fresh UUIDv4 instances. Raw JSON and durable bytes are strictly hydrated once at their owning boundary; downstream code trusts those typed values and their already-typed nested values.
+`fable.config` owns frozen Pydantic values, small discriminated unions, and fresh request construction through model defaults. Raw JSON and durable bytes are strictly hydrated once at their owning boundary; downstream code trusts those typed values and their already-typed nested values.
 
 ### Dependency direction
 
@@ -754,23 +754,7 @@ Every serialized `Method` has ordered fields `model: ModelDefinition` and `fit: 
 
 `WorkflowRequest` is exactly `TrainRequest | EvaluateRequest`. `TuneRequest` is intentionally separate.
 
-Fresh constructors:
-
-```python
-fresh_train_request(source: SelectedStudySource) -> TrainRequest
-fresh_tune_request(
-    corpus_id: UUID,
-    experiment: ExperimentSemantics,
-    methods: tuple[Method, ...],
-) -> TuneRequest
-fresh_evaluate_request(
-    artifact_id: UUID,
-    corpus_id: UUID,
-    testing_window: BlockWindow,
-) -> EvaluateRequest
-```
-
-`fresh_tune_request()` is the UUIDv4 origin for publishable TuneRequests; experiment runners call it rather than accepting operator-supplied Study IDs.
+Direct construction defaults each workflow discriminator and mints the destination artifact, Study, or evaluation UUIDv4 when omitted. Source and association IDs remain required.
 
 ### Durable addresses and objects
 
@@ -916,7 +900,7 @@ fable study finalize STUDY_ID
 
 - `submit` accepts one or more WorkflowRequest files and prints one positive Slurm job ID per request.
 - `study run` validates one strict TuneRequest and a zero-based Method index, then prints the candidate Slurm job ID.
-- `study finalize` accepts standard UUID syntax, reads absolute `STORAGE_ROOT`, and publishes existing indexed results. The result files' strict TuneRequest must carry the same Study ID, and publishable TuneRequests originate from `fresh_tune_request()` as UUIDv4.
+- `study finalize` accepts standard UUID syntax, reads absolute `STORAGE_ROOT`, and publishes existing indexed results. The result files' strict TuneRequest must carry the same Study ID, and direct TuneRequest construction mints publishable Study IDs as UUIDv4.
 
 Two help-hidden generated-job leaves:
 

@@ -10,7 +10,7 @@ import typer
 from bundle import bundle_path, read_cells, write_cells
 
 from fable.addresses import artifact_checkpoint_path
-from fable.config import SelectedStudySource
+from fable.config import SelectedStudySource, TrainRequest
 from fable.experiments import (
     ExperimentEntry,
     ExperimentKind,
@@ -18,7 +18,6 @@ from fable.experiments import (
     load_experiment_manifest,
     write_experiment_manifest,
 )
-from fable.requests import fresh_train_request
 from fable.study import load_study
 
 _KIND = ExperimentKind.K_STUDY
@@ -43,8 +42,8 @@ def prepare(storage_root: Path, hpo_experiment_id: UUID) -> None:
         study = load_study(storage_root, study_id)
         selected_index, _ = study.best_result()
         for horizon in _HORIZONS:
-            request = fresh_train_request(
-                SelectedStudySource(
+            request = TrainRequest(
+                source=SelectedStudySource(
                     corpus_id=study.request.corpus_id,
                     study_id=study_id,
                     study_result_index=selected_index,

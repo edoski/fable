@@ -19,6 +19,7 @@ from fable.config import (
     Method,
     TransformerDefinition,
     TransformerLstmDefinition,
+    TuneRequest,
 )
 from fable.experiments import (
     ExperimentEntry,
@@ -27,7 +28,6 @@ from fable.experiments import (
     load_experiment_manifest,
     write_experiment_manifest,
 )
-from fable.requests import fresh_tune_request
 from fable.study import load_study
 
 _KIND = ExperimentKind.FEATURE_ABLATION
@@ -172,16 +172,16 @@ def prepare(storage_root: Path) -> None:
         for method in _METHODS:
             family = method.model.family
             for configuration, ordered_features in _feature_configurations(chain):
-                request = fresh_tune_request(
-                    corpus_id,
-                    ExperimentSemantics(
+                request = TuneRequest(
+                    corpus_id=corpus_id,
+                    experiment=ExperimentSemantics(
                         training_window=training_window,
                         validation_window=validation_window,
                         context_blocks=100,
                         horizon_blocks=5,
                         ordered_features=ordered_features,
                     ),
-                    (method,),
+                    methods=(method,),
                 )
                 path = requests / f"{len(rows):03d}.json"
                 path.write_text(request.model_dump_json(), encoding="utf-8")
