@@ -98,7 +98,7 @@ function engine(): EngineHarness {
   let publish = (_snapshot: ChainSnapshot) => undefined;
   const run = deferred<InferenceResult>();
   const value: InferenceEngine = {
-    startPolling: vi.fn((onSnapshot) => {
+    watchBlocks: vi.fn((onSnapshot) => {
       publish = onSnapshot;
     }),
     run: vi.fn(() => run.promise),

@@ -14,7 +14,7 @@ import {
   createInferenceEngine,
   type InferenceEngineDependencies,
 } from "../src/inference";
-import type { Horizon } from "../src/domain";
+import type { BlockRow, Horizon } from "../src/domain";
 import type {
   MobileChainManifest,
   ModelCatalog,
@@ -24,7 +24,6 @@ import type {
   ModelSelection,
 } from "../src/model";
 import type {
-  BlockRow,
   ChainOutcome,
   ChainSession,
   PreparedChainContext,
@@ -118,7 +117,7 @@ function session(
         selectedBaseFeePerGas: 18n,
       }),
     ),
-    startPolling: vi.fn(() => () => undefined),
+    watchBlocks: vi.fn(),
     dispose: vi.fn(),
   };
 }

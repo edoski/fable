@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Hash } from "viem";
 
+import type { BlockRow } from "../src/domain";
 import { buildModelInput } from "../src/features";
 import type { ChainManifest, FeatureName } from "../src/features";
-import type { BlockRow } from "../src/rpc";
 import fixture from "./fixtures/features.json";
 
 function fixtureBlocks(): BlockRow[] {
@@ -79,22 +79,18 @@ describe("buildModelInput", () => {
     });
   });
 
-  it("accepts same-second blocks as a zero interval", () => {
-    const blocks = fixtureBlocks();
-    blocks[2] = { ...blocks[2], timestamp: blocks[1].timestamp };
-
-    expect(
-      buildModelInput(blocks.slice(1, 3), null, {
+  it("rejects nonfinite final float32 features", () => {
+    expect(() =>
+      buildModelInput(fixtureBlocks().slice(1, 2), null, {
         context_blocks: 1,
         features: [
           {
-            name: "block_interval_seconds",
+            name: "log_base_fee_per_gas",
             mean: 0,
-            standard_deviation: 1,
+            standard_deviation: 0,
           },
         ],
       }),
-    ).toEqual(new Float32Array([0]));
+    ).toThrow("Model input must contain finite float32 values");
   });
-
 });

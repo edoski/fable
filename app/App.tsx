@@ -151,7 +151,7 @@ export default function App() {
       setRpcStatus(status);
       if (status === "offline") setSnapshot(null);
     };
-    engine.startPolling(
+    engine.watchBlocks(
       (nextSnapshot) => {
         if (activeEngine.current !== current) return;
         onStatus("live");

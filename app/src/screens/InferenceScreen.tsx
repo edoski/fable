@@ -14,7 +14,7 @@ import { HorizonSlider } from "../components/HorizonSlider";
 import { NetworkIcon } from "../components/NetworkIcon";
 import {
   CHAINS,
-  CHAIN_DETAILS,
+  CHAIN_LABELS,
   type Chain,
   type Horizon,
 } from "../domain";
@@ -55,7 +55,7 @@ function NetworkChoices({
     <View style={styles.networkRow}>
       {CHAINS.map((choice) => {
         const active = choice === chain;
-        const details = CHAIN_DETAILS[choice];
+        const label = CHAIN_LABELS[choice];
         return (
           <Pressable
             accessibilityRole="radio"
@@ -79,7 +79,7 @@ function NetworkChoices({
             )}
             <NetworkIcon chain={choice} />
             <Text numberOfLines={1} style={styles.networkLabel}>
-              {details.label}
+              {label}
             </Text>
           </Pressable>
         );
@@ -363,7 +363,7 @@ function Result({
 
       <View style={[styles.surface, styles.detailsCard]}>
         <Text style={styles.detailsTitle}>Technical details</Text>
-        <DetailRow label="Network" value={CHAIN_DETAILS[result.chain].label} />
+        <DetailRow label="Network" value={CHAIN_LABELS[result.chain]} />
         <DetailRow label="Horizon" value={`${result.K} blocks`} />
         <DetailRow
           label="Action offset"

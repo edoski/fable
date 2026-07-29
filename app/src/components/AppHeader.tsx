@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { CHAIN_DETAILS, type Chain } from "../domain";
+import { CHAIN_LABELS, type Chain } from "../domain";
 import { colors } from "../theme";
 
 export type RpcStatus = "checking" | "live" | "offline";
@@ -19,12 +19,12 @@ export function AppHeader({
   status: RpcStatus;
 }) {
   const presentation = STATUS[status];
-  const network = CHAIN_DETAILS[chain];
+  const network = CHAIN_LABELS[chain];
   return (
     <View style={styles.header}>
       <Text style={styles.brand}>FABLE</Text>
       <View
-        accessibilityLabel={`${network.label} RPC ${presentation.label.toLowerCase()}`}
+        accessibilityLabel={`${network} RPC ${presentation.label.toLowerCase()}`}
         accessibilityRole="text"
         style={styles.status}
       >

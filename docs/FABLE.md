@@ -239,9 +239,9 @@ Reduction uses this row directly. Base-fee savings is `(25.5-20.0)/25.5 ≈ 0.21
 
 The exported manifest and model fix chain association, `C`, `K`, ordered features, feature state,
 target state, model definition, and weights. Selection remains idle. On Run, the app reads a fresh
-latest closed head, synchronizes the exact context, creates `[1,C,F]`, loads or reuses the bundled
-model, validates both native outputs, and decodes the action in the same way. The first Run accepts
-model-load and RPC latency.
+latest closed head and exact `C`-block range, adding only the predecessor required by interval
+features. It creates `[1,C,F]`, loads or reuses the bundled model, validates both native outputs,
+and decodes the action in the same way. The first Run accepts model-load and RPC latency.
 
 Continuing the teaching values, the app result shape is:
 
@@ -553,7 +553,7 @@ slices one `[C,F]` input and `[K]` outcome on demand.
 
 The ordered feature tuple is request authority. Raw features are assembled in that order as Float64; training-support population state uses `ddof=0`, rejects constants, and transforms to finite C-contiguous float32. Outcomes remain positive int64 `B_i(k)` values. The [scientific contract](#causal-features) owns formulas, causality, target construction, and complete-outcome role boundaries.
 
-For live inference, the app reads one closed head, synchronizes the exact context, reproduces the historical feature transform, and constructs float32 `[1,C,F]`; `block_interval_seconds` requires `C+1` raw blocks. The bundled cell fixes `C`, `K`, feature order, and fitted states. Decode returns target block `h_i+1+hat{k}_i` and positive finite `u * exp(hat{ell}_i)`. Historical preparation remains the parity authority; [Mobile deployment](#mobile-deployment) owns the build-time boundary.
+For live inference, each Run reads one closed head and one fresh exact context, reproduces the historical feature transform, and constructs float32 `[1,C,F]`; `block_interval_seconds` requires `C+1` raw blocks. The bundled cell fixes `C`, `K`, feature order, and fitted states. Decode returns target block `h_i+1+hat{k}_i` and positive finite `u * exp(hat{ell}_i)`. Historical preparation remains the parity authority; [Mobile deployment](#mobile-deployment) owns the build-time boundary.
 
 ### Minimum-block-fee task
 
@@ -985,7 +985,7 @@ app/assets/models/
 
 The manifest owns shared context and feature state plus each model's artifact UUID and target state. The app trusts this build-time bundle through typed direct lookups and twelve static `.pte` requires. It has no download, alternate runtime, or remote inference fallback.
 
-Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares the exact closed-head context, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. App's one engine-and-selection identity gate protects visible results and history commits. The model runtime serializes native load, forward, replacement, and disposal; the history queue serializes persistence and outcome retries. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call supplies both features. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
+Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; session disposal unwatches without aborting in-flight reads. App's one engine-and-selection identity gate protects visible results and history commits. The model runtime serializes native load, forward, replacement, and disposal; the history queue serializes persistence and outcome retries. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call supplies both features and must begin at the first context block. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
 
 The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real `MOBILE.yaml`, generated assets, and native parity evidence do not yet exist. Exporter retirement and final acceptance remain deferred to A01. The [README](../README.md#mobile-demo) owns build commands; the [on-device decision](research/on-device-inference.md) owns rationale and acceptance boundaries.
 

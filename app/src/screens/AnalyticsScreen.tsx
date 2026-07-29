@@ -22,7 +22,7 @@ import {
 import { DetailRow } from "../components/DetailRow";
 import { HorizonSlider } from "../components/HorizonSlider";
 import { NetworkIcon } from "../components/NetworkIcon";
-import { CHAINS, CHAIN_DETAILS, type Chain, type Horizon } from "../domain";
+import { CHAINS, CHAIN_LABELS, type Chain, type Horizon } from "../domain";
 import type { InferenceRun } from "../history";
 import { styles } from "../styles";
 import { colors, radii } from "../theme";
@@ -322,7 +322,7 @@ function NetworkPicker({
                       active && styles.networkOptionTextActive,
                     ]}
                   >
-                    {CHAIN_DETAILS[chain].label}
+                    {CHAIN_LABELS[chain]}
                   </Text>
                 </Pressable>
               );
@@ -373,7 +373,7 @@ function RunDetails({
             <View style={styles.selectionItem}>
               <Text style={styles.detailLabel}>Network</Text>
               <Text style={styles.detailStrong}>
-                {CHAIN_DETAILS[run.chain].label}
+                {CHAIN_LABELS[run.chain]}
               </Text>
             </View>
             <View style={styles.selectionItem}>
@@ -482,7 +482,7 @@ export function AnalyticsScreen({
           >
             <NetworkIcon chain={chain} size={14} />
             <Text style={styles.networkBadgeText}>
-              {CHAIN_DETAILS[chain].label}
+              {CHAIN_LABELS[chain]}
             </Text>
             <Ionicons color={colors.blue} name="chevron-down" size={14} />
           </Pressable>

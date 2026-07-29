@@ -1,5 +1,5 @@
 import { buildModelInput } from "./features";
-import type { Chain, Horizon } from "./domain";
+import type { BlockRow, Chain, Horizon } from "./domain";
 import { createDefaultModelCatalog, createModelRuntime } from "./model";
 import type {
   ModelCatalog,
@@ -8,7 +8,7 @@ import type {
   ModelSelection,
 } from "./model";
 import { createChainSession } from "./rpc";
-import type { BlockRow, ChainSession } from "./rpc";
+import type { ChainSession } from "./rpc";
 
 export type InferenceResult = {
   chain: Chain;
@@ -32,7 +32,7 @@ export type InferenceOutcome = {
 };
 
 export type InferenceEngine = {
-  startPolling(
+  watchBlocks(
     onSnapshot: (snapshot: ChainSnapshot) => void,
     onError?: (error: unknown) => void,
   ): void;
@@ -98,11 +98,11 @@ export function createInferenceEngine(
     );
   }
 
-  function startPolling(
+  function watchBlocks(
     onSnapshot: (snapshot: ChainSnapshot) => void,
     onError?: (error: unknown) => void,
   ): void {
-    session.startPolling((block) => {
+    session.watchBlocks((block) => {
       onSnapshot({
         head_block: safeBigInt(block.number, "head block"),
         current_base_fee_per_gas: safeBigInt(
@@ -147,7 +147,7 @@ export function createInferenceEngine(
   }
 
   return {
-    startPolling,
+    watchBlocks,
     run,
     resolveOutcome,
     dispose,
