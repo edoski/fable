@@ -189,7 +189,6 @@ class HistoricalDataset(Dataset[_HistoricalItem]):
         self,
         backing: _HistoricalBacking,
         first_origin_row: int,
-        sample_count: int,
         labels: _IntVector,
         targets: NDArray[np.float32],
         *,
@@ -198,14 +197,13 @@ class HistoricalDataset(Dataset[_HistoricalItem]):
     ) -> None:
         self._backing = backing
         self._first_origin_row = first_origin_row
-        self._sample_count = sample_count
         self._labels = torch.from_numpy(labels)
         self._targets = torch.from_numpy(targets)
         self._context_blocks = context_blocks
         self._horizon_blocks = horizon_blocks
 
     def __len__(self) -> int:
-        return self._sample_count
+        return len(self._labels)
 
     def __getitem__(self, index: int) -> _HistoricalItem:
         origin = self._first_origin_row + index
@@ -383,7 +381,6 @@ def _build_dataset(
     return HistoricalDataset(
         backing,
         int(origin_rows[0]),
-        origin_rows.size,
         labels,
         standardize_target(minima, target_state),
         context_blocks=experiment.context_blocks,
