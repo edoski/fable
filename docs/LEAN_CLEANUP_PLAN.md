@@ -1,8 +1,11 @@
 # Lean cleanup implementation plan
 
-Status: active orchestration plan  
-Initial code baseline: `8d8eb5dc104a9318a7675a0bab6a6ff13b6bdf34`  
-Integration branch: `codex/lean-cleanup-orchestration`  
+Status: active orchestration plan
+
+Initial code baseline: `f08b707cb44dc06c6abe50a20b6b3fe1fe024496`
+
+Execution branch: `main`
+
 Deferred cleanup: [GitHub issue #147](https://github.com/edoski/fable/issues/147)
 
 This plan converts the approved architecture review into small clean-break changes. The goal is
@@ -25,8 +28,8 @@ nonfinite numerical output.
   alignment, and ExecuTorch lifetime/parity checks.
 - Keep `requests.py`. It centralizes UUID creation and discriminated request construction used by
   several experiment stages.
-- Keep the compact device-resident `HistoricalDataset` design. This plan trims redundant stored
-  arithmetic state; it does not replace the measured CUDA path with a conventional item dataset.
+- Keep `main`'s conventional lazy `HistoricalDataset`. The temporary compact-CUDA design is not
+  part of this cleanup. Trim derivable arithmetic state without changing the dataset architecture.
 - Keep deterministic training through one seed call and Lightning's deterministic trainer mode.
   Remove duplicate RNG and deterministic configuration machinery.
 - Keep `tasks_per_job` because it represents the selected node's usable GPU capacity: two or
@@ -75,12 +78,13 @@ Learned-model evaluation still reports Accuracy and Macro-F1.
 
 Each active slice uses two separate Codex tasks. Both use `gpt-5.6-sol` with `xhigh` reasoning.
 
-1. The orchestrator records the integration `HEAD` as the slice baseline.
-2. A new implementer task starts in a worktree from that exact baseline. Its only spec is the
-   named slice in this file. It uses the implementation skill, works test-first at useful seams,
-   runs focused checks throughout, runs the slice's full checks at the end, and commits its work.
-   It does not run a self-review; the separate reviewer owns that gate.
-3. A new reviewer task starts from the implementer's committed head. It uses the code-review skill
+1. The orchestrator records `main`'s `HEAD` as the slice baseline.
+2. A new implementer task works directly in the saved project checkout on `main`. Its only spec is
+   the named slice in this file. It uses the implementation skill, works test-first at useful
+   seams, runs focused checks throughout, runs the slice's full checks at the end, and commits its
+   work. It does not run a self-review; the separate reviewer owns that gate.
+3. After the implementer exits, a new read-only reviewer task works in the same saved checkout. It
+   uses the code-review skill
    with `git diff <slice-baseline>...HEAD`, this file as the Spec source, `AGENTS.md`,
    `docs/CONTEXT.md`, and active ADRs as Standards sources. Standards and Spec findings remain
    separate. `GREEN LIGHT` requires zero actionable findings on both axes.
@@ -88,8 +92,8 @@ Each active slice uses two separate Codex tasks. Both use `gpt-5.6-sol` with `xh
    fixes and commits. The same reviewer task reviews only
    `git diff <previously-reviewed-head>...HEAD`, plus whether the new hunks close the outstanding
    findings. Stable accepted hunks are not re-reviewed.
-5. On `GREEN LIGHT`, the orchestrator integrates the implementer commits, runs a proportional
-   integration check, records the result below, and starts the next slice from the new `HEAD`.
+5. On `GREEN LIGHT`, the orchestrator runs a proportional integration check, records the result
+   below, and starts the next slice from the new `main` `HEAD`.
 6. Any scope discovery that changes scientific meaning, durable formats beyond the declared clean
    break, Slurm capacity, or native app behavior returns to the orchestrator. The implementer does
    not broaden the slice.
@@ -124,7 +128,7 @@ baseline and head SHAs, checks, findings, and status before proceeding.
 ### Implementation
 
 1. Remove the dedicated CPU `torch.Generator` from `_fit`, the `generator` argument from
-   `HistoricalDataset.loader`, and its DataLoader forwarding. Keep
+   `_runtime.data_loader`, and its DataLoader forwarding. Keep
    `pl.seed_everything(fit.seed)` without `workers=True`. Shuffling may now depend on prior global
    Torch RNG consumption within the seeded fit; that small run-to-run ordering difference is
    accepted.
@@ -143,7 +147,7 @@ baseline and head SHAs, checks, findings, and status before proceeding.
    - `_HistoricalBacking` stores `first_block`, inputs, and base fees only;
    - `HistoricalDataset` stores one `first_origin_row` integer and its sample count instead of a
      contiguous `_origin_rows` tensor;
-   - batch origin rows derive as `first_origin_row + positions`;
+   - item origin rows derive as `first_origin_row + index`;
    - origin block derives as `backing.first_block + origin_row`;
    - local NumPy origin arrays may remain during chunked outcome construction.
 6. For the Ethereum-only exact-forming-fee feature, trust `BlockFrame`'s single-chain definition
@@ -179,7 +183,7 @@ Keep or rewrite:
 
 - One seed owner, one deterministic-runtime owner, one gradient-clipping owner.
 - No wrapper object around a single loss tensor.
-- No GPU memory or transfer spent on derivable block/origin sequences.
+- No tensor storage spent on derivable block/origin sequences.
 - No one-function tuning module.
 - Same targets, loss mean, window geometry, artifact format, selected checkpoint, and durable
   publication semantics.
@@ -603,8 +607,8 @@ uv run vulture
 
 1. Re-read the final implementation. Describe the surviving owners and paths, not the cleanup
    history.
-2. Fix the historical-data description: `HistoricalDataset` batches from shared device-resident
-   backing through indices; it does not return a tensor-filled lazy item.
+2. Verify the historical-data description matches the surviving lazy fixed-context
+   `HistoricalDataset` and its derivable origin/block arithmetic.
 3. Document the single `record_id` experiment manifest schema and kind-owned interpretation.
 4. Document baseline rows as three economic metrics and learned rows as seven metrics.
 5. Document the direct app Run path, stateless exact-range RPC reads, Viem-owned network behavior,
@@ -671,7 +675,7 @@ The cleanup is complete only when:
 
 - every active slice has a committed implementer head and zero-actionable-finding Standards/Spec
   review;
-- full Python, app, and exporter checks pass on the integrated branch;
+- full Python, app, and exporter checks pass on `main`;
 - `uv run vulture` findings have been manually classified;
 - `git diff --check` passes;
 - durable object and manuscript contracts listed above remain intact;
