@@ -33,7 +33,7 @@ Submit one or more training or evaluation requests:
 fable submit REQUEST.json
 ```
 
-Run one candidate configuration from a tuning request:
+Submit one candidate configuration from a tuning request:
 
 ```bash
 fable study run TUNE_REQUEST.json METHOD_INDEX

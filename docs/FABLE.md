@@ -48,7 +48,7 @@ corpus / study / min_block_fee / execution
          └────────> config and strict records
 ```
 
-This diagram is generated from the production import direction at this revision. Direct owner seams are:
+This high-level diagram summarizes the production import direction. Direct owner seams are:
 
 - `corpus` owns canonical `BlockFrame` row truth and completed Corpus association.
 - `temporal` owns causal feature state, fixed-block context/outcome geometry, and lazy historical examples.
@@ -987,7 +987,11 @@ The manifest owns shared context and feature state plus each model's artifact UU
 
 Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; session disposal unwatches without aborting in-flight reads. App's one engine-and-selection identity gate protects visible results and history commits. The model runtime serializes native load, forward, replacement, and disposal; the history queue serializes persistence and outcome retries. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call supplies both features and must begin at the first context block. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
 
-The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real `MOBILE.yaml`, generated assets, and native parity evidence do not yet exist. Exporter retirement and final acceptance remain deferred to A01. The [README](../README.md#mobile-demo) owns build commands; the [on-device decision](research/on-device-inference.md) owns rationale and acceptance boundaries.
+The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real
+`MOBILE.yaml`, generated assets, and device-acceptance evidence do not yet exist. The
+[README](../README.md#mobile-demo) owns build commands; the
+[on-device decision](research/on-device-inference.md) owns rationale and the deferred
+real-artifact acceptance boundary.
 
 ### Execution runtime
 
