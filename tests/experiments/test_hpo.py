@@ -18,6 +18,7 @@ def _publish_studies(
     storage_root: Path,
     rows: list[dict[str, str]],
     objective: float,
+    objectives: dict[str, float] | None = None,
 ) -> None:
     seen: set[UUID] = set()
     for row in rows:
@@ -25,11 +26,12 @@ def _publish_studies(
         if request.study_id in seen:
             continue
         seen.add(request.study_id)
+        cell_objective = (objectives or {}).get(row["cell"], objective)
         study = Study(
             request=request,
             trials=tuple(
                 RetainedResult(
-                    objective=objective + index,
+                    objective=cell_objective + index,
                     selected_epoch=1,
                     completed_epochs=1,
                 )
@@ -58,8 +60,18 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
         ).stdout.strip()
     )
     c_bundle = tmp_path / "experiments" / "c_study" / f".{c_experiment_id}"
-    _publish_studies(tmp_path, read_tsv_rows(c_bundle / "cells.tsv"), 1.0)
-    run_script(_C_SCRIPT, "select", tmp_path, c_experiment_id)
+    c_rows = read_tsv_rows(c_bundle / "cells.tsv")
+    context_objectives = {
+        f"{chain}.{family}.{context}": objective
+        for chain, context, objective in (
+            ("ethereum", "C50", 0.25),
+            ("polygon", "C100", 0.5),
+            ("avalanche", "C200", 0.75),
+        )
+        for family in ("lstm", "transformer", "transformer_lstm")
+    }
+    _publish_studies(tmp_path, c_rows, 1.0, context_objectives)
+    run_script(_C_SCRIPT, "close", tmp_path, c_experiment_id)
 
     result = run_script(
         _HPO_SCRIPT,
@@ -68,6 +80,11 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
         c_experiment_id,
     )
     experiment_id = UUID(result.stdout.strip())
+    assert result.stderr.splitlines() == [
+        "ethereum\t50\t0.25",
+        "polygon\t100\t0.5",
+        "avalanche\t200\t0.75",
+    ]
     bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
     rows = read_tsv_rows(bundle / "cells.tsv")
     requests = {
@@ -85,7 +102,18 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
     assert [row["method_index"] for row in rows[:9]] == [str(index) for index in range(9)]
     assert rows[-1]["cell"] == "avalanche.transformer_lstm"
     assert {len(request.methods) for request in requests.values()} == {9}
-    assert {request.experiment.context_blocks for request in requests.values()} == {25}
+    assert {
+        chain: {
+            request.experiment.context_blocks
+            for cell, request in requests.items()
+            if cell.startswith(f"{chain}.")
+        }
+        for chain in ("ethereum", "polygon", "avalanche")
+    } == {
+        "ethereum": {50},
+        "polygon": {100},
+        "avalanche": {200},
+    }
     assert requests["ethereum.lstm"].methods[0].model.model_dump() == {
         "family": "lstm",
         "hidden": 256,
@@ -135,4 +163,7 @@ def test_hpo_authors_nine_ordered_l9_studies_and_selects_each_winner(
         strict=True,
     )
     assert len(manifest.entries) == 9
+    assert [str(entry.record_id) for entry in manifest.entries] == list(
+        dict.fromkeys(row["study_id"] for row in rows)
+    )
     assert not bundle.exists()

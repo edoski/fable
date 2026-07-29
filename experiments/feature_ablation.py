@@ -209,10 +209,8 @@ def close(storage_root: Path, experiment_id: UUID) -> None:
     entries: list[ExperimentEntry] = []
     for row in rows:
         study_id = UUID(row["study_id"])
-        study = load_study(storage_root, study_id)
-        if len(study.trials) != 1:
-            raise ValueError("feature-ablation Study must contain its one retained result")
-        entries.append(ExperimentEntry(cell=row["cell"], study_id=study_id))
+        load_study(storage_root, study_id)
+        entries.append(ExperimentEntry(cell=row["cell"], record_id=study_id))
 
     write_experiment_manifest(
         storage_root,
@@ -229,7 +227,7 @@ def report(storage_root: Path, experiment_id: UUID) -> None:
     objectives: dict[tuple[str, str], list[float]] = {}
     for entry in manifest.entries:
         chain, _, configuration = entry.cell.split(".")
-        study = load_study(storage_root, entry.require_study_id())
+        study = load_study(storage_root, entry.record_id)
         objectives.setdefault((chain, configuration), []).append(study.trials[0].objective)
 
     for chain, *_ in _CHAINS:

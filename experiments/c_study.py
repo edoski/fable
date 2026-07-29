@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from statistics import fmean
 from uuid import UUID, uuid4
 
 import typer
@@ -39,7 +38,7 @@ def _full_feature_studies(
     for entry in manifest.entries:
         chain, family, configuration = entry.cell.split(".")
         if configuration == "full":
-            studies[chain, family] = load_study(storage_root, entry.require_study_id())
+            studies[chain, family] = load_study(storage_root, entry.record_id)
     return studies
 
 
@@ -81,30 +80,16 @@ def prepare(
     print(experiment_id)
 
 
-def select(storage_root: Path, experiment_id: UUID) -> None:
+def close(storage_root: Path, experiment_id: UUID) -> None:
     storage_root = storage_root.resolve()
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 
-    objectives: dict[tuple[str, int], list[float]] = {}
     entries: list[ExperimentEntry] = []
     for row in rows:
-        chain, _, context_label = row["cell"].split(".")
-        context = int(context_label.removeprefix("C"))
         study_id = UUID(row["study_id"])
-        study = load_study(storage_root, study_id)
-        if len(study.trials) != 1:
-            raise ValueError("context Study must contain its one retained result")
-        objectives.setdefault((chain, context), []).append(study.trials[0].objective)
-        entries.append(ExperimentEntry(cell=row["cell"], study_id=study_id))
-
-    winners: list[tuple[str, int, float]] = []
-    for chain in _CHAINS:
-        winner = min(
-            _CONTEXTS,
-            key=lambda context: (fmean(objectives[chain, context]), context),
-        )
-        winners.append((chain, winner, fmean(objectives[chain, winner])))
+        load_study(storage_root, study_id)
+        entries.append(ExperimentEntry(cell=row["cell"], record_id=study_id))
 
     write_experiment_manifest(
         storage_root,
@@ -112,13 +97,12 @@ def select(storage_root: Path, experiment_id: UUID) -> None:
         ExperimentManifest(experiment_id=experiment_id, entries=tuple(entries)),
     )
     shutil.rmtree(bundle)
-    for chain, context, mean in winners:
-        print(f"{chain}\t{context}\t{mean:g}")
+    print(experiment_id)
 
 
 app = typer.Typer(add_completion=False)
 app.command()(prepare)
-app.command()(select)
+app.command()(close)
 
 
 if __name__ == "__main__":

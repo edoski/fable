@@ -822,28 +822,31 @@ load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus
 
 #### Experiment manifest
 
-Each `experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>.json` contains the matching UUIDv4 `experiment_id` and a nonempty ordered `entries` tuple. Each entry has a nonempty `cell` label and at least one canonical `artifact_id`, `study_id`, or `evaluation_id` UUIDv4. Manifests group canonical references only; they do not duplicate metrics, results, or scientific definitions.
+Each `experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>.json` contains the matching UUIDv4 `experiment_id` and a nonempty ordered `entries` tuple. Each entry has a nonempty `cell` label and one canonical `record_id` UUIDv4. The manifest path and kind define whether that ID names a Study, artifact, or evaluation. Manifests group canonical references only; they do not duplicate metrics, results, or scientific definitions.
 
 `experiments/feature_ablation.py prepare STORAGE_ROOT` authors the frozen 102-cell request
 bundle under `experiments/feature_ablation/.<experiment_id>/`. For each architecture and chain it
 tests the full feature contract, each individual feature unit omitted, and a base-fee-only
 reference. Hour and day-of-week sine/cosine coordinates each remain one indivisible encoded unit.
-`experiments/launch.py candidates BUNDLE` submits its cells three at a time by default and accepts
-two-task packing for two-GPU nodes. After all canonical
+`experiments/launch.py candidates BUNDLE` submits its cells at a selected two- or three-GPU node
+capacity. It uses the fewest allocations and avoids a singleton tail when possible: seven pending
+cells at capacity three become `3 + 2 + 2`. After all canonical
 Studies exist, `close STORAGE_ROOT EXPERIMENT_ID` publishes the canonical manifest and removes
 the temporary bundle; `report` derives each chain/configuration mean from canonical Studies.
 
 Study bundles keep each complete Method roster inside its TuneRequest. Their `cells.tsv` rows
 carry the request path, zero-based `method_index`, and Study ID; they do not write separate Method
 JSON files. Packed launch writes temporary `jobs.tsv` rows containing job ID, zero-based slot,
-source-row index, and cell. A repeated launch skips recorded rows. The bundle's ordinary closure
-removes both TSV files.
+source-row index, and cell. Every successful allocation is appended, flushed, and synced before
+its job ID is printed. A repeated launch skips recorded rows; a failed submission leaves later
+groups pending. The bundle's ordinary closure removes both TSV files.
 
 `experiments/c_study.py` derives the full feature contract, authors the 45
-architecture-chain-context Studies for `C={25,50,100,200,400}`, and selects one context per
-chain by mean validation objective across the three architectures. `experiments/hpo.py` then authors
-the exact nine architecture-chain Studies and their ordered nine-Method L9 rosters. Its selector
-chooses the earliest minimum validation objective.
+architecture-chain-context Studies for `C={25,50,100,200,400}`, then publishes their canonical
+Study references. `experiments/hpo.py` loads that manifest, selects one context per chain by mean
+validation objective across the three architectures, reports the selected contexts, and authors
+the exact nine architecture-chain Studies with their ordered nine-Method L9 rosters. Its final
+selector chooses the earliest minimum validation objective.
 
 `experiments/k_study.py` derives each architecture-chain HPO result and authors 81 fresh
 selected-Study Train requests for `K={2,3,4,5,10,25,50,100,200}`. It publishes the K-study

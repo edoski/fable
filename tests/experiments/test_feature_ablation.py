@@ -109,7 +109,8 @@ def test_close_publishes_all_studies_and_report_averages_each_configuration(
         "polygon": {"without_priority_fee_p90": 0.5},
         "avalanche": {"base_only": 0.25},
     }
-    for row in read_tsv_rows(bundle / "cells.tsv"):
+    rows = read_tsv_rows(bundle / "cells.tsv")
+    for row in rows:
         chain, _, configuration = row["cell"].split(".")
         request = TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         objective = objectives.get(chain, {}).get(configuration, 2.0)
@@ -137,6 +138,9 @@ def test_close_publishes_all_studies_and_report_averages_each_configuration(
     assert result.stdout.strip() == str(experiment_id)
     assert manifest.experiment_id == experiment_id
     assert len(manifest.entries) == 102
+    assert [str(entry.record_id) for entry in manifest.entries] == [
+        row["study_id"] for row in rows
+    ]
     assert not manifest_path.with_name(f".{experiment_id}").exists()
 
     report = run_script(_SCRIPT, "report", tmp_path, experiment_id)

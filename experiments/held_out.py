@@ -38,7 +38,7 @@ def prepare(
     hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_experiment_id)
     studies = {
-        entry.cell: load_study(storage_root, entry.require_study_id()) for entry in hpo.entries
+        entry.cell: load_study(storage_root, entry.record_id) for entry in hpo.entries
     }
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
@@ -46,7 +46,7 @@ def prepare(
 
     rows: list[tuple[str, Path, UUID]] = []
     for index, entry in enumerate(k_study.entries):
-        artifact_id = entry.require_artifact_id()
+        artifact_id = entry.record_id
         chain, family, horizon_label = entry.cell.split(".")
         horizon = int(horizon_label.removeprefix("K"))
         study = studies[f"{chain}.{family}"]
@@ -77,7 +77,7 @@ def close(storage_root: Path, experiment_id: UUID) -> None:
     rows = read_cells(bundle)
 
     entries = tuple(
-        ExperimentEntry(cell=row["cell"], evaluation_id=evaluation_id)
+        ExperimentEntry(cell=row["cell"], record_id=evaluation_id)
         for row in rows
         if evaluation_directory(
             storage_root,
@@ -100,7 +100,7 @@ def report(storage_root: Path, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     results = [
         pl.DataFrame({"cell": [entry.cell]}).hstack(
-            reduce_evaluation(storage_root, entry.require_evaluation_id())
+            reduce_evaluation(storage_root, entry.record_id)
         )
         for entry in manifest.entries
     ]
@@ -112,7 +112,7 @@ def baselines(storage_root: Path, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     results = []
     for entry in manifest.entries:
-        result = reduce_baselines(storage_root, entry.require_evaluation_id())
+        result = reduce_baselines(storage_root, entry.record_id)
         results.append(
             pl.DataFrame({"cell": [entry.cell] * result.height}).hstack(result)
         )
@@ -127,7 +127,7 @@ def rolling(storage_root: Path, experiment_id: UUID) -> None:
         cell, horizon_label = entry.cell.rsplit(".", maxsplit=1)
         horizon = int(horizon_label.removeprefix("K"))
         if horizon in (2, 3, 4, 5):
-            roster.setdefault(cell, {})[horizon] = entry.require_evaluation_id()
+            roster.setdefault(cell, {})[horizon] = entry.record_id
     print(reduce_rolling(storage_root, roster).write_csv(None, separator="\t"), end="")
 
 
