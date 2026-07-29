@@ -8,24 +8,9 @@ import {
   summarizeRuns,
 } from "../src/analytics";
 import type { InferenceRun } from "../src/history";
+import { inferenceRun } from "./helpers";
 
 const GWEI = 1_000_000_000;
-
-function run(overrides: Partial<InferenceRun> = {}): InferenceRun {
-  return {
-    id: "run",
-    ran_at: "2026-07-26T10:00:00.000Z",
-    chain: "ethereum",
-    K: 5,
-    artifact_id: "artifact-5",
-    head_block: 10,
-    head_hash: "0xhead",
-    selected_action_k: 1,
-    target_block: 12,
-    predicted_minimum_base_fee_per_gas: 9 * GWEI,
-    ...overrides,
-  };
-}
 
 function resolved(
   id: string,
@@ -33,7 +18,7 @@ function resolved(
   immediateGwei: number,
   selectedGwei: number,
 ): InferenceRun {
-  return run({
+  return inferenceRun({
     id,
     selected_action_k: wait,
     target_block: 11 + wait,
@@ -50,7 +35,11 @@ describe("analytics", () => {
       resolved("saved", 1, 100, 80),
       resolved("lost", 2, 100, 120),
       resolved("act-now", 0, 100, 100),
-      run({ id: "pending", selected_action_k: 3, target_block: 14 }),
+      inferenceRun({
+        id: "pending",
+        selected_action_k: 3,
+        target_block: 14,
+      }),
       resolved("zero-baseline", 4, 0, 0),
       resolved("zero-selected", 2, 100, 0),
     ];
@@ -66,7 +55,11 @@ describe("analytics", () => {
     const selectedRuns = [
       resolved("act-now", 0, 10, 10),
       resolved("saved", 1, 10, 8),
-      run({ id: "pending", selected_action_k: 1, target_block: 12 }),
+      inferenceRun({
+        id: "pending",
+        selected_action_k: 1,
+        target_block: 12,
+      }),
       resolved("lost", 2, 10, 12),
       resolved("zero-selected", 3, 10, 0),
       resolved("invalid", 4, 0, 0),
@@ -75,7 +68,7 @@ describe("analytics", () => {
       [
         ...selectedRuns,
         resolved("other-chain", 1, 100, 1),
-        run({ id: "other-horizon", K: 4 }),
+        inferenceRun({ id: "other-horizon", K: 4 }),
       ].map((item, index) =>
         index === selectedRuns.length
           ? { ...item, chain: "polygon" as const }

@@ -197,7 +197,6 @@ class HistoricalDataset(Dataset[int]):
         self,
         backing: _HistoricalBacking,
         first_origin_row: int,
-        sample_count: int,
         labels: torch.Tensor,
         targets: torch.Tensor,
         *,
@@ -206,14 +205,13 @@ class HistoricalDataset(Dataset[int]):
     ) -> None:
         self._backing = backing
         self._first_origin_row = first_origin_row
-        self._sample_count = sample_count
         self._labels = labels
         self._targets = targets
         self._context_blocks = context_blocks
         self._horizon_blocks = horizon_blocks
 
     def __len__(self) -> int:
-        return self._sample_count
+        return len(self._labels)
 
     def __getitem__(self, index: int) -> int:
         return index
@@ -238,7 +236,6 @@ class HistoricalDataset(Dataset[int]):
         return HistoricalDataset(
             backing,
             self._first_origin_row,
-            self._sample_count,
             self._labels.to(device),
             self._targets.to(device),
             context_blocks=self._context_blocks,
@@ -430,7 +427,6 @@ def _build_dataset(
     return HistoricalDataset(
         backing,
         int(origin_rows[0]),
-        origin_rows.size,
         torch.from_numpy(labels),
         torch.from_numpy(standardize_target(minima, target_state)),
         context_blocks=experiment.context_blocks,

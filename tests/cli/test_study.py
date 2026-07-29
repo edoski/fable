@@ -126,7 +126,16 @@ def test_submit_candidates_rejects_duplicate_study_slots(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    candidate = CandidateProcessInput(request=REQUEST, method_index=0)
+    first = CandidateProcessInput(request=REQUEST, method_index=0)
+    second = CandidateProcessInput(
+        request=REQUEST.model_copy(
+            update={
+                "corpus_id": UUID("20000000-0000-4000-8000-000000000002"),
+            }
+        ),
+        method_index=0,
+    )
+    assert first != second
     write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
@@ -136,7 +145,7 @@ def test_submit_candidates_rejects_duplicate_study_slots(
     )
 
     with pytest.raises(ValueError, match="candidate slots must be unique"):
-        execution.submit_candidates((candidate, candidate))
+        execution.submit_candidates((first, second))
 
 
 def test_remote_candidate_dispatches_input(

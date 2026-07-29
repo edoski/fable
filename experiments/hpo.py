@@ -9,7 +9,7 @@ from statistics import fmean
 from uuid import UUID, uuid4
 
 import typer
-from bundle import bundle_path, read_cells, write_cells
+from bundle import StorageRoot, bundle_path, read_cells, write_cells
 
 from fable.config import (
     FitMethod,
@@ -18,6 +18,7 @@ from fable.config import (
     ModelDefinition,
     TransformerDefinition,
     TransformerLstmDefinition,
+    TuneRequest,
 )
 from fable.experiments import (
     ExperimentEntry,
@@ -26,7 +27,6 @@ from fable.experiments import (
     load_experiment_manifest,
     write_experiment_manifest,
 )
-from fable.requests import fresh_tune_request
 from fable.study import Study, load_study
 
 _KIND = ExperimentKind.HPO
@@ -164,9 +164,8 @@ def _selected_context_studies(
     return selected, tuple(winners)
 
 
-def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
+def prepare(storage_root: StorageRoot, c_experiment_id: UUID) -> None:
     experiment_id = uuid4()
-    storage_root = storage_root.resolve()
     selected, context_winners = _selected_context_studies(storage_root, c_experiment_id)
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
@@ -177,10 +176,10 @@ def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
     rows: list[tuple[str, Path, int, UUID]] = []
     for index, (chain, family) in enumerate(product(_CHAINS, _FAMILIES)):
         source = selected[chain, family]
-        request = fresh_tune_request(
-            source.request.corpus_id,
-            source.request.experiment,
-            methods_by_family[family],
+        request = TuneRequest(
+            corpus_id=source.request.corpus_id,
+            experiment=source.request.experiment,
+            methods=methods_by_family[family],
         )
         request_path = requests / f"{index}.json"
         request_path.write_text(request.model_dump_json(), encoding="utf-8")
@@ -206,8 +205,7 @@ def prepare(storage_root: Path, c_experiment_id: UUID) -> None:
     print(experiment_id)
 
 
-def select(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
+def select(storage_root: StorageRoot, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 

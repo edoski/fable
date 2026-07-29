@@ -57,37 +57,34 @@ class CandidateProcessInput(StrictFrozenRecord):
 def submit_workflows(requests: Sequence[WorkflowRequest]) -> int:
     """Submit independent workflows as isolated one-GPU steps in one Slurm job."""
 
-    requests = tuple(requests)
-    _require_process_count(requests)
     identities = tuple(_workflow_identity(request) for request in requests)
     if len(set(identities)) != len(identities):
         raise ValueError("workflow identities must be unique within an allocation")
-    remote = _load_remote()
-    return _invoke_sbatch(
-        remote,
-        _render_allocation_script(
-            remote,
-            tuple(request.model_dump_json() for request in requests),
-            "workflow",
-        ),
-    )
+    return _submit_allocation(requests, "workflow")
 
 
 def submit_candidates(candidates: Sequence[CandidateProcessInput]) -> int:
     """Submit independent candidates as isolated one-GPU steps in one Slurm job."""
 
-    candidates = tuple(candidates)
-    _require_process_count(candidates)
     slots = tuple((candidate.request.study_id, candidate.method_index) for candidate in candidates)
     if len(set(slots)) != len(slots):
         raise ValueError("candidate slots must be unique within an allocation")
+    return _submit_allocation(candidates, "candidate")
+
+
+def _submit_allocation(
+    inputs: Sequence[StrictFrozenRecord],
+    leaf: Literal["workflow", "candidate"],
+) -> int:
+    inputs = tuple(inputs)
+    _require_process_count(inputs)
     remote = _load_remote()
     return _invoke_sbatch(
         remote,
         _render_allocation_script(
             remote,
-            tuple(candidate.model_dump_json() for candidate in candidates),
-            "candidate",
+            tuple(process_input.model_dump_json() for process_input in inputs),
+            leaf,
         ),
     )
 

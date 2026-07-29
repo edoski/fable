@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
 
 import typer
-from bundle import bundle_path, read_cells, write_cells
+from bundle import StorageRoot, bundle_path, close_study_bundle, write_cells
 
 from fable.config import (
     BlockWindow,
@@ -19,15 +18,12 @@ from fable.config import (
     Method,
     TransformerDefinition,
     TransformerLstmDefinition,
+    TuneRequest,
 )
 from fable.experiments import (
-    ExperimentEntry,
     ExperimentKind,
-    ExperimentManifest,
     load_experiment_manifest,
-    write_experiment_manifest,
 )
-from fable.requests import fresh_tune_request
 from fable.study import load_study
 
 _KIND = ExperimentKind.FEATURE_ABLATION
@@ -160,9 +156,8 @@ def _flatten_units(
     return tuple(features)
 
 
-def prepare(storage_root: Path) -> None:
+def prepare(storage_root: StorageRoot) -> None:
     experiment_id = uuid4()
-    storage_root = storage_root.resolve()
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     requests = bundle / "requests"
     requests.mkdir(parents=True)
@@ -172,16 +167,16 @@ def prepare(storage_root: Path) -> None:
         for method in _METHODS:
             family = method.model.family
             for configuration, ordered_features in _feature_configurations(chain):
-                request = fresh_tune_request(
-                    corpus_id,
-                    ExperimentSemantics(
+                request = TuneRequest(
+                    corpus_id=corpus_id,
+                    experiment=ExperimentSemantics(
                         training_window=training_window,
                         validation_window=validation_window,
                         context_blocks=100,
                         horizon_blocks=5,
                         ordered_features=ordered_features,
                     ),
-                    (method,),
+                    methods=(method,),
                 )
                 path = requests / f"{len(rows):03d}.json"
                 path.write_text(request.model_dump_json(), encoding="utf-8")
@@ -199,28 +194,11 @@ def prepare(storage_root: Path) -> None:
     print(experiment_id)
 
 
-def close(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
-    bundle = bundle_path(storage_root, _KIND, experiment_id)
-    rows = read_cells(bundle)
-
-    entries: list[ExperimentEntry] = []
-    for row in rows:
-        study_id = UUID(row["study_id"])
-        load_study(storage_root, study_id)
-        entries.append(ExperimentEntry(cell=row["cell"], record_id=study_id))
-
-    write_experiment_manifest(
-        storage_root,
-        _KIND,
-        ExperimentManifest(experiment_id=experiment_id, entries=tuple(entries)),
-    )
-    shutil.rmtree(bundle)
-    print(experiment_id)
+def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
+    close_study_bundle(storage_root, _KIND, experiment_id)
 
 
-def report(storage_root: Path, experiment_id: UUID) -> None:
-    storage_root = storage_root.resolve()
+def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     objectives: dict[tuple[str, str], list[float]] = {}
     for entry in manifest.entries:

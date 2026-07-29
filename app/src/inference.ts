@@ -60,8 +60,6 @@ export function createInferenceEngine(
 ): InferenceEngine {
   const { chain, catalog, model, session } =
     typeof input === "string" ? defaultDependencies(input) : input;
-  let disposal: Promise<void> | null = null;
-
   async function run(K: Horizon): Promise<InferenceResult> {
     const selection = catalog.select(chain, K);
     const context = await attempt("Could not read the selected chain.", () =>
@@ -133,17 +131,8 @@ export function createInferenceEngine(
   }
 
   function dispose(): Promise<void> {
-    if (disposal !== null) return disposal;
-    let sessionError: unknown;
-    try {
-      session.dispose();
-    } catch (error) {
-      sessionError = error;
-    }
-    disposal = model.dispose().then(() => {
-      if (sessionError !== undefined) throw sessionError;
-    });
-    return disposal;
+    session.dispose();
+    return model.dispose();
   }
 
   return {

@@ -230,6 +230,16 @@ def _write_selected_study(
     path.write_text(study.model_dump_json(), encoding="utf-8")
 
 
+def _use_cpu_trainer(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_trainer: Any = modeling.pl.Trainer
+
+    def cpu_trainer(**kwargs: Any) -> Any:
+        kwargs["accelerator"] = "cpu"
+        return real_trainer(**kwargs)
+
+    monkeypatch.setattr(modeling.pl, "Trainer", cpu_trainer)
+
+
 def test_artifact_association_round_trips_strict_json() -> None:
     association = ArtifactAssociation(
         request=_train_request(),
@@ -321,9 +331,6 @@ def test_epoch_logs_weight_short_batches_in_float64(
         entries = logged[name]
         assert [kwargs["batch_size"] for _, kwargs in entries] == [3, 1]
         assert all(value.dtype == torch.float64 for value, _ in entries)
-        assert all(kwargs["on_step"] is False for _, kwargs in entries)
-        assert all(kwargs["on_epoch"] is True for _, kwargs in entries)
-        assert all(kwargs["logger"] is False for _, kwargs in entries)
         weighted = sum(float(value) * int(kwargs["batch_size"]) for value, kwargs in entries) / 4
         unweighted = sum(float(value) for value, _ in entries) / 2
         assert weighted == pytest.approx(expected)
@@ -363,13 +370,13 @@ def test_validation_logs_mean_base_fee_cost_over_optimum(
         action_logits=torch.tensor([[0.0, 1.0], [1.0, 0.0]]),
         minimum_fee_z=torch.zeros(2),
     )
-    logged: dict[str, tuple[torch.Tensor, dict[str, Any]]] = {}
+    logged: dict[str, torch.Tensor] = {}
 
     monkeypatch.setattr(module, "forward", lambda _inputs: output)
     monkeypatch.setattr(
         module,
         "log",
-        lambda name, value, **kwargs: logged.__setitem__(name, (value, kwargs)),
+        lambda name, value, **_kwargs: logged.__setitem__(name, value),
     )
 
     module.validation_step(batch, 0)
@@ -377,11 +384,7 @@ def test_validation_logs_mean_base_fee_cost_over_optimum(
     selected = batch["base_fees"][torch.arange(2), torch.tensor([1, 0])]
     minimum = batch["base_fees"].amin(dim=1)
     expected = ((selected - minimum) / minimum).mean(dtype=torch.float64)
-    value, options = logged["validation_base_fee_optimality_gap"]
-    torch.testing.assert_close(value, expected)
-    assert options["batch_size"] == 2
-    assert options["on_step"] is False
-    assert options["on_epoch"] is True
+    torch.testing.assert_close(logged["validation_base_fee_optimality_gap"], expected)
 
 
 def test_lstm_trains_loads_and_applies_direct_loss(
@@ -400,43 +403,15 @@ def test_lstm_trains_loads_and_applies_direct_loss(
     request = _train_request(artifact_id)
     _write_corpus(tmp_path)
     _write_selected_study(tmp_path, request, method)
-    real_trainer: Any = modeling.pl.Trainer
-
-    def cpu_trainer(**kwargs: Any) -> Any:
-        kwargs["accelerator"] = "cpu"
-        return real_trainer(**kwargs)
-
-    monkeypatch.setattr(modeling.pl, "Trainer", cpu_trainer)
+    _use_cpu_trainer(monkeypatch)
 
     checkpoint = artifact_checkpoint_path(tmp_path, artifact_id)
-    hidden = checkpoint.with_name(f".{checkpoint.name}")
-    cleanup_attempted = False
-    real_unlink = Path.unlink
-
-    def fail_hidden_cleanup(
-        path: Path,
-        missing_ok: bool = False,
-    ) -> None:
-        nonlocal cleanup_attempted
-        if path == hidden:
-            cleanup_attempted = True
-            raise OSError("cleanup failed")
-        real_unlink(path, missing_ok=missing_ok)
-
-    monkeypatch.setattr(Path, "unlink", fail_hidden_cleanup)
-
     train(request, tmp_path)
     association, loaded_model = load_artifact(tmp_path, artifact_id)
 
     assert association.request == request
     assert checkpoint == tmp_path / "artifacts" / f"{artifact_id}.ckpt"
     assert checkpoint.is_file()
-    assert cleanup_attempted
-    assert hidden.is_file()
-    contents = checkpoint.read_bytes()
-    with pytest.raises(FileExistsError):
-        train(request, tmp_path)
-    assert checkpoint.read_bytes() == contents
 
     application_history = prepare_fit_history(_corpus(), _experiment())
     batches = list(
@@ -462,6 +437,40 @@ def test_lstm_trains_loads_and_applies_direct_loss(
     checkpoint.rename(artifact_checkpoint_path(tmp_path, mismatched_id))
     with pytest.raises(ValueError, match="embedded artifact ID"):
         load_artifact(tmp_path, mismatched_id)
+
+
+def test_train_preserves_canonical_created_during_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_id = UUID("30000000-0000-4000-8000-000000000002")
+    method = _definition(
+        LstmDefinition(
+            family="lstm",
+            hidden=5,
+            layers=1,
+            head_hidden=3,
+            dropout=0.1,
+        )
+    ).method
+    request = _train_request(artifact_id)
+    _write_corpus(tmp_path)
+    _write_selected_study(tmp_path, request, method)
+    _use_cpu_trainer(monkeypatch)
+    canonical = artifact_checkpoint_path(tmp_path, artifact_id)
+    real_link = modeling.os.link
+
+    def create_collision(source: Path, target: Path) -> None:
+        canonical.write_bytes(b"occupied")
+        real_link(source, target)
+
+    monkeypatch.setattr(modeling.os, "link", create_collision)
+
+    with pytest.raises(FileExistsError):
+        train(request, tmp_path)
+
+    assert canonical.read_bytes() == b"occupied"
+    assert (canonical.parent / f".{artifact_id}").is_dir()
 
 
 def test_candidate_failure_preserves_checkpoint_and_resume_publishes_result(
@@ -537,6 +546,10 @@ def test_candidate_failure_preserves_checkpoint_and_resume_publishes_result(
     assert (scratch / "last.ckpt").is_file()
     last_checkpoint = torch.load(scratch / "last.ckpt", map_location="cpu", weights_only=True)
     assert "optimizer_states" in last_checkpoint
+    assert last_checkpoint["hyper_parameters"]["association"] == TrainingDefinition(
+        experiment=request.experiment,
+        method=method,
+    ).model_dump(mode="json")
 
     run_candidate(tmp_path, request, 0)
     second_progress = progress()

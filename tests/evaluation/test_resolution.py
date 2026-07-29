@@ -9,29 +9,13 @@ import pytest
 
 from fable.addresses import evaluation_directory
 from fable.config import BlockWindow, EvaluateRequest
-from fable.evaluation import reduce_baselines, reduce_evaluation
+from fable.evaluation import OBSERVATION_SCHEMA, reduce_baselines, reduce_evaluation
 
 _EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000001")
 _OTHER_EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000002")
 _ARTIFACT_ID = UUID("20000000-0000-4000-8000-000000000001")
 _CORPUS_ID = UUID("30000000-0000-4000-8000-000000000001")
 
-_OBSERVATION_SCHEMA = pl.Schema(
-    {
-        "origin_block": pl.Int64,
-        "predicted_action_k": pl.Int64,
-        "predicted_minimum_log_base_fee": pl.Float64,
-        "minimum_action_k": pl.Int64,
-        "deadline_action_k": pl.Int64,
-        "immediate_base_fee_per_gas": pl.Int64,
-        "immediate_effective_priority_fee_per_gas_p50": pl.Int64,
-        "selected_base_fee_per_gas": pl.Int64,
-        "selected_effective_priority_fee_per_gas_p50": pl.Int64,
-        "deadline_base_fee_per_gas": pl.Int64,
-        "deadline_effective_priority_fee_per_gas_p50": pl.Int64,
-        "minimum_base_fee_per_gas": pl.Int64,
-    }
-)
 _RESULT_SCHEMA = pl.Schema(
     {
         "accuracy": pl.Float64,
@@ -85,7 +69,6 @@ def _row(
         "predicted_action_k": predicted_action,
         "predicted_minimum_log_base_fee": predicted_log,
         "minimum_action_k": minimum_action,
-        "deadline_action_k": 3,
         "immediate_base_fee_per_gas": immediate_fee,
         "immediate_effective_priority_fee_per_gas_p50": immediate_priority_fee_p50,
         "selected_base_fee_per_gas": selected_fee,
@@ -109,7 +92,7 @@ def _rows() -> list[dict[str, int | float | None]]:
 
 
 def _observations(rows: list[dict[str, int | float | None]] | None = None) -> pl.DataFrame:
-    return pl.DataFrame(rows or _rows(), schema=_OBSERVATION_SCHEMA)
+    return pl.DataFrame(rows or _rows(), schema=OBSERVATION_SCHEMA)
 
 
 def _publish_evaluation(
@@ -200,7 +183,7 @@ def test_reduce_evaluation_rejects_invalid_observation_contract(
     if case == "schema":
         observations = observations.select(
             "predicted_action_k",
-            *[name for name in _OBSERVATION_SCHEMA if name != "predicted_action_k"],
+            *[name for name in OBSERVATION_SCHEMA if name != "predicted_action_k"],
         )
     _publish_evaluation(tmp_path, request, observations)
 

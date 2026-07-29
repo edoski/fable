@@ -33,7 +33,7 @@ strict workflow request --> CLI or direct Python call
 transient observation-derived reductions
 ```
 
-`fable.config` owns frozen Pydantic values and small discriminated unions. `fable.requests` mints fresh UUIDv4 instances. Raw JSON and durable bytes are strictly hydrated once at their owning boundary; downstream code trusts those typed values and their already-typed nested values.
+`fable.config` owns frozen Pydantic values, small discriminated unions, and fresh request construction through model defaults. Raw JSON and durable bytes are strictly hydrated once at their owning boundary; downstream code trusts those typed values and their already-typed nested values.
 
 ### Dependency direction
 
@@ -548,10 +548,10 @@ Temporal preparation has two direct paths: historical fixed-block examples and l
 `prepare_fit_history(corpus, experiment)` validates complete context/outcome support, fits state from training support only, and returns training and validation `HistoricalDataset` values with `FeatureState` and `TargetState`. `prepare_historical_window(corpus, experiment, window, *, feature_state, target_state)` prepares an exact testing window with persisted state after complete validation outcomes.
 
 Preparation keeps the first backing block, contiguous CPU float32 feature rows, and int64 base
-fees. Each dataset stores its first origin row and sample count plus int64 `k_i*` labels and
-float32 `z_i` targets. Historical execution moves that compact state to the execution device once.
-Each dataset item is an integer index; device-side loader collation derives origin rows and blocks,
-gathers batched `[C,F]` inputs and `[K]` outcomes, and yields their tensor mapping.
+fees. Each dataset stores its first origin row plus int64 `k_i*` labels and float32 `z_i` targets;
+label count owns dataset length. Historical execution moves that compact state to the execution
+device once. Each dataset item is an integer index; device-side loader collation derives origin
+rows and blocks, gathers batched `[C,F]` inputs and `[K]` outcomes, and yields their tensor mapping.
 
 The ordered feature tuple is request authority. Raw features are assembled in that order as Float64; training-support population state uses `ddof=0`, rejects constants, and transforms to finite C-contiguous float32. Outcomes remain positive int64 `B_i(k)` values. The [scientific contract](#causal-features) owns formulas, causality, target construction, and complete-outcome role boundaries.
 
@@ -601,7 +601,7 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 
 #### Request and membership
 
-`TuneRequest` fixes a Study UUID, Corpus UUID, `ExperimentSemantics`, and a nonempty tuple of unique complete Methods. Every Method uses the same model family and owns one `ModelDefinition` plus its complete fit policy. Candidate input carries a validated zero-based index; fitting derives the Method from `request.methods[method_index]` and builds `TrainingDefinition(experiment=request.experiment, method=method)` as the association's derived property.
+`TuneRequest` fixes a Study UUID, Corpus UUID, `ExperimentSemantics`, and a nonempty tuple of unique complete Methods. Every Method uses the same model family and owns one `ModelDefinition` plus its complete fit policy. Candidate fitting resolves a validated zero-based index through `request.method_at(method_index)` and passes `TrainingDefinition(experiment=request.experiment, method=method)` directly as its checkpoint association. Canonical artifacts instead retain their full `ArtifactAssociation`.
 
 #### Candidate run
 
@@ -609,7 +609,8 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 training history and state, fits the indexed Method through native Lightning, and retains one
 successful result. Method index `i` owns checkpoint scratch at
 `studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while
-fit or publication failure preserves it for `last.ckpt` resume.
+fit or publication failure preserves it for full-state `last.ckpt` resume. Candidate checkpoints
+embed only the `TrainingDefinition` needed to rebuild the candidate model.
 
 `RetainedResult` has three fields:
 
@@ -624,7 +625,7 @@ The selected epoch cannot exceed completed epochs. The enclosing Study requires 
 
 Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary sibling. Each private result envelope carries the full request, method index, and retained metrics.
 
-`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first result. All files must carry the identical request and an embedded index matching the filename. Publication assembles metrics in `request.methods` order, writes hidden sibling `studies/.<study_id>.json`, removes scratch directory `studies/.<study_id>/`, and creates `studies/<study_id>.json` with `os.link()`. An occupied canonical path makes the link fail without overwrite. After a successful link, hidden-file cleanup is best-effort and cannot retract the canonical Study.
+`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first result. All files must carry the identical request and an embedded index matching the filename. Publication assembles metrics in `request.methods` order at `studies/.<study_id>/study.json`, creates `studies/<study_id>.json` directly with `os.link()`, then removes scratch. An occupied canonical path makes the link fail without overwrite. Failed cleanup after a successful link can leave scratch beside the valid canonical Study.
 
 #### Selected training
 
@@ -641,7 +642,7 @@ Evaluation separates canonical self-contained observations from transient metric
 `evaluate(request, storage_root)` loads the exact Corpus and native artifact, requires the artifact's source Corpus to equal the evaluation Corpus, prepares the testing origin window with persisted state, and performs CUDA inference.
 
 For every eligible origin the evaluation publisher owns construction of one ordered, nonnull observation containing `h_i`, `hat{k}_i`,
-`k_i*`, `K-1`, `hat{ell}_i`, `B_i(0)`, `P_i(0)`, `B_i(hat{k}_i)`, `P_i(hat{k}_i)`,
+`k_i*`, `hat{ell}_i`, `B_i(0)`, `P_i(0)`, `B_i(hat{k}_i)`, `P_i(hat{k}_i)`,
 `B_i(K-1)`, `P_i(K-1)`, and `m_i` under the canonical field names. Work is
 written under `evaluations/.<evaluation_id>/` and renamed to:
 
@@ -651,7 +652,7 @@ evaluations/<evaluation_id>/
   observations.parquet
 ```
 
-The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical twelve-column contract in the [reference](#canonical-observations).
+The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical eleven-column contract in the [reference](#canonical-observations).
 
 #### Transient reduction
 
@@ -756,23 +757,7 @@ Every serialized `Method` has ordered fields `model: ModelDefinition` and `fit: 
 
 `WorkflowRequest` is exactly `TrainRequest | EvaluateRequest`. `TuneRequest` is intentionally separate.
 
-Fresh constructors:
-
-```python
-fresh_train_request(source: SelectedStudySource) -> TrainRequest
-fresh_tune_request(
-    corpus_id: UUID,
-    experiment: ExperimentSemantics,
-    methods: tuple[Method, ...],
-) -> TuneRequest
-fresh_evaluate_request(
-    artifact_id: UUID,
-    corpus_id: UUID,
-    testing_window: BlockWindow,
-) -> EvaluateRequest
-```
-
-`fresh_tune_request()` is the UUIDv4 origin for publishable TuneRequests; experiment runners call it rather than accepting operator-supplied Study IDs.
+Direct construction defaults each workflow discriminator and mints the destination artifact, Study, or evaluation UUIDv4 when omitted. Source and association IDs remain required.
 
 ### Durable addresses and objects
 
@@ -891,7 +876,7 @@ Each `RetainedResult` has exact ordered fields:
 | `target_state` | Float64 finite mean and positive standard deviation |
 | `method` | exact selected Method |
 
-Fitting uses hidden sibling scratch at `artifacts/.<artifact_id>/`. Publication moves the completed best checkpoint to `artifacts/.<artifact_id>.ckpt`, removes scratch, and creates the canonical path with `os.link()`. An occupied target fails without overwrite; cleanup of the hidden checkpoint is best-effort only after the canonical link exists.
+Fitting uses hidden scratch at `artifacts/.<artifact_id>/`. Publication hardlinks the selected best checkpoint directly from that scratch to `artifacts/<artifact_id>.ckpt`, then removes scratch. An occupied target fails without overwrite. Failed cleanup after a successful link can leave scratch beside the valid canonical artifact.
 
 Direct loader:
 
@@ -918,7 +903,7 @@ fable study finalize STUDY_ID
 
 - `submit` accepts one or more WorkflowRequest files and prints one positive Slurm job ID per request.
 - `study run` validates one strict TuneRequest and a zero-based Method index, then prints the candidate Slurm job ID.
-- `study finalize` accepts standard UUID syntax, reads absolute `STORAGE_ROOT`, and publishes existing indexed results. The result files' strict TuneRequest must carry the same Study ID, and publishable TuneRequests originate from `fresh_tune_request()` as UUIDv4.
+- `study finalize` accepts standard UUID syntax, reads absolute `STORAGE_ROOT`, and publishes existing indexed results. The result files' strict TuneRequest must carry the same Study ID, and direct TuneRequest construction mints publishable Study IDs as UUIDv4.
 
 Two help-hidden generated-job leaves:
 
@@ -1043,14 +1028,13 @@ Destination: `evaluations/<evaluation_id>/observations.parquet`. Status: canonic
 | 2 | `predicted_action_k` | Int64 | decoded `hat{k}_i` |
 | 3 | `predicted_minimum_log_base_fee` | Float64 | dimensionless predicted log-minimum coordinate `hat{ell}_i` relative to `u` |
 | 4 | `minimum_action_k` | Int64 | canonical `k_i*` |
-| 5 | `deadline_action_k` | Int64 | fixed `K-1` |
-| 6 | `immediate_base_fee_per_gas` | Int64 | `B_i(0)`, wei/gas |
-| 7 | `immediate_effective_priority_fee_per_gas_p50` | Int64 | `P_i(0)`, wei/gas |
-| 8 | `selected_base_fee_per_gas` | Int64 | `B_i(hat{k}_i)`, wei/gas |
-| 9 | `selected_effective_priority_fee_per_gas_p50` | Int64 | `P_i(hat{k}_i)`, wei/gas |
-| 10 | `deadline_base_fee_per_gas` | Int64 | `B_i(K-1)`, wei/gas |
-| 11 | `deadline_effective_priority_fee_per_gas_p50` | Int64 | `P_i(K-1)`, wei/gas |
-| 12 | `minimum_base_fee_per_gas` | Int64 | `m_i`, wei/gas |
+| 5 | `immediate_base_fee_per_gas` | Int64 | `B_i(0)`, wei/gas |
+| 6 | `immediate_effective_priority_fee_per_gas_p50` | Int64 | `P_i(0)`, wei/gas |
+| 7 | `selected_base_fee_per_gas` | Int64 | `B_i(hat{k}_i)`, wei/gas |
+| 8 | `selected_effective_priority_fee_per_gas_p50` | Int64 | `P_i(hat{k}_i)`, wei/gas |
+| 9 | `deadline_base_fee_per_gas` | Int64 | `B_i(K-1)`, wei/gas |
+| 10 | `deadline_effective_priority_fee_per_gas_p50` | Int64 | `P_i(K-1)`, wei/gas |
+| 11 | `minimum_base_fee_per_gas` | Int64 | `m_i`, wei/gas |
 
 The file contains predictions and the observed truth needed for local reduction. Losses, timestamps, waits, horizons, standardized predictions, and derived metrics remain absent.
 

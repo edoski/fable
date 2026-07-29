@@ -157,7 +157,15 @@ def test_submit_workflows_rejects_duplicate_durable_identities(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    request = _request("train")
+    first = _request("train")
+    second = first.model_copy(
+        update={
+            "source": first.source.model_copy(
+                update={"study_id": UUID("00000000-0000-4000-8000-000000000006")}
+            )
+        }
+    )
+    assert first != second
     write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
@@ -167,7 +175,7 @@ def test_submit_workflows_rejects_duplicate_durable_identities(
     )
 
     with pytest.raises(ValueError, match="workflow identities must be unique"):
-        execution.submit_workflows((request, request))
+        execution.submit_workflows((first, second))
 
 
 @pytest.mark.parametrize("workflow", ["train", "evaluate"])

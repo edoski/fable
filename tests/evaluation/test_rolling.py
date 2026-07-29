@@ -54,7 +54,6 @@ def _publish_evaluation(
                 "predicted_action_k": action,
                 "predicted_minimum_log_base_fee": math.log(outcome_base_fees[minimum_action]),
                 "minimum_action_k": minimum_action,
-                "deadline_action_k": horizon - 1,
                 "immediate_base_fee_per_gas": base_fees[origin + 1],
                 "immediate_effective_priority_fee_per_gas_p50": priority_fees[origin + 1],
                 "selected_base_fee_per_gas": base_fees[selected_block],

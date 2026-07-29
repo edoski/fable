@@ -154,6 +154,7 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     ]
     assert {source.study_result_index for source in sources} == {1}
     assert len({request.artifact_id for request in requests}) == 81
+    assert {request.artifact_id.version for request in requests} == {4}
 
     for row in rows:
         checkpoint = tmp_path / "artifacts" / f"{row['artifact_id']}.ckpt"
@@ -205,6 +206,8 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     ]
     assert held_out_experiment_id.version == 4
     assert len(evaluation_rows) == 81
+    assert len({request.evaluation_id for request in evaluation_requests}) == 81
+    assert {request.evaluation_id.version for request in evaluation_requests} == {4}
     assert [request.testing_window for request in evaluation_requests[:4]] == [
         BlockWindow(first_parent_block=701, last_parent_block=803),
         BlockWindow(first_parent_block=701, last_parent_block=802),

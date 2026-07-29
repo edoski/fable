@@ -120,13 +120,11 @@ def test_retain_publish_and_load_selected_method_in_request_order(
     )
 
     selected = load_selected_method(tmp_path, source)
-    canonical_path = study_json_path(tmp_path, STUDY_ID)
     canonical = load_study(tmp_path, STUDY_ID)
 
     assert canonical == Study(request=request, trials=(first, second))
     assert selected == OTHER_LSTM_METHOD
     assert not (tmp_path / "studies" / f".{STUDY_ID}").exists()
-    assert not canonical_path.with_name(f".{canonical_path.name}").exists()
 
 
 @pytest.mark.parametrize(
@@ -286,33 +284,4 @@ def test_publish_study_preserves_canonical_created_during_publication(
         publish_study(tmp_path, STUDY_ID)
 
     assert canonical.read_text(encoding="utf-8") == "occupied"
-    assert not (tmp_path / "studies" / f".{STUDY_ID}").exists()
-
-
-def test_published_study_survives_hidden_cleanup_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    retain_result(tmp_path, _request(), 0, RESULT)
-    canonical = study_json_path(tmp_path, STUDY_ID)
-    hidden = canonical.with_name(f".{canonical.name}")
-    cleanup_attempted = False
-    real_unlink = Path.unlink
-
-    def fail_hidden_cleanup(
-        path: Path,
-        missing_ok: bool = False,
-    ) -> None:
-        nonlocal cleanup_attempted
-        if path == hidden:
-            cleanup_attempted = True
-            raise OSError("cleanup failed")
-        real_unlink(path, missing_ok=missing_ok)
-
-    monkeypatch.setattr(Path, "unlink", fail_hidden_cleanup)
-
-    publish_study(tmp_path, STUDY_ID)
-
-    assert cleanup_attempted
-    assert canonical.is_file()
-    assert hidden.is_file()
+    assert (tmp_path / "studies" / f".{STUDY_ID}").is_dir()

@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from uuid import UUID
 
@@ -14,59 +13,43 @@ from fable.experiments import (
 )
 
 EXPERIMENT_ID = UUID("10000000-0000-4000-8000-000000000001")
+OTHER_EXPERIMENT_ID = UUID("10000000-0000-4000-8000-000000000002")
 RECORD_ID = UUID("20000000-0000-4000-8000-000000000001")
 OTHER_RECORD_ID = UUID("30000000-0000-4000-8000-000000000001")
 
 
-@pytest.mark.parametrize("kind", tuple(ExperimentKind))
-def test_experiment_manifest_kind_round_trips_one_record_id(
-    tmp_path: Path,
-    kind: ExperimentKind,
-) -> None:
-    manifest = ExperimentManifest(
+def _manifest(
+    *,
+    record_id: UUID = RECORD_ID,
+    cell: str = "ethereum/lstm/full",
+) -> ExperimentManifest:
+    return ExperimentManifest(
         experiment_id=EXPERIMENT_ID,
-        entries=(
-            ExperimentEntry(
-                cell="ethereum/lstm/full",
-                record_id=RECORD_ID,
-            ),
-        ),
+        entries=(ExperimentEntry(cell=cell, record_id=record_id),),
     )
 
-    write_experiment_manifest(tmp_path, kind, manifest)
 
-    loaded = load_experiment_manifest(
-        tmp_path,
-        kind,
-        EXPERIMENT_ID,
-    )
-    assert loaded == manifest
-    assert json.loads(
-        experiment_manifest_path(
-            tmp_path,
-            kind,
-            EXPERIMENT_ID,
-        ).read_text(encoding="utf-8")
-    ) == {
-        "experiment_id": str(EXPERIMENT_ID),
-        "entries": [
-            {
-                "cell": "ethereum/lstm/full",
-                "record_id": str(RECORD_ID),
-            },
-        ],
-    }
+def test_experiment_manifest_round_trips(tmp_path: Path) -> None:
+    manifest = _manifest()
+
+    write_experiment_manifest(tmp_path, ExperimentKind.HPO, manifest)
+
+    assert load_experiment_manifest(tmp_path, ExperimentKind.HPO, EXPERIMENT_ID) == manifest
+
+
+def test_experiment_manifest_loader_rejects_wrong_requested_id(tmp_path: Path) -> None:
+    manifest = _manifest()
+    path = experiment_manifest_path(tmp_path, ExperimentKind.HPO, OTHER_EXPERIMENT_ID)
+    path.parent.mkdir(parents=True)
+    path.write_text(manifest.model_dump_json(), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="manifest ID does not match"):
+        load_experiment_manifest(tmp_path, ExperimentKind.HPO, OTHER_EXPERIMENT_ID)
 
 
 def test_experiment_manifest_cannot_be_overwritten(tmp_path: Path) -> None:
-    original = ExperimentManifest(
-        experiment_id=EXPERIMENT_ID,
-        entries=(ExperimentEntry(cell="ethereum/lstm/full", record_id=RECORD_ID),),
-    )
-    replacement = ExperimentManifest(
-        experiment_id=EXPERIMENT_ID,
-        entries=(ExperimentEntry(cell="ethereum/lstm/hpo", record_id=OTHER_RECORD_ID),),
-    )
+    original = _manifest()
+    replacement = _manifest(record_id=OTHER_RECORD_ID, cell="ethereum/lstm/hpo")
     write_experiment_manifest(tmp_path, ExperimentKind.HPO, original)
 
     with pytest.raises(FileExistsError):

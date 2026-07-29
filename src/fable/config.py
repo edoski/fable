@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Literal, Self, TypeAlias
+from uuid import uuid4
 
 from pydantic import UUID4, Field, TypeAdapter, model_validator
 
@@ -163,14 +164,14 @@ class SelectedStudySource(StrictFrozenRecord):
 
 
 class TrainRequest(StrictFrozenRecord):
-    workflow: Literal["train"]
-    artifact_id: UUID4
+    workflow: Literal["train"] = "train"
+    artifact_id: UUID4 = Field(default_factory=uuid4)
     source: SelectedStudySource
 
 
 class TuneRequest(StrictFrozenRecord):
-    workflow: Literal["tune"]
-    study_id: UUID4
+    workflow: Literal["tune"] = "tune"
+    study_id: UUID4 = Field(default_factory=uuid4)
     corpus_id: UUID4
     experiment: ExperimentSemantics
     methods: Annotated[tuple[Method, ...], Field(min_length=1)]
@@ -189,8 +190,8 @@ class TuneRequest(StrictFrozenRecord):
 
 
 class EvaluateRequest(StrictFrozenRecord):
-    workflow: Literal["evaluate"]
-    evaluation_id: UUID4
+    workflow: Literal["evaluate"] = "evaluate"
+    evaluation_id: UUID4 = Field(default_factory=uuid4)
     artifact_id: UUID4
     corpus_id: UUID4
     testing_window: BlockWindow
