@@ -29,7 +29,6 @@ OBSERVATION_SCHEMA = pl.Schema(
         "predicted_action_k": pl.Int64,
         "predicted_minimum_log_base_fee": pl.Float64,
         "minimum_action_k": pl.Int64,
-        "deadline_action_k": pl.Int64,
         "immediate_base_fee_per_gas": pl.Int64,
         "immediate_effective_priority_fee_per_gas_p50": pl.Int64,
         "selected_base_fee_per_gas": pl.Int64,
@@ -148,13 +147,14 @@ def _collect_observations(
             actions = decode_action(output).cpu().numpy()
             minimum_actions_batch = batch["label"].numpy()
             base_fees = batch["base_fees"].numpy()
+            origin_blocks_batch = batch["origin_block"].numpy()
 
             rows = np.arange(actions.size, dtype=np.int64)
             immediate_batch = base_fees[:, 0]
             selected_batch = base_fees[rows, actions]
             deadline_batch = base_fees[:, -1]
             minimum_batch = base_fees[rows, minimum_actions_batch]
-            immediate_outcome_rows = batch["origin_block"].numpy() + 1 - first_outcome_block
+            immediate_outcome_rows = origin_blocks_batch + 1 - first_outcome_block
             immediate_priority_fees_p50_batch = outcome_priority_fees_p50[immediate_outcome_rows]
             selected_priority_fees_p50_batch = outcome_priority_fees_p50[
                 immediate_outcome_rows + actions
@@ -170,24 +170,27 @@ def _collect_observations(
 
             size = actions.size
             destination = slice(cursor, cursor + size)
-            columns["origin_block"][destination] = batch["origin_block"].numpy()
-            columns["predicted_action_k"][destination] = actions
-            columns["predicted_minimum_log_base_fee"][destination] = predicted_logs_batch
-            columns["minimum_action_k"][destination] = minimum_actions_batch
-            columns["deadline_action_k"][destination] = base_fees.shape[1] - 1
-            columns["immediate_base_fee_per_gas"][destination] = immediate_batch
-            columns["immediate_effective_priority_fee_per_gas_p50"][destination] = (
-                immediate_priority_fees_p50_batch
-            )
-            columns["selected_base_fee_per_gas"][destination] = selected_batch
-            columns["selected_effective_priority_fee_per_gas_p50"][destination] = (
-                selected_priority_fees_p50_batch
-            )
-            columns["deadline_base_fee_per_gas"][destination] = deadline_batch
-            columns["deadline_effective_priority_fee_per_gas_p50"][destination] = (
-                deadline_priority_fees_p50_batch
-            )
-            columns["minimum_base_fee_per_gas"][destination] = minimum_batch
+            batch_columns = {
+                "origin_block": origin_blocks_batch,
+                "predicted_action_k": actions,
+                "predicted_minimum_log_base_fee": predicted_logs_batch,
+                "minimum_action_k": minimum_actions_batch,
+                "immediate_base_fee_per_gas": immediate_batch,
+                "immediate_effective_priority_fee_per_gas_p50": (
+                    immediate_priority_fees_p50_batch
+                ),
+                "selected_base_fee_per_gas": selected_batch,
+                "selected_effective_priority_fee_per_gas_p50": (
+                    selected_priority_fees_p50_batch
+                ),
+                "deadline_base_fee_per_gas": deadline_batch,
+                "deadline_effective_priority_fee_per_gas_p50": (
+                    deadline_priority_fees_p50_batch
+                ),
+                "minimum_base_fee_per_gas": minimum_batch,
+            }
+            for name in OBSERVATION_SCHEMA:
+                columns[name][destination] = batch_columns[name]
             cursor += size
 
     return pl.DataFrame(columns, schema=OBSERVATION_SCHEMA)
@@ -348,38 +351,24 @@ def _reduce_rolling_cell(
     cell: str,
     evaluation_ids: Mapping[int, UUID],
 ) -> dict[str, str | float]:
-    initial_frame = _load_rolling_observations(storage_root, evaluation_ids[5])
-    current_origins = initial_frame["origin_block"].to_numpy().copy()
-    initial = _rolling_arrays(
-        initial_frame,
-        decision_origins=current_origins,
-        cell=cell,
-        horizon=5,
-    )
-    current_origins += initial["predicted_action_k"] == 4
+    decision_origins: np.ndarray | None = None
+    selections = []
+    for horizon in range(5, 1, -1):
+        observations = _load_rolling_observations(storage_root, evaluation_ids[horizon])
+        if decision_origins is None:
+            decision_origins = observations["origin_block"].to_numpy().copy()
+        selection = _rolling_arrays(
+            observations,
+            decision_origins=decision_origins,
+            cell=cell,
+            horizon=horizon,
+        )
+        selections.append(selection)
+        if horizon > 2:
+            decision_origins += selection["predicted_action_k"] == horizon - 1
 
-    horizon_four = _rolling_arrays(
-        _load_rolling_observations(storage_root, evaluation_ids[4]),
-        decision_origins=current_origins,
-        cell=cell,
-        horizon=4,
-    )
-    current_origins += horizon_four["predicted_action_k"] == 3
-
-    horizon_three = _rolling_arrays(
-        _load_rolling_observations(storage_root, evaluation_ids[3]),
-        decision_origins=current_origins,
-        cell=cell,
-        horizon=3,
-    )
-    current_origins += horizon_three["predicted_action_k"] == 2
-
-    final = _rolling_arrays(
-        _load_rolling_observations(storage_root, evaluation_ids[2]),
-        decision_origins=current_origins,
-        cell=cell,
-        horizon=2,
-    )
+    initial = selections[0]
+    final = selections[-1]
 
     immediate_base_fees = initial["immediate_base_fee_per_gas"]
     immediate_priority_fees = initial["immediate_effective_priority_fee_per_gas_p50"]

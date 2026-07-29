@@ -640,7 +640,7 @@ Evaluation separates canonical self-contained observations from transient metric
 `evaluate(request, storage_root)` loads the exact Corpus and native artifact, requires the artifact's source Corpus to equal the evaluation Corpus, prepares the testing origin window with persisted state, and performs CUDA inference.
 
 For every eligible origin the evaluation publisher owns construction of one ordered, nonnull observation containing `h_i`, `hat{k}_i`,
-`k_i*`, `K-1`, `hat{ell}_i`, `B_i(0)`, `P_i(0)`, `B_i(hat{k}_i)`, `P_i(hat{k}_i)`,
+`k_i*`, `hat{ell}_i`, `B_i(0)`, `P_i(0)`, `B_i(hat{k}_i)`, `P_i(hat{k}_i)`,
 `B_i(K-1)`, `P_i(K-1)`, and `m_i` under the canonical field names. Work is
 written under `evaluations/.<evaluation_id>/` and renamed to:
 
@@ -650,7 +650,7 @@ evaluations/<evaluation_id>/
   observations.parquet
 ```
 
-The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical twelve-column contract in the [reference](#canonical-observations).
+The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical eleven-column contract in the [reference](#canonical-observations).
 
 #### Transient reduction
 
@@ -1025,14 +1025,13 @@ Destination: `evaluations/<evaluation_id>/observations.parquet`. Status: canonic
 | 2 | `predicted_action_k` | Int64 | decoded `hat{k}_i` |
 | 3 | `predicted_minimum_log_base_fee` | Float64 | dimensionless predicted log-minimum coordinate `hat{ell}_i` relative to `u` |
 | 4 | `minimum_action_k` | Int64 | canonical `k_i*` |
-| 5 | `deadline_action_k` | Int64 | fixed `K-1` |
-| 6 | `immediate_base_fee_per_gas` | Int64 | `B_i(0)`, wei/gas |
-| 7 | `immediate_effective_priority_fee_per_gas_p50` | Int64 | `P_i(0)`, wei/gas |
-| 8 | `selected_base_fee_per_gas` | Int64 | `B_i(hat{k}_i)`, wei/gas |
-| 9 | `selected_effective_priority_fee_per_gas_p50` | Int64 | `P_i(hat{k}_i)`, wei/gas |
-| 10 | `deadline_base_fee_per_gas` | Int64 | `B_i(K-1)`, wei/gas |
-| 11 | `deadline_effective_priority_fee_per_gas_p50` | Int64 | `P_i(K-1)`, wei/gas |
-| 12 | `minimum_base_fee_per_gas` | Int64 | `m_i`, wei/gas |
+| 5 | `immediate_base_fee_per_gas` | Int64 | `B_i(0)`, wei/gas |
+| 6 | `immediate_effective_priority_fee_per_gas_p50` | Int64 | `P_i(0)`, wei/gas |
+| 7 | `selected_base_fee_per_gas` | Int64 | `B_i(hat{k}_i)`, wei/gas |
+| 8 | `selected_effective_priority_fee_per_gas_p50` | Int64 | `P_i(hat{k}_i)`, wei/gas |
+| 9 | `deadline_base_fee_per_gas` | Int64 | `B_i(K-1)`, wei/gas |
+| 10 | `deadline_effective_priority_fee_per_gas_p50` | Int64 | `P_i(K-1)`, wei/gas |
+| 11 | `minimum_base_fee_per_gas` | Int64 | `m_i`, wei/gas |
 
 The file contains predictions and the observed truth needed for local reduction. Losses, timestamps, waits, horizons, standardized predictions, and derived metrics remain absent.
 
