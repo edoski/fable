@@ -106,7 +106,7 @@ baseline and head SHAs, checks, findings, and status before proceeding.
 | 1 | Training core and tuning | GREEN LIGHT | `ffd7c368` | `019fad88-4411-7892-963a-301075fb96f7` / `44435ddf` | `019fad92-f093-75f3-99af-4f93de395d1f` |
 | 2 | Experiment manifests, selection, and packed launch | GREEN LIGHT | `1a141fa4` | `019fad98-e122-71c3-b9a5-4a33384fc860` / `2d506cf6` | `019fada3-ec16-7552-becb-6fdaf9a819e3` |
 | 3 | Evaluation and rolling reduction | GREEN LIGHT | `e755fbdd` | `019fadaa-4725-7323-813b-21f8760f16e5` / `836577f6` | `019fadb1-9646-7b31-8700-00d2dd9006be` |
-| 4 | App inference and model lifecycle | blocked by 3 | pending | pending | pending |
+| 4 | App inference and model lifecycle | GREEN LIGHT | `b7e26671` | `019fadb6-2d6f-75e3-b3ed-7059843f6ec1` / `0226dcc4..ea0b664b` | `019fadc0-a253-7a23-998d-7ee44c3471e4` |
 | 5 | App RPC and feature input path | blocked by 4 | pending | pending | pending |
 | 6 | Mobile exporter | blocked by 5 | pending | pending | pending |
 | 7 | Documentation truth pass | blocked by 6 | pending | pending | pending |
@@ -126,6 +126,14 @@ Slice 3 review: Standards 0 findings; Spec 0 findings. Evaluation tests: 17 pass
 suite: 125 passed. Ruff, Pyright, Vulture, and `git diff --check`: passed. The reviewer exhaustively
 enumerated all 120 four-model action combinations and confirmed the manuscript recurrence and
 fixed deadline.
+
+Slice 4 review: final Standards 0 findings; final Spec 0 findings. The first review found a stale
+history publication interval during an awaited save. Correction review rejected fallible rollback
+and required FIFO linearization of history and selection. The next correction review found a
+latest-selection loss against stale rendered state. Final review confirmed one App-owned
+intended/applied selection record, latest-intent coalescing, single-write FIFO history, no rollback,
+and closure of both P1s. App tests: 47 passed. Typecheck, Expo Doctor 19/19, and
+`git diff --check`: passed.
 
 ## Slice 1 — Training core and tuning
 
