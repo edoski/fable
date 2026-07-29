@@ -10,6 +10,7 @@ import numpy as np
 import polars as pl
 import pytest
 import torch
+from lightning.pytorch.callbacks import Callback
 from pydantic import ValidationError
 from torch.utils.data import DataLoader
 
@@ -522,11 +523,20 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
     real_trainer: Any = modeling.pl.Trainer
     fit_kwargs: list[dict[str, object]] = []
 
+    class InterruptAfterEpoch(Callback):
+        def on_train_batch_start(
+            self,
+            trainer: Any,
+            *_args: object,
+        ) -> None:
+            if trainer.current_epoch == 1:
+                raise RuntimeError("simulated interruption")
+
     class TrainerSpy:
         def __init__(self, **kwargs: Any) -> None:
             kwargs["accelerator"] = "cpu"
             if not fit_kwargs:
-                kwargs["max_epochs"] = 2
+                kwargs["callbacks"].append(InterruptAfterEpoch())
             self._trainer = real_trainer(**kwargs)
 
         def fit(self, module: Any, **kwargs: Any) -> None:
@@ -550,18 +560,18 @@ def test_full_checkpoint_resume_preserves_selection_and_progress(
             for epoch, loss, gap in (line.split() for line in lines)
         ]
 
-    first = modeling.fit_candidate(request, 0, tmp_path, scratch)
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        modeling.fit_candidate(request, 0, tmp_path, scratch)
     first_progress = progress()
+    assert (scratch / "last.ckpt").is_file()
+
     second = modeling.fit_candidate(request, 0, tmp_path, scratch)
     second_progress = progress()
 
-    assert [epoch for epoch, _, _ in first_progress] == [2]
-    assert [epoch for epoch, _, _ in second_progress] == [4]
+    assert first_progress == []
+    assert [epoch for epoch, _, _ in second_progress] == [2, 4]
     validation_progress = first_progress + second_progress
     assert all(math.isfinite(loss) and math.isfinite(gap) for _, loss, gap in validation_progress)
-    assert first.objective == first_progress[0][2]
-    assert first.selected_epoch == 2
-    assert first.completed_epochs == 2
     assert second.completed_epochs == method.fit.max_epochs
     assert second.objective == min(gap for _, _, gap in validation_progress)
     assert second.selected_epoch == next(

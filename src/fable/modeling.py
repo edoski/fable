@@ -436,8 +436,8 @@ def _callbacks(
     )
     last = ModelCheckpoint(
         dirpath=scratch,
-        save_top_k=0,
-        save_last=True,
+        filename="last",
+        save_top_k=1,
         save_weights_only=False,
         every_n_epochs=1,
         save_on_train_epoch_end=True,
