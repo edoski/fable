@@ -178,7 +178,7 @@ async function renderApp(): Promise<void> {
 }
 
 describe("App engine selection", () => {
-  it("removes a persisted result made stale during save", async () => {
+  it("orders selection after an accepted history commit", async () => {
     const result: InferenceResult = {
       chain: "ethereum",
       K: 5,
@@ -189,16 +189,14 @@ describe("App engine selection", () => {
       target_block: 12,
       predicted_minimum_base_fee_per_gas: 20,
     };
-    const staleRun: InferenceRun = {
-      id: "stale-run",
+    const acceptedRun: InferenceRun = {
+      id: "accepted-run",
       ran_at: "2026-07-29T12:00:00.000Z",
       ...result,
     };
     const firstSave = deferred<void>();
-    mocks.addRun.mockReturnValue([staleRun]);
-    mocks.saveRuns
-      .mockImplementationOnce(() => firstSave.promise)
-      .mockResolvedValue(undefined);
+    mocks.addRun.mockReturnValue([acceptedRun]);
+    mocks.saveRuns.mockImplementationOnce(() => firstSave.promise);
 
     await renderApp();
     expect(inferenceProps().state).toEqual({ status: "idle" });
@@ -209,19 +207,25 @@ describe("App engine selection", () => {
 
     act(() => engines[0].resolveRun(result));
     await vi.waitFor(() => expect(mocks.saveRuns).toHaveBeenCalledOnce());
-    expect(mocks.saveRuns).toHaveBeenLastCalledWith([staleRun]);
+    expect(mocks.saveRuns).toHaveBeenLastCalledWith([acceptedRun]);
 
     act(() => {
       inferenceProps().onHorizonChange(4);
       inferenceProps().onChainChange("polygon");
     });
+    expect(inferenceProps()).toMatchObject({
+      chain: "ethereum",
+      horizon: 5,
+      state: { status: "loading" },
+    });
+    expect(engines).toHaveLength(1);
+
     await act(async () => {
       firstSave.resolve();
       await flushMicrotasks();
     });
 
-    expect(mocks.saveRuns).toHaveBeenCalledTimes(2);
-    expect(mocks.saveRuns).toHaveBeenLastCalledWith([]);
+    expect(mocks.saveRuns).toHaveBeenCalledOnce();
     expect(inferenceProps()).toMatchObject({
       chain: "polygon",
       horizon: 4,
@@ -231,6 +235,6 @@ describe("App engine selection", () => {
     expect(mocks.headerProps).toMatchObject({ status: "checking" });
     expect(engines).toHaveLength(2);
     act(() => bottomTabsProps().onSelect("analytics"));
-    expect(analyticsProps().runs).toEqual([]);
+    expect(analyticsProps().runs).toEqual([acceptedRun]);
   });
 });

@@ -72,11 +72,6 @@ export default function App() {
       }
       try {
         await saveRuns(next);
-        if (!isCurrent()) {
-          await saveRuns(current);
-          setStorageError(null);
-          return;
-        }
       } catch (error) {
         setStorageError(
           error instanceof Error ? error.message : String(error),
@@ -161,19 +156,23 @@ export default function App() {
 
   function selectChain(nextChain: Chain) {
     if (nextChain === chain) return;
-    activeEngine.current = null;
-    selectionRevision.current += 1;
-    setInference({ status: "idle" });
-    setRpcStatus("checking");
-    setSnapshot(null);
-    setChain(nextChain);
+    void serializeHistory(async () => {
+      activeEngine.current = null;
+      selectionRevision.current += 1;
+      setInference({ status: "idle" });
+      setRpcStatus("checking");
+      setSnapshot(null);
+      setChain(nextChain);
+    });
   }
 
   function selectHorizon(nextHorizon: Horizon) {
     if (nextHorizon === horizon) return;
-    selectionRevision.current += 1;
-    setInference({ status: "idle" });
-    setHorizon(nextHorizon);
+    void serializeHistory(async () => {
+      selectionRevision.current += 1;
+      setInference({ status: "idle" });
+      setHorizon(nextHorizon);
+    });
   }
 
   async function runInference() {
