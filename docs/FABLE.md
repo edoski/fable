@@ -375,7 +375,8 @@ else:
 
 ### Historical tensors and targets
 
-One lazy historical item has:
+`HistoricalDataset.__getitem__()` returns one integer index. The loader's device-side collate
+function turns a batch of these indices into a tensor mapping. One row within that mapping has:
 
 | Value | Shape | Dtype | Meaning |
 | --- | --- | --- | --- |
@@ -385,7 +386,7 @@ One lazy historical item has:
 | `base_fees` | `[K]` | int64 | `[B_i(0), ..., B_i(K-1)]`. |
 | `origin_block` | scalar | int64 | Closed parent `h_i`. |
 
-Collation produces `[B,C,F]`, `[B]`, `[B]`, `[B,K]`, and `[B]`.
+The complete collated mapping has shapes `[B,C,F]`, `[B]`, `[B]`, `[B,K]`, and `[B]`.
 
 For origin `i`, the positive Int64 outcome vector is
 `[B_i(0), ..., B_i(K-1)]`. The [canonical notation](#decision-and-target-notation) defines its
@@ -549,8 +550,8 @@ Temporal preparation has two direct paths: historical fixed-block examples and l
 Preparation keeps the first backing block, contiguous CPU float32 feature rows, and int64 base
 fees. Each dataset stores its first origin row and sample count plus int64 `k_i*` labels and
 float32 `z_i` targets. Historical execution moves that compact state to the execution device once.
-Each loader returns integer indices; device-side collation derives origin rows and blocks, then
-gathers batched `[C,F]` inputs and `[K]` outcomes.
+Each dataset item is an integer index; device-side loader collation derives origin rows and blocks,
+gathers batched `[C,F]` inputs and `[K]` outcomes, and yields their tensor mapping.
 
 The ordered feature tuple is request authority. Raw features are assembled in that order as Float64; training-support population state uses `ddof=0`, rejects constants, and transforms to finite C-contiguous float32. Outcomes remain positive int64 `B_i(k)` values. The [scientific contract](#causal-features) owns formulas, causality, target construction, and complete-outcome role boundaries.
 
