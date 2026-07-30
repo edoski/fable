@@ -84,7 +84,7 @@ check and the full Python suite. No other slice inherits that waiver.
 | 2 | Typed experiment-bundle publication | green | `30654b47` | `d98ba42b` | `/root/slice2_implement` | `/root/slice2_review` | 1 correction; Standards 0; Spec 0 |
 | 3 | Three Python test reductions | green | `99324dbf` | `3e91e8a1` | `/root/slice3_implement` | waived by user | exact diff; 124 tests passed |
 | 4 | Fit-pipeline collapse | green | `61b033fe` | `f5d8a279` | `/root/slice4_implement` | `/root/slice4_review` | Standards 0; Spec 0 |
-| 5 | Exact bash template | blocked by 4 | pending | pending | pending | pending | pending |
+| 5 | Exact bash template | green | `1db61d1c` | `dce423d1` | `/root/slice5_implement` | `/root/slice5_review` | Standards 0; Spec 0 |
 | 6 | App cleanup | blocked by 5 | pending | pending | pending | pending | pending |
 | 7 | Compact-CUDA propagation and parity | blocked by 6 | pending | pending | pending | pending | pending |
 
@@ -351,6 +351,13 @@ uv run pyright
 uv run vulture
 uv run pytest
 ```
+
+### Execution result
+
+The renderer now consists of one job template and joined process-step templates. The implementer
+proved old/new output byte-identical for workflow and candidate leaves with one through three
+slots. Focused and full Python checks passed. Independent review found zero Standards and zero
+Spec findings and returned `GREEN LIGHT`.
 
 ## Slice 6 — App cleanup
 
