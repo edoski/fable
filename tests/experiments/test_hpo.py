@@ -94,13 +94,15 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     )
     c_result = run_script(_C_SCRIPT, "close", tmp_path, c_experiment_id)
     c_manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "c_study" / f"{c_experiment_id}.json").read_bytes(),
+        (
+            tmp_path / "experiments" / "c_study" / str(c_experiment_id) / "manifest.json"
+        ).read_bytes(),
         strict=True,
     )
 
     assert c_result.stdout.strip() == str(c_experiment_id)
-    assert len(c_manifest.entries) == 45
-    assert [str(entry.record_id) for entry in c_manifest.entries] == [
+    assert len(c_manifest.root) == 45
+    assert [str(record_id) for record_id in c_manifest.root.values()] == [
         row["study_id"] for row in c_rows
     ]
     assert not c_bundle.exists()
@@ -193,11 +195,11 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         "avalanche.transformer_lstm\t0\t0.5",
     ]
     manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "hpo" / f"{experiment_id}.json").read_bytes(),
+        (tmp_path / "experiments" / "hpo" / str(experiment_id) / "manifest.json").read_bytes(),
         strict=True,
     )
-    assert len(manifest.entries) == 9
-    assert [str(entry.record_id) for entry in manifest.entries] == list(
+    assert len(manifest.root) == 9
+    assert [str(record_id) for record_id in manifest.root.values()] == list(
         dict.fromkeys(row["study_id"] for row in rows)
     )
     assert not bundle.exists()

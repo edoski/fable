@@ -2,21 +2,25 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import typer
-from bundle import StorageRoot, bundle_path, read_cells, write_cells
+from bundle import (
+    StorageRoot,
+    bundle_path,
+    open_bundle,
+    publish_bundle,
+    read_cells,
+    write_cells,
+    write_request,
+)
 
 from fable.addresses import artifact_checkpoint_path
 from fable.config import SelectedStudySource, TrainRequest
 from fable.experiments import (
-    ExperimentEntry,
     ExperimentKind,
-    ExperimentManifest,
     load_experiment_manifest,
-    write_experiment_manifest,
 )
 from fable.study import load_study
 
@@ -31,13 +35,10 @@ def prepare(storage_root: StorageRoot, hpo_experiment_id: UUID) -> None:
         ExperimentKind.HPO,
         hpo_experiment_id,
     )
-    bundle = bundle_path(storage_root, _KIND, experiment_id)
-    requests = bundle / "requests"
-    requests.mkdir(parents=True)
+    bundle = open_bundle(storage_root, _KIND, experiment_id)
 
     rows: list[tuple[str, Path, UUID]] = []
-    for entry in manifest.entries:
-        study_id = entry.record_id
+    for cell, study_id in manifest.items():
         study = load_study(storage_root, study_id)
         selected_index, _ = study.best_result()
         for horizon in _HORIZONS:
@@ -51,9 +52,8 @@ def prepare(storage_root: StorageRoot, hpo_experiment_id: UUID) -> None:
                     ),
                 )
             )
-            request_path = requests / f"{len(rows):02d}.json"
-            request_path.write_text(request.model_dump_json(), encoding="utf-8")
-            rows.append((f"{entry.cell}.K{horizon}", request_path, request.artifact_id))
+            request_path = write_request(bundle, len(rows), request)
+            rows.append((f"{cell}.K{horizon}", request_path, request.artifact_id))
 
     write_cells(bundle, ("cell", "request", "artifact_id"), rows)
 
@@ -64,26 +64,18 @@ def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 
-    entries = tuple(
-        ExperimentEntry(
-            cell=row["cell"],
-            record_id=artifact_id,
-        )
+    cells = {
+        row["cell"]: artifact_id
         for row in rows
         if artifact_checkpoint_path(
             storage_root,
             artifact_id := UUID(row["artifact_id"]),
         ).is_file()
-    )
-    if len(entries) != len(rows):
+    }
+    if len(cells) != len(rows):
         raise FileNotFoundError("every K-study artifact must exist before closure")
 
-    write_experiment_manifest(
-        storage_root,
-        _KIND,
-        ExperimentManifest(experiment_id=experiment_id, entries=entries),
-    )
-    shutil.rmtree(bundle)
+    publish_bundle(storage_root, _KIND, experiment_id, cells)
     print(experiment_id)
 
 

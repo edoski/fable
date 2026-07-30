@@ -16,10 +16,9 @@ from fable.config import (
     TuneRequest,
 )
 from fable.experiments import (
-    ExperimentEntry,
     ExperimentKind,
     ExperimentManifest,
-    write_experiment_manifest,
+    experiment_manifest_path,
 )
 from fable.study import RetainedResult, Study
 from tests.helpers import read_tsv_rows, run_script
@@ -52,7 +51,7 @@ _METHOD = Method(
 
 
 def _publish_hpo(storage_root: Path) -> None:
-    entries: list[ExperimentEntry] = []
+    cells: dict[str, UUID] = {}
     for index, cell in enumerate(
         f"{chain}.{family}"
         for chain in ("ethereum", "polygon", "avalanche")
@@ -93,14 +92,16 @@ def _publish_hpo(storage_root: Path) -> None:
         path = storage_root / "studies" / f"{study_id}.json"
         path.parent.mkdir(exist_ok=True)
         path.write_text(study.model_dump_json(), encoding="utf-8")
-        entries.append(ExperimentEntry(cell=cell, record_id=study_id))
-    write_experiment_manifest(
+        cells[cell] = study_id
+    manifest_path = experiment_manifest_path(
         storage_root,
         ExperimentKind.HPO,
-        ExperimentManifest(
-            experiment_id=_HPO_EXPERIMENT_ID,
-            entries=tuple(entries),
-        ),
+        _HPO_EXPERIMENT_ID,
+    )
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(
+        ExperimentManifest(root=cells).model_dump_json(),
+        encoding="utf-8",
     )
 
 
@@ -163,11 +164,11 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     run_script(_SCRIPT, "close", tmp_path, experiment_id)
 
     manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "k_study" / f"{experiment_id}.json").read_bytes(),
+        (tmp_path / "experiments" / "k_study" / str(experiment_id) / "manifest.json").read_bytes(),
         strict=True,
     )
-    assert len(manifest.entries) == 81
-    assert [str(entry.record_id) for entry in manifest.entries] == [
+    assert len(manifest.root) == 81
+    assert [str(record_id) for record_id in manifest.root.values()] == [
         row["artifact_id"] for row in rows
     ]
     assert not bundle.exists()
@@ -218,11 +219,17 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
         (tmp_path / "evaluations" / row["evaluation_id"]).mkdir(parents=True)
     run_script(_HELD_OUT_SCRIPT, "close", tmp_path, held_out_experiment_id)
     held_out_manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "held_out" / f"{held_out_experiment_id}.json").read_bytes(),
+        (
+            tmp_path
+            / "experiments"
+            / "held_out"
+            / str(held_out_experiment_id)
+            / "manifest.json"
+        ).read_bytes(),
         strict=True,
     )
-    assert len(held_out_manifest.entries) == 81
-    assert [str(entry.record_id) for entry in held_out_manifest.entries] == [
+    assert len(held_out_manifest.root) == 81
+    assert [str(record_id) for record_id in held_out_manifest.root.values()] == [
         row["evaluation_id"] for row in evaluation_rows
     ]
     assert not held_out.exists()
