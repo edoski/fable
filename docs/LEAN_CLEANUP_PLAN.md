@@ -31,6 +31,27 @@ publication safety, Slurm execution, or mobile inference behavior.
   weighting assertions in `test_epoch_logs_weight_short_batches_in_float64`.
 - Skip coincidental app style deduplication.
 - Do not push, mutate research storage or jobs, build an image, or change external state.
+- Record every branch and worktree created by this run. Remove run-created isolation after safe
+  integration and verify the final state. Never delete pre-existing isolation without explicit
+  authorization.
+
+## Branch and worktree inventory
+
+Pre-run branches were `main`, `codex/compact-cuda-execution`, and the stale local
+`codex/lean-cleanup-orchestration`. The user had already approved removing the stale orchestration
+branch, and it was deleted before Slice 1.
+
+Pre-run worktrees were the shared checkout plus detached `ed0c` and `f25a` Codex worktrees.
+Inspection found:
+
+- `f25a` was clean and held only an obsolete detached planning commit;
+- `ed0c` held an uncommitted July 23 app implementation superseded by roughly thirty committed app
+  changes on `main`; it lacked the current direct-RPC, ExecuTorch, test, and documentation
+  contracts.
+
+The user authorized removing worktrees that were no longer useful. Both detached worktrees were
+removed. Their directories are gone and `git worktree list` now contains only the shared
+checkout. This run created no branch or worktree.
 
 ## GPU and campaign boundary
 
@@ -53,8 +74,8 @@ check and the full Python suite. No other slice inherits that waiver.
 
 | Slice | Scope | Status | Baseline | Head | Implementer | Reviewer | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Evaluation arrays and result frames | pending | pending | pending | pending | pending | pending |
-| 2 | Typed experiment-bundle publication | blocked by 1 | pending | pending | pending | pending | pending |
+| 1 | Evaluation arrays and result frames | green | `42cb2c4` | `29c31ac2` | `/root/slice1_implement` | `/root/slice1_review` | Standards 0; Spec 0 |
+| 2 | Typed experiment-bundle publication | pending | pending | pending | pending | pending | pending |
 | 3 | Three Python test reductions | blocked by 2 | pending | pending | pending | waived | pending |
 | 4 | Fit-pipeline collapse | blocked by 3 | pending | pending | pending | pending | pending |
 | 5 | Exact bash template | blocked by 4 | pending | pending | pending | pending | pending |
