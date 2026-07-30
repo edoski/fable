@@ -16,12 +16,10 @@ vi.mock("react-native-executorch-expo-resource-fetcher", () => ({
 }));
 
 import {
-  createModelCatalog,
   createModelRuntime,
   type MobileChainManifest,
   type MobileManifest,
   type ModelManifest,
-  type ModelResourceTable,
   type ModelSelection,
 } from "../src/model";
 import type { Chain, Horizon } from "../src/domain";
@@ -71,7 +69,7 @@ const MANIFEST: MobileManifest = {
   },
 };
 
-const RESOURCES: ModelResourceTable = {
+const RESOURCES: Record<Chain, Record<Horizon, number>> = {
   ethereum: { 2: 12, 3: 13, 4: 14, 5: 15 },
   polygon: { 2: 22, 3: 23, 4: 24, 5: 25 },
   avalanche: { 2: 32, 3: 33, 4: 34, 5: 35 },
@@ -111,21 +109,6 @@ function native(
     delete: vi.fn(),
   };
 }
-
-describe("model catalog", () => {
-  it("selects the exact typed manifest and resource cell", () => {
-    const catalog = createModelCatalog(MANIFEST, RESOURCES);
-
-    expect(catalog.chainManifest("polygon")).toEqual(MANIFEST.chains.polygon);
-    expect(catalog.select("polygon", 4)).toEqual({
-      chain: "polygon",
-      K: 4,
-      source: 24,
-      chainManifest: MANIFEST.chains.polygon,
-      modelManifest: MANIFEST.chains.polygon.models[4],
-    });
-  });
-});
 
 describe("model runtime", () => {
   it("loads on first execution and reuses an unchanged model", async () => {

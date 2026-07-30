@@ -119,21 +119,8 @@ def _render_allocation_script(
 ) -> str:
     resources = remote.resources
     task_count = len(process_inputs_json)
-    lines = [
-        "#!/bin/bash",
-        f"#SBATCH --partition={resources.partition}",
-        "#SBATCH --nodes=1",
-        f"#SBATCH --ntasks={task_count}",
-        f"#SBATCH --gres={_scaled_gres(resources.gres, task_count)}",
-        f"#SBATCH --cpus-per-task={resources.cpus_per_task}",
-        f"#SBATCH --mem={resources.memory_gb * task_count}G",
-        f"#SBATCH --time={resources.time_limit}",
-        f"#SBATCH --output={remote.log_root}/%j.out",
-        f"#SBATCH --chdir={shlex.quote(remote.storage_root)}",
-        f"export STORAGE_ROOT={shlex.quote(remote.storage_root)}",
-        "pids=()",
-    ]
-    for slot, process_input_json in enumerate(process_inputs_json):
+
+    def render_step(slot: int, process_input_json: str) -> str:
         step_output = (
             ""
             if task_count == 1
@@ -142,34 +129,45 @@ def _render_allocation_script(
                 f"--error={shlex.quote(remote.log_root)}/${{SLURM_JOB_ID}}-{slot}.out "
             )
         )
-        lines.extend(
-            (
-                (
-                    "srun --exclusive --exact --nodes=1 --ntasks=1 "
-                    f"--gres={resources.gres} "
-                    f"--cpus-per-task={resources.cpus_per_task} "
-                    f"--mem={resources.memory_gb}G "
-                    f"{step_output}"
-                    f"apptainer run --nv --bind {shlex.quote(remote.storage_root)} "
-                    f"{shlex.quote(remote.image)} remote {leaf} "
-                    f"<<'FABLE_REQUEST_{slot}' &"
-                ),
-                process_input_json,
-                f"FABLE_REQUEST_{slot}",
-                'pids+=("$!")',
-            )
+        command = (
+            "srun --exclusive --exact --nodes=1 --ntasks=1 "
+            f"--gres={resources.gres} "
+            f"--cpus-per-task={resources.cpus_per_task} "
+            f"--mem={resources.memory_gb}G "
+            f"{step_output}"
+            f"apptainer run --nv --bind {shlex.quote(remote.storage_root)} "
+            f"{shlex.quote(remote.image)} remote {leaf}"
         )
-    lines.extend(
-        (
-            "status=0",
-            'for pid in "${pids[@]}"; do',
-            '    if ! wait "$pid"; then status=1; fi',
-            "done",
-            'exit "$status"',
-            "",
-        )
+        return f"""\
+{command} <<'FABLE_REQUEST_{slot}' &
+{process_input_json}
+FABLE_REQUEST_{slot}
+pids+=("$!")"""
+
+    steps = "\n".join(
+        render_step(slot, process_input_json)
+        for slot, process_input_json in enumerate(process_inputs_json)
     )
-    return "\n".join(lines)
+    return f"""\
+#!/bin/bash
+#SBATCH --partition={resources.partition}
+#SBATCH --nodes=1
+#SBATCH --ntasks={task_count}
+#SBATCH --gres={_scaled_gres(resources.gres, task_count)}
+#SBATCH --cpus-per-task={resources.cpus_per_task}
+#SBATCH --mem={resources.memory_gb * task_count}G
+#SBATCH --time={resources.time_limit}
+#SBATCH --output={remote.log_root}/%j.out
+#SBATCH --chdir={shlex.quote(remote.storage_root)}
+export STORAGE_ROOT={shlex.quote(remote.storage_root)}
+pids=()
+{steps}
+status=0
+for pid in "${{pids[@]}}"; do
+    if ! wait "$pid"; then status=1; fi
+done
+exit "$status"
+"""
 
 
 def _require_process_count(inputs: Sequence[object]) -> None:

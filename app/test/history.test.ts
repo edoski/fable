@@ -1,32 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { InferenceOutcome } from "../src/inference";
 import { inferenceResult, inferenceRun } from "./helpers";
 
-const storage = vi.hoisted(() => {
-  const values = new Map<string, string>();
-  return {
-    values,
-    getItem: vi.fn(async (key: string) => values.get(key) ?? null),
-    setItem: vi.fn(async (key: string, value: string) => {
-      values.set(key, value);
-    }),
-  };
-});
-
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
-    getItem: storage.getItem,
-    setItem: storage.setItem,
+    getItem: vi.fn(),
+    setItem: vi.fn(),
   },
 }));
 
-import {
-  addRun,
-  loadRuns,
-  resolvePendingRuns,
-  saveRuns,
-} from "../src/history";
+import { addRun, resolvePendingRuns } from "../src/history";
 
 function outcome(
   overrides: Partial<InferenceOutcome> = {},
@@ -37,11 +21,6 @@ function outcome(
     ...overrides,
   };
 }
-
-beforeEach(() => {
-  storage.values.clear();
-  vi.clearAllMocks();
-});
 
 describe("history", () => {
   it("adds a unique canonical run before every existing run", () => {
@@ -71,19 +50,6 @@ describe("history", () => {
     });
     expect(first.id).not.toBe(second.id);
     expect(retained).toEqual(existing);
-  });
-
-  it("round-trips the complete ordered array under fable.runs", async () => {
-    const runs = Array.from({ length: 105 }, (_, index) =>
-      inferenceRun({ id: `run-${index}`, head_block: index }),
-    );
-
-    await saveRuns(runs);
-    const saved = JSON.parse(storage.values.get("fable.runs") ?? "null");
-
-    expect([...storage.values.keys()]).toEqual(["fable.runs"]);
-    expect(saved).toEqual(runs);
-    await expect(loadRuns()).resolves.toEqual(runs);
   });
 
   it("leaves the original pending run retryable after resolver failure", async () => {

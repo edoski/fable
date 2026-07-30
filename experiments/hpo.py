@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-import shutil
 from itertools import product
 from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
 
 import typer
-from bundle import StorageRoot, bundle_path, read_cells, write_cells
+from bundle import (
+    StorageRoot,
+    bundle_path,
+    open_bundle,
+    publish_bundle,
+    read_cells,
+    write_cells,
+    write_request,
+)
 
 from fable.config import (
     FitMethod,
@@ -21,11 +28,8 @@ from fable.config import (
     TuneRequest,
 )
 from fable.experiments import (
-    ExperimentEntry,
     ExperimentKind,
-    ExperimentManifest,
     load_experiment_manifest,
-    write_experiment_manifest,
 )
 from fable.study import Study, load_study
 
@@ -143,10 +147,10 @@ def _selected_context_studies(
     )
     studies: dict[tuple[str, str, int], Study] = {}
     objectives: dict[tuple[str, int], list[float]] = {}
-    for entry in manifest.entries:
-        chain, family, context_label = entry.cell.split(".")
+    for cell, study_id in manifest.items():
+        chain, family, context_label = cell.split(".")
         context = int(context_label.removeprefix("C"))
-        study = load_study(storage_root, entry.record_id)
+        study = load_study(storage_root, study_id)
         studies[chain, family, context] = study
         objectives.setdefault((chain, context), []).append(study.trials[0].objective)
 
@@ -167,9 +171,7 @@ def _selected_context_studies(
 def prepare(storage_root: StorageRoot, c_experiment_id: UUID) -> None:
     experiment_id = uuid4()
     selected, context_winners = _selected_context_studies(storage_root, c_experiment_id)
-    bundle = bundle_path(storage_root, _KIND, experiment_id)
-    requests = bundle / "requests"
-    requests.mkdir(parents=True)
+    bundle = open_bundle(storage_root, _KIND, experiment_id)
 
     methods_by_family = {family: _methods(family) for family in _FAMILIES}
 
@@ -181,8 +183,7 @@ def prepare(storage_root: StorageRoot, c_experiment_id: UUID) -> None:
             experiment=source.request.experiment,
             methods=methods_by_family[family],
         )
-        request_path = requests / f"{index}.json"
-        request_path.write_text(request.model_dump_json(), encoding="utf-8")
+        request_path = write_request(bundle, index, request)
         cell = f"{chain}.{family}"
         rows.extend(
             (
@@ -209,25 +210,24 @@ def select(storage_root: StorageRoot, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 
-    entries: list[ExperimentEntry] = []
+    cells: dict[str, UUID] = {}
+    studies: dict[UUID, Study] = {}
     selections: list[tuple[str, int, float]] = []
-    seen: set[UUID] = set()
     for row in rows:
         study_id = UUID(row["study_id"])
-        if study_id in seen:
+        if study_id not in studies:
+            studies[study_id] = load_study(storage_root, study_id)
+        cell = row["cell"]
+        if cell in cells:
+            if cells[cell] != study_id:
+                raise ValueError("one HPO cell cannot reference multiple Studies")
             continue
-        seen.add(study_id)
-        study = load_study(storage_root, study_id)
+        study = studies[study_id]
         selected_index, result = study.best_result()
-        entries.append(ExperimentEntry(cell=row["cell"], record_id=study_id))
-        selections.append((row["cell"], selected_index, result.objective))
+        cells[cell] = study_id
+        selections.append((cell, selected_index, result.objective))
 
-    write_experiment_manifest(
-        storage_root,
-        _KIND,
-        ExperimentManifest(experiment_id=experiment_id, entries=tuple(entries)),
-    )
-    shutil.rmtree(bundle)
+    publish_bundle(storage_root, _KIND, experiment_id, cells)
     for cell, selected_index, objective in selections:
         print(f"{cell}\t{selected_index}\t{objective:g}")
 

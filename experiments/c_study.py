@@ -6,7 +6,13 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import typer
-from bundle import StorageRoot, bundle_path, close_study_bundle, write_cells
+from bundle import (
+    StorageRoot,
+    close_study_bundle,
+    open_bundle,
+    write_cells,
+    write_request,
+)
 
 from fable.config import TuneRequest
 from fable.experiments import (
@@ -31,10 +37,10 @@ def _full_feature_studies(
         experiment_id,
     )
     studies: dict[tuple[str, str], Study] = {}
-    for entry in manifest.entries:
-        chain, family, configuration = entry.cell.split(".")
+    for cell, study_id in manifest.items():
+        chain, family, configuration = cell.split(".")
         if configuration == "full":
-            studies[chain, family] = load_study(storage_root, entry.record_id)
+            studies[chain, family] = load_study(storage_root, study_id)
     return studies
 
 
@@ -44,9 +50,7 @@ def prepare(
 ) -> None:
     experiment_id = uuid4()
     selected = _full_feature_studies(storage_root, feature_experiment_id)
-    bundle = bundle_path(storage_root, _KIND, experiment_id)
-    requests = bundle / "requests"
-    requests.mkdir(parents=True)
+    bundle = open_bundle(storage_root, _KIND, experiment_id)
 
     rows: list[tuple[str, Path, int, UUID]] = []
     for chain in _CHAINS:
@@ -61,8 +65,7 @@ def prepare(
                     ),
                     methods=(method,),
                 )
-                request_path = requests / f"{len(rows):02d}.json"
-                request_path.write_text(request.model_dump_json(), encoding="utf-8")
+                request_path = write_request(bundle, len(rows), request)
                 rows.append(
                     (
                         f"{chain}.{family}.C{context}",

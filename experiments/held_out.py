@@ -2,24 +2,27 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import polars as pl
 import typer
-from bundle import StorageRoot, bundle_path, read_cells, write_cells
+from bundle import (
+    StorageRoot,
+    bundle_path,
+    open_bundle,
+    publish_bundle,
+    read_cells,
+    write_cells,
+    write_request,
+)
 
-from fable.addresses import evaluation_directory
 from fable.config import BlockWindow, EvaluateRequest
 from fable.corpus import load_corpus_request
 from fable.evaluation import reduce_baselines, reduce_evaluation, reduce_rolling
 from fable.experiments import (
-    ExperimentEntry,
     ExperimentKind,
-    ExperimentManifest,
     load_experiment_manifest,
-    write_experiment_manifest,
 )
 from fable.study import load_study
 
@@ -35,15 +38,12 @@ def prepare(
     experiment_id = uuid4()
     hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_experiment_id)
-    studies = {entry.cell: load_study(storage_root, entry.record_id) for entry in hpo.entries}
-    bundle = bundle_path(storage_root, _KIND, experiment_id)
-    requests = bundle / "requests"
-    requests.mkdir(parents=True)
+    studies = {cell: load_study(storage_root, study_id) for cell, study_id in hpo.items()}
+    bundle = open_bundle(storage_root, _KIND, experiment_id)
 
     rows: list[tuple[str, Path, UUID]] = []
-    for index, entry in enumerate(k_study.entries):
-        artifact_id = entry.record_id
-        chain, family, horizon_label = entry.cell.split(".")
+    for index, (cell, artifact_id) in enumerate(k_study.items()):
+        chain, family, horizon_label = cell.split(".")
         horizon = int(horizon_label.removeprefix("K"))
         study = studies[f"{chain}.{family}"]
         validation_end = study.request.experiment.validation_window.last_parent_block
@@ -58,9 +58,8 @@ def prepare(
                 last_parent_block=last_parent,
             ),
         )
-        request_path = requests / f"{index:02d}.json"
-        request_path.write_text(request.model_dump_json(), encoding="utf-8")
-        rows.append((entry.cell, request_path, request.evaluation_id))
+        request_path = write_request(bundle, index, request)
+        rows.append((cell, request_path, request.evaluation_id))
 
     write_cells(bundle, ("cell", "request", "evaluation_id"), rows)
 
@@ -71,32 +70,20 @@ def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 
-    entries = tuple(
-        ExperimentEntry(cell=row["cell"], record_id=evaluation_id)
-        for row in rows
-        if evaluation_directory(
-            storage_root,
-            evaluation_id := UUID(row["evaluation_id"]),
-        ).is_dir()
-    )
-    if len(entries) != len(rows):
-        raise FileNotFoundError("every held-out evaluation must exist before closure")
-    write_experiment_manifest(
-        storage_root,
-        _KIND,
-        ExperimentManifest(experiment_id=experiment_id, entries=entries),
-    )
-    shutil.rmtree(bundle)
+    cells: dict[str, UUID] = {}
+    for row in rows:
+        evaluation_id = UUID(row["evaluation_id"])
+        reduce_evaluation(storage_root, evaluation_id)
+        cells[row["cell"]] = evaluation_id
+    publish_bundle(storage_root, _KIND, experiment_id, cells)
     print(experiment_id)
 
 
 def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     results = [
-        pl.DataFrame({"cell": [entry.cell]}).hstack(
-            reduce_evaluation(storage_root, entry.record_id)
-        )
-        for entry in manifest.entries
+        pl.DataFrame({"cell": [cell]}).hstack(reduce_evaluation(storage_root, evaluation_id))
+        for cell, evaluation_id in manifest.items()
     ]
     print(pl.concat(results).write_csv(None, separator="\t"), end="")
 
@@ -104,20 +91,20 @@ def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
 def baselines(storage_root: StorageRoot, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     results = []
-    for entry in manifest.entries:
-        result = reduce_baselines(storage_root, entry.record_id)
-        results.append(pl.DataFrame({"cell": [entry.cell] * result.height}).hstack(result))
+    for cell, evaluation_id in manifest.items():
+        result = reduce_baselines(storage_root, evaluation_id)
+        results.append(pl.DataFrame({"cell": [cell] * result.height}).hstack(result))
     print(pl.concat(results).write_csv(None, separator="\t"), end="")
 
 
 def rolling(storage_root: StorageRoot, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     roster: dict[str, dict[int, UUID]] = {}
-    for entry in manifest.entries:
-        cell, horizon_label = entry.cell.rsplit(".", maxsplit=1)
+    for experiment_cell, evaluation_id in manifest.items():
+        cell, horizon_label = experiment_cell.rsplit(".", maxsplit=1)
         horizon = int(horizon_label.removeprefix("K"))
         if horizon in (2, 3, 4, 5):
-            roster.setdefault(cell, {})[horizon] = entry.record_id
+            roster.setdefault(cell, {})[horizon] = evaluation_id
     print(reduce_rolling(storage_root, roster).write_csv(None, separator="\t"), end="")
 
 

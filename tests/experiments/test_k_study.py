@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from uuid import UUID
 
+import lightning
+import polars as pl
+import pytest
+import torch
+
+import fable.modeling as modeling
+from fable.addresses import artifact_checkpoint_path, evaluation_directory
 from fable.config import (
     BlockWindow,
     EvaluateRequest,
@@ -15,13 +23,16 @@ from fable.config import (
     TrainRequest,
     TuneRequest,
 )
+from fable.evaluation import OBSERVATION_SCHEMA
 from fable.experiments import (
-    ExperimentEntry,
     ExperimentKind,
     ExperimentManifest,
-    write_experiment_manifest,
+    experiment_manifest_path,
 )
+from fable.min_block_fee import TargetState
+from fable.modeling import ArtifactAssociation
 from fable.study import RetainedResult, Study
+from fable.temporal import FeatureState
 from tests.helpers import read_tsv_rows, run_script
 
 _ROOT = Path(__file__).parents[2]
@@ -49,10 +60,20 @@ _METHOD = Method(
         min_delta=0.0,
     ),
 )
+_ARTIFACT_METHOD = Method(
+    model=LstmDefinition(
+        family="lstm",
+        hidden=1,
+        layers=1,
+        head_hidden=1,
+        dropout=0.0,
+    ),
+    fit=_METHOD.fit,
+)
 
 
 def _publish_hpo(storage_root: Path) -> None:
-    entries: list[ExperimentEntry] = []
+    cells: dict[str, UUID] = {}
     for index, cell in enumerate(
         f"{chain}.{family}"
         for chain in ("ethereum", "polygon", "avalanche")
@@ -93,15 +114,81 @@ def _publish_hpo(storage_root: Path) -> None:
         path = storage_root / "studies" / f"{study_id}.json"
         path.parent.mkdir(exist_ok=True)
         path.write_text(study.model_dump_json(), encoding="utf-8")
-        entries.append(ExperimentEntry(cell=cell, record_id=study_id))
-    write_experiment_manifest(
+        cells[cell] = study_id
+    manifest_path = experiment_manifest_path(
         storage_root,
         ExperimentKind.HPO,
-        ExperimentManifest(
-            experiment_id=_HPO_EXPERIMENT_ID,
-            entries=tuple(entries),
-        ),
+        _HPO_EXPERIMENT_ID,
     )
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(
+        ExperimentManifest(root=cells).model_dump_json(),
+        encoding="utf-8",
+    )
+
+
+def _publish_artifacts(storage_root: Path, rows: list[dict[str, str]]) -> None:
+    for row in rows:
+        request = TrainRequest.model_validate_json(
+            Path(row["request"]).read_bytes(),
+            strict=True,
+        )
+        feature_count = len(request.source.experiment.ordered_features)
+        association = ArtifactAssociation(
+            request=request,
+            feature_state=FeatureState(
+                means=(0.0,) * feature_count,
+                standard_deviations=(1.0,) * feature_count,
+            ),
+            target_state=TargetState(mean=0.0, standard_deviation=1.0),
+            method=_ARTIFACT_METHOD,
+        )
+        encoded = modeling._json_association(association)
+        module = modeling._FitModule(encoded)
+        path = artifact_checkpoint_path(storage_root, request.artifact_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "state_dict": module.state_dict(),
+                "hyper_parameters": {"association": encoded},
+                "pytorch-lightning_version": lightning.__version__,
+            },
+            path,
+        )
+
+
+def _publish_evaluations(storage_root: Path, rows: list[dict[str, str]]) -> None:
+    for row in rows:
+        request = EvaluateRequest.model_validate_json(
+            Path(row["request"]).read_bytes(),
+            strict=True,
+        )
+        directory = evaluation_directory(storage_root, request.evaluation_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "evaluation.json").write_text(request.model_dump_json(), encoding="utf-8")
+        origins = list(
+            range(
+                request.testing_window.first_parent_block,
+                request.testing_window.last_parent_block + 1,
+            )
+        )
+        count = len(origins)
+        pl.DataFrame(
+            {
+                "origin_block": origins,
+                "predicted_action_k": [0] * count,
+                "predicted_minimum_log_base_fee": [0.0] * count,
+                "minimum_action_k": [0] * count,
+                "immediate_base_fee_per_gas": [1] * count,
+                "immediate_effective_priority_fee_per_gas_p50": [0] * count,
+                "selected_base_fee_per_gas": [1] * count,
+                "selected_effective_priority_fee_per_gas_p50": [0] * count,
+                "deadline_base_fee_per_gas": [1] * count,
+                "deadline_effective_priority_fee_per_gas_p50": [0] * count,
+                "minimum_base_fee_per_gas": [1] * count,
+            },
+            schema=OBSERVATION_SCHEMA,
+        ).write_parquet(directory / "observations.parquet")
 
 
 def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
@@ -160,14 +247,19 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
         checkpoint = tmp_path / "artifacts" / f"{row['artifact_id']}.ckpt"
         checkpoint.parent.mkdir(parents=True, exist_ok=True)
         checkpoint.touch()
+    with pytest.raises(subprocess.CalledProcessError):
+        run_script(_SCRIPT, "close", tmp_path, experiment_id)
+    assert bundle.is_dir()
+
+    _publish_artifacts(tmp_path, rows)
     run_script(_SCRIPT, "close", tmp_path, experiment_id)
 
     manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "k_study" / f"{experiment_id}.json").read_bytes(),
+        (tmp_path / "experiments" / "k_study" / str(experiment_id) / "manifest.json").read_bytes(),
         strict=True,
     )
-    assert len(manifest.entries) == 81
-    assert [str(entry.record_id) for entry in manifest.entries] == [
+    assert len(manifest.root) == 81
+    assert [str(record_id) for record_id in manifest.root.values()] == [
         row["artifact_id"] for row in rows
     ]
     assert not bundle.exists()
@@ -216,13 +308,24 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     ]
     for row in evaluation_rows:
         (tmp_path / "evaluations" / row["evaluation_id"]).mkdir(parents=True)
+    with pytest.raises(subprocess.CalledProcessError):
+        run_script(_HELD_OUT_SCRIPT, "close", tmp_path, held_out_experiment_id)
+    assert held_out.is_dir()
+
+    _publish_evaluations(tmp_path, evaluation_rows)
     run_script(_HELD_OUT_SCRIPT, "close", tmp_path, held_out_experiment_id)
     held_out_manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "held_out" / f"{held_out_experiment_id}.json").read_bytes(),
+        (
+            tmp_path
+            / "experiments"
+            / "held_out"
+            / str(held_out_experiment_id)
+            / "manifest.json"
+        ).read_bytes(),
         strict=True,
     )
-    assert len(held_out_manifest.entries) == 81
-    assert [str(entry.record_id) for entry in held_out_manifest.entries] == [
+    assert len(held_out_manifest.root) == 81
+    assert [str(record_id) for record_id in held_out_manifest.root.values()] == [
         row["evaluation_id"] for row in evaluation_rows
     ]
     assert not held_out.exists()

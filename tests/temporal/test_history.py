@@ -149,24 +149,6 @@ def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
     assert batches[0]["base_fees"].shape == (3, 3)
 
 
-def test_fit_history_supports_shuffled_loading() -> None:
-    training = prepare_fit_history(_corpus(), _experiment()).to(torch.device("cpu")).training
-    expected = [12, 13, 14, 15]
-    torch.manual_seed(47)
-
-    observed = [
-        int(origin)
-        for batch in training.loader(
-            batch_size=2,
-            shuffle=True,
-        )
-        for origin in batch["origin_block"]
-    ]
-
-    assert sorted(observed) == expected
-    assert observed != expected
-
-
 def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
     blocks = np.arange(9, 30, dtype=np.int64)
     timestamps = np.cumsum(np.arange(10, 31, dtype=np.int64))

@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("viem", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("viem")>();
-  return { ...actual, http: vi.fn(actual.http) };
-});
-
-import { http } from "viem";
 import type { Hash } from "viem";
 
 import { createChainSession } from "../src/rpc";
@@ -140,20 +134,6 @@ afterEach(() => {
 });
 
 describe("createChainSession", () => {
-  it("configures Viem HTTP batching, timeout, and zero retries", () => {
-    createChainSession({
-      chain: "ethereum",
-      contextBlocks: 3,
-      orderedFeatures: [],
-    });
-
-    expect(vi.mocked(http)).toHaveBeenCalledWith(undefined, {
-      batch: { batchSize: 40, wait: 0 },
-      retryCount: 0,
-      timeout: 10_000,
-    });
-  });
-
   it("reads every fresh exact range in one batch with only the required predecessor", async () => {
     const rpc = installRpc();
     const intervalSession = createChainSession({

@@ -84,9 +84,9 @@ export function recommendedWaitData(
   if (runs.length === 0) {
     return [];
   }
-  return Array.from({ length: horizon }, (_, offset) => ({
+  return runsBySelectedAction(runs, horizon).map((selected, offset) => ({
     label: String(offset),
-    value: runs.filter((run) => run.selected_action_k === offset).length,
+    value: selected.length,
   }));
 }
 
@@ -97,11 +97,8 @@ export function savingsByWaitData(
   if (runs.length === 0) {
     return [];
   }
-  return Array.from({ length: horizon }, (_, offset) => {
-    const savings = runs.flatMap((run) => {
-      if (run.selected_action_k !== offset) {
-        return [];
-      }
+  return runsBySelectedAction(runs, horizon).map((selected, offset) => {
+    const savings = selected.flatMap((run) => {
       const value = realizedSavingsPercent(run);
       return value === null ? [] : [value];
     });
@@ -116,12 +113,10 @@ export function feeComparisonData(
   runs: readonly InferenceRun[],
   horizon: Horizon,
 ): FeeComparisonDatum[] {
-  return Array.from({ length: horizon }, (_, offset) => {
-    const outcomes = runs.flatMap((run) => {
+  return runsBySelectedAction(runs, horizon).flatMap((selected, offset) => {
+    const outcomes = selected.flatMap((run) => {
       const outcome = validOutcome(run);
-      return run.selected_action_k === offset && outcome !== null
-        ? [outcome]
-        : [];
+      return outcome === null ? [] : [outcome];
     });
     if (outcomes.length === 0) {
       return [];
@@ -137,11 +132,27 @@ export function feeComparisonData(
           ) ?? 0) / 1_000_000_000,
         fable:
           (mean(
-            outcomes.map((outcome) => outcome.selected_base_fee_per_gas),
+            outcomes.map(
+              (outcome) => outcome.selected_base_fee_per_gas,
+            ),
           ) ?? 0) / 1_000_000_000,
       },
     ];
-  }).flat();
+  });
+}
+
+function runsBySelectedAction(
+  runs: readonly InferenceRun[],
+  horizon: Horizon,
+): InferenceRun[][] {
+  const groups = Array.from(
+    { length: horizon },
+    () => [] as InferenceRun[],
+  );
+  for (const run of runs) {
+    groups[run.selected_action_k]?.push(run);
+  }
+  return groups;
 }
 
 function validOutcome(run: InferenceRun): RunOutcome | null {

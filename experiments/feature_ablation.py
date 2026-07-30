@@ -7,7 +7,13 @@ from statistics import fmean
 from uuid import UUID, uuid4
 
 import typer
-from bundle import StorageRoot, bundle_path, close_study_bundle, write_cells
+from bundle import (
+    StorageRoot,
+    close_study_bundle,
+    open_bundle,
+    write_cells,
+    write_request,
+)
 
 from fable.config import (
     BlockWindow,
@@ -158,9 +164,7 @@ def _flatten_units(
 
 def prepare(storage_root: StorageRoot) -> None:
     experiment_id = uuid4()
-    bundle = bundle_path(storage_root, _KIND, experiment_id)
-    requests = bundle / "requests"
-    requests.mkdir(parents=True)
+    bundle = open_bundle(storage_root, _KIND, experiment_id)
 
     rows: list[tuple[str, Path, int, UUID]] = []
     for chain, corpus_id, training_window, validation_window in _CHAINS:
@@ -178,8 +182,7 @@ def prepare(storage_root: StorageRoot) -> None:
                     ),
                     methods=(method,),
                 )
-                path = requests / f"{len(rows):03d}.json"
-                path.write_text(request.model_dump_json(), encoding="utf-8")
+                path = write_request(bundle, len(rows), request)
                 rows.append(
                     (
                         f"{chain}.{family}.{configuration}",
@@ -201,9 +204,9 @@ def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
 def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     objectives: dict[tuple[str, str], list[float]] = {}
-    for entry in manifest.entries:
-        chain, _, configuration = entry.cell.split(".")
-        study = load_study(storage_root, entry.record_id)
+    for cell, study_id in manifest.items():
+        chain, _, configuration = cell.split(".")
+        study = load_study(storage_root, study_id)
         objectives.setdefault((chain, configuration), []).append(study.trials[0].objective)
 
     for chain, *_ in _CHAINS:

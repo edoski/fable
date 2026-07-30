@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from uuid import UUID
 
@@ -122,20 +123,31 @@ def test_close_publishes_all_studies_and_report_averages_each_configuration(
         for family in ("lstm", "transformer", "transformer_lstm")
     }
     rows = read_tsv_rows(bundle / "cells.tsv")
+    jobs = "job_id\tslot\trow\tcell\n42\t0\t0\tethereum.lstm.full\n"
+    (bundle / "jobs.tsv").write_text(jobs, encoding="utf-8")
     publish_generated_studies(tmp_path, rows, default_objective=2.0, objectives=objectives)
 
     result = run_script(_SCRIPT, "close", tmp_path, experiment_id)
 
-    manifest_path = tmp_path / "experiments" / "feature_ablation" / f"{experiment_id}.json"
+    canonical = tmp_path / "experiments" / "feature_ablation" / str(experiment_id)
+    manifest_path = canonical / "manifest.json"
     manifest = ExperimentManifest.model_validate_json(
         manifest_path.read_bytes(),
         strict=True,
     )
+    published_rows = read_tsv_rows(canonical / "cells.tsv")
     assert result.stdout.strip() == str(experiment_id)
-    assert manifest.experiment_id == experiment_id
-    assert len(manifest.entries) == 102
-    assert [str(entry.record_id) for entry in manifest.entries] == [row["study_id"] for row in rows]
-    assert not manifest_path.with_name(f".{experiment_id}").exists()
+    assert len(manifest.root) == 102
+    assert [str(record_id) for record_id in manifest.root.values()] == [
+        row["study_id"] for row in rows
+    ]
+    assert published_rows == [
+        {**row, "request": str(canonical / "requests" / Path(row["request"]).name)}
+        for row in rows
+    ]
+    assert all(Path(row["request"]).is_file() for row in published_rows)
+    assert (canonical / "jobs.tsv").read_text(encoding="utf-8") == jobs
+    assert not bundle.exists()
 
     report = run_script(_SCRIPT, "report", tmp_path, experiment_id)
     lines = report.stdout.splitlines()
@@ -144,3 +156,25 @@ def test_close_publishes_all_studies_and_report_averages_each_configuration(
     assert lines[7] == "ethereum\twithout_hour\t0.75"
     assert lines[21] == "polygon\twithout_priority_fee_p90\t0.5"
     assert lines[-1] == "avalanche\tbase_only\t0.25"
+
+
+def test_close_rejects_existing_canonical_bundle_without_changing_scratch(
+    tmp_path: Path,
+) -> None:
+    experiment_id = UUID(run_script(_SCRIPT, "prepare", tmp_path).stdout.strip())
+    bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
+    publish_generated_studies(
+        tmp_path,
+        read_tsv_rows(bundle / "cells.tsv"),
+        default_objective=1.0,
+    )
+    canonical = bundle.with_name(str(experiment_id))
+    canonical.mkdir()
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_script(_SCRIPT, "close", tmp_path, experiment_id)
+
+    assert "FileExistsError" in error.value.stderr
+    assert list(canonical.iterdir()) == []
+    assert (bundle / "cells.tsv").is_file()
+    assert not (bundle / "manifest.json").exists()
