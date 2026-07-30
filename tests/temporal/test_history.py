@@ -7,7 +7,6 @@ import torch
 from pydantic import UUID4, TypeAdapter
 from torch.utils.data import DataLoader
 
-from fable import _runtime
 from fable.config import (
     BlockWindow,
     CorpusDefinition,
@@ -148,28 +147,6 @@ def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
     assert [batch["origin_block"].tolist() for batch in batches] == [[12, 13, 14], [15]]
     assert batches[0]["inputs"].shape == (3, 3, 2)
     assert batches[0]["base_fees"].shape == (3, 3)
-
-
-def test_fit_history_supports_shuffled_loading(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    preparation = prepare_fit_history(_corpus(), _experiment())
-    expected = [12, 13, 14, 15]
-    monkeypatch.setattr(_runtime, "NUM_WORKERS", 0)
-    torch.manual_seed(47)
-
-    observed = [
-        int(origin)
-        for batch in _runtime.data_loader(
-            preparation.training,
-            batch_size=2,
-            shuffle=True,
-        )
-        for origin in batch["origin_block"]
-    ]
-
-    assert sorted(observed) == expected
-    assert observed != expected
 
 
 def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:

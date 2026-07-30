@@ -127,19 +127,12 @@ def test_retain_publish_and_load_selected_method_in_request_order(
     assert not (tmp_path / "studies" / f".{STUDY_ID}").exists()
 
 
-@pytest.mark.parametrize(
-    ("selected_epoch", "completed_epochs"),
-    [(3, 2)],
-)
-def test_retained_result_rejects_invalid_epoch_bounds(
-    selected_epoch: int,
-    completed_epochs: int,
-) -> None:
+def test_retained_result_rejects_invalid_epoch_bounds() -> None:
     with pytest.raises(ValidationError, match="selected_epoch must not exceed completed_epochs"):
         RetainedResult(
             objective=0.5,
-            selected_epoch=selected_epoch,
-            completed_epochs=completed_epochs,
+            selected_epoch=3,
+            completed_epochs=2,
         )
 
 

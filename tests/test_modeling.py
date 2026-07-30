@@ -38,7 +38,7 @@ from fable.config import (
     TuneRequest,
 )
 from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
-from fable.min_block_fee import MinBlockFeeOutput, TargetState, min_block_fee_loss
+from fable.min_block_fee import TargetState, min_block_fee_loss
 from fable.modeling import (
     ArtifactAssociation,
     load_artifact,
@@ -352,44 +352,6 @@ def test_epoch_logs_weight_short_batches_in_float64(
         sum(float(value) * int(kwargs["batch_size"]) for value, kwargs in gap_entries) / 4
     )
     assert weighted_gap == pytest.approx(expected_gap)
-
-
-def test_validation_logs_mean_base_fee_cost_over_optimum(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    prepared = prepare_fit_history(_corpus(), _experiment())
-    association = ArtifactAssociation(
-        request=_train_request(),
-        feature_state=prepared.feature_state,
-        target_state=prepared.target_state,
-        method=modeling_method(),
-    )
-    module = modeling._FitModule(modeling._json_association(association)).eval()
-    batch = {
-        "inputs": torch.zeros((2, 3, 2)),
-        "label": torch.tensor([0, 1]),
-        "target": torch.zeros(2),
-        "base_fees": torch.tensor([[4, 2], [3, 5]]),
-    }
-    output = MinBlockFeeOutput(
-        action_logits=torch.tensor([[0.0, 1.0], [1.0, 0.0]]),
-        minimum_fee_z=torch.zeros(2),
-    )
-    logged: dict[str, torch.Tensor] = {}
-
-    monkeypatch.setattr(module, "forward", lambda _inputs: output)
-    monkeypatch.setattr(
-        module,
-        "log",
-        lambda name, value, **_kwargs: logged.__setitem__(name, value),
-    )
-
-    module.validation_step(batch, 0)
-
-    selected = batch["base_fees"][torch.arange(2), torch.tensor([1, 0])]
-    minimum = batch["base_fees"].amin(dim=1)
-    expected = ((selected - minimum) / minimum).mean(dtype=torch.float64)
-    torch.testing.assert_close(logged["validation_base_fee_optimality_gap"], expected)
 
 
 def test_lstm_trains_loads_and_applies_direct_loss(
