@@ -3,8 +3,8 @@
 ## Run status
 
 - Phase: sequential implementation-review loop.
-- Product implementation: Slice 1 complete; Slice 2 pending dispatch.
-- Reviews: Slice 1 green; six slice reviews pending.
+- Product implementation: Slices 1–2 complete; Slice 3 pending dispatch.
+- Reviews: Slices 1–2 green; five slice reviews pending.
 - Planning baseline: `1f1f8873142c54f3cead37682c4b2ed9d8cf85ec`.
 - Pre-run branch: `main`.
 - Pre-run worktree: `/Users/edo/dev/python/fable`.
@@ -123,7 +123,14 @@ Dependencies and gates: none.
 
 ### Slice 2 — Uniform Slurm process logs
 
-Status: pending.
+Status: green.
+
+- Baseline: `86d0d43a573d5723db7252d9ba3bf5f5c8917346`.
+- Implementer: `/root/slice2_implementer`.
+- Implementation head: `66ab8eae9d936f9b74449064dff34430553141f5`.
+- Reviewer: `/root/slice2_reviewer`.
+- Review: `GREEN LIGHT` — Standards 0, Spec 0.
+- Correction rounds: none.
 
 Scope:
 
@@ -318,3 +325,17 @@ Dependencies and gates: Slice 6 green.
   Pyright, Vulture with no findings, and `git diff --check`.
 - Independent fixed-range review returned `GREEN LIGHT`: Standards 0, Spec 0. No correction round
   was required.
+- Slice 2 implementation authorized from `86d0d43a573d5723db7252d9ba3bf5f5c8917346`
+  on direct `main`; pre-dispatch status contains only protected
+  `docs/experiments/feature_ablation.md` plus this orchestrator-owned ledger update.
+- Slice 2 implementation committed as `66ab8eae9d936f9b74449064dff34430553141f5`
+  (`refactor(execution): use uniform process logs`), changing
+  `src/fable/execution.py`, `tests/test_execution.py`, and `docs/FABLE.md` with 7 insertions and
+  12 deletions.
+- Slice 2 verification passed: 12 focused tests, the full 123-test Python suite, Ruff, Pyright,
+  Vulture with no findings, protected-file hash verification, and `git diff --check`.
+- Independent fixed-range review returned `GREEN LIGHT`: Standards 0, Spec 0. No correction round
+  was required.
+- Before Slice 3, the user confirmed uninterrupted execution. The canonical experiment interface
+  remains `<UUID>/manifest.json` with the same flat mapping; only incidental retained authoring
+  files beside that manifest are removed.
