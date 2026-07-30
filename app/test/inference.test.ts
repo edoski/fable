@@ -236,6 +236,21 @@ describe("InferenceEngine", () => {
     await engine.dispose();
   });
 
+  it("selects the first action when maximum logits tie", async () => {
+    const { engine } = createTestEngine({
+      model: runtime({
+        actionLogits: new Float32Array([1, 4, 4, 0]),
+        minimumFeeZ: 0,
+      }),
+    });
+
+    await expect(engine.run(4)).resolves.toMatchObject({
+      selected_action_k: 1,
+      target_block: 12,
+    });
+    await engine.dispose();
+  });
+
   it("rejects an unsafe external head block without losing raw precision", async () => {
     const unsafe = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
     const unsafeHead = session(async () => context(unsafe, 20n));

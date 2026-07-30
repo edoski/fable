@@ -28,32 +28,52 @@ export type ChainManifest = {
   features: readonly FeatureManifest[];
 };
 
-export const P50_PRIORITY_FEE_FEATURE =
+const P50_PRIORITY_FEE_FEATURE =
   "log1p_effective_priority_fee_per_gas_p50" satisfies FeatureName;
-export const P90_PRIORITY_FEE_FEATURE =
+const P90_PRIORITY_FEE_FEATURE =
   "log1p_effective_priority_fee_per_gas_p90" satisfies FeatureName;
-export const PRIORITY_FEE_FEATURES: readonly FeatureName[] = [
-  P50_PRIORITY_FEE_FEATURE,
-  P90_PRIORITY_FEE_FEATURE,
-];
-export const INTERVAL_FEATURE =
+const INTERVAL_FEATURE =
   "block_interval_seconds" satisfies FeatureName;
 
 export type PriorityFeeRewards = readonly [p50: bigint, p90: bigint];
+
+export function needsPredecessor(manifest: ChainManifest): boolean {
+  return manifest.features.some(
+    (feature) => feature.name === INTERVAL_FEATURE,
+  );
+}
+
+export function usesPriorityFees(manifest: ChainManifest): boolean {
+  return manifest.features.some(
+    (feature) =>
+      feature.name === P50_PRIORITY_FEE_FEATURE ||
+      feature.name === P90_PRIORITY_FEE_FEATURE,
+  );
+}
 
 export function buildModelInput(
   blocks: readonly BlockRow[],
   priorityFeeRewards: readonly PriorityFeeRewards[] | null,
   manifest: ChainManifest,
 ): Float32Array {
-  const needsPredecessor = manifest.features.some(
-    (feature) => feature.name === INTERVAL_FEATURE,
-  );
+  if (
+    usesPriorityFees(manifest) &&
+    (priorityFeeRewards === null ||
+      priorityFeeRewards.length !== manifest.context_blocks ||
+      priorityFeeRewards.some((rewards) =>
+        rewards.some((reward) => reward < 0n),
+      ))
+  ) {
+    throw new Error(
+      "Priority-fee rewards must provide nonnegative P50 and P90 values for every context block",
+    );
+  }
+  const predecessorOffset = Number(needsPredecessor(manifest));
   const featureCount = manifest.features.length;
   const output = new Float32Array(manifest.context_blocks * featureCount);
 
   for (let row = 0; row < manifest.context_blocks; row += 1) {
-    const blockIndex = row + Number(needsPredecessor);
+    const blockIndex = row + predecessorOffset;
     const block = blocks[blockIndex];
     for (let column = 0; column < featureCount; column += 1) {
       const feature = manifest.features[column];
@@ -92,20 +112,10 @@ function rawFeature(
       return positiveLog(block.gasLimit);
     case "log1p_tx_count":
       return Math.log1p(block.transactionCount);
-    case P50_PRIORITY_FEE_FEATURE: {
-      const reward = priorityFeeRewards?.[0];
-      if (reward === undefined || reward < 0n) {
-        throw new Error("P50 priority fee must be present and nonnegative");
-      }
-      return Math.log1p(Number(reward));
-    }
-    case P90_PRIORITY_FEE_FEATURE: {
-      const reward = priorityFeeRewards?.[1];
-      if (reward === undefined || reward < 0n) {
-        throw new Error("P90 priority fee must be present and nonnegative");
-      }
-      return Math.log1p(Number(reward));
-    }
+    case P50_PRIORITY_FEE_FEATURE:
+      return Math.log1p(Number(priorityFeeRewards![0]));
+    case P90_PRIORITY_FEE_FEATURE:
+      return Math.log1p(Number(priorityFeeRewards![1]));
     case INTERVAL_FEATURE: {
       return Number(block.timestamp - predecessor.timestamp);
     }
