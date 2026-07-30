@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -13,8 +14,7 @@ from bundle import (
     open_bundle,
     publish_bundle,
     read_cells,
-    write_cells,
-    write_request,
+    write_evaluate_cells,
 )
 
 from fable.config import BlockWindow, EvaluateRequest
@@ -41,8 +41,8 @@ def prepare(
     studies = {cell: load_study(storage_root, study_id) for cell, study_id in hpo.items()}
     bundle = open_bundle(storage_root, _KIND, experiment_id)
 
-    rows: list[tuple[str, Path, UUID]] = []
-    for index, (cell, artifact_id) in enumerate(k_study.items()):
+    cells: list[tuple[str, EvaluateRequest]] = []
+    for cell, artifact_id in k_study.items():
         chain, family, horizon_label = cell.split(".")
         horizon = int(horizon_label.removeprefix("K"))
         study = studies[f"{chain}.{family}"]
@@ -58,10 +58,9 @@ def prepare(
                 last_parent_block=last_parent,
             ),
         )
-        request_path = write_request(bundle, index, request)
-        rows.append((cell, request_path, request.evaluation_id))
+        cells.append((cell, request))
 
-    write_cells(bundle, ("cell", "request", "evaluation_id"), rows)
+    write_evaluate_cells(bundle, cells)
 
     print(experiment_id)
 
@@ -80,19 +79,22 @@ def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
 
 
 def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
-    manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
-    results = [
-        pl.DataFrame({"cell": [cell]}).hstack(reduce_evaluation(storage_root, evaluation_id))
-        for cell, evaluation_id in manifest.items()
-    ]
-    print(pl.concat(results).write_csv(None, separator="\t"), end="")
+    _print_cells(storage_root, experiment_id, reduce_evaluation)
 
 
 def baselines(storage_root: StorageRoot, experiment_id: UUID) -> None:
+    _print_cells(storage_root, experiment_id, reduce_baselines)
+
+
+def _print_cells(
+    storage_root: Path,
+    experiment_id: UUID,
+    reducer: Callable[[Path, UUID], pl.DataFrame],
+) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     results = []
     for cell, evaluation_id in manifest.items():
-        result = reduce_baselines(storage_root, evaluation_id)
+        result = reducer(storage_root, evaluation_id)
         results.append(pl.DataFrame({"cell": [cell] * result.height}).hstack(result))
     print(pl.concat(results).write_csv(None, separator="\t"), end="")
 

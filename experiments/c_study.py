@@ -10,8 +10,7 @@ from bundle import (
     StorageRoot,
     close_study_bundle,
     open_bundle,
-    write_cells,
-    write_request,
+    write_tune_cells,
 )
 
 from fable.config import TuneRequest
@@ -52,7 +51,7 @@ def prepare(
     selected = _full_feature_studies(storage_root, feature_experiment_id)
     bundle = open_bundle(storage_root, _KIND, experiment_id)
 
-    rows: list[tuple[str, Path, int, UUID]] = []
+    cells: list[tuple[str, TuneRequest]] = []
     for chain in _CHAINS:
         for family in _FAMILIES:
             source = selected[chain, family]
@@ -65,17 +64,9 @@ def prepare(
                     ),
                     methods=(method,),
                 )
-                request_path = write_request(bundle, len(rows), request)
-                rows.append(
-                    (
-                        f"{chain}.{family}.C{context}",
-                        request_path,
-                        0,
-                        request.study_id,
-                    )
-                )
+                cells.append((f"{chain}.{family}.C{context}", request))
 
-    write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
+    write_tune_cells(bundle, cells)
 
     print(experiment_id)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import shutil
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Annotated, TypeAlias
@@ -33,13 +34,49 @@ def open_bundle(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -
     return bundle
 
 
-def write_request(bundle: Path, index: int, request: BundleRequest) -> Path:
+def write_tune_cells(
+    bundle: Path,
+    cells: Iterable[tuple[str, TuneRequest]],
+) -> None:
+    rows: list[tuple[str, Path, int, UUID]] = []
+    for index, (cell, request) in enumerate(cells):
+        request_path = _write_request(bundle, index, request)
+        rows.extend(
+            (cell, request_path, method_index, request.study_id)
+            for method_index in range(len(request.methods))
+        )
+    _write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
+
+
+def write_train_cells(
+    bundle: Path,
+    cells: Iterable[tuple[str, TrainRequest]],
+) -> None:
+    rows = (
+        (cell, _write_request(bundle, index, request), request.artifact_id)
+        for index, (cell, request) in enumerate(cells)
+    )
+    _write_cells(bundle, ("cell", "request", "artifact_id"), rows)
+
+
+def write_evaluate_cells(
+    bundle: Path,
+    cells: Iterable[tuple[str, EvaluateRequest]],
+) -> None:
+    rows = (
+        (cell, _write_request(bundle, index, request), request.evaluation_id)
+        for index, (cell, request) in enumerate(cells)
+    )
+    _write_cells(bundle, ("cell", "request", "evaluation_id"), rows)
+
+
+def _write_request(bundle: Path, index: int, request: BundleRequest) -> Path:
     path = bundle / "requests" / f"{index:03d}.json"
     path.write_text(request.model_dump_json(), encoding="utf-8")
     return path
 
 
-def write_cells(
+def _write_cells(
     bundle: Path,
     header: Sequence[str],
     rows: Iterable[Sequence[object]],
@@ -69,32 +106,10 @@ def publish_bundle(
 
     with (bundle / "manifest.json").open("x", encoding="utf-8") as destination:
         destination.write(manifest.model_dump_json())
-    _repoint_requests(bundle, canonical)
+    shutil.rmtree(bundle / "requests")
+    (bundle / "cells.tsv").unlink()
+    (bundle / "jobs.tsv").unlink(missing_ok=True)
     bundle.rename(canonical)
-
-
-def _repoint_requests(bundle: Path, canonical: Path) -> None:
-    path = bundle / "cells.tsv"
-    with path.open(newline="", encoding="utf-8") as source:
-        reader = csv.DictReader(source, delimiter="\t")
-        fieldnames = reader.fieldnames
-        rows = list(reader)
-    if fieldnames is None or "request" not in fieldnames:
-        return
-
-    for row in rows:
-        row["request"] = str(canonical / "requests" / Path(row["request"]).name)
-    replacement = path.with_suffix(".tmp")
-    with replacement.open("x", newline="", encoding="utf-8") as destination:
-        writer = csv.DictWriter(
-            destination,
-            fieldnames=fieldnames,
-            delimiter="\t",
-            lineterminator="\n",
-        )
-        writer.writeheader()
-        writer.writerows(rows)
-    replacement.replace(path)
 
 
 def close_study_bundle(

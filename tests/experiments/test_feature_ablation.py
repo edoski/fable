@@ -135,18 +135,12 @@ def test_close_publishes_all_studies_and_report_averages_each_configuration(
         manifest_path.read_bytes(),
         strict=True,
     )
-    published_rows = read_tsv_rows(canonical / "cells.tsv")
     assert result.stdout.strip() == str(experiment_id)
     assert len(manifest.root) == 102
     assert [str(record_id) for record_id in manifest.root.values()] == [
         row["study_id"] for row in rows
     ]
-    assert published_rows == [
-        {**row, "request": str(canonical / "requests" / Path(row["request"]).name)}
-        for row in rows
-    ]
-    assert all(Path(row["request"]).is_file() for row in published_rows)
-    assert (canonical / "jobs.tsv").read_text(encoding="utf-8") == jobs
+    assert {path.name for path in canonical.iterdir()} == {"manifest.json"}
     assert not bundle.exists()
 
     report = run_script(_SCRIPT, "report", tmp_path, experiment_id)

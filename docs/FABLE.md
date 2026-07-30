@@ -764,7 +764,7 @@ Given an explicit `storage_root`:
 ```text
 corpora/<corpus_id>/corpus.json
 corpora/<corpus_id>/blocks.parquet
-experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>.json
+experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>/manifest.json
 studies/<study_id>.json
 artifacts/<artifact_id>.ckpt
 evaluations/<evaluation_id>/evaluation.json
@@ -808,7 +808,12 @@ load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus
 
 #### Experiment manifest
 
-Each `experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>.json` contains the matching UUIDv4 `experiment_id` and a nonempty ordered `entries` tuple. Each entry has a nonempty `cell` label and one canonical `record_id` UUIDv4. The manifest path and kind define whether that ID names a Study, artifact, or evaluation. Manifests group canonical references only; they do not duplicate metrics, results, or scientific definitions.
+Each `experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>/manifest.json` is a
+nonempty ordered flat mapping from a nonempty cell label to one canonical record UUIDv4. The
+directory path identifies the experiment, and its kind defines whether each value names a Study,
+artifact, or evaluation. Manifests group canonical references only; they do not duplicate metrics,
+results, or scientific definitions. The completed experiment directory contains only
+`manifest.json`.
 
 `experiments/feature_ablation.py prepare STORAGE_ROOT` authors the frozen 102-cell request
 bundle under `experiments/feature_ablation/.<experiment_id>/`. For each architecture and chain it
@@ -825,7 +830,8 @@ carry the request path, zero-based `method_index`, and Study ID; they do not wri
 JSON files. Packed launch writes temporary `jobs.tsv` rows containing job ID, zero-based slot,
 source-row index, and cell. Every successful allocation is appended, flushed, and synced before
 its job ID is printed. A repeated launch skips recorded rows; a failed submission leaves later
-groups pending. The bundle's ordinary closure removes both TSV files.
+groups pending. Closure validates every referenced canonical record, writes the flat manifest,
+deletes the temporary request files and both TSV files, and publishes the manifest-only directory.
 
 `experiments/c_study.py` derives the full feature contract, authors the 45
 architecture-chain-context Studies for `C={25,50,100,200,400}`, then publishes their canonical

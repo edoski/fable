@@ -254,14 +254,15 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     _publish_artifacts(tmp_path, rows)
     run_script(_SCRIPT, "close", tmp_path, experiment_id)
 
+    canonical = tmp_path / "experiments" / "k_study" / str(experiment_id)
     manifest = ExperimentManifest.model_validate_json(
-        (tmp_path / "experiments" / "k_study" / str(experiment_id) / "manifest.json").read_bytes(),
-        strict=True,
+        (canonical / "manifest.json").read_bytes(), strict=True
     )
     assert len(manifest.root) == 81
     assert [str(record_id) for record_id in manifest.root.values()] == [
         row["artifact_id"] for row in rows
     ]
+    assert {path.name for path in canonical.iterdir()} == {"manifest.json"}
     assert not bundle.exists()
 
     corpus = {
@@ -314,18 +315,13 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
 
     _publish_evaluations(tmp_path, evaluation_rows)
     run_script(_HELD_OUT_SCRIPT, "close", tmp_path, held_out_experiment_id)
+    held_out_canonical = tmp_path / "experiments" / "held_out" / str(held_out_experiment_id)
     held_out_manifest = ExperimentManifest.model_validate_json(
-        (
-            tmp_path
-            / "experiments"
-            / "held_out"
-            / str(held_out_experiment_id)
-            / "manifest.json"
-        ).read_bytes(),
-        strict=True,
+        (held_out_canonical / "manifest.json").read_bytes(), strict=True
     )
     assert len(held_out_manifest.root) == 81
     assert [str(record_id) for record_id in held_out_manifest.root.values()] == [
         row["evaluation_id"] for row in evaluation_rows
     ]
+    assert {path.name for path in held_out_canonical.iterdir()} == {"manifest.json"}
     assert not held_out.exists()

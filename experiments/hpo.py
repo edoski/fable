@@ -14,8 +14,7 @@ from bundle import (
     open_bundle,
     publish_bundle,
     read_cells,
-    write_cells,
-    write_request,
+    write_tune_cells,
 )
 
 from fable.config import (
@@ -175,31 +174,17 @@ def prepare(storage_root: StorageRoot, c_experiment_id: UUID) -> None:
 
     methods_by_family = {family: _methods(family) for family in _FAMILIES}
 
-    rows: list[tuple[str, Path, int, UUID]] = []
-    for index, (chain, family) in enumerate(product(_CHAINS, _FAMILIES)):
+    cells: list[tuple[str, TuneRequest]] = []
+    for chain, family in product(_CHAINS, _FAMILIES):
         source = selected[chain, family]
         request = TuneRequest(
             corpus_id=source.request.corpus_id,
             experiment=source.request.experiment,
             methods=methods_by_family[family],
         )
-        request_path = write_request(bundle, index, request)
-        cell = f"{chain}.{family}"
-        rows.extend(
-            (
-                cell,
-                request_path,
-                method_index,
-                request.study_id,
-            )
-            for method_index in range(len(request.methods))
-        )
+        cells.append((f"{chain}.{family}", request))
 
-    write_cells(
-        bundle,
-        ("cell", "request", "method_index", "study_id"),
-        rows,
-    )
+    write_tune_cells(bundle, cells)
 
     for chain, context, mean in context_winners:
         typer.echo(f"{chain}\t{context}\t{mean:g}", err=True)

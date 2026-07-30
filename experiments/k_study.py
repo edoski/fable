@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from uuid import UUID, uuid4
 
 import typer
@@ -12,8 +11,7 @@ from bundle import (
     open_bundle,
     publish_bundle,
     read_cells,
-    write_cells,
-    write_request,
+    write_train_cells,
 )
 
 from fable.config import SelectedStudySource, TrainRequest
@@ -37,7 +35,7 @@ def prepare(storage_root: StorageRoot, hpo_experiment_id: UUID) -> None:
     )
     bundle = open_bundle(storage_root, _KIND, experiment_id)
 
-    rows: list[tuple[str, Path, UUID]] = []
+    cells: list[tuple[str, TrainRequest]] = []
     for cell, study_id in manifest.items():
         study = load_study(storage_root, study_id)
         selected_index, _ = study.best_result()
@@ -52,10 +50,9 @@ def prepare(storage_root: StorageRoot, hpo_experiment_id: UUID) -> None:
                     ),
                 )
             )
-            request_path = write_request(bundle, len(rows), request)
-            rows.append((f"{cell}.K{horizon}", request_path, request.artifact_id))
+            cells.append((f"{cell}.K{horizon}", request))
 
-    write_cells(bundle, ("cell", "request", "artifact_id"), rows)
+    write_train_cells(bundle, cells)
 
     print(experiment_id)
 

@@ -88,10 +88,6 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
     if request.study_id != study_id:
         raise ValueError("result Study ID does not match requested Study ID")
 
-    canonical = study_json_path(storage_root, study_id)
-    if canonical.exists():
-        raise FileExistsError(canonical)
-
     expected_paths = tuple(
         _result_path(storage_root, study_id, index) for index in range(len(request.methods))
     )
@@ -112,7 +108,7 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
         Study(request=request, trials=tuple(trials)).model_dump_json(),
         encoding="utf-8",
     )
-    os.link(completed, canonical)
+    os.link(completed, study_json_path(storage_root, study_id))
     shutil.rmtree(scratch)
 
 

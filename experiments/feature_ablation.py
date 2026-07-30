@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
 
@@ -11,8 +10,7 @@ from bundle import (
     StorageRoot,
     close_study_bundle,
     open_bundle,
-    write_cells,
-    write_request,
+    write_tune_cells,
 )
 
 from fable.config import (
@@ -166,7 +164,7 @@ def prepare(storage_root: StorageRoot) -> None:
     experiment_id = uuid4()
     bundle = open_bundle(storage_root, _KIND, experiment_id)
 
-    rows: list[tuple[str, Path, int, UUID]] = []
+    cells: list[tuple[str, TuneRequest]] = []
     for chain, corpus_id, training_window, validation_window in _CHAINS:
         for method in _METHODS:
             family = method.model.family
@@ -182,17 +180,9 @@ def prepare(storage_root: StorageRoot) -> None:
                     ),
                     methods=(method,),
                 )
-                path = write_request(bundle, len(rows), request)
-                rows.append(
-                    (
-                        f"{chain}.{family}.{configuration}",
-                        path,
-                        0,
-                        request.study_id,
-                    )
-                )
+                cells.append((f"{chain}.{family}.{configuration}", request))
 
-    write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
+    write_tune_cells(bundle, cells)
 
     print(experiment_id)
 
