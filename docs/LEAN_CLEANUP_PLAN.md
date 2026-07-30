@@ -75,7 +75,7 @@ check and the full Python suite. No other slice inherits that waiver.
 | Slice | Scope | Status | Baseline | Head | Implementer | Reviewer | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Evaluation arrays and result frames | green | `42cb2c4` | `29c31ac2` | `/root/slice1_implement` | `/root/slice1_review` | Standards 0; Spec 0 |
-| 2 | Typed experiment-bundle publication | pending | pending | pending | pending | pending | pending |
+| 2 | Typed experiment-bundle publication | correcting round 1 | `30654b47` | rejected `ff71e692` | `/root/slice2_implement` | `/root/slice2_review` | Standards 0; Spec 1 |
 | 3 | Three Python test reductions | blocked by 2 | pending | pending | pending | waived | pending |
 | 4 | Fit-pipeline collapse | blocked by 3 | pending | pending | pending | pending | pending |
 | 5 | Exact bash template | blocked by 4 | pending | pending | pending | pending | pending |
@@ -83,6 +83,11 @@ check and the full Python suite. No other slice inherits that waiver.
 | 7 | Compact-CUDA propagation and parity | blocked by 6 | pending | pending | pending | pending | pending |
 
 ## Slice 1 — Evaluation arrays and result frames
+
+### Expected outcome
+
+Evaluation reduction has one direct in-memory representation and substantially less extraction
+ceremony, while every published observation and reported scientific value remains identical.
 
 ### Scope
 
@@ -128,6 +133,12 @@ uv run pytest
 ```
 
 ## Slice 2 — Typed experiment-bundle publication
+
+### Expected outcome
+
+Each experiment finishes as one self-contained, typed provenance bundle. Operators can inspect or
+reuse its requests, cells, jobs, and record mapping without reconstructing facts from a deleted
+scratch directory or a detached summary.
 
 ### Scope
 
@@ -189,7 +200,24 @@ uv run vulture
 uv run pytest
 ```
 
+### Review history
+
+Round 1 reviewed `30654b47...ff71e692`.
+
+- Standards: zero actionable findings.
+- Spec: one P1 finding. HPO skipped repeated rows before validating every referenced Study;
+  K-study and held-out closure accepted path shape rather than loading each Artifact or Evaluation
+  through its canonical owner. Empty placeholders therefore passed closure tests.
+- Decision: rejected. The same implementer must validate all distinct HPO references, reject
+  conflicting mappings, and use canonical Artifact/Evaluation loaders before publication. The
+  same reviewer will inspect only the correction range and closure of this finding.
+
 ## Slice 3 — Three Python test reductions
+
+### Expected outcome
+
+The Python suite stays focused on FABLE behavior. Three assertions that only restate framework or
+degenerate behavior disappear without reducing scientific, validation, or integration coverage.
 
 ### Scope
 
@@ -220,6 +248,11 @@ uv run pytest
 ```
 
 ## Slice 4 — Fit-pipeline collapse
+
+### Expected outcome
+
+Fitting reads as one direct preparation-to-result transaction with fewer private relay functions,
+while producing the same selected checkpoints, retained results, and durable artifacts.
 
 ### Scope
 
@@ -259,6 +292,11 @@ uv run pytest
 
 ## Slice 5 — Exact bash template
 
+### Expected outcome
+
+The generated Slurm job is readable in source as the bash script it becomes, while the emitted
+bytes and external execution behavior remain unchanged.
+
 ### Scope
 
 - `src/fable/execution.py`
@@ -285,6 +323,12 @@ uv run pytest
 ```
 
 ## Slice 6 — App cleanup
+
+### Expected outcome
+
+The app has one obvious owner for selection currentness, model-catalog construction, and
+action-grouped analytics. User-visible inference, persistence, RPC, and native behavior remain
+unchanged.
 
 ### Scope
 
@@ -334,6 +378,12 @@ uv run pytest
 ```
 
 ## Slice 7 — Compact-CUDA propagation and parity
+
+### Expected outcome
+
+The reviewed main cleanup reaches the compact-CUDA branch without changing its measured
+device-resident execution design. The repository ends with only `main` and the compact-CUDA
+branch, one shared checkout, and no temporary orchestration artifact.
 
 ### Scope
 
