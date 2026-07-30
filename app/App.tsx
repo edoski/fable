@@ -45,10 +45,7 @@ const INITIAL_SELECTION: Selection = {
 
 export default function App() {
   const [tab, setTab] = useState<AppTab>("inference");
-  const [chain, setChain] = useState<Chain>(INITIAL_SELECTION.chain);
-  const [horizon, setHorizon] = useState<Horizon>(
-    INITIAL_SELECTION.horizon,
-  );
+  const [selection, setSelection] = useState(INITIAL_SELECTION);
   const [inference, setInference] = useState<InferenceState>({
     status: "idle",
   });
@@ -57,7 +54,7 @@ export default function App() {
   const [runs, setRuns] = useState<InferenceRun[]>([]);
   const [storageError, setStorageError] = useState<string | null>(null);
   const activeEngine = useRef<ActiveEngine | null>(null);
-  const selection = useRef(INITIAL_SELECTION);
+  const selectionIdentity = useRef(INITIAL_SELECTION);
   const runsRef = useRef<InferenceRun[]>([]);
   const serializeHistory = useRef(createSerialQueue()).current;
 
@@ -127,9 +124,9 @@ export default function App() {
   }, [serializeHistory]);
 
   useEffect(() => {
-    const engine = createInferenceEngine(chain);
+    const engine = createInferenceEngine(selection.chain);
     const current: ActiveEngine = {
-      chain,
+      chain: selection.chain,
       engine,
     };
     activeEngine.current = current;
@@ -155,32 +152,29 @@ export default function App() {
       }
       void engine.dispose();
     };
-  }, [chain]);
+  }, [selection.chain]);
 
-  function selectChain(nextChain: Chain) {
-    const current = selection.current;
-    if (nextChain === current.chain) return;
-    selection.current = { ...current, chain: nextChain };
-    activeEngine.current = null;
+  function select(next: Selection): void {
+    const current = selectionIdentity.current;
+    if (next.chain === current.chain && next.horizon === current.horizon) {
+      return;
+    }
+    selectionIdentity.current = next;
     setInference({ status: "idle" });
-    setRpcStatus("checking");
-    setSnapshot(null);
-    setChain(nextChain);
+    if (next.chain !== current.chain) {
+      activeEngine.current = null;
+      setRpcStatus("checking");
+      setSnapshot(null);
+    }
+    setSelection(next);
   }
 
-  function selectHorizon(nextHorizon: Horizon) {
-    const current = selection.current;
-    if (nextHorizon === current.horizon) return;
-    selection.current = {
-      ...current,
-      horizon: nextHorizon,
-    };
-    setInference({ status: "idle" });
-    setHorizon(nextHorizon);
+  function selectChain(chain: Chain): void {
+    select({ ...selectionIdentity.current, chain });
   }
 
   async function runInference() {
-    const selected = selection.current;
+    const selected = selectionIdentity.current;
     const current = activeEngine.current;
     if (current === null || current.chain !== selected.chain) {
       fail("Could not connect to the selected chain.");
@@ -188,7 +182,7 @@ export default function App() {
     }
     const isCurrent = () =>
       activeEngine.current === current &&
-      selection.current === selected;
+      selectionIdentity.current === selected;
 
     setInference({ status: "loading" });
     let result;
@@ -223,15 +217,17 @@ export default function App() {
       <StatusBar backgroundColor={colors.navy} barStyle="light-content" />
       <View style={styles.app}>
         <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
-          <AppHeader chain={chain} status={rpcStatus} />
+          <AppHeader chain={selection.chain} status={rpcStatus} />
         </SafeAreaView>
         <View style={styles.content}>
           {tab === "inference" ? (
             <InferenceScreen
-              chain={chain}
-              horizon={horizon}
+              chain={selection.chain}
+              horizon={selection.horizon}
               onChainChange={selectChain}
-              onHorizonChange={selectHorizon}
+              onHorizonChange={(horizon) =>
+                select({ ...selectionIdentity.current, horizon })
+              }
               onRun={() => void runInference()}
               onRunAgain={() => setInference({ status: "idle" })}
               snapshot={snapshot}
@@ -239,8 +235,8 @@ export default function App() {
             />
           ) : (
             <AnalyticsScreen
-              chain={chain}
-              horizon={horizon}
+              chain={selection.chain}
+              horizon={selection.horizon}
               onChainChange={selectChain}
               runs={runs}
               storageError={storageError}

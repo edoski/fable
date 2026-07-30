@@ -1,12 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { type PropsWithChildren, useState } from "react";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { BarChart as GiftedBarChart } from "react-native-gifted-charts";
 
 import {
@@ -22,6 +16,7 @@ import {
 import { DetailRow } from "../components/DetailRow";
 import { HorizonSlider } from "../components/HorizonSlider";
 import { NetworkIcon } from "../components/NetworkIcon";
+import { Overlay } from "../components/Overlay";
 import { CHAINS, CHAIN_LABELS, type Chain, type Horizon } from "../domain";
 import type { InferenceRun } from "../history";
 import { styles } from "../styles";
@@ -291,55 +286,52 @@ function NetworkPicker({
   onSelect: (chain: Chain) => void;
 }) {
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible>
-      <View style={styles.dialogRoot}>
-        <Pressable
-          accessibilityLabel="Close network picker"
-          onPress={onClose}
-          style={styles.backdrop}
-        />
-        <View style={[styles.dialog, styles.sheet, styles.networkSheet]}>
-          <View style={styles.networkSheetHeader}>
-            <Text style={styles.networkSheetTitle}>Select network</Text>
-            <Pressable
-              accessibilityLabel="Close"
-              hitSlop={10}
-              onPress={onClose}
-            >
-              <Ionicons color={colors.muted} name="close" size={25} />
-            </Pressable>
-          </View>
-          <View style={styles.networkOptions}>
-            {CHAINS.map((chain) => {
-              const active = chain === selected;
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  key={chain}
-                  onPress={() => onSelect(chain)}
+    <Overlay
+      animationType="fade"
+      backdropLabel="Close network picker"
+      onClose={onClose}
+    >
+      <View style={[styles.dialog, styles.sheet, styles.networkSheet]}>
+        <View style={styles.networkSheetHeader}>
+          <Text style={styles.networkSheetTitle}>Select network</Text>
+          <Pressable
+            accessibilityLabel="Close"
+            hitSlop={10}
+            onPress={onClose}
+          >
+            <Ionicons color={colors.muted} name="close" size={25} />
+          </Pressable>
+        </View>
+        <View style={styles.networkOptions}>
+          {CHAINS.map((chain) => {
+            const active = chain === selected;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                key={chain}
+                onPress={() => onSelect(chain)}
+                style={[
+                  styles.networkCard,
+                  styles.networkOption,
+                  active && styles.networkCardActive,
+                ]}
+              >
+                <NetworkIcon chain={chain} size={26} />
+                <Text
                   style={[
-                    styles.networkCard,
-                    styles.networkOption,
-                    active && styles.networkCardActive,
+                    styles.networkOptionText,
+                    active && styles.networkOptionTextActive,
                   ]}
                 >
-                  <NetworkIcon chain={chain} size={26} />
-                  <Text
-                    style={[
-                      styles.networkOptionText,
-                      active && styles.networkOptionTextActive,
-                    ]}
-                  >
-                    {CHAIN_LABELS[chain]}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+                  {CHAIN_LABELS[chain]}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
-    </Modal>
+    </Overlay>
   );
 }
 
@@ -355,102 +347,99 @@ function RunDetails({
   }
   const savings = realizedSavingsPercent(run);
   return (
-    <Modal animationType="slide" onRequestClose={onClose} transparent visible>
-      <View style={styles.dialogRoot}>
-        <Pressable
-          accessibilityLabel="Close run details"
-          onPress={onClose}
-          style={styles.backdrop}
-        />
-        <View style={[styles.dialog, styles.sheet, styles.runDialog]}>
-          <View style={styles.handle} />
-          <View style={styles.dialogHeader}>
-            <View>
-              <Text style={styles.dialogTitle}>Run details</Text>
-              <Text style={styles.dialogDate}>{formatRunDate(run.ran_at)}</Text>
-            </View>
-            <Pressable
-              accessibilityLabel="Close"
-              hitSlop={10}
-              onPress={onClose}
-            >
-              <Ionicons color={colors.muted} name="close" size={27} />
-            </Pressable>
-          </View>
-
-          <View style={styles.selectionSummary}>
-            <View style={styles.selectionItem}>
-              <Text style={styles.detailLabel}>Network</Text>
-              <Text style={styles.detailStrong}>
-                {CHAIN_LABELS[run.chain]}
-              </Text>
-            </View>
-            <View style={styles.selectionItem}>
-              <Text style={styles.detailLabel}>Horizon</Text>
-              <Text style={styles.detailStrong}>{run.K} blocks</Text>
-            </View>
-          </View>
-
-          <Text style={styles.groupTitle}>Prediction</Text>
-          <View style={[styles.surface, styles.detailsCard]}>
-            <DetailRow
-              label="Head block"
-              value={run.head_block.toLocaleString()}
-            />
-            <DetailRow
-              label="Action offset"
-              value={String(run.selected_action_k)}
-            />
-            <DetailRow
-              label="Target block"
-              value={run.target_block.toLocaleString()}
-            />
-            <DetailRow
-              label="Predicted base fee"
-              last
-              value={formatGwei(run.predicted_minimum_base_fee_per_gas)}
-            />
-          </View>
-          <Text style={styles.groupTitle}>Outcome</Text>
-          <View style={[styles.surface, styles.detailsCard]}>
-            <DetailRow
-              label="Act-now base fee"
-              value={
-                run.outcome === undefined
-                  ? "Pending"
-                  : formatGwei(run.outcome.immediate_base_fee_per_gas)
-              }
-            />
-            <DetailRow
-              label="Selected base fee"
-              value={
-                run.outcome === undefined
-                  ? "Pending"
-                  : formatGwei(run.outcome.selected_base_fee_per_gas)
-              }
-            />
-            <DetailRow
-              label="Realized savings"
-              last
-              value={
-                run.outcome === undefined
-                  ? "Pending"
-                  : savings === null
-                    ? "Unavailable"
-                    : formatSavings(savings)
-              }
-            />
+    <Overlay
+      animationType="slide"
+      backdropLabel="Close run details"
+      onClose={onClose}
+    >
+      <View style={[styles.dialog, styles.sheet, styles.runDialog]}>
+        <View style={styles.handle} />
+        <View style={styles.dialogHeader}>
+          <View>
+            <Text style={styles.dialogTitle}>Run details</Text>
+            <Text style={styles.dialogDate}>{formatRunDate(run.ran_at)}</Text>
           </View>
           <Pressable
-            accessibilityRole="button"
+            accessibilityLabel="Close"
+            hitSlop={10}
             onPress={onClose}
-            style={[styles.button, styles.closeButton]}
           >
-            <Text style={styles.buttonText}>Close</Text>
+            <Ionicons color={colors.muted} name="close" size={27} />
           </Pressable>
         </View>
+
+        <View style={styles.selectionSummary}>
+          <View style={styles.selectionItem}>
+            <Text style={styles.detailLabel}>Network</Text>
+            <Text style={styles.detailStrong}>
+              {CHAIN_LABELS[run.chain]}
+            </Text>
+          </View>
+          <View style={styles.selectionItem}>
+            <Text style={styles.detailLabel}>Horizon</Text>
+            <Text style={styles.detailStrong}>{run.K} blocks</Text>
+          </View>
+        </View>
+
+        <Text style={styles.groupTitle}>Prediction</Text>
+        <View style={[styles.surface, styles.detailsCard]}>
+          <DetailRow
+            label="Head block"
+            value={run.head_block.toLocaleString()}
+          />
+          <DetailRow
+            label="Action offset"
+            value={String(run.selected_action_k)}
+          />
+          <DetailRow
+            label="Target block"
+            value={run.target_block.toLocaleString()}
+          />
+          <DetailRow
+            label="Predicted base fee"
+            last
+            value={formatGwei(run.predicted_minimum_base_fee_per_gas)}
+          />
+        </View>
+        <Text style={styles.groupTitle}>Outcome</Text>
+        <View style={[styles.surface, styles.detailsCard]}>
+          <DetailRow
+            label="Act-now base fee"
+            value={
+              run.outcome === undefined
+                ? "Pending"
+                : formatGwei(run.outcome.immediate_base_fee_per_gas)
+            }
+          />
+          <DetailRow
+            label="Selected base fee"
+            value={
+              run.outcome === undefined
+                ? "Pending"
+                : formatGwei(run.outcome.selected_base_fee_per_gas)
+            }
+          />
+          <DetailRow
+            label="Realized savings"
+            last
+            value={
+              run.outcome === undefined
+                ? "Pending"
+                : savings === null
+                  ? "Unavailable"
+                  : formatSavings(savings)
+            }
+          />
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onClose}
+          style={[styles.button, styles.closeButton]}
+        >
+          <Text style={styles.buttonText}>Close</Text>
+        </Pressable>
       </View>
-    </Modal>
+    </Overlay>
   );
 }
 
