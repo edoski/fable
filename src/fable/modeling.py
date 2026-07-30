@@ -7,7 +7,6 @@ import math
 import os
 import shutil
 from collections.abc import Mapping
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Self, cast
 from uuid import UUID
@@ -75,7 +74,7 @@ _ASSOCIATION_ADAPTER = TypeAdapter(_Association)
 
 
 def _json_association(association: _Association) -> dict[str, object]:
-    return association.model_dump(mode="json", exclude_none=True)
+    return association.model_dump(mode="json")
 
 
 def _hydrate_association(raw: object) -> _Association:
@@ -340,13 +339,8 @@ class _FitModule(pl.LightningModule):
         )
 
     def on_validation_epoch_end(self) -> None:
-        loss = float(self.trainer.callback_metrics["validation_total_loss"].detach().cpu().item())
-        gap = float(
-            self.trainer.callback_metrics["validation_base_fee_optimality_gap"]
-            .detach()
-            .cpu()
-            .item()
-        )
+        loss = float(self.trainer.callback_metrics["validation_total_loss"])
+        gap = float(self.trainer.callback_metrics["validation_base_fee_optimality_gap"])
         if not math.isfinite(loss) or not math.isfinite(gap):
             raise FloatingPointError("complete validation metrics must be finite")
         print(
@@ -365,59 +359,11 @@ class _FitModule(pl.LightningModule):
         )
 
 
-@dataclass(frozen=True, slots=True)
-class _FitOutcome:
-    best_checkpoint: Path
-    objective: float
-    selected_epoch: int
-    completed_epochs: int
-
-
-def _callbacks(
-    scratch: Path,
-    definition: TrainingDefinition,
-) -> tuple[EarlyStopping, ModelCheckpoint, ModelCheckpoint]:
-    fit = definition.method.fit
-    early_stopping = EarlyStopping(
-        monitor="validation_total_loss",
-        min_delta=fit.min_delta,
-        patience=fit.patience,
-        check_finite=False,
-        check_on_train_epoch_end=False,
-    )
-    best = ModelCheckpoint(
-        dirpath=scratch,
-        filename="best-{epoch:02d}",
-        monitor="validation_base_fee_optimality_gap",
-        save_weights_only=True,
-        every_n_epochs=1,
-        save_on_train_epoch_end=False,
-        auto_insert_metric_name=False,
-        enable_version_counter=False,
-    )
-    last = ModelCheckpoint(
-        dirpath=scratch,
-        filename="last",
-        save_weights_only=False,
-        every_n_epochs=1,
-        save_on_train_epoch_end=True,
-        auto_insert_metric_name=False,
-        enable_version_counter=False,
-    )
-    return early_stopping, best, last
-
-
-def _fit_precision(
-    family: Literal["lstm", "transformer", "transformer_lstm"],
-) -> Literal["32-true", "bf16-mixed"]:
-    return "32-true" if family == "lstm" else "bf16-mixed"
-
-
 def _fit(
     association: _Association,
     prepared: HistoricalPreparation,
     scratch: Path,
-) -> _FitOutcome:
+) -> tuple[Path, RetainedResult]:
     definition = _training_definition(association)
     scratch.mkdir(parents=True, exist_ok=True)
     _runtime.configure_torch()
@@ -435,11 +381,20 @@ def _fit(
         batch_size=_runtime.FIT_BATCH_SIZE,
         shuffle=False,
     )
-    early_stopping, best, last = _callbacks(scratch, definition)
+    best = ModelCheckpoint(
+        dirpath=scratch,
+        filename="best-{epoch:02d}",
+        monitor="validation_base_fee_optimality_gap",
+        save_weights_only=True,
+        every_n_epochs=1,
+        save_on_train_epoch_end=False,
+        auto_insert_metric_name=False,
+        enable_version_counter=False,
+    )
     trainer = pl.Trainer(
         accelerator="gpu",
         devices=1,
-        precision=_fit_precision(definition.method.model.family),
+        precision=("32-true" if definition.method.model.family == "lstm" else "bf16-mixed"),
         max_epochs=fit.max_epochs,
         check_val_every_n_epoch=fit.validate_every_completed_epoch,
         accumulate_grad_batches=fit.accumulation,
@@ -449,7 +404,25 @@ def _fit(
         logger=False,
         enable_progress_bar=False,
         enable_model_summary=False,
-        callbacks=[early_stopping, best, last],
+        callbacks=[
+            EarlyStopping(
+                monitor="validation_total_loss",
+                min_delta=fit.min_delta,
+                patience=fit.patience,
+                check_finite=False,
+                check_on_train_epoch_end=False,
+            ),
+            best,
+            ModelCheckpoint(
+                dirpath=scratch,
+                filename="last",
+                save_weights_only=False,
+                every_n_epochs=1,
+                save_on_train_epoch_end=True,
+                auto_insert_metric_name=False,
+                enable_version_counter=False,
+            ),
+        ],
     )
     last_checkpoint = scratch / "last.ckpt"
     trainer.fit(
@@ -463,23 +436,11 @@ def _fit(
     score = best.best_model_score
     if score is None:
         raise RuntimeError("fit completed without a best validation objective")
-    return _FitOutcome(
-        best_checkpoint=best_checkpoint,
+    return best_checkpoint, RetainedResult(
         objective=float(score),
         selected_epoch=int(best_checkpoint.stem.removeprefix("best-")) + 1,
         completed_epochs=trainer.current_epoch,
     )
-
-
-def _publish_artifact(
-    storage_root: Path,
-    artifact_id: UUID,
-    scratch: Path,
-    outcome: _FitOutcome,
-) -> None:
-    canonical = artifact_checkpoint_path(storage_root, artifact_id)
-    os.link(outcome.best_checkpoint, canonical)
-    shutil.rmtree(scratch)
 
 
 def train(
@@ -504,30 +465,9 @@ def train(
     )
 
     scratch = canonical.parent / f".{request.artifact_id}"
-    outcome = _fit(association, prepared, scratch)
-    _publish_artifact(storage_root, request.artifact_id, scratch, outcome)
-
-
-def _fit_candidate(
-    request: TuneRequest,
-    method_index: int,
-    storage_root: Path,
-    candidate_scratch: Path,
-) -> RetainedResult:
-    prepared = prepare_fit_history(
-        load_corpus(storage_root, request.corpus_id),
-        request.experiment,
-    )
-    definition = TrainingDefinition(
-        experiment=request.experiment,
-        method=request.method_at(method_index),
-    )
-    outcome = _fit(definition, prepared, candidate_scratch)
-    return RetainedResult(
-        objective=outcome.objective,
-        selected_epoch=outcome.selected_epoch,
-        completed_epochs=outcome.completed_epochs,
-    )
+    best_checkpoint, _ = _fit(association, prepared, scratch)
+    os.link(best_checkpoint, canonical)
+    shutil.rmtree(scratch)
 
 
 def run_candidate(
@@ -540,7 +480,15 @@ def run_candidate(
         request.study_id,
         method_index,
     )
-    result = _fit_candidate(request, method_index, storage_root, candidate_scratch)
+    prepared = prepare_fit_history(
+        load_corpus(storage_root, request.corpus_id),
+        request.experiment,
+    )
+    definition = TrainingDefinition(
+        experiment=request.experiment,
+        method=request.method_at(method_index),
+    )
+    _, result = _fit(definition, prepared, candidate_scratch)
     retain_result(storage_root, request, method_index, result)
     shutil.rmtree(candidate_scratch)
 

@@ -159,12 +159,6 @@ def _definition(
     )
 
 
-def test_fit_precision_follows_model_family() -> None:
-    assert modeling._fit_precision("lstm") == "32-true"
-    assert modeling._fit_precision("transformer") == "bf16-mixed"
-    assert modeling._fit_precision("transformer_lstm") == "bf16-mixed"
-
-
 def test_transformer_lstm_uses_exportable_float32_recurrence() -> None:
     definition = TransformerLstmDefinition(
         family="transformer_lstm",
@@ -259,7 +253,7 @@ def test_artifact_association_round_trips_strict_json() -> None:
 
     assert (
         ArtifactAssociation.model_validate_json(
-            association.model_dump_json(exclude_none=True),
+            association.model_dump_json(),
             strict=True,
         )
         == association
