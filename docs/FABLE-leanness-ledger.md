@@ -3,8 +3,8 @@
 ## Run status
 
 - Phase: sequential implementation-review loop.
-- Product implementation: Slices 1–4 complete; Slice 5 pending dispatch.
-- Reviews: Slices 1–4 green; three slice reviews pending.
+- Product implementation: Slices 1–5 complete; Slice 6 pending dispatch.
+- Reviews: Slices 1–5 green; two slice reviews pending.
 - Planning baseline: `1f1f8873142c54f3cead37682c4b2ed9d8cf85ec`.
 - Pre-run branch: `main`.
 - Pre-run worktree: `/Users/edo/dev/python/fable`.
@@ -234,7 +234,15 @@ Dependencies and gates: Slice 3 green.
 
 ### Slice 5 — App feature-route and inference mechanics
 
-Status: pending.
+Status: green.
+
+- Baseline: `a153e1531898b4db843092a0c8e77f98f8b28718`.
+- Implementer: `/root/slice5_implementer`.
+- Initial implementation head: `90a91e7588a891975c94bec8a15236fecaac8163`.
+- Final implementation head: `b1f94bbf28c5e3dfdfa076d5c49b3757df1c49d8`.
+- Reviewer: `/root/slice5_reviewer`.
+- Review: `GREEN LIGHT` — Standards 0, Spec 0.
+- Correction rounds: 1.
 
 Scope:
 
@@ -377,3 +385,24 @@ Dependencies and gates: Slice 6 green.
 - Independent fixed-range review returned `GREEN LIGHT`: Standards 0, Spec 0. It confirmed exact
   methods, windows, IDs, scientific selection, and Ethereum-only third-position forming-fee unit.
   No correction round was required.
+- Slice 5 implementation authorized from `a153e1531898b4db843092a0c8e77f98f8b28718`
+  on direct `main`; pre-dispatch status contains only protected
+  `docs/experiments/feature_ablation.md` plus this orchestrator-owned ledger update.
+- Slice 5 initial implementation committed as `90a91e7588a891975c94bec8a15236fecaac8163`
+  (`refactor(app): simplify feature routing`), changing 6 files with 182 insertions and 112
+  deletions; product code is net 6 lines smaller.
+- Initial verification passed: 18 focused tests, all 33 app tests, TypeScript, protected-file hash
+  verification, and `git diff --check`.
+- Independent review rejected the initial head: Standards 0, Spec 1 (Medium). The feature-input
+  invariant did not reject a short P50/P90 reward row because an undefined item passes the
+  nonnegative comparison. Required correction: validate two defined bigint values per row and add
+  missing-P50/P90 coverage.
+- Correction round 1 committed as `b1f94bbf28c5e3dfdfa076d5c49b3757df1c49d8`
+  (`fix(app): validate complete priority fees`), changing 2 files with 17 insertions and 2
+  deletions.
+- Slice 5 final fixed range changes 6 files with 197 insertions and 112 deletions; product code is
+  net 1 line smaller and the remaining growth is focused boundary coverage.
+- Same-reviewer closure returned `GREEN LIGHT`: Standards 0, Spec 0. Missing, holey, wrong-type,
+  extra, or negative P50/P90 tuples are rejected. Final checks passed: 18 focused tests, all 33 app
+  tests, TypeScript, 4 correction-focused feature tests, protected-file hash verification, and
+  `git diff --check`.
