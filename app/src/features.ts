@@ -60,8 +60,13 @@ export function buildModelInput(
     usesPriorityFees(manifest) &&
     (priorityFeeRewards === null ||
       priorityFeeRewards.length !== manifest.context_blocks ||
-      priorityFeeRewards.some((rewards) =>
-        rewards.some((reward) => reward < 0n),
+      priorityFeeRewards.some(
+        (rewards) =>
+          rewards.length !== 2 ||
+          Array.from(rewards).some(
+            (reward) =>
+              typeof reward !== "bigint" || reward < 0n,
+          ),
       ))
   ) {
     throw new Error(
