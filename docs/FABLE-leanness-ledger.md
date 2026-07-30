@@ -3,8 +3,8 @@
 ## Run status
 
 - Phase: sequential implementation-review loop.
-- Product implementation: Slices 1–3 complete; Slice 4 pending dispatch.
-- Reviews: Slices 1–3 green; four slice reviews pending.
+- Product implementation: Slices 1–4 complete; Slice 5 pending dispatch.
+- Reviews: Slices 1–4 green; three slice reviews pending.
 - Planning baseline: `1f1f8873142c54f3cead37682c4b2ed9d8cf85ec`.
 - Pre-run branch: `main`.
 - Pre-run worktree: `/Users/edo/dev/python/fable`.
@@ -200,7 +200,14 @@ Dependencies and gates: Slice 2 green.
 
 ### Slice 4 — Feature-ablation roster
 
-Status: pending.
+Status: green.
+
+- Baseline: `341890c7460d97e9385d9c466ba92a13a1f054c1`.
+- Implementer: `/root/slice4_implementer`.
+- Implementation head: `1006909d7cf9085971a4d0c1aa6e8683b5064b27`.
+- Reviewer: `/root/slice4_reviewer`.
+- Review: `GREEN LIGHT` — Standards 0, Spec 0.
+- Correction rounds: none.
 
 Scope:
 
@@ -358,3 +365,15 @@ Dependencies and gates: Slice 6 green.
 - Independent fixed-range review returned `GREEN LIGHT`: Standards 0, Spec 0. It confirmed no
   post-close consumer uses the removed authoring files and no manifest/report/scientific contract
   changed. No correction round was required.
+- Slice 4 implementation authorized from `341890c7460d97e9385d9c466ba92a13a1f054c1`
+  on direct `main`; pre-dispatch status contains only protected
+  `docs/experiments/feature_ablation.md` plus this orchestrator-owned ledger update.
+- Slice 4 implementation committed as `1006909d7cf9085971a4d0c1aa6e8683b5064b27`
+  (`refactor(experiments): centralize feature units`), changing
+  `experiments/feature_ablation.py` with 30 insertions and 42 deletions.
+- Slice 4 verification passed: exact fixed-ref comparison of all 102 cell labels and ordered
+  features, 3 focused tests, the full 123-test Python suite, Ruff, Pyright, Vulture with no
+  findings, protected-file hash verification, and `git diff --check`.
+- Independent fixed-range review returned `GREEN LIGHT`: Standards 0, Spec 0. It confirmed exact
+  methods, windows, IDs, scientific selection, and Ethereum-only third-position forming-fee unit.
+  No correction round was required.
