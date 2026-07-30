@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import csv
+import subprocess
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
+
+import pytest
 
 from fable.config import TuneRequest
 from fable.experiments import ExperimentManifest
@@ -203,3 +207,41 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         dict.fromkeys(row["study_id"] for row in rows)
     )
     assert not bundle.exists()
+
+
+@pytest.mark.parametrize(
+    ("second_study", "message"),
+    (
+        ("valid", "one HPO cell cannot reference multiple Studies"),
+        ("missing", "FileNotFoundError"),
+    ),
+)
+def test_hpo_select_validates_every_distinct_repeated_cell_reference(
+    tmp_path: Path,
+    second_study: str,
+    message: str,
+) -> None:
+    source_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
+    source = tmp_path / "experiments" / "feature_ablation" / f".{source_id}"
+    source_rows = read_tsv_rows(source / "cells.tsv")[:2]
+    publish_generated_studies(tmp_path, source_rows, default_objective=1.0)
+
+    experiment_id = uuid4()
+    bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
+    bundle.mkdir(parents=True)
+    conflicting_study_id = (
+        source_rows[1]["study_id"]
+        if second_study == "valid"
+        else "90000000-0000-4000-8000-000000000001"
+    )
+    with (bundle / "cells.tsv").open("x", newline="", encoding="utf-8") as destination:
+        writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
+        writer.writerow(("cell", "request", "method_index", "study_id"))
+        writer.writerow(("same.cell", source_rows[0]["request"], 0, source_rows[0]["study_id"]))
+        writer.writerow(("same.cell", source_rows[1]["request"], 0, conflicting_study_id))
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_script(_HPO_SCRIPT, "select", tmp_path, experiment_id)
+
+    assert message in error.value.stderr
+    assert bundle.is_dir()

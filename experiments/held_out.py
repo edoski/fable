@@ -17,7 +17,6 @@ from bundle import (
     write_request,
 )
 
-from fable.addresses import evaluation_directory
 from fable.config import BlockWindow, EvaluateRequest
 from fable.corpus import load_corpus_request
 from fable.evaluation import reduce_baselines, reduce_evaluation, reduce_rolling
@@ -71,16 +70,11 @@ def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 
-    cells = {
-        row["cell"]: evaluation_id
-        for row in rows
-        if evaluation_directory(
-            storage_root,
-            evaluation_id := UUID(row["evaluation_id"]),
-        ).is_dir()
-    }
-    if len(cells) != len(rows):
-        raise FileNotFoundError("every held-out evaluation must exist before closure")
+    cells: dict[str, UUID] = {}
+    for row in rows:
+        evaluation_id = UUID(row["evaluation_id"])
+        reduce_evaluation(storage_root, evaluation_id)
+        cells[row["cell"]] = evaluation_id
     publish_bundle(storage_root, _KIND, experiment_id, cells)
     print(experiment_id)
 

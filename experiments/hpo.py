@@ -211,15 +211,21 @@ def select(storage_root: StorageRoot, experiment_id: UUID) -> None:
     rows = read_cells(bundle)
 
     cells: dict[str, UUID] = {}
+    studies: dict[UUID, Study] = {}
     selections: list[tuple[str, int, float]] = []
     for row in rows:
-        if row["cell"] in cells:
-            continue
         study_id = UUID(row["study_id"])
-        study = load_study(storage_root, study_id)
+        if study_id not in studies:
+            studies[study_id] = load_study(storage_root, study_id)
+        cell = row["cell"]
+        if cell in cells:
+            if cells[cell] != study_id:
+                raise ValueError("one HPO cell cannot reference multiple Studies")
+            continue
+        study = studies[study_id]
         selected_index, result = study.best_result()
-        cells[row["cell"]] = study_id
-        selections.append((row["cell"], selected_index, result.objective))
+        cells[cell] = study_id
+        selections.append((cell, selected_index, result.objective))
 
     publish_bundle(storage_root, _KIND, experiment_id, cells)
     for cell, selected_index, objective in selections:

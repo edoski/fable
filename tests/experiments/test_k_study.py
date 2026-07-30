@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from uuid import UUID
 
+import lightning
+import polars as pl
+import pytest
+import torch
+
+import fable.modeling as modeling
+from fable.addresses import artifact_checkpoint_path, evaluation_directory
 from fable.config import (
     BlockWindow,
     EvaluateRequest,
@@ -15,12 +23,16 @@ from fable.config import (
     TrainRequest,
     TuneRequest,
 )
+from fable.evaluation import OBSERVATION_SCHEMA
 from fable.experiments import (
     ExperimentKind,
     ExperimentManifest,
     experiment_manifest_path,
 )
+from fable.min_block_fee import TargetState
+from fable.modeling import ArtifactAssociation
 from fable.study import RetainedResult, Study
+from fable.temporal import FeatureState
 from tests.helpers import read_tsv_rows, run_script
 
 _ROOT = Path(__file__).parents[2]
@@ -47,6 +59,16 @@ _METHOD = Method(
         patience=8,
         min_delta=0.0,
     ),
+)
+_ARTIFACT_METHOD = Method(
+    model=LstmDefinition(
+        family="lstm",
+        hidden=1,
+        layers=1,
+        head_hidden=1,
+        dropout=0.0,
+    ),
+    fit=_METHOD.fit,
 )
 
 
@@ -105,6 +127,70 @@ def _publish_hpo(storage_root: Path) -> None:
     )
 
 
+def _publish_artifacts(storage_root: Path, rows: list[dict[str, str]]) -> None:
+    for row in rows:
+        request = TrainRequest.model_validate_json(
+            Path(row["request"]).read_bytes(),
+            strict=True,
+        )
+        feature_count = len(request.source.experiment.ordered_features)
+        association = ArtifactAssociation(
+            request=request,
+            feature_state=FeatureState(
+                means=(0.0,) * feature_count,
+                standard_deviations=(1.0,) * feature_count,
+            ),
+            target_state=TargetState(mean=0.0, standard_deviation=1.0),
+            method=_ARTIFACT_METHOD,
+        )
+        encoded = modeling._json_association(association)
+        module = modeling._FitModule(encoded)
+        path = artifact_checkpoint_path(storage_root, request.artifact_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "state_dict": module.state_dict(),
+                "hyper_parameters": {"association": encoded},
+                "pytorch-lightning_version": lightning.__version__,
+            },
+            path,
+        )
+
+
+def _publish_evaluations(storage_root: Path, rows: list[dict[str, str]]) -> None:
+    for row in rows:
+        request = EvaluateRequest.model_validate_json(
+            Path(row["request"]).read_bytes(),
+            strict=True,
+        )
+        directory = evaluation_directory(storage_root, request.evaluation_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "evaluation.json").write_text(request.model_dump_json(), encoding="utf-8")
+        origins = list(
+            range(
+                request.testing_window.first_parent_block,
+                request.testing_window.last_parent_block + 1,
+            )
+        )
+        count = len(origins)
+        pl.DataFrame(
+            {
+                "origin_block": origins,
+                "predicted_action_k": [0] * count,
+                "predicted_minimum_log_base_fee": [0.0] * count,
+                "minimum_action_k": [0] * count,
+                "immediate_base_fee_per_gas": [1] * count,
+                "immediate_effective_priority_fee_per_gas_p50": [0] * count,
+                "selected_base_fee_per_gas": [1] * count,
+                "selected_effective_priority_fee_per_gas_p50": [0] * count,
+                "deadline_base_fee_per_gas": [1] * count,
+                "deadline_effective_priority_fee_per_gas_p50": [0] * count,
+                "minimum_base_fee_per_gas": [1] * count,
+            },
+            schema=OBSERVATION_SCHEMA,
+        ).write_parquet(directory / "observations.parquet")
+
+
 def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     tmp_path: Path,
 ) -> None:
@@ -161,6 +247,11 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
         checkpoint = tmp_path / "artifacts" / f"{row['artifact_id']}.ckpt"
         checkpoint.parent.mkdir(parents=True, exist_ok=True)
         checkpoint.touch()
+    with pytest.raises(subprocess.CalledProcessError):
+        run_script(_SCRIPT, "close", tmp_path, experiment_id)
+    assert bundle.is_dir()
+
+    _publish_artifacts(tmp_path, rows)
     run_script(_SCRIPT, "close", tmp_path, experiment_id)
 
     manifest = ExperimentManifest.model_validate_json(
@@ -217,6 +308,11 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     ]
     for row in evaluation_rows:
         (tmp_path / "evaluations" / row["evaluation_id"]).mkdir(parents=True)
+    with pytest.raises(subprocess.CalledProcessError):
+        run_script(_HELD_OUT_SCRIPT, "close", tmp_path, held_out_experiment_id)
+    assert held_out.is_dir()
+
+    _publish_evaluations(tmp_path, evaluation_rows)
     run_script(_HELD_OUT_SCRIPT, "close", tmp_path, held_out_experiment_id)
     held_out_manifest = ExperimentManifest.model_validate_json(
         (

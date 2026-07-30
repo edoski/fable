@@ -16,12 +16,12 @@ from bundle import (
     write_request,
 )
 
-from fable.addresses import artifact_checkpoint_path
 from fable.config import SelectedStudySource, TrainRequest
 from fable.experiments import (
     ExperimentKind,
     load_experiment_manifest,
 )
+from fable.modeling import load_artifact
 from fable.study import load_study
 
 _KIND = ExperimentKind.K_STUDY
@@ -64,16 +64,11 @@ def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 
-    cells = {
-        row["cell"]: artifact_id
-        for row in rows
-        if artifact_checkpoint_path(
-            storage_root,
-            artifact_id := UUID(row["artifact_id"]),
-        ).is_file()
-    }
-    if len(cells) != len(rows):
-        raise FileNotFoundError("every K-study artifact must exist before closure")
+    cells: dict[str, UUID] = {}
+    for row in rows:
+        artifact_id = UUID(row["artifact_id"])
+        load_artifact(storage_root, artifact_id)
+        cells[row["cell"]] = artifact_id
 
     publish_bundle(storage_root, _KIND, experiment_id, cells)
     print(experiment_id)
