@@ -1,5 +1,5 @@
 import { buildModelInput } from "./features";
-import type { BlockRow, Chain, Horizon } from "./domain";
+import type { Chain, Horizon } from "./domain";
 import { createDefaultModelCatalog, createModelRuntime } from "./model";
 import type {
   ModelCatalog,
@@ -45,21 +45,16 @@ export type InferenceEngine = {
 };
 
 export type InferenceEngineDependencies = {
-  chain: Chain;
   catalog: ModelCatalog;
   model: ModelRuntime;
   session: ChainSession;
 };
 
-export function createInferenceEngine(chain: Chain): InferenceEngine;
 export function createInferenceEngine(
-  dependencies: InferenceEngineDependencies,
-): InferenceEngine;
-export function createInferenceEngine(
-  input: Chain | InferenceEngineDependencies,
+  chain: Chain,
+  dependencies: InferenceEngineDependencies = defaultDependencies(chain),
 ): InferenceEngine {
-  const { chain, catalog, model, session } =
-    typeof input === "string" ? defaultDependencies(input) : input;
+  const { catalog, model, session } = dependencies;
   async function run(K: Horizon): Promise<InferenceResult> {
     const selection = catalog.select(chain, K);
     const context = await attempt("Could not read the selected chain.", () =>
@@ -84,16 +79,21 @@ export function createInferenceEngine(
           await model.execute(selection, input),
         ),
     );
-    return attempt(
-      "Chain data is incomplete or invalid.",
-      async () =>
-        createInferenceResult(
-          chain,
-          selection,
-          head,
-          prediction,
-        ),
-    );
+    return attempt("Chain data is incomplete or invalid.", () => {
+      const immediateBlock = head.number + 1n;
+      const targetBlock =
+        immediateBlock + BigInt(prediction.selectedAction);
+      return {
+        chain,
+        K: selection.K,
+        artifact_id: selection.modelManifest.artifact_id,
+        head_block: safeBigInt(head.number, "head block"),
+        head_hash: head.hash,
+        selected_action_k: prediction.selectedAction,
+        target_block: safeBigInt(targetBlock, "target block"),
+        predicted_minimum_base_fee_per_gas: prediction.predictedFee,
+      };
+    });
   }
 
   function watchBlocks(
@@ -147,7 +147,6 @@ function defaultDependencies(chain: Chain): InferenceEngineDependencies {
   const catalog = createDefaultModelCatalog();
   const manifest = catalog.chainManifest(chain);
   return {
-    chain,
     catalog,
     model: createModelRuntime(),
     session: createChainSession({
@@ -186,26 +185,6 @@ function decodePrediction(
   };
 }
 
-function createInferenceResult(
-  chain: Chain,
-  selection: ModelSelection,
-  head: BlockRow,
-  prediction: ReturnType<typeof decodePrediction>,
-): InferenceResult {
-  const immediateBlock = head.number + 1n;
-  const targetBlock = immediateBlock + BigInt(prediction.selectedAction);
-  return {
-    chain,
-    K: selection.K,
-    artifact_id: selection.modelManifest.artifact_id,
-    head_block: safeBigInt(head.number, "head block"),
-    head_hash: head.hash,
-    selected_action_k: prediction.selectedAction,
-    target_block: safeBigInt(targetBlock, "target block"),
-    predicted_minimum_base_fee_per_gas: prediction.predictedFee,
-  };
-}
-
 function safeBigInt(value: bigint, label: string): number {
   if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error(`${label} exceeds the safe integer range`);
@@ -220,10 +199,6 @@ async function attempt<T>(
   try {
     return await work();
   } catch (error) {
-    throw inferenceFailure(message, error);
+    throw new Error(message, { cause: error });
   }
-}
-
-function inferenceFailure(message: string, cause: unknown): Error {
-  return new Error(message, { cause });
 }

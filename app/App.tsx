@@ -57,7 +57,6 @@ export default function App() {
   const [runs, setRuns] = useState<InferenceRun[]>([]);
   const [storageError, setStorageError] = useState<string | null>(null);
   const activeEngine = useRef<ActiveEngine | null>(null);
-  const selectionRevision = useRef(0);
   const selection = useRef(INITIAL_SELECTION);
   const runsRef = useRef<InferenceRun[]>([]);
   const serializeHistory = useRef(createSerialQueue()).current;
@@ -151,7 +150,6 @@ export default function App() {
     );
 
     return () => {
-      selectionRevision.current += 1;
       if (activeEngine.current === current) {
         activeEngine.current = null;
       }
@@ -163,7 +161,6 @@ export default function App() {
     const current = selection.current;
     if (nextChain === current.chain) return;
     selection.current = { ...current, chain: nextChain };
-    selectionRevision.current += 1;
     activeEngine.current = null;
     setInference({ status: "idle" });
     setRpcStatus("checking");
@@ -178,7 +175,6 @@ export default function App() {
       ...current,
       horizon: nextHorizon,
     };
-    selectionRevision.current += 1;
     setInference({ status: "idle" });
     setHorizon(nextHorizon);
   }
@@ -190,10 +186,9 @@ export default function App() {
       fail("Could not connect to the selected chain.");
       return;
     }
-    const revision = selectionRevision.current;
     const isCurrent = () =>
       activeEngine.current === current &&
-      selectionRevision.current === revision;
+      selection.current === selected;
 
     setInference({ status: "loading" });
     let result;

@@ -138,15 +138,13 @@ function createTestEngine(
   overrides: Partial<InferenceEngineDependencies> = {},
 ) {
   const dependencies: InferenceEngineDependencies = {
-    chain: "ethereum",
     catalog: catalog(),
     model: runtime(),
     session: session(),
     ...overrides,
   };
   return {
-    dependencies,
-    engine: createInferenceEngine(dependencies),
+    engine: createInferenceEngine("ethereum", dependencies),
   };
 }
 
