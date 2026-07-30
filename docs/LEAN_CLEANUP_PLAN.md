@@ -34,6 +34,9 @@ publication safety, Slurm execution, or mobile inference behavior.
 - Record every branch and worktree created by this run. Remove run-created isolation after safe
   integration and verify the final state. Never delete pre-existing isolation without explicit
   authorization.
+- `cells.tsv` is the universal authored experiment design. `jobs.tsv` is the launcher's
+  append-only Slurm receipt used for restart skipping; preserve it when launch created it, but do
+  not require or invent it at closure.
 
 ## Branch and worktree inventory
 
@@ -75,7 +78,7 @@ check and the full Python suite. No other slice inherits that waiver.
 | Slice | Scope | Status | Baseline | Head | Implementer | Reviewer | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Evaluation arrays and result frames | green | `42cb2c4` | `29c31ac2` | `/root/slice1_implement` | `/root/slice1_review` | Standards 0; Spec 0 |
-| 2 | Typed experiment-bundle publication | correcting round 1 | `30654b47` | rejected `ff71e692` | `/root/slice2_implement` | `/root/slice2_review` | Standards 0; Spec 1 |
+| 2 | Typed experiment-bundle publication | green | `30654b47` | `d98ba42b` | `/root/slice2_implement` | `/root/slice2_review` | 1 correction; Standards 0; Spec 0 |
 | 3 | Three Python test reductions | blocked by 2 | pending | pending | pending | waived | pending |
 | 4 | Fit-pipeline collapse | blocked by 3 | pending | pending | pending | pending | pending |
 | 5 | Exact bash template | blocked by 4 | pending | pending | pending | pending | pending |
@@ -211,6 +214,14 @@ Round 1 reviewed `30654b47...ff71e692`.
 - Decision: rejected. The same implementer must validate all distinct HPO references, reject
   conflicting mappings, and use canonical Artifact/Evaluation loaders before publication. The
   same reviewer will inspect only the correction range and closure of this finding.
+
+Round 2 reviewed `ff71e692...d98ba42b`.
+
+- Standards: zero actionable findings.
+- Spec: zero actionable findings.
+- Resolution: HPO loads each distinct Study and rejects conflicting cell mappings; K-study loads
+  every Artifact; held-out performs canonical Evaluation loading/reduction; placeholder records
+  are rejected. `GREEN LIGHT`.
 
 ## Slice 3 — Three Python test reductions
 
