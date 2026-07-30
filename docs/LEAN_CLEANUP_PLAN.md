@@ -27,8 +27,11 @@ publication safety, Slurm execution, or mobile inference behavior.
 - Keep feature-ablation feature helpers. Do not collapse the feature-unit ownership.
 - Keep the compact device-resident historical data design. Do not convert
   `HistoricalDataset` to a dataclass and do not change CUDA transfer or shared-backing semantics.
-- Delete only three approved Python tests in Slice 3. In particular, retain the short-batch
-  weighting assertions in `test_epoch_logs_weight_short_batches_in_float64`.
+- Slice 3 contains exactly the three approved standalone Python test reductions. An owning
+  implementation slice may delete a test coupled only to private machinery that the same approved
+  slice deletes; do not retain a test-only seam or add unrelated test reductions. In particular,
+  retain the short-batch weighting assertions in
+  `test_epoch_logs_weight_short_batches_in_float64`.
 - Skip coincidental app style deduplication.
 - Do not push, mutate research storage or jobs, build an image, or change external state.
 - Record every branch and worktree created by this run. Remove run-created isolation after safe
@@ -80,7 +83,7 @@ check and the full Python suite. No other slice inherits that waiver.
 | 1 | Evaluation arrays and result frames | green | `42cb2c4` | `29c31ac2` | `/root/slice1_implement` | `/root/slice1_review` | Standards 0; Spec 0 |
 | 2 | Typed experiment-bundle publication | green | `30654b47` | `d98ba42b` | `/root/slice2_implement` | `/root/slice2_review` | 1 correction; Standards 0; Spec 0 |
 | 3 | Three Python test reductions | green | `99324dbf` | `3e91e8a1` | `/root/slice3_implement` | waived by user | exact diff; 124 tests passed |
-| 4 | Fit-pipeline collapse | blocked by 3 | pending | pending | pending | pending | pending |
+| 4 | Fit-pipeline collapse | green | `61b033fe` | `f5d8a279` | `/root/slice4_implement` | `/root/slice4_review` | Standards 0; Spec 0 |
 | 5 | Exact bash template | blocked by 4 | pending | pending | pending | pending | pending |
 | 6 | App cleanup | blocked by 5 | pending | pending | pending | pending | pending |
 | 7 | Compact-CUDA propagation and parity | blocked by 6 | pending | pending | pending | pending | pending |
@@ -308,6 +311,14 @@ uv run pyright
 uv run vulture
 uv run pytest
 ```
+
+### Execution result
+
+The five private relay owners and `_FitOutcome` were removed. The test that called only the deleted
+private precision helper was removed with that helper; replacing it would have retained a
+test-only seam or required a larger synthetic harness. The inline precision rule remains exact.
+Focused and full Python checks passed. Independent review found zero Standards and zero Spec
+findings and returned `GREEN LIGHT`.
 
 ## Slice 5 — Exact bash template
 
