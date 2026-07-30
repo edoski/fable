@@ -79,7 +79,7 @@ check and the full Python suite. No other slice inherits that waiver.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Evaluation arrays and result frames | green | `42cb2c4` | `29c31ac2` | `/root/slice1_implement` | `/root/slice1_review` | Standards 0; Spec 0 |
 | 2 | Typed experiment-bundle publication | green | `30654b47` | `d98ba42b` | `/root/slice2_implement` | `/root/slice2_review` | 1 correction; Standards 0; Spec 0 |
-| 3 | Three Python test reductions | blocked by 2 | pending | pending | pending | waived | pending |
+| 3 | Three Python test reductions | green | `99324dbf` | `3e91e8a1` | `/root/slice3_implement` | waived by user | exact diff; 124 tests passed |
 | 4 | Fit-pipeline collapse | blocked by 3 | pending | pending | pending | pending | pending |
 | 5 | Exact bash template | blocked by 4 | pending | pending | pending | pending | pending |
 | 6 | App cleanup | blocked by 5 | pending | pending | pending | pending | pending |
@@ -257,6 +257,14 @@ uv run pyright
 uv run vulture
 uv run pytest
 ```
+
+### Execution result
+
+The implementation changed only the three declared test files: two functions were deleted, the
+single-case parametrization became one direct assertion, and two unused imports disappeared.
+The orchestrator inspected the complete diff, confirmed the weighted short-batch test remains,
+and ran the full suite: 124 passed. No dedicated reviewer ran under the user's slice-specific
+waiver.
 
 ## Slice 4 — Fit-pipeline collapse
 
