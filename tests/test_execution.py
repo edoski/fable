@@ -103,6 +103,8 @@ def test_submit_workflows_sends_golden_single_workflow_script(
             "pids=()\n"
             "srun --exclusive --exact --nodes=1 --ntasks=1 "
             "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
+            "--output=/remote/logs/${SLURM_JOB_ID}-0.out "
+            "--error=/remote/logs/${SLURM_JOB_ID}-0.out "
             "apptainer run --nv --bind '/remote/storage root' "
             "'/opt/fable image.sif' remote workflow <<'FABLE_REQUEST_0' &\n"
             f"{request.model_dump_json()}\n"

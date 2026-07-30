@@ -121,20 +121,13 @@ def _render_allocation_script(
     task_count = len(process_inputs_json)
 
     def render_step(slot: int, process_input_json: str) -> str:
-        step_output = (
-            ""
-            if task_count == 1
-            else (
-                f"--output={shlex.quote(remote.log_root)}/${{SLURM_JOB_ID}}-{slot}.out "
-                f"--error={shlex.quote(remote.log_root)}/${{SLURM_JOB_ID}}-{slot}.out "
-            )
-        )
         command = (
             "srun --exclusive --exact --nodes=1 --ntasks=1 "
             f"--gres={resources.gres} "
             f"--cpus-per-task={resources.cpus_per_task} "
             f"--mem={resources.memory_gb}G "
-            f"{step_output}"
+            f"--output={shlex.quote(remote.log_root)}/${{SLURM_JOB_ID}}-{slot}.out "
+            f"--error={shlex.quote(remote.log_root)}/${{SLURM_JOB_ID}}-{slot}.out "
             f"apptainer run --nv --bind {shlex.quote(remote.storage_root)} "
             f"{shlex.quote(remote.image)} remote {leaf}"
         )

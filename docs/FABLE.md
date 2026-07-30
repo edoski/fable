@@ -938,9 +938,9 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 Each allocation contains one to three processes and requests one node and one task, GPU,
 CPU allotment, and memory allotment per process input. Each process runs as an exclusive exact
 `srun` step, sees one GPU, receives one strict stdin record, and writes
-`<job_id>-<slot>.out`; `%j.out` remains the allocation log. The parent waits for every step and
-fails if any step fails. Candidate Study slots and workflow durable identities must be unique
-within an allocation.
+`<job_id>-<slot>.out` for every allocation size; `%j.out` remains the allocation log. The parent
+waits for every step and fails if any step fails. Candidate Study slots and workflow durable
+identities must be unique within an allocation.
 
 Allocations change to `storage_root`, export `STORAGE_ROOT`, and run the immutable Apptainer image
 with NVIDIA support. The image dispatches `fable remote workflow` or `fable remote candidate`.
