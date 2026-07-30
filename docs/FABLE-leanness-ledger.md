@@ -2,9 +2,9 @@
 
 ## Run status
 
-- Phase: sequential implementation-review loop.
-- Product implementation: Slices 1–6 complete; Slice 7 pending dispatch.
-- Reviews: Slices 1–6 green; one slice review pending.
+- Phase: complete.
+- Product implementation: all seven slices complete.
+- Reviews: all seven slices green.
 - Planning baseline: `1f1f8873142c54f3cead37682c4b2ed9d8cf85ec`.
 - Pre-run branch: `main`.
 - Pre-run worktree: `/Users/edo/dev/python/fable`.
@@ -308,7 +308,14 @@ Dependencies and gates: Slice 5 green.
 
 ### Slice 7 — Analytics buckets and partial outcome progress
 
-Status: pending.
+Status: green.
+
+- Baseline: `3550f9ced83b3ef36757703e389483fd04c6a4ce`.
+- Implementer: `/root/slice7_implementer`.
+- Implementation head: `b427fd2427bcbde0a71753515436ad01fca68159`.
+- Reviewer: `/root/slice7_reviewer`.
+- Review: `GREEN LIGHT` — Standards 0, Spec 0.
+- Correction rounds: none.
 
 Scope:
 
@@ -425,3 +432,27 @@ Dependencies and gates: Slice 6 green.
 - Independent fixed-range review returned `GREEN LIGHT`: Standards 0, Spec 0. It confirmed coherent
   selection ownership, both stale-result gates, unchanged Analytics horizon initialization, exact
   overlay behavior, and no Slice 7 scope creep. No correction round was required.
+- Slice 7 implementation authorized from `3550f9ced83b3ef36757703e389483fd04c6a4ce`
+  on direct `main`; pre-dispatch status contains only protected
+  `docs/experiments/feature_ablation.md` plus this orchestrator-owned ledger update.
+- Slice 7 implementation committed as `b427fd2427bcbde0a71753515436ad01fca68159`
+  (`refactor(app): simplify analytics outcomes`), changing 7 files with 349 insertions and 288
+  deletions; product code is net 25 lines smaller and tests are net 86 lines larger.
+- Slice 7 verification passed: 9 focused tests, all 35 app tests, TypeScript, mixed RPC
+  success/failure and retry coverage, source comparison of three chart identities/values/negative
+  axes/empty states/fee legend, protected-file hash verification, and `git diff --check`.
+- Independent fixed-range review returned `GREEN LIGHT`: Standards 0, Spec 0. It confirmed
+  analytics values, storage-error ownership, persisted history shape/order/composite ID,
+  retryability, stale-selection behavior, and chart JSX/style/props. No correction was required.
+  Pixel parity remains unverified because FABLE is not installed in the booted simulator.
+- Final integration passed at product head `b427fd2427bcbde0a71753515436ad01fca68159`:
+  all 123 Python tests, Ruff, Pyright with zero errors, Vulture with no findings, all 35 app tests,
+  TypeScript, and `git diff --check`.
+- Across the seven product ranges, excluding this planning ledger, 30 files changed with 1,009
+  insertions and 892 deletions (net +117). Product and experiment code changed by 736 insertions
+  and 790 deletions (net -54); focused tests changed by 261 insertions and 96 deletions (net +165);
+  canonical documentation changed by 12 insertions and 6 deletions (net +6).
+- The protected unrelated `docs/experiments/feature_ablation.md` remained untracked and byte-exact
+  at SHA-256 `c4941968439bc9b8f4e252f2f0ba1528e6c87842e5a809f314e3109c9957ab0b`.
+- No branch, worktree, push, pull request, scheduler mutation, deployment, Apptainer build, or
+  experiment rerun occurred.
