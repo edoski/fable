@@ -3,8 +3,8 @@
 ## Run status
 
 - Phase: sequential implementation-review loop.
-- Product implementation: Slices 1–2 complete; Slice 3 pending dispatch.
-- Reviews: Slices 1–2 green; five slice reviews pending.
+- Product implementation: Slices 1–3 complete; Slice 4 pending dispatch.
+- Reviews: Slices 1–3 green; four slice reviews pending.
 - Planning baseline: `1f1f8873142c54f3cead37682c4b2ed9d8cf85ec`.
 - Pre-run branch: `main`.
 - Pre-run worktree: `/Users/edo/dev/python/fable`.
@@ -157,7 +157,14 @@ Dependencies and gates: Slice 1 green.
 
 ### Slice 3 — Canonical publication and experiment mechanics
 
-Status: pending.
+Status: green.
+
+- Baseline: `c4075cf58c60a8daff6f83194a31e99e02d267dc`.
+- Implementer: `/root/slice3_implementer`.
+- Implementation head: `fbdd725c0a7b259a525e576fd4da7becdf647121`.
+- Reviewer: `/root/slice3_reviewer`.
+- Review: `GREEN LIGHT` — Standards 0, Spec 0.
+- Correction rounds: none.
 
 Scope:
 
@@ -339,3 +346,15 @@ Dependencies and gates: Slice 6 green.
 - Before Slice 3, the user confirmed uninterrupted execution. The canonical experiment interface
   remains `<UUID>/manifest.json` with the same flat mapping; only incidental retained authoring
   files beside that manifest are removed.
+- Slice 3 implementation authorized from `c4075cf58c60a8daff6f83194a31e99e02d267dc`
+  on direct `main`; pre-dispatch status contains only protected
+  `docs/experiments/feature_ablation.md` plus this orchestrator-owned ledger update.
+- Slice 3 implementation committed as `fbdd725c0a7b259a525e576fd4da7becdf647121`
+  (`refactor(experiments): publish manifest-only bundles`), changing 11 files with 98 insertions
+  and 125 deletions.
+- Slice 3 verification passed: 30 focused tests, the full 123-test Python suite, Ruff, Pyright,
+  Vulture with no findings, formatting, exact five-kind canonical-directory inspection,
+  protected-file hash verification, and `git diff --check`.
+- Independent fixed-range review returned `GREEN LIGHT`: Standards 0, Spec 0. It confirmed no
+  post-close consumer uses the removed authoring files and no manifest/report/scientific contract
+  changed. No correction round was required.
