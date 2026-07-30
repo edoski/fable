@@ -85,7 +85,7 @@ check and the full Python suite. No other slice inherits that waiver.
 | 3 | Three Python test reductions | green | `99324dbf` | `3e91e8a1` | `/root/slice3_implement` | waived by user | exact diff; 124 tests passed |
 | 4 | Fit-pipeline collapse | green | `61b033fe` | `f5d8a279` | `/root/slice4_implement` | `/root/slice4_review` | Standards 0; Spec 0 |
 | 5 | Exact bash template | green | `1db61d1c` | `dce423d1` | `/root/slice5_implement` | `/root/slice5_review` | Standards 0; Spec 0 |
-| 6 | App cleanup | blocked by 5 | pending | pending | pending | pending | pending |
+| 6 | App cleanup | green | `6d0b3c26` | `af881cf8` | `/root/slice6_implement` | `/root/slice6_review` | Standards 0; Spec 0 |
 | 7 | Compact-CUDA propagation and parity | blocked by 6 | pending | pending | pending | pending | pending |
 
 ## Slice 1 — Evaluation arrays and result frames
@@ -413,6 +413,13 @@ uv run pyright
 uv run vulture
 uv run pytest
 ```
+
+### Execution result
+
+Selection currentness now uses the selected object's identity plus the active-engine identity.
+Inference, action-grouped analytics, and default model-catalog ownership are direct. Exactly the
+three approved library-mechanics tests were removed. All app and Python checks passed.
+Independent review found zero Standards and zero Spec findings and returned `GREEN LIGHT`.
 
 ## Slice 7 — Compact-CUDA propagation and parity
 
