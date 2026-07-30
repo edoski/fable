@@ -1,6 +1,6 @@
 # Lean cleanup implementation ledger
 
-Status: active  
+Status: final integration checks
 Initial main baseline: `b5fefc5bb96c481a8f5aa57006c0df8cfea6c9e5`  
 Initial compact-CUDA baseline: `9693e070b51e5fb250d4bf8c7e4bcbf66eebf3ac`  
 Checkout policy: direct sequential commits on `main`, then merge into
@@ -86,7 +86,7 @@ check and the full Python suite. No other slice inherits that waiver.
 | 4 | Fit-pipeline collapse | green | `61b033fe` | `f5d8a279` | `/root/slice4_implement` | `/root/slice4_review` | Standards 0; Spec 0 |
 | 5 | Exact bash template | green | `1db61d1c` | `dce423d1` | `/root/slice5_implement` | `/root/slice5_review` | Standards 0; Spec 0 |
 | 6 | App cleanup | green | `6d0b3c26` | `af881cf8` | `/root/slice6_implement` | `/root/slice6_review` | Standards 0; Spec 0 |
-| 7 | Compact-CUDA propagation and parity | blocked by 6 | pending | pending | pending | pending | pending |
+| 7 | Compact-CUDA propagation and parity | green | `9693e070` | `48cf0c82` | `/root/slice7_implement` | `/root/slice7_review` | Standards 0; Spec 0 |
 
 ## Slice 1 — Evaluation arrays and result frames
 
@@ -456,3 +456,11 @@ cd app && npm run typecheck
 
 No immutable-image build or GPU smoke is required because this run changes no CUDA execution
 semantics. Record that those checks were intentionally not run.
+
+### Execution result
+
+Reviewed `main` merged with exact parents `9693e070` and `898be727`. Two conflicts preserved the
+collapsed fit pipeline with compact device-resident loaders and applied the approved shuffled-test
+deletion. Full host/static/app checks passed. Independent parity review found zero Standards and
+zero Spec findings and returned `GREEN LIGHT`. No image build or GPU smoke ran by explicit
+decision.
