@@ -1,15 +1,13 @@
 import type { Chain, Horizon } from "./domain";
-import type { InferenceRun, RunOutcome } from "./history";
+import type { InferenceOutcome } from "./inference";
+import type { InferenceRun } from "./history";
 
-type ChartDatum = {
+export type WaitBucket = {
+  fableGwei: number | null;
+  immediateGwei: number | null;
   label: string;
-  value: number | null;
-};
-
-type FeeComparisonDatum = {
-  label: string;
-  immediate: number;
-  fable: number;
+  runCount: number;
+  savingsPercent: number | null;
 };
 
 export type RunSummary = {
@@ -25,6 +23,7 @@ const RUN_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
   month: "short",
 });
+const GWEI = 1_000_000_000;
 
 export function runsForSelection(
   runs: readonly InferenceRun[],
@@ -54,6 +53,10 @@ export function realizedSavingsPercent(run: InferenceRun): number | null {
   if (outcome === null) {
     return null;
   }
+  return savingsPercent(outcome);
+}
+
+function savingsPercent(outcome: InferenceOutcome): number {
   return (
     ((outcome.immediate_base_fee_per_gas -
       outcome.selected_base_fee_per_gas) /
@@ -77,85 +80,70 @@ export function formatGwei(value: number): string {
   return `${gwei.toFixed(2)} Gwei`;
 }
 
-export function recommendedWaitData(
+export function waitBuckets(
   runs: readonly InferenceRun[],
   horizon: Horizon,
-): ChartDatum[] {
+): WaitBucket[] {
   if (runs.length === 0) {
     return [];
   }
-  return runsBySelectedAction(runs, horizon).map((selected, offset) => ({
+
+  const buckets = Array.from({ length: horizon }, (_, offset) => ({
+    fableFeeMean: null as number | null,
+    immediateFeeMean: null as number | null,
     label: String(offset),
-    value: selected.length,
+    outcomeCount: 0,
+    runCount: 0,
+    savingsPercent: null as number | null,
   }));
-}
 
-export function savingsByWaitData(
-  runs: readonly InferenceRun[],
-  horizon: Horizon,
-): ChartDatum[] {
-  if (runs.length === 0) {
-    return [];
-  }
-  return runsBySelectedAction(runs, horizon).map((selected, offset) => {
-    const savings = selected.flatMap((run) => {
-      const value = realizedSavingsPercent(run);
-      return value === null ? [] : [value];
-    });
-    return {
-      label: String(offset),
-      value: mean(savings),
-    };
-  });
-}
-
-export function feeComparisonData(
-  runs: readonly InferenceRun[],
-  horizon: Horizon,
-): FeeComparisonDatum[] {
-  return runsBySelectedAction(runs, horizon).flatMap((selected, offset) => {
-    const outcomes = selected.flatMap((run) => {
-      const outcome = validOutcome(run);
-      return outcome === null ? [] : [outcome];
-    });
-    if (outcomes.length === 0) {
-      return [];
-    }
-    return [
-      {
-        label: String(offset),
-        immediate:
-          (mean(
-            outcomes.map(
-              (outcome) => outcome.immediate_base_fee_per_gas,
-            ),
-          ) ?? 0) / 1_000_000_000,
-        fable:
-          (mean(
-            outcomes.map(
-              (outcome) => outcome.selected_base_fee_per_gas,
-            ),
-          ) ?? 0) / 1_000_000_000,
-      },
-    ];
-  });
-}
-
-function runsBySelectedAction(
-  runs: readonly InferenceRun[],
-  horizon: Horizon,
-): InferenceRun[][] {
-  const groups = Array.from(
-    { length: horizon },
-    () => [] as InferenceRun[],
-  );
   for (const run of runs) {
-    groups[run.selected_action_k]?.push(run);
+    const bucket = buckets[run.selected_action_k];
+    if (bucket === undefined) {
+      continue;
+    }
+    bucket.runCount += 1;
+    const outcome = validOutcome(run);
+    if (outcome === null) {
+      continue;
+    }
+    bucket.outcomeCount += 1;
+    bucket.savingsPercent = nextMean(
+      bucket.savingsPercent,
+      savingsPercent(outcome),
+      bucket.outcomeCount,
+    );
+    bucket.immediateFeeMean = nextMean(
+      bucket.immediateFeeMean,
+      outcome.immediate_base_fee_per_gas,
+      bucket.outcomeCount,
+    );
+    bucket.fableFeeMean = nextMean(
+      bucket.fableFeeMean,
+      outcome.selected_base_fee_per_gas,
+      bucket.outcomeCount,
+    );
   }
-  return groups;
+
+  return buckets.map(
+    ({
+      fableFeeMean,
+      immediateFeeMean,
+      label,
+      runCount,
+      savingsPercent,
+    }) => ({
+      fableGwei: fableFeeMean === null ? null : fableFeeMean / GWEI,
+      immediateGwei:
+        immediateFeeMean === null ? null : immediateFeeMean / GWEI,
+      label,
+      runCount,
+      savingsPercent,
+    }),
+  );
 }
 
-function validOutcome(run: InferenceRun): RunOutcome | null {
+function validOutcome(run: InferenceRun): InferenceOutcome | null {
   const outcome = run.outcome;
   if (
     outcome === undefined ||
@@ -164,6 +152,15 @@ function validOutcome(run: InferenceRun): RunOutcome | null {
     return null;
   }
   return outcome;
+}
+
+function nextMean(
+  average: number | null,
+  value: number,
+  count: number,
+): number {
+  const current = average ?? 0;
+  return current + (value - current) / count;
 }
 
 function mean(values: readonly number[]): number | null {

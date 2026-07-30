@@ -52,7 +52,7 @@ export default function App() {
   const [rpcStatus, setRpcStatus] = useState<RpcStatus>("checking");
   const [snapshot, setSnapshot] = useState<ChainSnapshot | null>(null);
   const [runs, setRuns] = useState<InferenceRun[]>([]);
-  const [storageError, setStorageError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const activeEngine = useRef<ActiveEngine | null>(null);
   const selectionIdentity = useRef(INITIAL_SELECTION);
   const runsRef = useRef<InferenceRun[]>([]);
@@ -79,17 +79,9 @@ export default function App() {
       ) {
         return;
       }
-      try {
-        await saveRuns(next);
-      } catch (error) {
-        setStorageError(
-          error instanceof Error ? error.message : String(error),
-        );
-        throw error;
-      }
+      await saveRuns(next);
       runsRef.current = next;
       setRuns(next);
-      setStorageError(null);
     });
   }
 
@@ -114,9 +106,9 @@ export default function App() {
         const storedRuns = await loadRuns();
         runsRef.current = storedRuns;
         setRuns(storedRuns);
-        setStorageError(null);
+        setLoadError(null);
       } catch (error) {
-        setStorageError(
+        setLoadError(
           error instanceof Error ? error.message : String(error),
         );
       }
@@ -237,9 +229,9 @@ export default function App() {
             <AnalyticsScreen
               chain={selection.chain}
               horizon={selection.horizon}
+              loadError={loadError}
               onChainChange={selectChain}
               runs={runs}
-              storageError={storageError}
             />
           )}
         </View>

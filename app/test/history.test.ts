@@ -52,25 +52,43 @@ describe("history", () => {
     expect(retained).toEqual(existing);
   });
 
-  it("leaves the original pending run retryable after resolver failure", async () => {
-    const run = inferenceRun();
+  it("commits successful outcomes while failed siblings remain retryable", async () => {
+    const failed = inferenceRun({
+      id: "failed",
+      head_block: 10,
+      target_block: 12,
+    });
+    const successful = inferenceRun({
+      id: "successful",
+      head_block: 20,
+      target_block: 22,
+    });
     const resolve = vi
       .fn()
       .mockRejectedValueOnce(new Error("RPC unavailable"))
-      .mockResolvedValueOnce(outcome());
+      .mockResolvedValue(outcome());
 
-    await expect(
-      resolvePendingRuns([run], "ethereum", run.target_block, resolve),
-    ).rejects.toThrow("RPC unavailable");
-    expect(run.outcome).toBeUndefined();
-
-    const retried = await resolvePendingRuns(
-      [run],
+    const resolved = await resolvePendingRuns(
+      [failed, successful],
       "ethereum",
-      run.target_block,
+      successful.target_block,
       resolve,
     );
-    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(resolved[0]).toBe(failed);
+    expect(resolved[0].outcome).toBeUndefined();
+    expect(resolved[1]).toEqual({
+      ...successful,
+      outcome: outcome(),
+    });
+
+    const retried = await resolvePendingRuns(
+      resolved,
+      "ethereum",
+      successful.target_block,
+      resolve,
+    );
+    expect(resolve).toHaveBeenCalledTimes(3);
     expect(retried[0].outcome).toBeDefined();
+    expect(retried[1]).toBe(resolved[1]);
   });
 });

@@ -1,17 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
-import { type PropsWithChildren, useState } from "react";
+import { type PropsWithChildren, type ReactNode, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { BarChart as GiftedBarChart } from "react-native-gifted-charts";
 
 import {
-  feeComparisonData,
   formatGwei,
   formatRunDate,
-  recommendedWaitData,
   realizedSavingsPercent,
   runsForSelection,
-  savingsByWaitData,
   summarizeRuns,
+  type WaitBucket,
+  waitBuckets,
 } from "../analytics";
 import { DetailRow } from "../components/DetailRow";
 import { HorizonSlider } from "../components/HorizonSlider";
@@ -99,22 +98,16 @@ function chartScale(values: readonly number[]) {
   const negativeSections = Math.round(Math.abs(minimum) / step);
 
   return {
-    maximum,
+    chartProps: {
+      maxValue: maximum,
+      noOfSections: positiveSections,
+      stepHeight:
+        CHART_HEIGHT / Math.max(positiveSections + negativeSections, 1),
+      stepValue: step,
+    },
     minimum,
     negativeSections,
-    positiveSections,
     step,
-    stepHeight:
-      CHART_HEIGHT / Math.max(positiveSections + negativeSections, 1),
-  };
-}
-
-function chartScaleProps(scale: ReturnType<typeof chartScale>) {
-  return {
-    maxValue: scale.maximum,
-    noOfSections: scale.positiveSections,
-    stepHeight: scale.stepHeight,
-    stepValue: scale.step,
   };
 }
 
@@ -130,132 +123,153 @@ function ChartFrame({
   );
 }
 
+function ChartCard({
+  children,
+  legend,
+  title,
+}: PropsWithChildren<{ legend?: ReactNode; title: string }>) {
+  return (
+    <View style={[styles.surface, styles.chartCard]}>
+      <View style={styles.chartHeader}>
+        <Text style={styles.chartTitle}>{title}</Text>
+        {legend}
+      </View>
+      {children}
+    </View>
+  );
+}
+
 function RecommendedWaitChart({
-  runs,
-  horizon,
+  buckets,
 }: {
-  runs: readonly InferenceRun[];
-  horizon: Horizon;
+  buckets: readonly WaitBucket[];
 }) {
-  const data = recommendedWaitData(runs, horizon);
-  if (data.length === 0) {
-    return <EmptyGraph outcomes={false} />;
-  }
-  const scale = chartScale(data.map((item) => item.value ?? 0));
+  const scale = chartScale(buckets.map((bucket) => bucket.runCount));
 
   return (
-    <ChartFrame xAxisTitle="Wait (blocks)">
-      <GiftedBarChart
-        {...AXIS_PROPS}
-        {...chartScaleProps(scale)}
-        data={data.map((item) => ({
-          frontColor: colors.blue,
-          label: item.label,
-          value: item.value ?? 0,
-        }))}
-      />
-    </ChartFrame>
+    <ChartCard title="Recommended wait distribution">
+      {buckets.length === 0 ? (
+        <EmptyGraph outcomes={false} />
+      ) : (
+        <ChartFrame xAxisTitle="Wait (blocks)">
+          <GiftedBarChart
+            {...AXIS_PROPS}
+            {...scale.chartProps}
+            data={buckets.map((bucket) => ({
+              frontColor: colors.blue,
+              label: bucket.label,
+              value: bucket.runCount,
+            }))}
+          />
+        </ChartFrame>
+      )}
+    </ChartCard>
   );
 }
 
 function SavingsByWaitChart({
-  runs,
-  horizon,
+  buckets,
 }: {
-  runs: readonly InferenceRun[];
-  horizon: Horizon;
+  buckets: readonly WaitBucket[];
 }) {
-  const data = savingsByWaitData(runs, horizon);
-  const values = data.flatMap((item) =>
-    item.value === null ? [] : [item.value],
+  const values = buckets.flatMap((bucket) =>
+    bucket.savingsPercent === null ? [] : [bucket.savingsPercent],
   );
-  if (values.length === 0) {
-    return <EmptyGraph outcomes />;
-  }
   const scale = chartScale(values);
 
   return (
-    <ChartFrame xAxisTitle="Wait (blocks)">
-      <GiftedBarChart
-        {...AXIS_PROPS}
-        {...chartScaleProps(scale)}
-        data={data.map((item) => ({
-          frontColor:
-            item.value !== null && item.value < 0 ? colors.red : colors.teal,
-          label: item.label,
-          value: item.value ?? 0,
-        }))}
-        formatYLabel={(label) => `${Number(label).toFixed(0)}%`}
-        mostNegativeValue={scale.minimum}
-        negativeStepValue={scale.step}
-        noOfSectionsBelowXAxis={scale.negativeSections}
-      />
-    </ChartFrame>
+    <ChartCard title="Savings by wait (%)">
+      {values.length === 0 ? (
+        <EmptyGraph outcomes />
+      ) : (
+        <ChartFrame xAxisTitle="Wait (blocks)">
+          <GiftedBarChart
+            {...AXIS_PROPS}
+            {...scale.chartProps}
+            data={buckets.map((bucket) => ({
+              frontColor:
+                bucket.savingsPercent !== null &&
+                bucket.savingsPercent < 0
+                  ? colors.red
+                  : colors.teal,
+              label: bucket.label,
+              value: bucket.savingsPercent ?? 0,
+            }))}
+            formatYLabel={(label) => `${Number(label).toFixed(0)}%`}
+            mostNegativeValue={scale.minimum}
+            negativeStepValue={scale.step}
+            noOfSectionsBelowXAxis={scale.negativeSections}
+          />
+        </ChartFrame>
+      )}
+    </ChartCard>
   );
 }
 
 function BaseFeeByWaitChart({
-  runs,
-  horizon,
+  buckets,
 }: {
-  runs: readonly InferenceRun[];
-  horizon: Horizon;
+  buckets: readonly WaitBucket[];
 }) {
-  const data = feeComparisonData(runs, horizon);
-  if (data.length === 0) {
-    return <EmptyGraph outcomes />;
-  }
+  const data = buckets.filter(
+    (
+      bucket,
+    ): bucket is WaitBucket & {
+      fableGwei: number;
+      immediateGwei: number;
+    } => bucket.fableGwei !== null && bucket.immediateGwei !== null,
+  );
   const scale = chartScale(
-    data.flatMap((item) => [item.immediate, item.fable]),
+    data.flatMap((bucket) => [bucket.immediateGwei, bucket.fableGwei]),
   );
 
   return (
-    <ChartFrame xAxisTitle="Recommended wait (blocks)">
-      <GiftedBarChart
-        {...AXIS_PROPS}
-        {...chartScaleProps(scale)}
-        barWidth={18}
-        data={data.flatMap((item, index) => [
-          {
-            frontColor: colors.amberSoft,
-            label: item.label,
-            labelWidth: 36,
-            spacing: 4,
-            value: item.immediate,
-          },
-          {
-            frontColor: colors.blue,
-            spacing: index === data.length - 1 ? 0 : 20,
-            value: item.fable,
-          },
-        ])}
-        formatYLabel={(label) => {
-          const value = Number(label);
-          return value >= 10 ? value.toFixed(0) : value.toFixed(1);
-        }}
-        spacing={0}
-      />
-    </ChartFrame>
+    <ChartCard
+      legend={
+        <View style={styles.graphLegend}>
+          <View
+            style={[styles.graphLegendDot, styles.graphImmediateDot]}
+          />
+          <Text style={styles.graphLegendLabel}>Act now</Text>
+          <View style={[styles.graphLegendDot, styles.graphFableDot]} />
+          <Text style={styles.graphLegendLabel}>FABLE</Text>
+        </View>
+      }
+      title="Base fee by wait (Gwei)"
+    >
+      {data.length === 0 ? (
+        <EmptyGraph outcomes />
+      ) : (
+        <ChartFrame xAxisTitle="Recommended wait (blocks)">
+          <GiftedBarChart
+            {...AXIS_PROPS}
+            {...scale.chartProps}
+            barWidth={18}
+            data={data.flatMap((bucket, index) => [
+              {
+                frontColor: colors.amberSoft,
+                label: bucket.label,
+                labelWidth: 36,
+                spacing: 4,
+                value: bucket.immediateGwei,
+              },
+              {
+                frontColor: colors.blue,
+                spacing: index === data.length - 1 ? 0 : 20,
+                value: bucket.fableGwei,
+              },
+            ])}
+            formatYLabel={(label) => {
+              const value = Number(label);
+              return value >= 10 ? value.toFixed(0) : value.toFixed(1);
+            }}
+            spacing={0}
+          />
+        </ChartFrame>
+      )}
+    </ChartCard>
   );
 }
-
-const CHARTS = [
-  {
-    title: "Recommended wait distribution",
-    Chart: RecommendedWaitChart,
-    legend: false,
-  },
-  {
-    title: "Savings by wait (%)",
-    Chart: SavingsByWaitChart,
-    legend: false,
-  },
-  {
-    title: "Base fee by wait (Gwei)",
-    Chart: BaseFeeByWaitChart,
-    legend: true,
-  },
-] as const;
 
 function runSummary(run: InferenceRun): string {
   const wait =
@@ -447,14 +461,14 @@ export function AnalyticsScreen({
   runs,
   chain,
   horizon,
+  loadError,
   onChainChange,
-  storageError,
 }: {
   runs: readonly InferenceRun[];
   chain: Chain;
   horizon: Horizon;
+  loadError: string | null;
   onChainChange: (chain: Chain) => void;
-  storageError: string | null;
 }) {
   const [analyticsHorizon, setAnalyticsHorizon] =
     useState<Horizon>(horizon);
@@ -462,6 +476,7 @@ export function AnalyticsScreen({
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
   const graphRuns = runsForSelection(runs, chain, analyticsHorizon);
+  const buckets = waitBuckets(graphRuns, analyticsHorizon);
   const summary = summarizeRuns(graphRuns);
 
   return (
@@ -486,9 +501,9 @@ export function AnalyticsScreen({
           </Pressable>
         </View>
 
-        {storageError && (
+        {loadError && (
           <View accessibilityRole="alert" style={styles.storageError}>
-            <Text style={styles.storageErrorText}>{storageError}</Text>
+            <Text style={styles.storageErrorText}>{loadError}</Text>
           </View>
         )}
 
@@ -536,35 +551,9 @@ export function AnalyticsScreen({
             </View>
           </View>
           <View style={styles.chartCards}>
-            {CHARTS.map(({ title, Chart, legend }) => (
-              <View
-                key={title}
-                style={[styles.surface, styles.chartCard]}
-              >
-                <View style={styles.chartHeader}>
-                  <Text style={styles.chartTitle}>{title}</Text>
-                  {legend && (
-                    <View style={styles.graphLegend}>
-                      <View
-                        style={[
-                          styles.graphLegendDot,
-                          styles.graphImmediateDot,
-                        ]}
-                      />
-                      <Text style={styles.graphLegendLabel}>Act now</Text>
-                      <View
-                        style={[
-                          styles.graphLegendDot,
-                          styles.graphFableDot,
-                        ]}
-                      />
-                      <Text style={styles.graphLegendLabel}>FABLE</Text>
-                    </View>
-                  )}
-                </View>
-                <Chart horizon={analyticsHorizon} runs={graphRuns} />
-              </View>
-            ))}
+            <RecommendedWaitChart buckets={buckets} />
+            <SavingsByWaitChart buckets={buckets} />
+            <BaseFeeByWaitChart buckets={buckets} />
           </View>
         </View>
 
