@@ -3,8 +3,8 @@
 ## Run status
 
 - Phase: sequential implementation-review loop.
-- Product implementation: Slices 1–5 complete; Slice 6 pending dispatch.
-- Reviews: Slices 1–5 green; two slice reviews pending.
+- Product implementation: Slices 1–6 complete; Slice 7 pending dispatch.
+- Reviews: Slices 1–6 green; one slice review pending.
 - Planning baseline: `1f1f8873142c54f3cead37682c4b2ed9d8cf85ec`.
 - Pre-run branch: `main`.
 - Pre-run worktree: `/Users/edo/dev/python/fable`.
@@ -272,7 +272,14 @@ Dependencies and gates: Slice 4 green.
 
 ### Slice 6 — App selection and overlay ownership
 
-Status: pending.
+Status: green.
+
+- Baseline: `78df682401d903466964b3dad4b1960c41159bb3`.
+- Implementer: `/root/slice6_implementer`.
+- Implementation head: `5a859ea51d06c52933cc3531cc169df4d59a6fda`.
+- Reviewer: `/root/slice6_reviewer`.
+- Review: `GREEN LIGHT` — Standards 0, Spec 0.
+- Correction rounds: none.
 
 Scope:
 
@@ -406,3 +413,15 @@ Dependencies and gates: Slice 6 green.
   extra, or negative P50/P90 tuples are rejected. Final checks passed: 18 focused tests, all 33 app
   tests, TypeScript, 4 correction-focused feature tests, protected-file hash verification, and
   `git diff --check`.
+- Slice 6 implementation authorized from `78df682401d903466964b3dad4b1960c41159bb3`
+  on direct `main`; pre-dispatch status contains only protected
+  `docs/experiments/feature_ablation.md` plus this orchestrator-owned ledger update.
+- Slice 6 implementation committed as `5a859ea51d06c52933cc3531cc169df4d59a6fda`
+  (`refactor(app): consolidate selection and overlays`), changing 5 files with 256 insertions and
+  227 deletions; most movement is JSX reindent around the shared overlay.
+- Slice 6 verification passed: focused horizon-ABA and engine-replacement tests, all 33 app tests,
+  TypeScript, visual/source comparison of all three overlay behaviors, protected-file hash
+  verification, and `git diff --check`.
+- Independent fixed-range review returned `GREEN LIGHT`: Standards 0, Spec 0. It confirmed coherent
+  selection ownership, both stale-result gates, unchanged Analytics horizon initialization, exact
+  overlay behavior, and no Slice 7 scope creep. No correction round was required.
