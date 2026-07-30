@@ -2,9 +2,9 @@
 
 ## Run status
 
-- Phase: execution authorized; ledger freeze pending.
-- Product implementation: not started.
-- Reviews: not started.
+- Phase: sequential implementation-review loop.
+- Product implementation: Slice 1 complete; Slice 2 pending dispatch.
+- Reviews: Slice 1 green; six slice reviews pending.
 - Planning baseline: `1f1f8873142c54f3cead37682c4b2ed9d8cf85ec`.
 - Pre-run branch: `main`.
 - Pre-run worktree: `/Users/edo/dev/python/fable`.
@@ -84,7 +84,14 @@ its implement, fixed-range review, and correction gates.
 
 ### Slice 1 — Evaluation loading and finite reductions
 
-Status: pending.
+Status: green.
+
+- Baseline: `f12b05d2eab812f8884fcf1aec1b67f611c93aa4`.
+- Implementer: `/root/slice1_implementer`.
+- Implementation head: `e1c44abf4262ed60f103ab6b70d666096ccae638`.
+- Reviewer: `/root/slice1_reviewer`.
+- Review: `GREEN LIGHT` — Standards 0, Spec 0.
+- Correction rounds: none.
 
 Scope:
 
@@ -301,4 +308,13 @@ Dependencies and gates: Slice 6 green.
 
 ## Execution log
 
-No workers have been dispatched. No implementation or review commits exist.
+- Slice 1 implementation authorized from `f12b05d2eab812f8884fcf1aec1b67f611c93aa4`
+  on direct `main`; pre-dispatch status contains only protected
+  `docs/experiments/feature_ablation.md` plus this orchestrator-owned ledger update.
+- Slice 1 implementation committed as `e1c44abf4262ed60f103ab6b70d666096ccae638`
+  (`refactor(evaluation): simplify observation assembly`), changing only
+  `src/fable/evaluation.py` with 72 insertions and 86 deletions.
+- Slice 1 verification passed: 17 focused evaluation tests, the full 123-test Python suite, Ruff,
+  Pyright, Vulture with no findings, and `git diff --check`.
+- Independent fixed-range review returned `GREEN LIGHT`: Standards 0, Spec 0. No correction round
+  was required.
