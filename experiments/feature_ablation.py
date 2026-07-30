@@ -100,44 +100,44 @@ _METHODS = (
         fit=_FIT,
     ),
 )
-
-
-def _feature_units(chain: str) -> tuple[tuple[str, tuple[FeatureName, ...]], ...]:
-    units: list[tuple[str, tuple[FeatureName, ...]]] = [
-        ("base_fee", ("log_base_fee_per_gas",)),
-        ("gas_utilization", ("gas_utilization",)),
-    ]
-    if chain == "ethereum":
-        units.append(("exact_forming_base_fee", ("log_exact_forming_base_fee_per_gas",)))
-    units.extend(
-        (
-            ("gas_limit", ("log_gas_limit",)),
-            ("transaction_count", ("log1p_tx_count",)),
-            ("block_interval", ("block_interval_seconds",)),
-            ("hour", ("hour_sin", "hour_cos")),
-            ("day_of_week", ("dow_sin", "dow_cos")),
-            (
-                "priority_fee_p50",
-                ("log1p_effective_priority_fee_per_gas_p50",),
-            ),
-            (
-                "priority_fee_p90",
-                ("log1p_effective_priority_fee_per_gas_p90",),
-            ),
-        )
-    )
-    return tuple(units)
+_FEATURE_UNITS: tuple[tuple[str, tuple[FeatureName, ...]], ...] = (
+    ("base_fee", ("log_base_fee_per_gas",)),
+    ("gas_utilization", ("gas_utilization",)),
+    ("exact_forming_base_fee", ("log_exact_forming_base_fee_per_gas",)),
+    ("gas_limit", ("log_gas_limit",)),
+    ("transaction_count", ("log1p_tx_count",)),
+    ("block_interval", ("block_interval_seconds",)),
+    ("hour", ("hour_sin", "hour_cos")),
+    ("day_of_week", ("dow_sin", "dow_cos")),
+    (
+        "priority_fee_p50",
+        ("log1p_effective_priority_fee_per_gas_p50",),
+    ),
+    (
+        "priority_fee_p90",
+        ("log1p_effective_priority_fee_per_gas_p90",),
+    ),
+)
 
 
 def _feature_configurations(
     chain: str,
 ) -> tuple[tuple[str, tuple[FeatureName, ...]], ...]:
-    units = _feature_units(chain)
-    full = _flatten_units(units)
+    units = tuple(
+        unit
+        for unit in _FEATURE_UNITS
+        if chain == "ethereum" or unit[0] != "exact_forming_base_fee"
+    )
+    full = tuple(feature for _, unit in units for feature in unit)
     leave_one_out = tuple(
         (
             f"without_{omitted_name}",
-            _flatten_units(units, excluding=omitted_name),
+            tuple(
+                feature
+                for name, unit in units
+                if name != omitted_name
+                for feature in unit
+            ),
         )
         for omitted_name, _ in units
     )
@@ -146,18 +146,6 @@ def _feature_configurations(
         *leave_one_out,
         ("base_only", ("log_base_fee_per_gas",)),
     )
-
-
-def _flatten_units(
-    units: tuple[tuple[str, tuple[FeatureName, ...]], ...],
-    *,
-    excluding: str | None = None,
-) -> tuple[FeatureName, ...]:
-    features: list[FeatureName] = []
-    for name, unit in units:
-        if name != excluding:
-            features.extend(unit)
-    return tuple(features)
 
 
 def prepare(storage_root: StorageRoot) -> None:
