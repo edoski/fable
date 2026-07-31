@@ -60,7 +60,6 @@ const MANIFEST: MobileChainManifest = {
 
 function selection(K: Horizon): ModelSelection {
   return {
-    chain: "ethereum",
     K,
     source: 10 + K,
     chainManifest: MANIFEST,

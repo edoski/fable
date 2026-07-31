@@ -118,7 +118,21 @@ export function createChainSession(
         `Fee history must contain exactly ${manifest.context_blocks} reward rows, got ${history.reward.length}`,
       );
     }
-    return history.reward.map(([p50, p90]) => [p50, p90] as const);
+    return history.reward.map((rewards) => {
+      const [p50, p90] = rewards;
+      if (
+        rewards.length !== 2 ||
+        typeof p50 !== "bigint" ||
+        typeof p90 !== "bigint" ||
+        p50 < 0n ||
+        p90 < 0n
+      ) {
+        throw new Error(
+          "Fee history reward rows must contain nonnegative P50 and P90 values",
+        );
+      }
+      return [p50, p90] as const;
+    });
   }
 
   async function sync(): Promise<PreparedChainContext> {

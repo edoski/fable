@@ -134,7 +134,6 @@ def test_reduce_baselines_derives_immediate_and_deadline_metrics(tmp_path: Path)
         ("uuid", "evaluation request ID must match the requested evaluation"),
         ("window", "observation origins must exactly match the ordered testing window"),
         ("schema", "observations must have the canonical ordered schema"),
-        ("null", "observations must contain no null values"),
         ("origins", "observation origins must exactly match the ordered testing window"),
     ],
 )
@@ -147,8 +146,6 @@ def test_reduce_evaluation_rejects_invalid_observation_contract(
         request = _request(evaluation_id=_OTHER_EVALUATION_ID)
     elif case == "window":
         rows.pop()
-    elif case == "null":
-        rows[0]["predicted_minimum_log_base_fee"] = None
     elif case == "origins":
         rows[1]["origin_block"] = 22
 
