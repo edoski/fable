@@ -12,12 +12,8 @@ const STORAGE_KEY = "fable.runs";
 export type InferenceRun = InferenceResult & {
   id: string;
   ran_at: string;
-  outcome?: RunOutcome;
+  outcome?: InferenceOutcome;
 };
-
-export type RunOutcome = InferenceOutcome;
-
-export type OutcomeResolver = InferenceEngine["resolveOutcome"];
 
 let runSequence = 0;
 
@@ -42,7 +38,7 @@ export async function resolvePendingRuns(
   runs: readonly InferenceRun[],
   chain: Chain,
   headBlock: number,
-  resolveOutcome: OutcomeResolver,
+  resolveOutcome: InferenceEngine["resolveOutcome"],
 ): Promise<InferenceRun[]> {
   return Promise.all(
     runs.map(async (run) => {
@@ -53,14 +49,15 @@ export async function resolvePendingRuns(
       ) {
         return run;
       }
-      const outcome = await resolveOutcome(
-        run.head_block + 1,
-        run.target_block,
-      );
-      return {
-        ...run,
-        outcome: { ...outcome },
-      };
+      try {
+        const outcome = await resolveOutcome(
+          run.head_block + 1,
+          run.target_block,
+        );
+        return { ...run, outcome };
+      } catch {
+        return run;
+      }
     }),
   );
 }

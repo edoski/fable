@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Hash } from "viem";
 
+import type { ChainManifest, FeatureName } from "../src/features";
 import { createChainSession } from "../src/rpc";
 import { flushMicrotasks, hashOf } from "./helpers";
 
@@ -56,6 +57,20 @@ function feeHistory(oldestBlock: bigint, count: number) {
       quantity(2_000_000_000n + BigInt(index)),
       quantity(3_000_000_000n + BigInt(index)),
     ]),
+  };
+}
+
+function manifestOf(
+  contextBlocks: number,
+  ...featureNames: FeatureName[]
+): ChainManifest {
+  return {
+    context_blocks: contextBlocks,
+    features: featureNames.map((name) => ({
+      name,
+      mean: 0,
+      standard_deviation: 1,
+    })),
   };
 }
 
@@ -136,24 +151,23 @@ afterEach(() => {
 describe("createChainSession", () => {
   it("reads every fresh exact range in one batch with only the required predecessor", async () => {
     const rpc = installRpc();
-    const intervalSession = createChainSession({
-      chain: "ethereum",
-      contextBlocks: 3,
-      orderedFeatures: [
+    const intervalSession = createChainSession(
+      "ethereum",
+      manifestOf(
+        3,
         "block_interval_seconds",
         "log1p_effective_priority_fee_per_gas_p50",
         "log1p_effective_priority_fee_per_gas_p90",
-      ],
-    });
+      ),
+    );
 
     const first = await intervalSession.sync();
     rpc.head = 14n;
     const second = await intervalSession.sync();
-    const directSession = createChainSession({
-      chain: "ethereum",
-      contextBlocks: 3,
-      orderedFeatures: [],
-    });
+    const directSession = createChainSession(
+      "ethereum",
+      manifestOf(3),
+    );
     const direct = await directSession.sync();
 
     expect(first.blocks.map((block) => block.number)).toEqual([
@@ -205,11 +219,7 @@ describe("createChainSession", () => {
           number === 11n ? { parentHash: hashOf(99n) } : {},
         ),
     });
-    const session = createChainSession({
-      chain: "ethereum",
-      contextBlocks: 3,
-      orderedFeatures: [],
-    });
+    const session = createChainSession("ethereum", manifestOf(3));
 
     await expect(session.sync()).rejects.toThrow(
       "Broken parent link between blocks 10 and 11",
@@ -218,22 +228,40 @@ describe("createChainSession", () => {
     session.dispose();
   });
 
-  it("requires fee history to start at the first context block", async () => {
-    const session = createChainSession({
-      chain: "ethereum",
-      contextBlocks: 3,
-      orderedFeatures: [
-        "log1p_effective_priority_fee_per_gas_p50",
-      ],
-    });
-    installRpc({
-      history: (oldestBlock, count) =>
+  it.each([
+    {
+      name: "fee history to start at the first context block",
+      feature: "log1p_effective_priority_fee_per_gas_p50" as const,
+      history: (oldestBlock: bigint, count: number) =>
         feeHistory(oldestBlock + 1n, count),
-    });
-
-    await expect(session.sync()).rejects.toThrow(
-      "Fee history must start at block 10, got 11",
+      message: "Fee history must start at block 10, got 11",
+    },
+    {
+      name: "fee history to include priority-fee rewards",
+      feature: "log1p_effective_priority_fee_per_gas_p50" as const,
+      history: (oldestBlock: bigint, count: number) => ({
+        ...feeHistory(oldestBlock, count),
+        reward: undefined,
+      }),
+      message: "Fee history must include priority-fee rewards",
+    },
+    {
+      name: "one priority-fee reward row per context block",
+      feature: "log1p_effective_priority_fee_per_gas_p90" as const,
+      history: (oldestBlock: bigint, count: number) => ({
+        ...feeHistory(oldestBlock, count),
+        reward: feeHistory(oldestBlock, count).reward.slice(1),
+      }),
+      message: "Fee history must contain exactly 3 reward rows, got 2",
+    },
+  ])("requires $name", async ({ feature, history, message }) => {
+    const session = createChainSession(
+      "ethereum",
+      manifestOf(3, feature),
     );
+    installRpc({ history });
+
+    await expect(session.sync()).rejects.toThrow(message);
     session.dispose();
   });
 
@@ -244,11 +272,7 @@ describe("createChainSession", () => {
           baseFeePerGas: number === 12n ? null : undefined,
         }),
     });
-    const session = createChainSession({
-      chain: "ethereum",
-      contextBlocks: 1,
-      orderedFeatures: [],
-    });
+    const session = createChainSession("ethereum", manifestOf(1));
 
     await expect(session.sync()).rejects.toThrow(
       "RPC returned block 12 without a base fee",
@@ -259,11 +283,7 @@ describe("createChainSession", () => {
   it("forwards Viem watched blocks and unwatches on disposal", async () => {
     vi.useFakeTimers();
     const rpc = installRpc();
-    const session = createChainSession({
-      chain: "ethereum",
-      contextBlocks: 1,
-      orderedFeatures: [],
-    });
+    const session = createChainSession("ethereum", manifestOf(1));
     const publish = vi.fn();
 
     session.watchBlocks(publish);
@@ -286,11 +306,7 @@ describe("createChainSession", () => {
 
   it("reads exact outcome blocks directly", async () => {
     const rpc = installRpc();
-    const session = createChainSession({
-      chain: "ethereum",
-      contextBlocks: 3,
-      orderedFeatures: [],
-    });
+    const session = createChainSession("ethereum", manifestOf(3));
 
     await expect(session.readOutcome(20n, 22n)).resolves.toEqual({
       immediateBaseFeePerGas: 1_000_000_020n,

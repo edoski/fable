@@ -73,13 +73,7 @@ _TIMESTAMPS = np.array(
     dtype=np.int64,
 )
 _LOGITS = torch.tensor(
-    [
-        [2.0, 2.0, 0.0],
-        [0.0, 1.0, 2.0],
-        [0.0, 2.0, 1.0],
-        [2.0, 0.0, 1.0],
-        [0.0, 1.0, 2.0],
-    ],
+    [[2.0, 2.0, 0.0], [0.0, 1.0, 2.0], [0.0, 2.0, 1.0], [2.0, 0.0, 1.0], [0.0, 1.0, 2.0]],
     dtype=torch.float32,
 )
 _PREDICTED_Z = torch.tensor([0.1, -0.5, 1.0, 0.0, 2.0], dtype=torch.float32)
@@ -102,14 +96,8 @@ _OBSERVATION_SCHEMA = pl.Schema(
 
 def _experiment() -> ExperimentSemantics:
     return ExperimentSemantics(
-        training_window=BlockWindow(
-            first_parent_block=10,
-            last_parent_block=11,
-        ),
-        validation_window=BlockWindow(
-            first_parent_block=15,
-            last_parent_block=16,
-        ),
+        training_window=BlockWindow(first_parent_block=10, last_parent_block=11),
+        validation_window=BlockWindow(first_parent_block=15, last_parent_block=16),
         context_blocks=3,
         horizon_blocks=3,
         ordered_features=("log_base_fee_per_gas",),
@@ -118,13 +106,7 @@ def _experiment() -> ExperimentSemantics:
 
 def _method() -> Method:
     return Method(
-        model=LstmDefinition(
-            family="lstm",
-            hidden=4,
-            layers=1,
-            head_hidden=3,
-            dropout=0.0,
-        ),
+        model=LstmDefinition(family="lstm", hidden=4, layers=1, head_hidden=3, dropout=0.0),
         fit=FitMethod(
             learning_rate=0.01,
             weight_decay=0.0,
@@ -139,9 +121,7 @@ def _method() -> Method:
     )
 
 
-def _association(
-    experiment: ExperimentSemantics | None = None,
-) -> ArtifactAssociation:
+def _association(experiment: ExperimentSemantics | None = None) -> ArtifactAssociation:
     experiment = experiment or _experiment()
     method = _method()
     return ArtifactAssociation(
@@ -163,18 +143,14 @@ def _association(
 
 def _write_corpus(storage_root: Path, corpus_id: UUID) -> None:
     request = CorpusRequest(
-        corpus_id=corpus_id,
-        definition=CorpusDefinition(chain_id=9, first_block=10, last_block=30),
+        corpus_id=corpus_id, definition=CorpusDefinition(chain_id=9, first_block=10, last_block=30)
     )
     corpus_directory(storage_root, corpus_id).mkdir(parents=True)
     corpus_json_path(storage_root, corpus_id).write_text(
         json.dumps(
             {
                 "request": request.model_dump(mode="json"),
-                "finalized_anchor": {
-                    "block_number": 30,
-                    "block_hash": "a" * 64,
-                },
+                "finalized_anchor": {"block_number": 30, "block_hash": "a" * 64},
             }
         ),
         encoding="utf-8",
@@ -191,14 +167,12 @@ def _write_corpus(storage_root: Path, corpus_id: UUID) -> None:
             "tx_count": np.arange(5, 26, dtype=np.int64),
             "effective_priority_fee_per_gas_p50": np.arange(blocks.size, dtype=np.int64),
             "effective_priority_fee_per_gas_p90": 2 * np.arange(blocks.size, dtype=np.int64),
-        },
+        }
     ).write_parquet(corpus_blocks_path(storage_root, corpus_id))
 
 
 def _request(
-    *,
-    corpus_id: UUID = _CORPUS_ID,
-    testing_window: BlockWindow | None = None,
+    *, corpus_id: UUID = _CORPUS_ID, testing_window: BlockWindow | None = None
 ) -> EvaluateRequest:
     return EvaluateRequest(
         workflow="evaluate",
@@ -239,16 +213,13 @@ class _Model(nn.Module):
 
 
 def test_evaluate_publishes_exact_observations(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_corpus(tmp_path, _CORPUS_ID)
     association = _association()
     model = _Model()
     monkeypatch.setattr(
-        evaluation_module,
-        "load_artifact",
-        lambda storage_root, artifact_id: (association, model),
+        evaluation_module, "load_artifact", lambda storage_root, artifact_id: (association, model)
     )
     monkeypatch.setattr(evaluation_module, "_DEVICE", torch.device("cpu"))
     request = _request()
@@ -279,20 +250,14 @@ def test_evaluate_publishes_exact_observations(
     ],
 )
 def test_evaluate_rejects_owned_association_and_publication_conflicts(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    case: str,
-    error: type[Exception],
-    match: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, error: type[Exception], match: str
 ) -> None:
     corpus_id = _OTHER_CORPUS_ID if case == "source_corpus" else _CORPUS_ID
     _write_corpus(tmp_path, corpus_id)
     association = _association()
     model = _Model()
     monkeypatch.setattr(
-        evaluation_module,
-        "load_artifact",
-        lambda storage_root, artifact_id: (association, model),
+        evaluation_module, "load_artifact", lambda storage_root, artifact_id: (association, model)
     )
     monkeypatch.setattr(evaluation_module, "_DEVICE", torch.device("cpu"))
     request = _request(corpus_id=corpus_id)

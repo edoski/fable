@@ -36,15 +36,6 @@ export const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.65 },
   buttonText: { color: colors.surface, fontSize: 15, fontWeight: "700" },
-  dialogRoot: { flex: 1, justifyContent: "flex-end" },
-  backdrop: {
-    backgroundColor: colors.overlay,
-    bottom: 0,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
   dialog: { backgroundColor: colors.surface },
   sheet: {
     borderTopLeftRadius: 24,
@@ -305,12 +296,6 @@ export const styles = StyleSheet.create({
     width: 27,
   },
   predictionNodeLabel: { color: colors.blue, fontSize: 8, fontWeight: "800" },
-  errorDialogRoot: {
-    alignItems: "center",
-    flex: 1,
-    justifyContent: "center",
-    padding: 24,
-  },
   errorDialog: {
     alignItems: "center",
     borderRadius: radii.large,

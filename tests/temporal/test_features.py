@@ -8,11 +8,7 @@ import pytest
 
 from fable.config import CorpusDefinition, FeatureName
 from fable.corpus import BlockFrame
-from fable.temporal import (
-    FeatureState,
-    fit_feature_state,
-    transform_feature_rows,
-)
+from fable.temporal import FeatureState, fit_feature_state, transform_feature_rows
 
 
 def _blocks(
@@ -43,8 +39,7 @@ def _blocks(
         }
     )
     return BlockFrame(
-        frame,
-        CorpusDefinition(chain_id=chain_id, first_block=0, last_block=count - 1),
+        frame, CorpusDefinition(chain_id=chain_id, first_block=0, last_block=count - 1)
     )
 
 
@@ -88,15 +83,10 @@ def test_requested_feature_formulas_fit_in_order_and_transform_held_out_rows() -
     ).astype(np.float64)
     forming_state = fit_feature_state(forming_support, ordered_features=forming_order)
     np.testing.assert_allclose(forming_state.means, raw.mean(axis=0))
-    np.testing.assert_allclose(
-        forming_state.standard_deviations,
-        raw.std(axis=0, ddof=0),
-    )
+    np.testing.assert_allclose(forming_state.standard_deviations, raw.std(axis=0, ddof=0))
 
     transformed = transform_feature_rows(
-        forming_support,
-        ordered_features=forming_order,
-        state=forming_state,
+        forming_support, ordered_features=forming_order, state=forming_state
     )
     expected = ((raw - raw.mean(axis=0)) / raw.std(axis=0, ddof=0)).astype(np.float32)
     np.testing.assert_allclose(transformed, expected, rtol=1e-6, atol=1e-6)
@@ -129,9 +119,7 @@ def test_requested_feature_formulas_fit_in_order_and_transform_held_out_rows() -
     )
 
     held_out_result = transform_feature_rows(
-        held_out,
-        ordered_features=forming_order,
-        state=forming_state,
+        held_out, ordered_features=forming_order, state=forming_state
     )
 
     np.testing.assert_allclose(
@@ -160,26 +148,17 @@ def test_fee_and_nonnegative_interval_features_use_their_exact_block_facts() -> 
         "log1p_effective_priority_fee_per_gas_p90",
         "block_interval_seconds",
     )
-    raw = np.column_stack(
-        (
-            np.log1p([9, 99, 999]),
-            np.log1p([99, 999, 9_999]),
-            [0, 12, 18],
-        )
-    ).astype(np.float64)
+    raw = np.column_stack((np.log1p([9, 99, 999]), np.log1p([99, 999, 9_999]), [0, 12, 18])).astype(
+        np.float64
+    )
 
     state = fit_feature_state(blocks, ordered_features=ordered_features)
-    transformed = transform_feature_rows(
-        blocks,
-        ordered_features=ordered_features,
-        state=state,
-    )
+    transformed = transform_feature_rows(blocks, ordered_features=ordered_features, state=state)
 
     np.testing.assert_allclose(state.means, raw.mean(axis=0))
     np.testing.assert_allclose(state.standard_deviations, raw.std(axis=0, ddof=0))
     np.testing.assert_allclose(
-        transformed,
-        ((raw - raw.mean(axis=0)) / raw.std(axis=0, ddof=0)).astype(np.float32),
+        transformed, ((raw - raw.mean(axis=0)) / raw.std(axis=0, ddof=0)).astype(np.float32)
     )
 
 
@@ -197,10 +176,7 @@ def _valid_blocks() -> BlockFrame:
 def _fit(
     blocks: BlockFrame,
     *,
-    ordered_features: tuple[FeatureName, ...] = (
-        "log_base_fee_per_gas",
-        "gas_utilization",
-    ),
+    ordered_features: tuple[FeatureName, ...] = ("log_base_fee_per_gas", "gas_utilization"),
 ) -> FeatureState:
     return fit_feature_state(blocks, ordered_features=ordered_features)
 
@@ -233,33 +209,28 @@ def _fit(
             lambda: transform_feature_rows(
                 _valid_blocks(),
                 ordered_features=("log_base_fee_per_gas", "gas_utilization"),
-                state=FeatureState(
-                    means=(0.0, 0.0),
-                    standard_deviations=(1e-300, 1e-300),
-                ),
+                state=FeatureState(means=(0.0, 0.0), standard_deviations=(1e-300, 1e-300)),
             ),
             "finite float32",
             id="float32-overflow",
         ),
+        pytest.param(
+            lambda: _fit(
+                _blocks(
+                    base_fees=[10, 10],
+                    gas_used=[1, 1],
+                    gas_limits=[2, 2],
+                    tx_counts=[0, 0],
+                    timestamps=[0, 0],
+                    priority_fees=[0, 0],
+                ),
+                ordered_features=("log_base_fee_per_gas",),
+            ),
+            "greater than 0",
+            id="constant-feature",
+        ),
     ],
 )
-def test_feature_contract_rejections(
-    operation: Callable[[], object],
-    match: str,
-) -> None:
+def test_feature_contract_rejections(operation: Callable[[], object], match: str) -> None:
     with pytest.raises(ValueError, match=match):
         operation()
-
-
-def test_fit_feature_state_rejects_constant_feature() -> None:
-    blocks = _blocks(
-        base_fees=[10, 10],
-        gas_used=[1, 1],
-        gas_limits=[2, 2],
-        tx_counts=[0, 0],
-        timestamps=[0, 0],
-        priority_fees=[0, 0],
-    )
-
-    with pytest.raises(ValueError):
-        _fit(blocks, ordered_features=("log_base_fee_per_gas",))

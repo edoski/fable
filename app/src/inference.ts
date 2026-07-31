@@ -149,11 +149,7 @@ function defaultDependencies(chain: Chain): InferenceEngineDependencies {
   return {
     catalog,
     model: createModelRuntime(),
-    session: createChainSession({
-      chain,
-      contextBlocks: manifest.context_blocks,
-      orderedFeatures: manifest.features.map((feature) => feature.name),
-    }),
+    session: createChainSession(chain, manifest),
   };
 }
 
@@ -164,12 +160,9 @@ function decodePrediction(
   selectedAction: number;
   predictedFee: number;
 } {
-  let action = 0;
-  for (let index = 0; index < output.actionLogits.length; index += 1) {
-    if (output.actionLogits[index] > output.actionLogits[action]) {
-      action = index;
-    }
-  }
+  const action = output.actionLogits.indexOf(
+    Math.max(...output.actionLogits),
+  );
 
   const target = selection.modelManifest.target;
   const predictedFee = Math.exp(

@@ -83,23 +83,20 @@ const chainManifest: MobileChainManifest = {
   },
 };
 
-function selection(
-  K: Horizon,
-  manifest = chainManifest,
-): ModelSelection {
+function selection(K: Horizon): ModelSelection {
   return {
     chain: "ethereum",
     K,
     source: 10 + K,
-    chainManifest: manifest,
-    modelManifest: manifest.models[K],
+    chainManifest,
+    modelManifest: chainManifest.models[K],
   };
 }
 
-function catalog(manifest = chainManifest): ModelCatalog {
+function catalog(): ModelCatalog {
   return {
-    chainManifest: vi.fn(() => manifest),
-    select: vi.fn((_chain, K) => selection(K, manifest)),
+    chainManifest: vi.fn(() => chainManifest),
+    select: vi.fn((_chain, K) => selection(K)),
   };
 }
 
@@ -143,9 +140,7 @@ function createTestEngine(
     session: session(),
     ...overrides,
   };
-  return {
-    engine: createInferenceEngine("ethereum", dependencies),
-  };
+  return createInferenceEngine("ethereum", dependencies);
 }
 
 describe("InferenceEngine", () => {
@@ -166,7 +161,7 @@ describe("InferenceEngine", () => {
         minimumFeeZ: 2,
       };
     });
-    const { engine } = createTestEngine({
+    const engine = createTestEngine({
       session: chainSession,
       model,
     });
@@ -202,26 +197,26 @@ describe("InferenceEngine", () => {
       throw new Error("HTTP transport details");
     });
     const chainFailure = createTestEngine({ session: unavailable });
-    await expect(chainFailure.engine.run(2)).rejects.toMatchObject({
+    await expect(chainFailure.run(2)).rejects.toMatchObject({
       message: "Could not read the selected chain.",
       cause: expect.objectContaining({ message: "HTTP transport details" }),
     });
-    await chainFailure.engine.dispose();
+    await chainFailure.dispose();
 
     const model = runtime();
     vi.mocked(model.execute).mockRejectedValue(
       new Error("native load details"),
     );
     const modelFailure = createTestEngine({ model });
-    await expect(modelFailure.engine.run(2)).rejects.toMatchObject({
+    await expect(modelFailure.run(2)).rejects.toMatchObject({
       message: "Could not run the selected model.",
       cause: expect.objectContaining({ message: "native load details" }),
     });
-    await modelFailure.engine.dispose();
+    await modelFailure.dispose();
   });
 
   it("rejects a nonfinite decoded fee", async () => {
-    const { engine } = createTestEngine({
+    const engine = createTestEngine({
       model: runtime({
         actionLogits: new Float32Array([0, 1]),
         minimumFeeZ: 2_000,
@@ -236,10 +231,25 @@ describe("InferenceEngine", () => {
     await engine.dispose();
   });
 
+  it("selects the first action when maximum logits tie", async () => {
+    const engine = createTestEngine({
+      model: runtime({
+        actionLogits: new Float32Array([1, 4, 4, 0]),
+        minimumFeeZ: 0,
+      }),
+    });
+
+    await expect(engine.run(4)).resolves.toMatchObject({
+      selected_action_k: 1,
+      target_block: 12,
+    });
+    await engine.dispose();
+  });
+
   it("rejects an unsafe external head block without losing raw precision", async () => {
     const unsafe = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
     const unsafeHead = session(async () => context(unsafe, 20n));
-    const { engine } = createTestEngine({ session: unsafeHead });
+    const engine = createTestEngine({ session: unsafeHead });
 
     await expect(engine.run(2)).rejects.toMatchObject({
       message: "Chain data is incomplete or invalid.",
@@ -252,7 +262,7 @@ describe("InferenceEngine", () => {
 
   it("passes exact outcome blocks and converts RPC fees through safe integers", async () => {
     const chainSession = session();
-    const { engine } = createTestEngine({ session: chainSession });
+    const engine = createTestEngine({ session: chainSession });
 
     await expect(engine.resolveOutcome(11, 12)).resolves.toEqual({
       immediate_base_fee_per_gas: 20,

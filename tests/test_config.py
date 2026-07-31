@@ -26,10 +26,7 @@ CORPUS_ID = UUID("00000000-0000-4000-8000-000000000001")
 
 
 def _window(first: int = 210, last: int = 249) -> BlockWindow:
-    return BlockWindow(
-        first_parent_block=first,
-        last_parent_block=last,
-    )
+    return BlockWindow(first_parent_block=first, last_parent_block=last)
 
 
 def _experiment() -> ExperimentSemantics:
@@ -44,13 +41,7 @@ def _experiment() -> ExperimentSemantics:
 
 def _method() -> Method:
     return Method(
-        model=LstmDefinition(
-            family="lstm",
-            hidden=32,
-            layers=1,
-            head_hidden=16,
-            dropout=0.2,
-        ),
+        model=LstmDefinition(family="lstm", hidden=32, layers=1, head_hidden=16, dropout=0.2),
         fit=FitMethod(
             learning_rate=0.001,
             weight_decay=0.0,
@@ -140,19 +131,13 @@ def _invalid_cases() -> tuple[tuple[type[object], dict[str, object], str], ...]:
             ExperimentSemantics,
             {
                 **experiment.model_dump(),
-                "validation_window": BlockWindow(
-                    first_parent_block=209,
-                    last_parent_block=249,
-                ),
+                "validation_window": BlockWindow(first_parent_block=209, last_parent_block=249),
             },
             "validation_window must follow complete training outcomes",
         ),
         (
             ExperimentSemantics,
-            {
-                **experiment.model_dump(),
-                "ordered_features": ("unsupported",),
-            },
+            {**experiment.model_dump(), "ordered_features": ("unsupported",)},
             "Input should be",
         ),
     )
@@ -160,9 +145,7 @@ def _invalid_cases() -> tuple[tuple[type[object], dict[str, object], str], ...]:
 
 @pytest.mark.parametrize(("value_type", "payload", "message"), _invalid_cases())
 def test_domain_contract_rejects_invalid_values(
-    value_type: type[object],
-    payload: dict[str, object],
-    message: str,
+    value_type: type[object], payload: dict[str, object], message: str
 ) -> None:
     with pytest.raises(ValidationError, match=message):
         value_type(**payload)
@@ -177,21 +160,12 @@ def test_request_defaults_mint_and_persist_destination_identity() -> None:
     experiment = _experiment()
     train = TrainRequest(
         source=SelectedStudySource(
-            corpus_id=CORPUS_ID,
-            study_id=STUDY_ID,
-            study_result_index=0,
-            experiment=experiment,
+            corpus_id=CORPUS_ID, study_id=STUDY_ID, study_result_index=0, experiment=experiment
         )
     )
-    tune = TuneRequest(
-        corpus_id=CORPUS_ID,
-        experiment=experiment,
-        methods=(_method(),),
-    )
+    tune = TuneRequest(corpus_id=CORPUS_ID, experiment=experiment, methods=(_method(),))
     evaluate = EvaluateRequest(
-        artifact_id=train.artifact_id,
-        corpus_id=CORPUS_ID,
-        testing_window=_window(),
+        artifact_id=train.artifact_id, corpus_id=CORPUS_ID, testing_window=_window()
     )
 
     for request, destination_field in (

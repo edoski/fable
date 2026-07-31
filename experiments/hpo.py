@@ -14,8 +14,8 @@ from bundle import (
     open_bundle,
     publish_bundle,
     read_cells,
-    write_cells,
-    write_request,
+    run,
+    write_tune_cells,
 )
 
 from fable.config import (
@@ -27,10 +27,7 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.experiments import (
-    ExperimentKind,
-    load_experiment_manifest,
-)
+from fable.experiments import ExperimentKind, load_experiment_manifest
 from fable.study import Study, load_study
 
 _KIND = ExperimentKind.HPO
@@ -65,17 +62,9 @@ _FIT = FitMethod(
 
 def _model(family: str, capacity: int, dropout: float) -> ModelDefinition:
     if family == "lstm":
-        hidden, layers, head_hidden = (
-            (256, 2, 256),
-            (256, 1, 128),
-            (384, 2, 256),
-        )[capacity]
+        hidden, layers, head_hidden = ((256, 2, 256), (256, 1, 128), (384, 2, 256))[capacity]
         return LstmDefinition(
-            family="lstm",
-            hidden=hidden,
-            layers=layers,
-            head_hidden=head_hidden,
-            dropout=dropout,
+            family="lstm", hidden=hidden, layers=layers, head_hidden=head_hidden, dropout=dropout
         )
     if family == "transformer":
         model_width, attention_heads, transformer_layers, feedforward_width, head_hidden = (
@@ -134,17 +123,9 @@ def _methods(family: str) -> tuple[Method, ...]:
 
 
 def _selected_context_studies(
-    storage_root: Path,
-    experiment_id: UUID,
-) -> tuple[
-    dict[tuple[str, str], Study],
-    tuple[tuple[str, int, float], ...],
-]:
-    manifest = load_experiment_manifest(
-        storage_root,
-        ExperimentKind.C_STUDY,
-        experiment_id,
-    )
+    storage_root: Path, experiment_id: UUID
+) -> tuple[dict[tuple[str, str], Study], tuple[tuple[str, int, float], ...]]:
+    manifest = load_experiment_manifest(storage_root, ExperimentKind.C_STUDY, experiment_id)
     studies: dict[tuple[str, str, int], Study] = {}
     objectives: dict[tuple[str, int], list[float]] = {}
     for cell, study_id in manifest.items():
@@ -158,10 +139,7 @@ def _selected_context_studies(
     winners: list[tuple[str, int, float]] = []
     for chain in _CHAINS:
         contexts = {context for candidate_chain, _, context in studies if candidate_chain == chain}
-        winner = min(
-            contexts,
-            key=lambda context: (fmean(objectives[chain, context]), context),
-        )
+        winner = min(contexts, key=lambda context: (fmean(objectives[chain, context]), context))
         winners.append((chain, winner, fmean(objectives[chain, winner])))
         for family in _FAMILIES:
             selected[chain, family] = studies[chain, family, winner]
@@ -175,31 +153,17 @@ def prepare(storage_root: StorageRoot, c_experiment_id: UUID) -> None:
 
     methods_by_family = {family: _methods(family) for family in _FAMILIES}
 
-    rows: list[tuple[str, Path, int, UUID]] = []
-    for index, (chain, family) in enumerate(product(_CHAINS, _FAMILIES)):
+    cells: list[tuple[str, TuneRequest]] = []
+    for chain, family in product(_CHAINS, _FAMILIES):
         source = selected[chain, family]
         request = TuneRequest(
             corpus_id=source.request.corpus_id,
             experiment=source.request.experiment,
             methods=methods_by_family[family],
         )
-        request_path = write_request(bundle, index, request)
-        cell = f"{chain}.{family}"
-        rows.extend(
-            (
-                cell,
-                request_path,
-                method_index,
-                request.study_id,
-            )
-            for method_index in range(len(request.methods))
-        )
+        cells.append((f"{chain}.{family}", request))
 
-    write_cells(
-        bundle,
-        ("cell", "request", "method_index", "study_id"),
-        rows,
-    )
+    write_tune_cells(bundle, cells)
 
     for chain, context, mean in context_winners:
         typer.echo(f"{chain}\t{context}\t{mean:g}", err=True)
@@ -232,10 +196,5 @@ def select(storage_root: StorageRoot, experiment_id: UUID) -> None:
         print(f"{cell}\t{selected_index}\t{objective:g}")
 
 
-app = typer.Typer(add_completion=False)
-app.command()(prepare)
-app.command()(select)
-
-
 if __name__ == "__main__":
-    app()
+    run(prepare, select)

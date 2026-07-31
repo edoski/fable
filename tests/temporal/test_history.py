@@ -6,19 +6,13 @@ import pytest
 import torch
 from pydantic import UUID4, TypeAdapter
 
-from fable.config import (
-    BlockWindow,
-    CorpusDefinition,
-    CorpusRequest,
-    ExperimentSemantics,
-)
+from fable.config import BlockWindow, CorpusDefinition, CorpusRequest, ExperimentSemantics
 from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
 from fable.temporal import prepare_fit_history, prepare_historical_window
 
 _CORPUS_ID = TypeAdapter(UUID4).validate_python("11111111-1111-4111-8111-111111111111")
 _BASE_FEES = np.array(
-    [11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2, 7, 6, 5, 4, 4, 9],
-    dtype=np.int64,
+    [11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2, 7, 6, 5, 4, 4, 9], dtype=np.int64
 )
 
 
@@ -35,36 +29,23 @@ def _corpus(first_block: int = 10, last_block: int = 29) -> Corpus:
             "tx_count": 20 + np.arange(blocks.size, dtype=np.int64),
             "effective_priority_fee_per_gas_p50": 2 + np.arange(blocks.size, dtype=np.int64),
             "effective_priority_fee_per_gas_p90": 4 + np.arange(blocks.size, dtype=np.int64),
-        },
+        }
     ).filter(pl.col("block_number").is_between(first_block, last_block))
     request = CorpusRequest(
         corpus_id=_CORPUS_ID,
-        definition=CorpusDefinition(
-            chain_id=1,
-            first_block=first_block,
-            last_block=last_block,
-        ),
+        definition=CorpusDefinition(chain_id=1, first_block=first_block, last_block=last_block),
     )
     return Corpus(
         request=request,
-        finalized_anchor=FinalizedAnchor(
-            block_number=last_block,
-            block_hash="a" * 64,
-        ),
+        finalized_anchor=FinalizedAnchor(block_number=last_block, block_hash="a" * 64),
         blocks=BlockFrame(frame, request.definition),
     )
 
 
 def _experiment() -> ExperimentSemantics:
     return ExperimentSemantics(
-        training_window=BlockWindow(
-            first_parent_block=12,
-            last_parent_block=15,
-        ),
-        validation_window=BlockWindow(
-            first_parent_block=20,
-            last_parent_block=21,
-        ),
+        training_window=BlockWindow(first_parent_block=12, last_parent_block=15),
+        validation_window=BlockWindow(first_parent_block=20, last_parent_block=21),
         context_blocks=3,
         horizon_blocks=3,
         ordered_features=("log_base_fee_per_gas", "gas_utilization"),
@@ -80,13 +61,9 @@ def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
     support_raw = np.column_stack(
         (np.log(support_fees), (35 + np.arange(6, dtype=np.float64)) / 100.0)
     )
+    np.testing.assert_allclose(preparation.feature_state.means, support_raw.mean(axis=0))
     np.testing.assert_allclose(
-        preparation.feature_state.means,
-        support_raw.mean(axis=0),
-    )
-    np.testing.assert_allclose(
-        preparation.feature_state.standard_deviations,
-        support_raw.std(axis=0, ddof=0),
+        preparation.feature_state.standard_deviations, support_raw.std(axis=0, ddof=0)
     )
 
     training_minima = np.array([4, 4, 3, 3], dtype=np.int64)
@@ -132,10 +109,7 @@ def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
     testing = prepare_historical_window(
         _corpus(),
         _experiment(),
-        BlockWindow(
-            first_parent_block=25,
-            last_parent_block=26,
-        ),
+        BlockWindow(first_parent_block=25, last_parent_block=26),
         feature_state=preparation.feature_state,
         target_state=preparation.target_state,
     )
@@ -166,8 +140,7 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
         }
     )
     request = CorpusRequest(
-        corpus_id=_CORPUS_ID,
-        definition=CorpusDefinition(chain_id=1, first_block=9, last_block=29),
+        corpus_id=_CORPUS_ID, definition=CorpusDefinition(chain_id=1, first_block=9, last_block=29)
     )
     corpus = Corpus(
         request=request,
@@ -218,10 +191,7 @@ def test_testing_window_must_follow_complete_validation_outcomes() -> None:
         prepare_historical_window(
             corpus,
             experiment,
-            BlockWindow(
-                first_parent_block=24,
-                last_parent_block=25,
-            ),
+            BlockWindow(first_parent_block=24, last_parent_block=25),
             feature_state=preparation.feature_state,
             target_state=preparation.target_state,
         )

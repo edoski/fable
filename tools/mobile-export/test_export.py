@@ -41,16 +41,11 @@ def _write_roster(path: Path) -> dict[tuple[str, int], UUID]:
 
 
 def _association(
-    chain: str,
-    horizon: int,
-    artifact_id: UUID,
-    *,
-    feature_mean: float = 1.0,
+    chain: str, horizon: int, artifact_id: UUID, *, feature_mean: float = 1.0
 ) -> SimpleNamespace:
     return SimpleNamespace(
         request=SimpleNamespace(
-            artifact_id=artifact_id,
-            source=SimpleNamespace(corpus_id=_CORPUS_IDS[chain]),
+            artifact_id=artifact_id, source=SimpleNamespace(corpus_id=_CORPUS_IDS[chain])
         ),
         training_definition=SimpleNamespace(
             experiment=SimpleNamespace(
@@ -59,10 +54,7 @@ def _association(
                 ordered_features=("log_base_fee_per_gas", "gas_utilization"),
             )
         ),
-        feature_state=SimpleNamespace(
-            means=(feature_mean, 2.0),
-            standard_deviations=(0.5, 0.25),
-        ),
+        feature_state=SimpleNamespace(means=(feature_mean, 2.0), standard_deviations=(0.5, 0.25)),
         target_state=SimpleNamespace(mean=3.0, standard_deviation=0.75),
     )
 
@@ -79,15 +71,7 @@ def _install_artifact_fakes(
         del storage_root
         chain, horizon = cells_by_id[artifact_id]
         feature_mean = 9.0 if (chain, horizon) == mismatched_feature_cell else 1.0
-        return (
-            _association(
-                chain,
-                horizon,
-                artifact_id,
-                feature_mean=feature_mean,
-            ),
-            nn.Identity(),
-        )
+        return (_association(chain, horizon, artifact_id, feature_mean=feature_mean), nn.Identity())
 
     chain_ids = {
         corpus_id: mobile_export._CHAINS[chain] for chain, corpus_id in _CORPUS_IDS.items()
@@ -102,8 +86,7 @@ def _install_artifact_fakes(
 
 
 def test_export_bundle_publishes_complete_stable_bundle(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     roster_path = tmp_path / "MOBILE.yaml"
     artifact_ids = _write_roster(roster_path)
@@ -129,30 +112,19 @@ def test_export_bundle_publishes_complete_stable_bundle(
             chain: {
                 "context_blocks": 3,
                 "features": [
-                    {
-                        "name": "log_base_fee_per_gas",
-                        "mean": 1.0,
-                        "standard_deviation": 0.5,
-                    },
-                    {
-                        "name": "gas_utilization",
-                        "mean": 2.0,
-                        "standard_deviation": 0.25,
-                    },
+                    {"name": "log_base_fee_per_gas", "mean": 1.0, "standard_deviation": 0.5},
+                    {"name": "gas_utilization", "mean": 2.0, "standard_deviation": 0.25},
                 ],
                 "models": {
                     str(horizon): {
                         "artifact_id": str(artifact_ids[(chain, horizon)]),
-                        "target": {
-                            "mean": 3.0,
-                            "standard_deviation": 0.75,
-                        },
+                        "target": {"mean": 3.0, "standard_deviation": 0.75},
                     }
                     for horizon in mobile_export._HORIZONS
                 },
             }
             for chain in mobile_export._CHAINS
-        },
+        }
     }
 
 
@@ -164,25 +136,14 @@ def test_export_bundle_rejects_incomplete_roster(tmp_path: Path) -> None:
     roster_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
 
     with pytest.raises(ValueError, match="at least 4 items"):
-        mobile_export.export_bundle(
-            tmp_path / "storage",
-            roster_path,
-            tmp_path / "models",
-        )
+        mobile_export.export_bundle(tmp_path / "storage", roster_path, tmp_path / "models")
 
 
 @pytest.mark.parametrize(
-    ("mismatch", "message"),
-    [
-        ("horizon", "wrong horizon"),
-        ("chain", "wrong chain"),
-    ],
+    ("mismatch", "message"), [("horizon", "wrong horizon"), ("chain", "wrong chain")]
 )
 def test_export_bundle_rejects_artifact_association_mismatch(
-    mismatch: str,
-    message: str,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    mismatch: str, message: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     roster_path = tmp_path / "MOBILE.yaml"
     artifact_ids = _write_roster(roster_path)
@@ -208,29 +169,18 @@ def test_export_bundle_rejects_artifact_association_mismatch(
         monkeypatch.setattr(mobile_export, "load_corpus_request", load_corpus_request)
 
     with pytest.raises(ValueError, match=message):
-        mobile_export.export_bundle(
-            tmp_path / "storage",
-            roster_path,
-            tmp_path / "models",
-        )
+        mobile_export.export_bundle(tmp_path / "storage", roster_path, tmp_path / "models")
     assert not (tmp_path / "models").exists()
 
 
 def test_export_bundle_rejects_feature_mismatch_without_publication(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     roster_path = tmp_path / "MOBILE.yaml"
     artifact_ids = _write_roster(roster_path)
-    _install_artifact_fakes(
-        monkeypatch,
-        artifact_ids,
-        mismatched_feature_cell=("ethereum", 3),
-    )
+    _install_artifact_fakes(monkeypatch, artifact_ids, mismatched_feature_cell=("ethereum", 3))
     monkeypatch.setattr(
-        mobile_export,
-        "_export_model",
-        lambda *args: pytest.fail(f"unexpected export: {args}"),
+        mobile_export, "_export_model", lambda *args: pytest.fail(f"unexpected export: {args}")
     )
     output = tmp_path / "models"
 
@@ -241,8 +191,7 @@ def test_export_bundle_rejects_feature_mismatch_without_publication(
 
 
 def test_export_bundle_cleans_scratch_after_export_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     roster_path = tmp_path / "MOBILE.yaml"
     artifact_ids = _write_roster(roster_path)
@@ -278,8 +227,7 @@ def test_export_bundle_preserves_existing_output(tmp_path: Path) -> None:
 
 
 def test_export_bundle_refuses_output_directory_created_during_export(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     roster_path = tmp_path / "MOBILE.yaml"
     artifact_ids = _write_roster(roster_path)
@@ -315,8 +263,7 @@ class _TinyModel(nn.Module):
     def forward(self, inputs: torch.Tensor) -> _Output:
         final = inputs[:, -1]
         return _Output(
-            action_logits=self.action(final),
-            minimum_fee_z=self.regression(final).squeeze(-1),
+            action_logits=self.action(final), minimum_fee_z=self.regression(final).squeeze(-1)
         )
 
 
@@ -328,10 +275,7 @@ def test_parity_rejects_matching_nonfinite_outputs() -> None:
 
     with pytest.raises(ValueError, match="ExecuTorch outputs must be finite"):
         mobile_export._assert_parity(
-            matching,
-            matching,
-            target_mean=1.0,
-            target_standard_deviation=0.5,
+            matching, matching, target_mean=1.0, target_standard_deviation=0.5
         )
 
 

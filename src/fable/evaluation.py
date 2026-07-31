@@ -12,11 +12,7 @@ import torch
 from torch import nn
 
 from . import _runtime
-from .addresses import (
-    evaluation_directory,
-    evaluation_json_path,
-    evaluation_observations_path,
-)
+from .addresses import evaluation_directory, evaluation_json_path, evaluation_observations_path
 from .config import EvaluateRequest
 from .corpus import load_corpus
 from .min_block_fee import TargetState, decode_action
@@ -42,10 +38,7 @@ OBSERVATION_SCHEMA = pl.Schema(
 _DEVICE = torch.device("cuda:0")
 
 
-def evaluate(
-    request: EvaluateRequest,
-    storage_root: Path,
-) -> None:
+def evaluate(request: EvaluateRequest, storage_root: Path) -> None:
     """Publish canonical observations for one exact artifact/window request."""
 
     scratch = storage_root / "evaluations" / f".{request.evaluation_id}"
@@ -65,22 +58,21 @@ def evaluate(
         target_state=association.target_state,
     )
     first_outcome_block = testing_window.first_parent_block + 1
-    outcome_priority_fees_p50 = (
-        corpus.blocks.select_range(
-            first_outcome_block,
-            testing_window.last_parent_block + experiment.horizon_blocks,
-        )
-        .to_polars()["effective_priority_fee_per_gas_p50"]
-        .to_numpy()
-    )
+    outcomes = corpus.blocks.select_range(
+        first_outcome_block, testing_window.last_parent_block + experiment.horizon_blocks
+    ).to_polars()
+    outcome_base_fees = outcomes["base_fee_per_gas"].to_numpy()
+    outcome_priority_fees_p50 = outcomes["effective_priority_fee_per_gas_p50"].to_numpy()
 
     _runtime.configure_torch()
     observations = _collect_observations(
         dataset,
         model,
         target_state=association.target_state,
+        outcome_base_fees=outcome_base_fees,
         outcome_priority_fees_p50=outcome_priority_fees_p50,
         first_outcome_block=first_outcome_block,
+        horizon_blocks=experiment.horizon_blocks,
     )
     (scratch / "evaluation.json").write_text(request.model_dump_json(), encoding="utf-8")
     observations.write_parquet(scratch / "observations.parquet")
@@ -96,74 +88,76 @@ def _collect_observations(
     model: nn.Module,
     *,
     target_state: TargetState,
+    outcome_base_fees: np.ndarray,
     outcome_priority_fees_p50: np.ndarray,
     first_outcome_block: int,
+    horizon_blocks: int,
 ) -> pl.DataFrame:
     count = len(dataset)
-    columns = {
-        name: np.empty(count, dtype=dtype.to_python()) for name, dtype in OBSERVATION_SCHEMA.items()
-    }
+    origin_blocks = np.empty(count, dtype=np.int64)
+    predicted_actions = np.empty(count, dtype=np.int64)
+    predicted_minimum_z = np.empty(count, dtype=np.float64)
+    minimum_actions = np.empty(count, dtype=np.int64)
 
     dataset = dataset.to(_DEVICE)
-    loader = dataset.loader(
-        batch_size=_runtime.EVALUATION_BATCH_SIZE,
-        shuffle=False,
-    )
+    loader = dataset.loader(batch_size=_runtime.EVALUATION_BATCH_SIZE, shuffle=False)
     model.to(_DEVICE)
     cursor = 0
     with torch.inference_mode():
         for batch in loader:
             output = model(batch["inputs"])
             actions = decode_action(output).cpu().numpy()
-            minimum_actions_batch = batch["label"].cpu().numpy()
-            base_fees = batch["base_fees"].cpu().numpy()
-            origin_blocks_batch = batch["origin_block"].cpu().numpy()
-
-            rows = np.arange(actions.size, dtype=np.int64)
-            immediate_batch = base_fees[:, 0]
-            selected_batch = base_fees[rows, actions]
-            deadline_batch = base_fees[:, -1]
-            minimum_batch = base_fees[rows, minimum_actions_batch]
-            immediate_outcome_rows = origin_blocks_batch + 1 - first_outcome_block
-            immediate_priority_fees_p50_batch = outcome_priority_fees_p50[immediate_outcome_rows]
-            selected_priority_fees_p50_batch = outcome_priority_fees_p50[
-                immediate_outcome_rows + actions
-            ]
-            deadline_priority_fees_p50_batch = outcome_priority_fees_p50[
-                immediate_outcome_rows + base_fees.shape[1] - 1
-            ]
-            predicted_logs_batch = target_state.mean + target_state.standard_deviation * (
-                output.minimum_fee_z.cpu().numpy().astype(np.float64)
-            )
-            if not np.isfinite(predicted_logs_batch).all():
-                raise ValueError("predicted minimum-log fees must be finite")
-
             size = actions.size
             destination = slice(cursor, cursor + size)
-            batch_columns = {
-                "origin_block": origin_blocks_batch,
-                "predicted_action_k": actions,
-                "predicted_minimum_log_base_fee": predicted_logs_batch,
-                "minimum_action_k": minimum_actions_batch,
-                "immediate_base_fee_per_gas": immediate_batch,
-                "immediate_effective_priority_fee_per_gas_p50": (immediate_priority_fees_p50_batch),
-                "selected_base_fee_per_gas": selected_batch,
-                "selected_effective_priority_fee_per_gas_p50": (selected_priority_fees_p50_batch),
-                "deadline_base_fee_per_gas": deadline_batch,
-                "deadline_effective_priority_fee_per_gas_p50": (deadline_priority_fees_p50_batch),
-                "minimum_base_fee_per_gas": minimum_batch,
-            }
-            for name in OBSERVATION_SCHEMA:
-                columns[name][destination] = batch_columns[name]
+            origin_blocks[destination] = batch["origin_block"].cpu().numpy()
+            predicted_actions[destination] = actions
+            predicted_minimum_z[destination] = output.minimum_fee_z.cpu().numpy()
+            minimum_actions[destination] = batch["label"].cpu().numpy()
             cursor += size
 
-    return pl.DataFrame(columns, schema=OBSERVATION_SCHEMA)
+    predicted_logs = target_state.mean + target_state.standard_deviation * predicted_minimum_z
+    if not np.isfinite(predicted_logs).all():
+        raise ValueError("predicted minimum-log fees must be finite")
+    outcome_rows = origin_blocks + 1 - first_outcome_block
+    return pl.DataFrame(
+        {
+            "origin_block": origin_blocks,
+            "predicted_action_k": predicted_actions,
+            "predicted_minimum_log_base_fee": predicted_logs,
+            "minimum_action_k": minimum_actions,
+            "immediate_base_fee_per_gas": outcome_base_fees[outcome_rows],
+            "immediate_effective_priority_fee_per_gas_p50": outcome_priority_fees_p50[outcome_rows],
+            "selected_base_fee_per_gas": outcome_base_fees[outcome_rows + predicted_actions],
+            "selected_effective_priority_fee_per_gas_p50": outcome_priority_fees_p50[
+                outcome_rows + predicted_actions
+            ],
+            "deadline_base_fee_per_gas": outcome_base_fees[outcome_rows + horizon_blocks - 1],
+            "deadline_effective_priority_fee_per_gas_p50": outcome_priority_fees_p50[
+                outcome_rows + horizon_blocks - 1
+            ],
+            "minimum_base_fee_per_gas": outcome_base_fees[outcome_rows + minimum_actions],
+        },
+        schema=OBSERVATION_SCHEMA,
+    )
 
 
 def reduce_evaluation(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     """Derive one testing evaluation's seven metrics from its observations."""
 
-    return _reduce(_load_evaluation(storage_root, evaluation_id))
+    columns = _load_evaluation(storage_root, evaluation_id)
+    log_errors = columns["predicted_minimum_log_base_fee"] - np.log(
+        columns["minimum_base_fee_per_gas"]
+    )
+    metrics = _require_finite(
+        {
+            **_classification_metrics(columns["predicted_action_k"], columns["minimum_action_k"]),
+            "log_fee_mae": float(np.mean(np.abs(log_errors))),
+            "log_fee_mse": float(np.mean(np.square(log_errors))),
+            **_economic_metrics(columns, "selected"),
+        },
+        "evaluation reduction",
+    )
+    return pl.DataFrame([metrics])
 
 
 def reduce_baselines(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
@@ -172,17 +166,12 @@ def reduce_baselines(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     columns = _load_evaluation(storage_root, evaluation_id)
     rows = []
     for policy in ("immediate", "deadline"):
-        metrics = _economic_metrics(columns, policy)
-        if not np.isfinite(tuple(metrics.values())).all():
-            raise ValueError("baseline reduction must contain only finite metrics")
+        metrics = _require_finite(_economic_metrics(columns, policy), "baseline reduction")
         rows.append({"policy": policy, **metrics})
     return pl.DataFrame(rows)
 
 
-def reduce_rolling(
-    storage_root: Path,
-    roster: Mapping[str, Mapping[int, UUID]],
-) -> pl.DataFrame:
+def reduce_rolling(storage_root: Path, roster: Mapping[str, Mapping[int, UUID]]) -> pl.DataFrame:
     """Compare one-shot and rolling economics for explicit K-study cells."""
 
     rows = [
@@ -192,30 +181,16 @@ def reduce_rolling(
     return pl.DataFrame(rows)
 
 
-def _load_evaluation(
-    storage_root: Path,
-    evaluation_id: UUID,
-) -> dict[str, np.ndarray]:
+def _load_evaluation(storage_root: Path, evaluation_id: UUID) -> dict[str, np.ndarray]:
     request = EvaluateRequest.model_validate_json(
-        evaluation_json_path(storage_root, evaluation_id).read_text(encoding="utf-8"),
-        strict=True,
+        evaluation_json_path(storage_root, evaluation_id).read_bytes()
     )
     if request.evaluation_id != evaluation_id:
         raise ValueError("evaluation request ID must match the requested evaluation")
-    return _load_observations(storage_root, request)
-
-
-def _load_observations(
-    storage_root: Path,
-    request: EvaluateRequest,
-) -> dict[str, np.ndarray]:
-    path = evaluation_observations_path(storage_root, request.evaluation_id)
-    columns = _read_observations(path)
+    columns = _read_observations(evaluation_observations_path(storage_root, evaluation_id))
     window = request.testing_window
     expected_origins = np.arange(
-        window.first_parent_block,
-        window.last_parent_block + 1,
-        dtype=np.int64,
+        window.first_parent_block, window.last_parent_block + 1, dtype=np.int64
     )
     origins = columns["origin_block"]
     if not np.array_equal(origins, expected_origins):
@@ -232,48 +207,22 @@ def _read_observations(path: Path) -> dict[str, np.ndarray]:
     return {name: observations[name].to_numpy() for name in OBSERVATION_SCHEMA}
 
 
-def _reduce(columns: Mapping[str, np.ndarray]) -> pl.DataFrame:
-    log_errors = columns["predicted_minimum_log_base_fee"] - np.log(
-        columns["minimum_base_fee_per_gas"]
-    )
-    metrics = {
-        **_classification_metrics(
-            columns["predicted_action_k"],
-            columns["minimum_action_k"],
-        ),
-        "log_fee_mae": float(np.mean(np.abs(log_errors))),
-        "log_fee_mse": float(np.mean(np.square(log_errors))),
-        **_economic_metrics(columns, "selected"),
-    }
-    if not np.isfinite(tuple(metrics.values())).all():
-        raise ValueError("evaluation reduction must contain only finite metrics")
-    return pl.DataFrame({name: [value] for name, value in metrics.items()})
-
-
 def _classification_metrics(
-    predicted_actions: np.ndarray,
-    minimum_actions: np.ndarray,
+    predicted_actions: np.ndarray, minimum_actions: np.ndarray
 ) -> dict[str, float]:
-    classes = np.union1d(minimum_actions, predicted_actions)
-    f1_by_class = [
-        2.0
-        * np.count_nonzero((minimum_actions == action) & (predicted_actions == action))
-        / (
-            np.count_nonzero(minimum_actions == action)
-            + np.count_nonzero(predicted_actions == action)
-        )
-        for action in classes
-    ]
-    return {
-        "accuracy": float(np.mean(predicted_actions == minimum_actions)),
-        "f1_macro": float(np.mean(f1_by_class)),
-    }
+    matches = predicted_actions == minimum_actions
+    class_count = max(int(predicted_actions.max()), int(minimum_actions.max())) + 1
+    truth = np.bincount(minimum_actions, minlength=class_count)
+    predictions = np.bincount(predicted_actions, minlength=class_count)
+    true_positives = np.bincount(minimum_actions[matches], minlength=class_count)
+    denominators = truth + predictions
+    present = denominators > 0
+    f1_by_class = 2.0 * true_positives[present] / denominators[present]
+    return {"accuracy": float(np.mean(matches)), "f1_macro": float(np.mean(f1_by_class))}
 
 
 def _reduce_rolling_cell(
-    storage_root: Path,
-    cell: str,
-    evaluation_ids: Mapping[int, UUID],
+    storage_root: Path, cell: str, evaluation_ids: Mapping[int, UUID]
 ) -> dict[str, str | float]:
     decision_origins: np.ndarray | None = None
     selections = []
@@ -282,10 +231,7 @@ def _reduce_rolling_cell(
         if decision_origins is None:
             decision_origins = columns["origin_block"].copy()
         selection = _rolling_arrays(
-            columns,
-            decision_origins=decision_origins,
-            cell=cell,
-            horizon=horizon,
+            columns, decision_origins=decision_origins, cell=cell, horizon=horizon
         )
         selections.append(selection)
         if horizon > 2:
@@ -296,20 +242,14 @@ def _reduce_rolling_cell(
 
     one_shot = _economic_metrics(initial, "selected")
     rolling = _economic_metrics(initial, "selected", selected=final)
-    metrics: dict[str, str | float] = {"cell": cell}
+    metrics = {}
     for name in one_shot:
         metrics[f"one_shot_{name}"] = one_shot[name]
         metrics[f"rolling_{name}"] = rolling[name]
-    metric_values = tuple(value for value in metrics.values() if isinstance(value, float))
-    if not np.isfinite(metric_values).all():
-        raise ValueError(f"{cell} rolling comparison must contain only finite metrics")
-    return metrics
+    return {"cell": cell, **_require_finite(metrics, f"{cell} rolling comparison")}
 
 
-def _load_rolling_observations(
-    storage_root: Path,
-    evaluation_id: UUID,
-) -> dict[str, np.ndarray]:
+def _load_rolling_observations(storage_root: Path, evaluation_id: UUID) -> dict[str, np.ndarray]:
     columns = _read_observations(evaluation_observations_path(storage_root, evaluation_id))
     origins = columns["origin_block"]
     if origins.size == 0 or np.any(np.diff(origins) != 1):
@@ -318,11 +258,7 @@ def _load_rolling_observations(
 
 
 def _rolling_arrays(
-    columns: Mapping[str, np.ndarray],
-    *,
-    decision_origins: np.ndarray,
-    cell: str,
-    horizon: int,
+    columns: Mapping[str, np.ndarray], *, decision_origins: np.ndarray, cell: str, horizon: int
 ) -> dict[str, np.ndarray]:
     actions = columns["predicted_action_k"]
     if np.any((actions < 0) | (actions >= horizon)):
@@ -352,17 +288,17 @@ def _economic_metrics(
         "p50_fee_inclusive_savings": float(
             np.mean(
                 1.0
-                - (
-                    selected_base_fees
-                    + selected[f"{policy}_effective_priority_fee_per_gas_p50"]
-                )
-                / (
-                    immediate_base_fees
-                    + columns["immediate_effective_priority_fee_per_gas_p50"]
-                )
+                - (selected_base_fees + selected[f"{policy}_effective_priority_fee_per_gas_p50"])
+                / (immediate_base_fees + columns["immediate_effective_priority_fee_per_gas_p50"])
             )
         ),
         "base_fee_optimality_gap": float(
             np.mean((selected_base_fees - minimum_base_fees) / minimum_base_fees)
         ),
     }
+
+
+def _require_finite(metrics: dict[str, float], subject: str) -> dict[str, float]:
+    if not np.isfinite(tuple(metrics.values())).all():
+        raise ValueError(f"{subject} must contain only finite metrics")
+    return metrics

@@ -3,23 +3,27 @@
 from __future__ import annotations
 
 import csv
-from collections.abc import Iterable, Sequence
+import shutil
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Annotated, TypeAlias
+from typing import Annotated, Literal, TypeAlias
 from uuid import UUID
 
 import typer
 
 from fable.config import EvaluateRequest, TrainRequest, TuneRequest
-from fable.experiments import (
-    ExperimentKind,
-    ExperimentManifest,
-    experiment_directory,
-)
-from fable.study import load_study
+from fable.experiments import ExperimentKind, ExperimentManifest, experiment_directory
 
 StorageRoot: TypeAlias = Annotated[Path, typer.Argument(resolve_path=True)]
 BundleRequest: TypeAlias = TuneRequest | TrainRequest | EvaluateRequest
+_RecordColumn: TypeAlias = Literal["study_id", "artifact_id", "evaluation_id"]
+
+
+def run(*commands: Callable[..., None]) -> None:
+    app = typer.Typer(add_completion=False)
+    for command in commands:
+        app.command()(command)
+    app()
 
 
 def bundle_path(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -> Path:
@@ -33,17 +37,40 @@ def open_bundle(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -
     return bundle
 
 
-def write_request(bundle: Path, index: int, request: BundleRequest) -> Path:
+def write_tune_cells(bundle: Path, cells: Iterable[tuple[str, TuneRequest]]) -> None:
+    rows: list[tuple[str, Path, int, UUID]] = []
+    for index, (cell, request) in enumerate(cells):
+        request_path = _write_request(bundle, index, request)
+        rows.extend(
+            (cell, request_path, method_index, request.study_id)
+            for method_index in range(len(request.methods))
+        )
+    _write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
+
+
+def write_train_cells(bundle: Path, cells: Iterable[tuple[str, TrainRequest]]) -> None:
+    rows = (
+        (cell, _write_request(bundle, index, request), request.artifact_id)
+        for index, (cell, request) in enumerate(cells)
+    )
+    _write_cells(bundle, ("cell", "request", "artifact_id"), rows)
+
+
+def write_evaluate_cells(bundle: Path, cells: Iterable[tuple[str, EvaluateRequest]]) -> None:
+    rows = (
+        (cell, _write_request(bundle, index, request), request.evaluation_id)
+        for index, (cell, request) in enumerate(cells)
+    )
+    _write_cells(bundle, ("cell", "request", "evaluation_id"), rows)
+
+
+def _write_request(bundle: Path, index: int, request: BundleRequest) -> Path:
     path = bundle / "requests" / f"{index:03d}.json"
     path.write_text(request.model_dump_json(), encoding="utf-8")
     return path
 
 
-def write_cells(
-    bundle: Path,
-    header: Sequence[str],
-    rows: Iterable[Sequence[object]],
-) -> None:
+def _write_cells(bundle: Path, header: Sequence[str], rows: Iterable[Sequence[object]]) -> None:
     with (bundle / "cells.tsv").open("x", newline="", encoding="utf-8") as destination:
         writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
         writer.writerow(header)
@@ -56,10 +83,7 @@ def read_cells(bundle: Path) -> list[dict[str, str]]:
 
 
 def publish_bundle(
-    storage_root: Path,
-    kind: ExperimentKind,
-    experiment_id: UUID,
-    cells: dict[str, UUID],
+    storage_root: Path, kind: ExperimentKind, experiment_id: UUID, cells: dict[str, UUID]
 ) -> None:
     manifest = ExperimentManifest(root=cells)
     bundle = bundle_path(storage_root, kind, experiment_id)
@@ -69,47 +93,27 @@ def publish_bundle(
 
     with (bundle / "manifest.json").open("x", encoding="utf-8") as destination:
         destination.write(manifest.model_dump_json())
-    _repoint_requests(bundle, canonical)
+    shutil.rmtree(bundle / "requests")
+    (bundle / "cells.tsv").unlink()
+    (bundle / "jobs.tsv").unlink(missing_ok=True)
     bundle.rename(canonical)
 
 
-def _repoint_requests(bundle: Path, canonical: Path) -> None:
-    path = bundle / "cells.tsv"
-    with path.open(newline="", encoding="utf-8") as source:
-        reader = csv.DictReader(source, delimiter="\t")
-        fieldnames = reader.fieldnames
-        rows = list(reader)
-    if fieldnames is None or "request" not in fieldnames:
-        return
-
-    for row in rows:
-        row["request"] = str(canonical / "requests" / Path(row["request"]).name)
-    replacement = path.with_suffix(".tmp")
-    with replacement.open("x", newline="", encoding="utf-8") as destination:
-        writer = csv.DictWriter(
-            destination,
-            fieldnames=fieldnames,
-            delimiter="\t",
-            lineterminator="\n",
-        )
-        writer.writeheader()
-        writer.writerows(rows)
-    replacement.replace(path)
-
-
-def close_study_bundle(
+def close_bundle(
     storage_root: Path,
     kind: ExperimentKind,
     experiment_id: UUID,
+    column: _RecordColumn,
+    verify: Callable[[Path, UUID], object],
 ) -> None:
     bundle = bundle_path(storage_root, kind, experiment_id)
     rows = read_cells(bundle)
 
     cells: dict[str, UUID] = {}
     for row in rows:
-        study_id = UUID(row["study_id"])
-        load_study(storage_root, study_id)
-        cells[row["cell"]] = study_id
+        record_id = UUID(row[column])
+        verify(storage_root, record_id)
+        cells[row["cell"]] = record_id
 
     publish_bundle(storage_root, kind, experiment_id, cells)
     print(experiment_id)

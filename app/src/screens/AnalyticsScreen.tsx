@@ -1,45 +1,41 @@
 import { Ionicons } from "@expo/vector-icons";
-import { type PropsWithChildren, useState } from "react";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { type PropsWithChildren, type ReactNode, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { BarChart as GiftedBarChart } from "react-native-gifted-charts";
 
 import {
-  feeComparisonData,
   formatGwei,
   formatRunDate,
-  recommendedWaitData,
   realizedSavingsPercent,
   runsForSelection,
-  savingsByWaitData,
   summarizeRuns,
+  type WaitBucket,
+  waitBuckets,
 } from "../analytics";
 import { DetailRow } from "../components/DetailRow";
 import { HorizonSlider } from "../components/HorizonSlider";
 import { NetworkIcon } from "../components/NetworkIcon";
+import { Overlay } from "../components/Overlay";
 import { CHAINS, CHAIN_LABELS, type Chain, type Horizon } from "../domain";
 import type { InferenceRun } from "../history";
 import { styles } from "../styles";
 import { colors, radii } from "../theme";
 
 function SummaryCard({
+  format,
   value,
   label,
   accent = false,
 }: {
-  value: string;
+  format: (value: number) => string;
+  value: number | null;
   label: string;
   accent?: boolean;
 }) {
   return (
     <View style={[styles.surface, styles.summaryCard]}>
       <Text style={[styles.summaryValue, accent && styles.summaryValueAccent]}>
-        {value}
+        {value === null ? "—" : format(value)}
       </Text>
       <Text numberOfLines={1} style={styles.summaryLabel}>
         {label}
@@ -77,21 +73,6 @@ function niceStep(range: number): number {
   return multiplier * magnitude;
 }
 
-function EmptyGraph({ outcomes }: { outcomes: boolean }) {
-  return (
-    <View style={styles.emptyGraph}>
-      <Text style={styles.emptyGraphTitle}>
-        {outcomes ? "No outcomes yet" : "No runs yet"}
-      </Text>
-      <Text style={styles.emptyGraphText}>
-        {outcomes
-          ? "Resolved inferences will populate this graph."
-          : "Runs will populate this graph."}
-      </Text>
-    </View>
-  );
-}
-
 function chartScale(values: readonly number[]) {
   const rawMinimum = Math.min(0, ...values);
   const rawMaximum = Math.max(0, ...values);
@@ -104,134 +85,169 @@ function chartScale(values: readonly number[]) {
   const negativeSections = Math.round(Math.abs(minimum) / step);
 
   return {
-    maximum,
+    chartProps: {
+      maxValue: maximum,
+      noOfSections: positiveSections,
+      stepHeight:
+        CHART_HEIGHT / Math.max(positiveSections + negativeSections, 1),
+      stepValue: step,
+    },
     minimum,
     negativeSections,
-    positiveSections,
     step,
-    stepHeight:
-      CHART_HEIGHT / Math.max(positiveSections + negativeSections, 1),
   };
 }
 
-function chartScaleProps(scale: ReturnType<typeof chartScale>) {
-  return {
-    maxValue: scale.maximum,
-    noOfSections: scale.positiveSections,
-    stepHeight: scale.stepHeight,
-    stepValue: scale.step,
-  };
-}
-
-function ChartFrame({
+function ChartCard({
   children,
+  empty,
+  legend,
+  title,
   xAxisTitle,
-}: PropsWithChildren<{ xAxisTitle: string }>) {
+}: PropsWithChildren<{
+  empty: "runs" | "outcomes" | null;
+  legend?: ReactNode;
+  title: string;
+  xAxisTitle: string;
+}>) {
   return (
-    <View style={styles.graph}>
-      {children}
-      <Text style={styles.graphXAxisTitle}>{xAxisTitle}</Text>
+    <View style={[styles.surface, styles.chartCard]}>
+      <View style={styles.chartHeader}>
+        <Text style={styles.chartTitle}>{title}</Text>
+        {legend}
+      </View>
+      {empty === null ? (
+        <View style={styles.graph}>
+          {children}
+          <Text style={styles.graphXAxisTitle}>{xAxisTitle}</Text>
+        </View>
+      ) : (
+        <View style={styles.emptyGraph}>
+          <Text style={styles.emptyGraphTitle}>
+            {empty === "outcomes" ? "No outcomes yet" : "No runs yet"}
+          </Text>
+          <Text style={styles.emptyGraphText}>
+            {empty === "outcomes"
+              ? "Resolved inferences will populate this graph."
+              : "Runs will populate this graph."}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
 
 function RecommendedWaitChart({
-  runs,
-  horizon,
+  buckets,
 }: {
-  runs: readonly InferenceRun[];
-  horizon: Horizon;
+  buckets: readonly WaitBucket[];
 }) {
-  const data = recommendedWaitData(runs, horizon);
-  if (data.length === 0) {
-    return <EmptyGraph outcomes={false} />;
-  }
-  const scale = chartScale(data.map((item) => item.value ?? 0));
+  const scale = chartScale(buckets.map((bucket) => bucket.runCount));
 
   return (
-    <ChartFrame xAxisTitle="Wait (blocks)">
+    <ChartCard
+      empty={buckets.length === 0 ? "runs" : null}
+      title="Recommended wait distribution"
+      xAxisTitle="Wait (blocks)"
+    >
       <GiftedBarChart
         {...AXIS_PROPS}
-        {...chartScaleProps(scale)}
-        data={data.map((item) => ({
+        {...scale.chartProps}
+        data={buckets.map((bucket) => ({
           frontColor: colors.blue,
-          label: item.label,
-          value: item.value ?? 0,
+          label: bucket.label,
+          value: bucket.runCount,
         }))}
       />
-    </ChartFrame>
+    </ChartCard>
   );
 }
 
 function SavingsByWaitChart({
-  runs,
-  horizon,
+  buckets,
 }: {
-  runs: readonly InferenceRun[];
-  horizon: Horizon;
+  buckets: readonly WaitBucket[];
 }) {
-  const data = savingsByWaitData(runs, horizon);
-  const values = data.flatMap((item) =>
-    item.value === null ? [] : [item.value],
+  const values = buckets.flatMap((bucket) =>
+    bucket.savingsPercent === null ? [] : [bucket.savingsPercent],
   );
-  if (values.length === 0) {
-    return <EmptyGraph outcomes />;
-  }
   const scale = chartScale(values);
 
   return (
-    <ChartFrame xAxisTitle="Wait (blocks)">
+    <ChartCard
+      empty={values.length === 0 ? "outcomes" : null}
+      title="Savings by wait (%)"
+      xAxisTitle="Wait (blocks)"
+    >
       <GiftedBarChart
         {...AXIS_PROPS}
-        {...chartScaleProps(scale)}
-        data={data.map((item) => ({
+        {...scale.chartProps}
+        data={buckets.map((bucket) => ({
           frontColor:
-            item.value !== null && item.value < 0 ? colors.red : colors.teal,
-          label: item.label,
-          value: item.value ?? 0,
+            bucket.savingsPercent !== null && bucket.savingsPercent < 0
+              ? colors.red
+              : colors.teal,
+          label: bucket.label,
+          value: bucket.savingsPercent ?? 0,
         }))}
         formatYLabel={(label) => `${Number(label).toFixed(0)}%`}
         mostNegativeValue={scale.minimum}
         negativeStepValue={scale.step}
         noOfSectionsBelowXAxis={scale.negativeSections}
       />
-    </ChartFrame>
+    </ChartCard>
   );
 }
 
 function BaseFeeByWaitChart({
-  runs,
-  horizon,
+  buckets,
 }: {
-  runs: readonly InferenceRun[];
-  horizon: Horizon;
+  buckets: readonly WaitBucket[];
 }) {
-  const data = feeComparisonData(runs, horizon);
-  if (data.length === 0) {
-    return <EmptyGraph outcomes />;
-  }
+  const data = buckets.filter(
+    (
+      bucket,
+    ): bucket is WaitBucket & {
+      fableGwei: number;
+      immediateGwei: number;
+    } => bucket.fableGwei !== null && bucket.immediateGwei !== null,
+  );
   const scale = chartScale(
-    data.flatMap((item) => [item.immediate, item.fable]),
+    data.flatMap((bucket) => [bucket.immediateGwei, bucket.fableGwei]),
   );
 
   return (
-    <ChartFrame xAxisTitle="Recommended wait (blocks)">
+    <ChartCard
+      legend={
+        <View style={styles.graphLegend}>
+          <View
+            style={[styles.graphLegendDot, styles.graphImmediateDot]}
+          />
+          <Text style={styles.graphLegendLabel}>Act now</Text>
+          <View style={[styles.graphLegendDot, styles.graphFableDot]} />
+          <Text style={styles.graphLegendLabel}>FABLE</Text>
+        </View>
+      }
+      title="Base fee by wait (Gwei)"
+      empty={data.length === 0 ? "outcomes" : null}
+      xAxisTitle="Recommended wait (blocks)"
+    >
       <GiftedBarChart
         {...AXIS_PROPS}
-        {...chartScaleProps(scale)}
+        {...scale.chartProps}
         barWidth={18}
-        data={data.flatMap((item, index) => [
+        data={data.flatMap((bucket, index) => [
           {
             frontColor: colors.amberSoft,
-            label: item.label,
+            label: bucket.label,
             labelWidth: 36,
             spacing: 4,
-            value: item.immediate,
+            value: bucket.immediateGwei,
           },
           {
             frontColor: colors.blue,
             spacing: index === data.length - 1 ? 0 : 20,
-            value: item.fable,
+            value: bucket.fableGwei,
           },
         ])}
         formatYLabel={(label) => {
@@ -240,27 +256,9 @@ function BaseFeeByWaitChart({
         }}
         spacing={0}
       />
-    </ChartFrame>
+    </ChartCard>
   );
 }
-
-const CHARTS = [
-  {
-    title: "Recommended wait distribution",
-    Chart: RecommendedWaitChart,
-    legend: false,
-  },
-  {
-    title: "Savings by wait (%)",
-    Chart: SavingsByWaitChart,
-    legend: false,
-  },
-  {
-    title: "Base fee by wait (Gwei)",
-    Chart: BaseFeeByWaitChart,
-    legend: true,
-  },
-] as const;
 
 function runSummary(run: InferenceRun): string {
   const wait =
@@ -291,55 +289,52 @@ function NetworkPicker({
   onSelect: (chain: Chain) => void;
 }) {
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible>
-      <View style={styles.dialogRoot}>
-        <Pressable
-          accessibilityLabel="Close network picker"
-          onPress={onClose}
-          style={styles.backdrop}
-        />
-        <View style={[styles.dialog, styles.sheet, styles.networkSheet]}>
-          <View style={styles.networkSheetHeader}>
-            <Text style={styles.networkSheetTitle}>Select network</Text>
-            <Pressable
-              accessibilityLabel="Close"
-              hitSlop={10}
-              onPress={onClose}
-            >
-              <Ionicons color={colors.muted} name="close" size={25} />
-            </Pressable>
-          </View>
-          <View style={styles.networkOptions}>
-            {CHAINS.map((chain) => {
-              const active = chain === selected;
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  key={chain}
-                  onPress={() => onSelect(chain)}
+    <Overlay
+      animationType="fade"
+      backdropLabel="Close network picker"
+      onClose={onClose}
+    >
+      <View style={[styles.dialog, styles.sheet, styles.networkSheet]}>
+        <View style={styles.networkSheetHeader}>
+          <Text style={styles.networkSheetTitle}>Select network</Text>
+          <Pressable
+            accessibilityLabel="Close"
+            hitSlop={10}
+            onPress={onClose}
+          >
+            <Ionicons color={colors.muted} name="close" size={25} />
+          </Pressable>
+        </View>
+        <View style={styles.networkOptions}>
+          {CHAINS.map((chain) => {
+            const active = chain === selected;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                key={chain}
+                onPress={() => onSelect(chain)}
+                style={[
+                  styles.networkCard,
+                  styles.networkOption,
+                  active && styles.networkCardActive,
+                ]}
+              >
+                <NetworkIcon chain={chain} size={26} />
+                <Text
                   style={[
-                    styles.networkCard,
-                    styles.networkOption,
-                    active && styles.networkCardActive,
+                    styles.networkOptionText,
+                    active && styles.networkOptionTextActive,
                   ]}
                 >
-                  <NetworkIcon chain={chain} size={26} />
-                  <Text
-                    style={[
-                      styles.networkOptionText,
-                      active && styles.networkOptionTextActive,
-                    ]}
-                  >
-                    {CHAIN_LABELS[chain]}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+                  {CHAIN_LABELS[chain]}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
-    </Modal>
+    </Overlay>
   );
 }
 
@@ -355,102 +350,99 @@ function RunDetails({
   }
   const savings = realizedSavingsPercent(run);
   return (
-    <Modal animationType="slide" onRequestClose={onClose} transparent visible>
-      <View style={styles.dialogRoot}>
-        <Pressable
-          accessibilityLabel="Close run details"
-          onPress={onClose}
-          style={styles.backdrop}
-        />
-        <View style={[styles.dialog, styles.sheet, styles.runDialog]}>
-          <View style={styles.handle} />
-          <View style={styles.dialogHeader}>
-            <View>
-              <Text style={styles.dialogTitle}>Run details</Text>
-              <Text style={styles.dialogDate}>{formatRunDate(run.ran_at)}</Text>
-            </View>
-            <Pressable
-              accessibilityLabel="Close"
-              hitSlop={10}
-              onPress={onClose}
-            >
-              <Ionicons color={colors.muted} name="close" size={27} />
-            </Pressable>
-          </View>
-
-          <View style={styles.selectionSummary}>
-            <View style={styles.selectionItem}>
-              <Text style={styles.detailLabel}>Network</Text>
-              <Text style={styles.detailStrong}>
-                {CHAIN_LABELS[run.chain]}
-              </Text>
-            </View>
-            <View style={styles.selectionItem}>
-              <Text style={styles.detailLabel}>Horizon</Text>
-              <Text style={styles.detailStrong}>{run.K} blocks</Text>
-            </View>
-          </View>
-
-          <Text style={styles.groupTitle}>Prediction</Text>
-          <View style={[styles.surface, styles.detailsCard]}>
-            <DetailRow
-              label="Head block"
-              value={run.head_block.toLocaleString()}
-            />
-            <DetailRow
-              label="Action offset"
-              value={String(run.selected_action_k)}
-            />
-            <DetailRow
-              label="Target block"
-              value={run.target_block.toLocaleString()}
-            />
-            <DetailRow
-              label="Predicted base fee"
-              last
-              value={formatGwei(run.predicted_minimum_base_fee_per_gas)}
-            />
-          </View>
-          <Text style={styles.groupTitle}>Outcome</Text>
-          <View style={[styles.surface, styles.detailsCard]}>
-            <DetailRow
-              label="Act-now base fee"
-              value={
-                run.outcome === undefined
-                  ? "Pending"
-                  : formatGwei(run.outcome.immediate_base_fee_per_gas)
-              }
-            />
-            <DetailRow
-              label="Selected base fee"
-              value={
-                run.outcome === undefined
-                  ? "Pending"
-                  : formatGwei(run.outcome.selected_base_fee_per_gas)
-              }
-            />
-            <DetailRow
-              label="Realized savings"
-              last
-              value={
-                run.outcome === undefined
-                  ? "Pending"
-                  : savings === null
-                    ? "Unavailable"
-                    : formatSavings(savings)
-              }
-            />
+    <Overlay
+      animationType="slide"
+      backdropLabel="Close run details"
+      onClose={onClose}
+    >
+      <View style={[styles.dialog, styles.sheet, styles.runDialog]}>
+        <View style={styles.handle} />
+        <View style={styles.dialogHeader}>
+          <View>
+            <Text style={styles.dialogTitle}>Run details</Text>
+            <Text style={styles.dialogDate}>{formatRunDate(run.ran_at)}</Text>
           </View>
           <Pressable
-            accessibilityRole="button"
+            accessibilityLabel="Close"
+            hitSlop={10}
             onPress={onClose}
-            style={[styles.button, styles.closeButton]}
           >
-            <Text style={styles.buttonText}>Close</Text>
+            <Ionicons color={colors.muted} name="close" size={27} />
           </Pressable>
         </View>
+
+        <View style={styles.selectionSummary}>
+          <View style={styles.selectionItem}>
+            <Text style={styles.detailLabel}>Network</Text>
+            <Text style={styles.detailStrong}>
+              {CHAIN_LABELS[run.chain]}
+            </Text>
+          </View>
+          <View style={styles.selectionItem}>
+            <Text style={styles.detailLabel}>Horizon</Text>
+            <Text style={styles.detailStrong}>{run.K} blocks</Text>
+          </View>
+        </View>
+
+        <Text style={styles.groupTitle}>Prediction</Text>
+        <View style={[styles.surface, styles.detailsCard]}>
+          <DetailRow
+            label="Head block"
+            value={run.head_block.toLocaleString()}
+          />
+          <DetailRow
+            label="Action offset"
+            value={String(run.selected_action_k)}
+          />
+          <DetailRow
+            label="Target block"
+            value={run.target_block.toLocaleString()}
+          />
+          <DetailRow
+            label="Predicted base fee"
+            last
+            value={formatGwei(run.predicted_minimum_base_fee_per_gas)}
+          />
+        </View>
+        <Text style={styles.groupTitle}>Outcome</Text>
+        <View style={[styles.surface, styles.detailsCard]}>
+          <DetailRow
+            label="Act-now base fee"
+            value={
+              run.outcome === undefined
+                ? "Pending"
+                : formatGwei(run.outcome.immediate_base_fee_per_gas)
+            }
+          />
+          <DetailRow
+            label="Selected base fee"
+            value={
+              run.outcome === undefined
+                ? "Pending"
+                : formatGwei(run.outcome.selected_base_fee_per_gas)
+            }
+          />
+          <DetailRow
+            label="Realized savings"
+            last
+            value={
+              run.outcome === undefined
+                ? "Pending"
+                : savings === null
+                  ? "Unavailable"
+                  : formatSavings(savings)
+            }
+          />
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onClose}
+          style={[styles.button, styles.closeButton]}
+        >
+          <Text style={styles.buttonText}>Close</Text>
+        </Pressable>
       </View>
-    </Modal>
+    </Overlay>
   );
 }
 
@@ -458,14 +450,14 @@ export function AnalyticsScreen({
   runs,
   chain,
   horizon,
+  loadError,
   onChainChange,
-  storageError,
 }: {
   runs: readonly InferenceRun[];
   chain: Chain;
   horizon: Horizon;
+  loadError: string | null;
   onChainChange: (chain: Chain) => void;
-  storageError: string | null;
 }) {
   const [analyticsHorizon, setAnalyticsHorizon] =
     useState<Horizon>(horizon);
@@ -473,6 +465,7 @@ export function AnalyticsScreen({
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
   const graphRuns = runsForSelection(runs, chain, analyticsHorizon);
+  const buckets = waitBuckets(graphRuns, analyticsHorizon);
   const summary = summarizeRuns(graphRuns);
 
   return (
@@ -497,9 +490,9 @@ export function AnalyticsScreen({
           </Pressable>
         </View>
 
-        {storageError && (
+        {loadError && (
           <View accessibilityRole="alert" style={styles.storageError}>
-            <Text style={styles.storageErrorText}>{storageError}</Text>
+            <Text style={styles.storageErrorText}>{loadError}</Text>
           </View>
         )}
 
@@ -508,28 +501,19 @@ export function AnalyticsScreen({
           <View style={styles.summaryCards}>
             <SummaryCard
               accent
+              format={formatSavings}
               label="Avg savings"
-              value={
-                summary.averageSavingsPercent === null
-                  ? "—"
-                  : formatSavings(summary.averageSavingsPercent)
-              }
+              value={summary.averageSavingsPercent}
             />
             <SummaryCard
+              format={(value) => `${value.toFixed(0)}%`}
               label="Win rate"
-              value={
-                summary.winPercent === null
-                  ? "—"
-                  : `${summary.winPercent.toFixed(0)}%`
-              }
+              value={summary.winPercent}
             />
             <SummaryCard
+              format={(value) => value.toFixed(1)}
               label="Avg wait (blocks)"
-              value={
-                summary.averageWait === null
-                  ? "—"
-                  : summary.averageWait.toFixed(1)
-              }
+              value={summary.averageWait}
             />
           </View>
         </View>
@@ -547,35 +531,9 @@ export function AnalyticsScreen({
             </View>
           </View>
           <View style={styles.chartCards}>
-            {CHARTS.map(({ title, Chart, legend }) => (
-              <View
-                key={title}
-                style={[styles.surface, styles.chartCard]}
-              >
-                <View style={styles.chartHeader}>
-                  <Text style={styles.chartTitle}>{title}</Text>
-                  {legend && (
-                    <View style={styles.graphLegend}>
-                      <View
-                        style={[
-                          styles.graphLegendDot,
-                          styles.graphImmediateDot,
-                        ]}
-                      />
-                      <Text style={styles.graphLegendLabel}>Act now</Text>
-                      <View
-                        style={[
-                          styles.graphLegendDot,
-                          styles.graphFableDot,
-                        ]}
-                      />
-                      <Text style={styles.graphLegendLabel}>FABLE</Text>
-                    </View>
-                  )}
-                </View>
-                <Chart horizon={analyticsHorizon} runs={graphRuns} />
-              </View>
-            ))}
+            <RecommendedWaitChart buckets={buckets} />
+            <SavingsByWaitChart buckets={buckets} />
+            <BaseFeeByWaitChart buckets={buckets} />
           </View>
         </View>
 

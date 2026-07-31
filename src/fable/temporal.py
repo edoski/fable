@@ -25,10 +25,7 @@ _PositiveFiniteFloat = Annotated[float, Field(gt=0.0, allow_inf_nan=False)]
 
 class FeatureState(StrictFrozenRecord):
     means: Annotated[tuple[_FiniteFloat, ...], Field(min_length=1)]
-    standard_deviations: Annotated[
-        tuple[_PositiveFiniteFloat, ...],
-        Field(min_length=1),
-    ]
+    standard_deviations: Annotated[tuple[_PositiveFiniteFloat, ...], Field(min_length=1)]
 
     @model_validator(mode="after")
     def validate_widths(self) -> Self:
@@ -38,9 +35,7 @@ class FeatureState(StrictFrozenRecord):
 
 
 def fit_feature_state(
-    training_support: BlockFrame,
-    *,
-    ordered_features: tuple[FeatureName, ...],
+    training_support: BlockFrame, *, ordered_features: tuple[FeatureName, ...]
 ) -> FeatureState:
     raw = _raw_feature_rows(
         training_support.to_polars(),
@@ -56,33 +51,22 @@ def fit_feature_state(
 
 
 def transform_feature_rows(
-    blocks: BlockFrame,
-    *,
-    ordered_features: tuple[FeatureName, ...],
-    state: FeatureState,
+    blocks: BlockFrame, *, ordered_features: tuple[FeatureName, ...], state: FeatureState
 ) -> NDArray[np.float32]:
     raw = _raw_feature_rows(
-        blocks.to_polars(),
-        chain_id=blocks.definition.chain_id,
-        ordered_features=ordered_features,
+        blocks.to_polars(), chain_id=blocks.definition.chain_id, ordered_features=ordered_features
     )
     means = np.asarray(state.means, dtype=np.float64)
     standard_deviations = np.asarray(state.standard_deviations, dtype=np.float64)
     with np.errstate(over="ignore", invalid="ignore"):
-        transformed = np.ascontiguousarray(
-            (raw - means) / standard_deviations,
-            dtype=np.float32,
-        )
+        transformed = np.ascontiguousarray((raw - means) / standard_deviations, dtype=np.float32)
     if not np.isfinite(transformed).all():
         raise ValueError("transformed features must be finite float32 values")
     return transformed
 
 
 def _raw_feature_rows(
-    blocks: pl.DataFrame,
-    *,
-    chain_id: int,
-    ordered_features: tuple[FeatureName, ...],
+    blocks: pl.DataFrame, *, chain_id: int, ordered_features: tuple[FeatureName, ...]
 ) -> NDArray[np.float64]:
     needs_predecessor = "block_interval_seconds" in ordered_features
     columns = []
@@ -95,9 +79,7 @@ def _raw_feature_rows(
 
 
 def _feature_values(
-    blocks: pl.DataFrame,
-    chain_id: int,
-    feature_name: FeatureName,
+    blocks: pl.DataFrame, chain_id: int, feature_name: FeatureName
 ) -> NDArray[np.float64]:
     match feature_name:
         case "log_base_fee_per_gas":
@@ -151,18 +133,13 @@ def _forming_base_fee_logs(blocks: pl.DataFrame) -> NDArray[np.float64]:
     )
 
 
-def _forming_child_base_fee(
-    base_fee_per_gas: int,
-    gas_used: int,
-    gas_limit: int,
-) -> int:
+def _forming_child_base_fee(base_fee_per_gas: int, gas_used: int, gas_limit: int) -> int:
     gas_target = gas_limit // 2
     if gas_used == gas_target:
         return base_fee_per_gas
     if gas_used > gas_target:
         return base_fee_per_gas + max(
-            base_fee_per_gas * (gas_used - gas_target) // gas_target // 8,
-            1,
+            base_fee_per_gas * (gas_used - gas_target) // gas_target // 8, 1
         )
     return base_fee_per_gas - (base_fee_per_gas * (gas_target - gas_used) // gas_target // 8)
 
@@ -219,18 +196,8 @@ class HistoricalDataset(Dataset[int]):
     def to(self, device: torch.device) -> HistoricalDataset:
         return self._to(self._backing.to(device), device)
 
-    def loader(
-        self,
-        *,
-        batch_size: int,
-        shuffle: bool,
-    ) -> Iterable[_HistoricalItem]:
-        return DataLoader(
-            self,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            collate_fn=self._batch,
-        )
+    def loader(self, *, batch_size: int, shuffle: bool) -> Iterable[_HistoricalItem]:
+        return DataLoader(self, batch_size=batch_size, shuffle=shuffle, collate_fn=self._batch)
 
     def _to(self, backing: _HistoricalBacking, device: torch.device) -> HistoricalDataset:
         return HistoricalDataset(
@@ -273,10 +240,7 @@ class HistoricalPreparation:
         )
 
 
-def prepare_fit_history(
-    corpus: Corpus,
-    experiment: ExperimentSemantics,
-) -> HistoricalPreparation:
+def prepare_fit_history(corpus: Corpus, experiment: ExperimentSemantics) -> HistoricalPreparation:
     """Fit training-only state and prepare the authored fit windows."""
 
     training_window = experiment.training_window
@@ -285,12 +249,10 @@ def prepare_fit_history(
     training_first_block = training_window.first_parent_block - experiment.context_blocks + 1
     predecessor_blocks = _feature_predecessor_blocks(experiment.ordered_features)
     training_support = corpus.blocks.select_range(
-        training_first_block - predecessor_blocks,
-        training_window.last_parent_block,
+        training_first_block - predecessor_blocks, training_window.last_parent_block
     )
     feature_state = fit_feature_state(
-        training_support,
-        ordered_features=experiment.ordered_features,
+        training_support, ordered_features=experiment.ordered_features
     )
 
     backing = _build_backing(
@@ -301,27 +263,14 @@ def prepare_fit_history(
         feature_state=feature_state,
     )
     training_origins = _origin_rows(backing, training_window)
-    training_labels, training_minima = _minimum_outcomes(
-        backing.base_fees.numpy(),
-        training_origins,
-        horizon_blocks=experiment.horizon_blocks,
+    _, training_minima = _minimum_outcomes(
+        backing.base_fees.numpy(), training_origins, horizon_blocks=experiment.horizon_blocks
     )
     target_state = fit_target_state(training_minima)
 
     return HistoricalPreparation(
-        training=_build_dataset(
-            backing,
-            experiment,
-            training_window,
-            target_state,
-            outcomes=(training_labels, training_minima),
-        ),
-        validation=_build_dataset(
-            backing,
-            experiment,
-            validation_window,
-            target_state,
-        ),
+        training=_build_dataset(backing, experiment, training_window, target_state),
+        validation=_build_dataset(backing, experiment, validation_window, target_state),
         feature_state=feature_state,
         target_state=target_state,
     )
@@ -362,11 +311,7 @@ def _build_backing(
 ) -> _HistoricalBacking:
     predecessor_blocks = _feature_predecessor_blocks(ordered_features)
     blocks = corpus.blocks.select_range(first_block - predecessor_blocks, last_block)
-    inputs = transform_feature_rows(
-        blocks,
-        ordered_features=ordered_features,
-        state=feature_state,
-    )
+    inputs = transform_feature_rows(blocks, ordered_features=ordered_features, state=feature_state)
     frame = blocks.to_polars().slice(predecessor_blocks)
     base_fees = frame["base_fee_per_gas"].to_numpy(writable=True)
     return _HistoricalBacking(
@@ -389,10 +334,7 @@ def _origin_rows(backing: _HistoricalBacking, window: BlockWindow) -> _IntVector
 
 
 def _minimum_outcomes(
-    base_fees: _IntVector,
-    origin_rows: _IntVector,
-    *,
-    horizon_blocks: int,
+    base_fees: _IntVector, origin_rows: _IntVector, *, horizon_blocks: int
 ) -> tuple[_IntVector, _IntVector]:
     labels = np.empty(origin_rows.size, dtype=np.int64)
     minima = np.empty(origin_rows.size, dtype=np.int64)
@@ -400,9 +342,8 @@ def _minimum_outcomes(
     for start in range(0, origin_rows.size, _OUTCOME_CHUNK_SIZE):
         stop = min(start + _OUTCOME_CHUNK_SIZE, origin_rows.size)
         outcomes = base_fees[origin_rows[start:stop, None] + offsets]
-        chunk_labels = outcomes.argmin(axis=1)
-        labels[start:stop] = chunk_labels
-        minima[start:stop] = outcomes[np.arange(stop - start), chunk_labels]
+        labels[start:stop] = outcomes.argmin(axis=1)
+        minima[start:stop] = outcomes.min(axis=1)
     return labels, minima
 
 
@@ -411,18 +352,10 @@ def _build_dataset(
     experiment: ExperimentSemantics,
     window: BlockWindow,
     target_state: TargetState,
-    *,
-    outcomes: tuple[_IntVector, _IntVector] | None = None,
 ) -> HistoricalDataset:
     origin_rows = _origin_rows(backing, window)
-    labels, minima = (
-        _minimum_outcomes(
-            backing.base_fees.numpy(),
-            origin_rows,
-            horizon_blocks=experiment.horizon_blocks,
-        )
-        if outcomes is None
-        else outcomes
+    labels, minima = _minimum_outcomes(
+        backing.base_fees.numpy(), origin_rows, horizon_blocks=experiment.horizon_blocks
     )
     return HistoricalDataset(
         backing,

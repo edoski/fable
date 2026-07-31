@@ -11,15 +11,10 @@ from uuid import UUID
 from pydantic import UUID4, Field, model_validator
 
 from .addresses import study_json_path
-from .config import (
-    Method,
-    SelectedStudySource,
-    TuneRequest,
-)
+from .config import Method, SelectedStudySource, TuneRequest
 from .records import StrictFrozenRecord
 
 _Epoch: TypeAlias = Annotated[int, Field(ge=1)]
-_MethodIndex: TypeAlias = Annotated[int, Field(ge=0)]
 
 
 class RetainedResult(StrictFrozenRecord):
@@ -48,32 +43,24 @@ class Study(StrictFrozenRecord):
         return self
 
     def best_result(self) -> tuple[int, RetainedResult]:
-        return min(
-            enumerate(self.trials),
-            key=lambda indexed: indexed[1].objective,
-        )
+        return min(enumerate(self.trials), key=lambda indexed: indexed[1].objective)
 
 
 class _CandidateResult(StrictFrozenRecord):
     request: TuneRequest
-    method_index: _MethodIndex
+    method_index: Annotated[int, Field(ge=0)]
     result: RetainedResult
 
 
 def retain_result(
-    storage_root: Path,
-    request: TuneRequest,
-    method_index: int,
-    result: RetainedResult,
+    storage_root: Path, request: TuneRequest, method_index: int, result: RetainedResult
 ) -> None:
     result_path = _result_path(storage_root, request.study_id, method_index)
     result_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = result_path.with_name(f".{result_path.name}.tmp")
     temporary.write_text(
         _CandidateResult(
-            request=request,
-            method_index=method_index,
-            result=result,
+            request=request, method_index=method_index, result=result
         ).model_dump_json(),
         encoding="utf-8",
     )
@@ -87,10 +74,6 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
     request = first.request
     if request.study_id != study_id:
         raise ValueError("result Study ID does not match requested Study ID")
-
-    canonical = study_json_path(storage_root, study_id)
-    if canonical.exists():
-        raise FileExistsError(canonical)
 
     expected_paths = tuple(
         _result_path(storage_root, study_id, index) for index in range(len(request.methods))
@@ -109,24 +92,22 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
 
     completed = scratch / "study.json"
     completed.write_text(
-        Study(request=request, trials=tuple(trials)).model_dump_json(),
-        encoding="utf-8",
+        Study(request=request, trials=tuple(trials)).model_dump_json(), encoding="utf-8"
     )
-    os.link(completed, canonical)
+    os.link(completed, study_json_path(storage_root, study_id))
     shutil.rmtree(scratch)
 
 
 def load_study(storage_root: Path, study_id: UUID) -> Study:
-    study = _load_study_path(study_json_path(storage_root, study_id))
+    study = Study.model_validate_json(
+        study_json_path(storage_root, study_id).read_bytes(), strict=True
+    )
     if study.request.study_id != study_id:
         raise ValueError("Study ID does not match requested Study ID")
     return study
 
 
-def load_selected_method(
-    storage_root: Path,
-    source: SelectedStudySource,
-) -> Method:
+def load_selected_method(storage_root: Path, source: SelectedStudySource) -> Method:
     study = load_study(storage_root, source.study_id)
     if study.request.corpus_id != source.corpus_id:
         raise ValueError("selected source Corpus ID does not match canonical Study")
@@ -138,20 +119,12 @@ def _study_scratch(storage_root: Path, study_id: UUID4) -> Path:
     return storage_root / "studies" / f".{study_id}"
 
 
-def candidate_scratch_directory(
-    storage_root: Path,
-    study_id: UUID4,
-    method_index: int,
-) -> Path:
+def candidate_scratch_directory(storage_root: Path, study_id: UUID4, method_index: int) -> Path:
     return _study_scratch(storage_root, study_id) / f"candidate-{method_index}"
 
 
 def _result_path(storage_root: Path, study_id: UUID4, method_index: int) -> Path:
     return _study_scratch(storage_root, study_id) / f"result-{method_index}.json"
-
-
-def _load_study_path(path: Path) -> Study:
-    return Study.model_validate_json(path.read_bytes(), strict=True)
 
 
 def _load_candidate_result_path(path: Path) -> _CandidateResult:

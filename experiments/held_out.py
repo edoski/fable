@@ -2,47 +2,32 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import polars as pl
-import typer
-from bundle import (
-    StorageRoot,
-    bundle_path,
-    open_bundle,
-    publish_bundle,
-    read_cells,
-    write_cells,
-    write_request,
-)
+from bundle import StorageRoot, close_bundle, open_bundle, run, write_evaluate_cells
 
 from fable.config import BlockWindow, EvaluateRequest
 from fable.corpus import load_corpus_request
 from fable.evaluation import reduce_baselines, reduce_evaluation, reduce_rolling
-from fable.experiments import (
-    ExperimentKind,
-    load_experiment_manifest,
-)
+from fable.experiments import ExperimentKind, load_experiment_manifest
 from fable.study import load_study
 
 _MAX_HORIZON = 200
 _KIND = ExperimentKind.HELD_OUT
 
 
-def prepare(
-    storage_root: StorageRoot,
-    hpo_experiment_id: UUID,
-    k_experiment_id: UUID,
-) -> None:
+def prepare(storage_root: StorageRoot, hpo_experiment_id: UUID, k_experiment_id: UUID) -> None:
     experiment_id = uuid4()
     hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_experiment_id)
     studies = {cell: load_study(storage_root, study_id) for cell, study_id in hpo.items()}
     bundle = open_bundle(storage_root, _KIND, experiment_id)
 
-    rows: list[tuple[str, Path, UUID]] = []
-    for index, (cell, artifact_id) in enumerate(k_study.items()):
+    cells: list[tuple[str, EvaluateRequest]] = []
+    for cell, artifact_id in k_study.items():
         chain, family, horizon_label = cell.split(".")
         horizon = int(horizon_label.removeprefix("K"))
         study = studies[f"{chain}.{family}"]
@@ -54,45 +39,35 @@ def prepare(
             artifact_id=artifact_id,
             corpus_id=study.request.corpus_id,
             testing_window=BlockWindow(
-                first_parent_block=first_parent,
-                last_parent_block=last_parent,
+                first_parent_block=first_parent, last_parent_block=last_parent
             ),
         )
-        request_path = write_request(bundle, index, request)
-        rows.append((cell, request_path, request.evaluation_id))
+        cells.append((cell, request))
 
-    write_cells(bundle, ("cell", "request", "evaluation_id"), rows)
+    write_evaluate_cells(bundle, cells)
 
     print(experiment_id)
 
 
 def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
-    bundle = bundle_path(storage_root, _KIND, experiment_id)
-    rows = read_cells(bundle)
-
-    cells: dict[str, UUID] = {}
-    for row in rows:
-        evaluation_id = UUID(row["evaluation_id"])
-        reduce_evaluation(storage_root, evaluation_id)
-        cells[row["cell"]] = evaluation_id
-    publish_bundle(storage_root, _KIND, experiment_id, cells)
-    print(experiment_id)
+    close_bundle(storage_root, _KIND, experiment_id, "evaluation_id", reduce_evaluation)
 
 
 def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
-    manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
-    results = [
-        pl.DataFrame({"cell": [cell]}).hstack(reduce_evaluation(storage_root, evaluation_id))
-        for cell, evaluation_id in manifest.items()
-    ]
-    print(pl.concat(results).write_csv(None, separator="\t"), end="")
+    _print_cells(storage_root, experiment_id, reduce_evaluation)
 
 
 def baselines(storage_root: StorageRoot, experiment_id: UUID) -> None:
+    _print_cells(storage_root, experiment_id, reduce_baselines)
+
+
+def _print_cells(
+    storage_root: Path, experiment_id: UUID, reducer: Callable[[Path, UUID], pl.DataFrame]
+) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     results = []
     for cell, evaluation_id in manifest.items():
-        result = reduce_baselines(storage_root, evaluation_id)
+        result = reducer(storage_root, evaluation_id)
         results.append(pl.DataFrame({"cell": [cell] * result.height}).hstack(result))
     print(pl.concat(results).write_csv(None, separator="\t"), end="")
 
@@ -108,13 +83,5 @@ def rolling(storage_root: StorageRoot, experiment_id: UUID) -> None:
     print(reduce_rolling(storage_root, roster).write_csv(None, separator="\t"), end="")
 
 
-app = typer.Typer(add_completion=False)
-app.command()(prepare)
-app.command()(close)
-app.command()(report)
-app.command()(baselines)
-app.command()(rolling)
-
-
 if __name__ == "__main__":
-    app()
+    run(prepare, close, report, baselines, rolling)

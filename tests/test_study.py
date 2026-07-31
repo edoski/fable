@@ -44,34 +44,19 @@ FIT = FitMethod(
 )
 
 LSTM_METHOD = Method(
-    model=LstmDefinition(
-        family="lstm",
-        hidden=256,
-        layers=1,
-        head_hidden=128,
-        dropout=0.2,
-    ),
-    fit=FIT,
+    model=LstmDefinition(family="lstm", hidden=256, layers=1, head_hidden=128, dropout=0.2), fit=FIT
 )
 OTHER_LSTM_METHOD = LSTM_METHOD.model_copy(
-    update={"fit": FIT.model_copy(update={"learning_rate": 1e-4})},
+    update={"fit": FIT.model_copy(update={"learning_rate": 1e-4})}
 )
-RESULT = RetainedResult(
-    objective=0.5,
-    selected_epoch=2,
-    completed_epochs=5,
-)
+RESULT = RetainedResult(objective=0.5, selected_epoch=2, completed_epochs=5)
 
 
 def _experiment(*, shift: int = 0) -> ExperimentSemantics:
     return ExperimentSemantics(
-        training_window=BlockWindow(
-            first_parent_block=100 + shift,
-            last_parent_block=199 + shift,
-        ),
+        training_window=BlockWindow(first_parent_block=100 + shift, last_parent_block=199 + shift),
         validation_window=BlockWindow(
-            first_parent_block=220 + shift,
-            last_parent_block=249 + shift,
+            first_parent_block=220 + shift, last_parent_block=249 + shift
         ),
         context_blocks=200,
         horizon_blocks=5,
@@ -80,9 +65,7 @@ def _experiment(*, shift: int = 0) -> ExperimentSemantics:
 
 
 def _request(
-    methods: tuple[Method, ...] = (LSTM_METHOD,),
-    *,
-    corpus_id: UUID = CORPUS_ID,
+    methods: tuple[Method, ...] = (LSTM_METHOD,), *, corpus_id: UUID = CORPUS_ID
 ) -> TuneRequest:
     return TuneRequest(
         workflow="tune",
@@ -93,20 +76,10 @@ def _request(
     )
 
 
-def test_retain_publish_and_load_selected_method_in_request_order(
-    tmp_path: Path,
-) -> None:
+def test_retain_publish_and_load_selected_method_in_request_order(tmp_path: Path) -> None:
     request = _request((LSTM_METHOD, OTHER_LSTM_METHOD))
-    first = RetainedResult(
-        objective=-0.4,
-        selected_epoch=3,
-        completed_epochs=8,
-    )
-    second = RetainedResult(
-        objective=-0.3,
-        selected_epoch=4,
-        completed_epochs=9,
-    )
+    first = RetainedResult(objective=-0.4, selected_epoch=3, completed_epochs=8)
+    second = RetainedResult(objective=-0.3, selected_epoch=4, completed_epochs=9)
 
     retain_result(tmp_path, request, 1, second)
     retain_result(tmp_path, request, 0, first)
@@ -129,11 +102,7 @@ def test_retain_publish_and_load_selected_method_in_request_order(
 
 def test_retained_result_rejects_invalid_epoch_bounds() -> None:
     with pytest.raises(ValidationError, match="selected_epoch must not exceed completed_epochs"):
-        RetainedResult(
-            objective=0.5,
-            selected_epoch=3,
-            completed_epochs=2,
-        )
+        RetainedResult(objective=0.5, selected_epoch=3, completed_epochs=2)
 
 
 @pytest.mark.parametrize(
@@ -141,26 +110,16 @@ def test_retained_result_rejects_invalid_epoch_bounds() -> None:
     [
         ((RESULT, RESULT), "trials must align with request methods"),
         (
-            (
-                RetainedResult(
-                    objective=0.5,
-                    selected_epoch=1,
-                    completed_epochs=13,
-                ),
-            ),
+            (RetainedResult(objective=0.5, selected_epoch=1, completed_epochs=13),),
             "completed_epochs must not exceed method.fit.max_epochs",
         ),
     ],
 )
 def test_study_rejects_trials_outside_request_contract(
-    trials: tuple[RetainedResult, ...],
-    message: str,
+    trials: tuple[RetainedResult, ...], message: str
 ) -> None:
     with pytest.raises(ValidationError, match=message):
-        Study(
-            request=_request(),
-            trials=trials,
-        )
+        Study(request=_request(), trials=trials)
 
 
 def test_study_selects_the_earliest_minimum() -> None:
@@ -184,15 +143,8 @@ def test_publish_study_rejects_missing_result(tmp_path: Path) -> None:
 
 def test_publish_study_rejects_mismatched_result_request(tmp_path: Path) -> None:
     request = _request((LSTM_METHOD, OTHER_LSTM_METHOD))
-    conflicting = _request(
-        (LSTM_METHOD, OTHER_LSTM_METHOD),
-        corpus_id=OTHER_CORPUS_ID,
-    )
-    second = RetainedResult(
-        objective=0.4,
-        selected_epoch=3,
-        completed_epochs=8,
-    )
+    conflicting = _request((LSTM_METHOD, OTHER_LSTM_METHOD), corpus_id=OTHER_CORPUS_ID)
+    second = RetainedResult(objective=0.4, selected_epoch=3, completed_epochs=8)
     retain_result(tmp_path, request, 0, RESULT)
     retain_result(tmp_path, conflicting, 1, second)
 
@@ -218,14 +170,10 @@ def test_load_selected_method_rejects_corpus_mismatch(tmp_path: Path) -> None:
     canonical = study_json_path(tmp_path, STUDY_ID)
     canonical.parent.mkdir(parents=True)
     canonical.write_text(
-        Study(request=_request(), trials=(RESULT,)).model_dump_json(),
-        encoding="utf-8",
+        Study(request=_request(), trials=(RESULT,)).model_dump_json(), encoding="utf-8"
     )
     source = SelectedStudySource(
-        corpus_id=OTHER_CORPUS_ID,
-        study_id=STUDY_ID,
-        study_result_index=0,
-        experiment=_experiment(),
+        corpus_id=OTHER_CORPUS_ID, study_id=STUDY_ID, study_result_index=0, experiment=_experiment()
     )
 
     with pytest.raises(ValueError, match="Corpus ID does not match"):
@@ -251,8 +199,7 @@ def test_load_study_rejects_embedded_id_mismatch(tmp_path: Path) -> None:
     canonical.parent.mkdir(parents=True)
     request = _request().model_copy(update={"study_id": OTHER_STUDY_ID})
     canonical.write_text(
-        Study(request=request, trials=(RESULT,)).model_dump_json(),
-        encoding="utf-8",
+        Study(request=request, trials=(RESULT,)).model_dump_json(), encoding="utf-8"
     )
 
     with pytest.raises(ValueError, match="Study ID does not match requested Study ID"):
@@ -260,8 +207,7 @@ def test_load_study_rejects_embedded_id_mismatch(tmp_path: Path) -> None:
 
 
 def test_publish_study_preserves_canonical_created_during_publication(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     retain_result(tmp_path, _request(), 0, RESULT)
     canonical = study_json_path(tmp_path, STUDY_ID)

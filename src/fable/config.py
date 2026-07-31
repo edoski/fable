@@ -198,8 +198,7 @@ class EvaluateRequest(StrictFrozenRecord):
 
 
 WorkflowRequest: TypeAlias = Annotated[
-    TrainRequest | EvaluateRequest,
-    Field(discriminator="workflow"),
+    TrainRequest | EvaluateRequest, Field(discriminator="workflow")
 ]
 
 WORKFLOW_REQUEST_ADAPTER = TypeAdapter(WorkflowRequest)

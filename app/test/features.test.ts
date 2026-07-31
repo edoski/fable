@@ -93,4 +93,35 @@ describe("buildModelInput", () => {
       }),
     ).toThrow("Model input must contain finite float32 values");
   });
+
+  it("requires complete nonnegative priority-fee rewards", () => {
+    const blocks = fixtureBlocks();
+    const manifest = fixtureManifest();
+    const rewards = fixturePriorityFeeRewards();
+    const missingP50 = rewards.map(
+      (reward) => [...reward] as [bigint, bigint],
+    );
+    const missingP90 = rewards.map(
+      (reward) => [...reward] as [bigint, bigint],
+    );
+    Reflect.deleteProperty(missingP50[0], "0");
+    Reflect.deleteProperty(missingP90[0], "1");
+    const malformed = [
+      null,
+      rewards.slice(0, -1),
+      missingP50,
+      missingP90,
+      rewards.map((reward, index) =>
+        index === 0 ? ([-1n, reward[1]] as const) : reward,
+      ),
+    ];
+
+    for (const values of malformed) {
+      expect(() =>
+        buildModelInput(blocks, values, manifest),
+      ).toThrow(
+        "Priority-fee rewards must provide nonnegative P50 and P90 values for every context block",
+      );
+    }
+  });
 });

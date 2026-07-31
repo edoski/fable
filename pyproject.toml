@@ -46,8 +46,14 @@ fable = "fable.cli:app"
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

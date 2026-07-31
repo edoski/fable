@@ -16,10 +16,13 @@ import {
   deferred,
   flushMicrotasks,
   inferenceResult,
+  inferenceRun,
 } from "./helpers";
 
 const mocks = vi.hoisted(() => ({
   addRun: vi.fn(),
+  analyticsProps: null as Record<string, unknown> | null,
+  bottomTabsProps: null as Record<string, unknown> | null,
   createInferenceEngine: vi.fn(),
   inferenceProps: null as Record<string, unknown> | null,
   loadRuns: vi.fn(),
@@ -49,11 +52,17 @@ vi.mock("../src/components/AppHeader", () => ({
 }));
 
 vi.mock("../src/components/BottomTabs", () => ({
-  BottomTabs: () => null,
+  BottomTabs: (props: Record<string, unknown>) => {
+    mocks.bottomTabsProps = props;
+    return null;
+  },
 }));
 
 vi.mock("../src/screens/AnalyticsScreen", () => ({
-  AnalyticsScreen: () => null,
+  AnalyticsScreen: (props: Record<string, unknown>) => {
+    mocks.analyticsProps = props;
+    return null;
+  },
 }));
 
 vi.mock("../src/screens/InferenceScreen", () => ({
@@ -114,6 +123,18 @@ function inferenceProps(): {
   return mocks.inferenceProps as ReturnType<typeof inferenceProps>;
 }
 
+function bottomTabsProps(): {
+  onSelect(tab: "analytics" | "inference"): void;
+} {
+  return mocks.bottomTabsProps as ReturnType<typeof bottomTabsProps>;
+}
+
+function analyticsProps(): {
+  loadError: string | null;
+} {
+  return mocks.analyticsProps as ReturnType<typeof analyticsProps>;
+}
+
 beforeEach(() => {
   (
     globalThis as typeof globalThis & {
@@ -121,6 +142,8 @@ beforeEach(() => {
     }
   ).IS_REACT_ACT_ENVIRONMENT = true;
   engines.length = 0;
+  mocks.analyticsProps = null;
+  mocks.bottomTabsProps = null;
   mocks.inferenceProps = null;
   mocks.addRun.mockReset();
   mocks.loadRuns.mockReset().mockResolvedValue([]);
@@ -195,5 +218,36 @@ describe("App engine selection", () => {
     expect(inferenceProps().state).toEqual({ status: "idle" });
     expect(mocks.addRun).not.toHaveBeenCalled();
     expect(mocks.saveRuns).not.toHaveBeenCalled();
+  });
+});
+
+describe("App history persistence", () => {
+  it("reports initial history load failures in Analytics", async () => {
+    mocks.loadRuns.mockRejectedValueOnce(new Error("Corrupt history"));
+    await renderApp();
+
+    act(() => bottomTabsProps().onSelect("analytics"));
+
+    expect(analyticsProps().loadError).toBe("Corrupt history");
+  });
+
+  it("reports inference save failures only through the inference state", async () => {
+    const result = inferenceResult();
+    mocks.addRun.mockReturnValue([inferenceRun()]);
+    mocks.saveRuns.mockRejectedValueOnce(new Error("Storage unavailable"));
+    await renderApp();
+
+    act(() => inferenceProps().onRun());
+    await act(async () => {
+      engines[0].resolveRun(result);
+      await flushMicrotasks();
+    });
+
+    expect(inferenceProps().state).toEqual({
+      message: "Could not save this run.",
+      status: "error",
+    });
+    act(() => bottomTabsProps().onSelect("analytics"));
+    expect(analyticsProps().loadError).toBeNull();
   });
 });

@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  feeComparisonData,
-  recommendedWaitData,
   runsForSelection,
-  savingsByWaitData,
   summarizeRuns,
+  waitBuckets,
 } from "../src/analytics";
 import type { InferenceRun } from "../src/history";
 import { inferenceRun } from "./helpers";
@@ -55,6 +53,7 @@ describe("analytics", () => {
     const selectedRuns = [
       resolved("act-now", 0, 10, 10),
       resolved("saved", 1, 10, 8),
+      resolved("saved-more", 1, 20, 12),
       inferenceRun({
         id: "pending",
         selected_action_k: 1,
@@ -78,25 +77,42 @@ describe("analytics", () => {
       5,
     );
 
-    expect(recommendedWaitData(collection, 5)).toEqual([
-      { label: "0", value: 1 },
-      { label: "1", value: 2 },
-      { label: "2", value: 1 },
-      { label: "3", value: 1 },
-      { label: "4", value: 1 },
-    ]);
-    expect(savingsByWaitData(collection, 5)).toEqual([
-      { label: "0", value: 0 },
-      { label: "1", value: 20 },
-      { label: "2", value: -20 },
-      { label: "3", value: 100 },
-      { label: "4", value: null },
-    ]);
-    expect(feeComparisonData(collection, 5)).toEqual([
-      { label: "0", immediate: 10, fable: 10 },
-      { label: "1", immediate: 10, fable: 8 },
-      { label: "2", immediate: 10, fable: 12 },
-      { label: "3", immediate: 10, fable: 0 },
+    expect(waitBuckets(collection, 5)).toEqual([
+      {
+        fableGwei: 10,
+        immediateGwei: 10,
+        label: "0",
+        runCount: 1,
+        savingsPercent: 0,
+      },
+      {
+        fableGwei: 10,
+        immediateGwei: 15,
+        label: "1",
+        runCount: 3,
+        savingsPercent: 30,
+      },
+      {
+        fableGwei: 12,
+        immediateGwei: 10,
+        label: "2",
+        runCount: 1,
+        savingsPercent: -20,
+      },
+      {
+        fableGwei: 0,
+        immediateGwei: 10,
+        label: "3",
+        runCount: 1,
+        savingsPercent: 100,
+      },
+      {
+        fableGwei: null,
+        immediateGwei: null,
+        label: "4",
+        runCount: 1,
+        savingsPercent: null,
+      },
     ]);
   });
 
@@ -106,8 +122,6 @@ describe("analytics", () => {
       averageSavingsPercent: null,
       winPercent: null,
     });
-    expect(recommendedWaitData([], 5)).toEqual([]);
-    expect(savingsByWaitData([], 5)).toEqual([]);
-    expect(feeComparisonData([], 5)).toEqual([]);
+    expect(waitBuckets([], 5)).toEqual([]);
   });
 });

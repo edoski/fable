@@ -2,18 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from statistics import fmean
 from uuid import UUID, uuid4
 
-import typer
-from bundle import (
-    StorageRoot,
-    close_study_bundle,
-    open_bundle,
-    write_cells,
-    write_request,
-)
+from bundle import StorageRoot, close_bundle, open_bundle, run, write_tune_cells
 
 from fable.config import (
     BlockWindow,
@@ -26,10 +18,7 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.experiments import (
-    ExperimentKind,
-    load_experiment_manifest,
-)
+from fable.experiments import ExperimentKind, load_experiment_manifest
 from fable.study import load_study
 
 _KIND = ExperimentKind.FEATURE_ABLATION
@@ -66,13 +55,7 @@ _FIT = FitMethod(
 )
 _METHODS = (
     Method(
-        model=LstmDefinition(
-            family="lstm",
-            hidden=256,
-            layers=2,
-            head_hidden=256,
-            dropout=0.2,
-        ),
+        model=LstmDefinition(family="lstm", hidden=256, layers=2, head_hidden=256, dropout=0.2),
         fit=_FIT,
     ),
     Method(
@@ -102,71 +85,42 @@ _METHODS = (
         fit=_FIT,
     ),
 )
+_FEATURE_UNITS: tuple[tuple[str, tuple[FeatureName, ...]], ...] = (
+    ("base_fee", ("log_base_fee_per_gas",)),
+    ("gas_utilization", ("gas_utilization",)),
+    ("exact_forming_base_fee", ("log_exact_forming_base_fee_per_gas",)),
+    ("gas_limit", ("log_gas_limit",)),
+    ("transaction_count", ("log1p_tx_count",)),
+    ("block_interval", ("block_interval_seconds",)),
+    ("hour", ("hour_sin", "hour_cos")),
+    ("day_of_week", ("dow_sin", "dow_cos")),
+    ("priority_fee_p50", ("log1p_effective_priority_fee_per_gas_p50",)),
+    ("priority_fee_p90", ("log1p_effective_priority_fee_per_gas_p90",)),
+)
 
 
-def _feature_units(chain: str) -> tuple[tuple[str, tuple[FeatureName, ...]], ...]:
-    units: list[tuple[str, tuple[FeatureName, ...]]] = [
-        ("base_fee", ("log_base_fee_per_gas",)),
-        ("gas_utilization", ("gas_utilization",)),
-    ]
-    if chain == "ethereum":
-        units.append(("exact_forming_base_fee", ("log_exact_forming_base_fee_per_gas",)))
-    units.extend(
-        (
-            ("gas_limit", ("log_gas_limit",)),
-            ("transaction_count", ("log1p_tx_count",)),
-            ("block_interval", ("block_interval_seconds",)),
-            ("hour", ("hour_sin", "hour_cos")),
-            ("day_of_week", ("dow_sin", "dow_cos")),
-            (
-                "priority_fee_p50",
-                ("log1p_effective_priority_fee_per_gas_p50",),
-            ),
-            (
-                "priority_fee_p90",
-                ("log1p_effective_priority_fee_per_gas_p90",),
-            ),
-        )
+def _feature_configurations(chain: str) -> tuple[tuple[str, tuple[FeatureName, ...]], ...]:
+    units = tuple(
+        unit
+        for unit in _FEATURE_UNITS
+        if chain == "ethereum" or unit[0] != "exact_forming_base_fee"
     )
-    return tuple(units)
-
-
-def _feature_configurations(
-    chain: str,
-) -> tuple[tuple[str, tuple[FeatureName, ...]], ...]:
-    units = _feature_units(chain)
-    full = _flatten_units(units)
+    full = tuple(feature for _, unit in units for feature in unit)
     leave_one_out = tuple(
         (
             f"without_{omitted_name}",
-            _flatten_units(units, excluding=omitted_name),
+            tuple(feature for name, unit in units if name != omitted_name for feature in unit),
         )
         for omitted_name, _ in units
     )
-    return (
-        ("full", full),
-        *leave_one_out,
-        ("base_only", ("log_base_fee_per_gas",)),
-    )
-
-
-def _flatten_units(
-    units: tuple[tuple[str, tuple[FeatureName, ...]], ...],
-    *,
-    excluding: str | None = None,
-) -> tuple[FeatureName, ...]:
-    features: list[FeatureName] = []
-    for name, unit in units:
-        if name != excluding:
-            features.extend(unit)
-    return tuple(features)
+    return (("full", full), *leave_one_out, ("base_only", ("log_base_fee_per_gas",)))
 
 
 def prepare(storage_root: StorageRoot) -> None:
     experiment_id = uuid4()
     bundle = open_bundle(storage_root, _KIND, experiment_id)
 
-    rows: list[tuple[str, Path, int, UUID]] = []
+    cells: list[tuple[str, TuneRequest]] = []
     for chain, corpus_id, training_window, validation_window in _CHAINS:
         for method in _METHODS:
             family = method.model.family
@@ -182,23 +136,15 @@ def prepare(storage_root: StorageRoot) -> None:
                     ),
                     methods=(method,),
                 )
-                path = write_request(bundle, len(rows), request)
-                rows.append(
-                    (
-                        f"{chain}.{family}.{configuration}",
-                        path,
-                        0,
-                        request.study_id,
-                    )
-                )
+                cells.append((f"{chain}.{family}.{configuration}", request))
 
-    write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
+    write_tune_cells(bundle, cells)
 
     print(experiment_id)
 
 
 def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
-    close_study_bundle(storage_root, _KIND, experiment_id)
+    close_bundle(storage_root, _KIND, experiment_id, "study_id", load_study)
 
 
 def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
@@ -214,11 +160,5 @@ def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
             print(f"{chain}\t{configuration}\t{fmean(objectives[chain, configuration]):g}")
 
 
-app = typer.Typer(add_completion=False)
-app.command()(prepare)
-app.command()(close)
-app.command()(report)
-
-
 if __name__ == "__main__":
-    app()
+    run(prepare, close, report)

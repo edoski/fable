@@ -8,7 +8,7 @@ import os
 import shutil
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal, Self, cast
+from typing import Self, cast
 from uuid import UUID
 
 import lightning.pytorch as pl
@@ -29,19 +29,9 @@ from .config import (
     TuneRequest,
 )
 from .corpus import load_corpus
-from .min_block_fee import (
-    MinBlockFeeOutput,
-    TargetState,
-    decode_action,
-    min_block_fee_loss,
-)
+from .min_block_fee import MinBlockFeeOutput, TargetState, decode_action, min_block_fee_loss
 from .records import StrictFrozenRecord
-from .study import (
-    RetainedResult,
-    candidate_scratch_directory,
-    load_selected_method,
-    retain_result,
-)
+from .study import RetainedResult, candidate_scratch_directory, load_selected_method, retain_result
 from .temporal import FeatureState, HistoricalPreparation, prepare_fit_history
 
 
@@ -55,10 +45,7 @@ class ArtifactAssociation(StrictFrozenRecord):
 
     @property
     def training_definition(self) -> TrainingDefinition:
-        return TrainingDefinition(
-            experiment=self.request.source.experiment,
-            method=self.method,
-        )
+        return TrainingDefinition(experiment=self.request.source.experiment, method=self.method)
 
     @model_validator(mode="after")
     def validate_association(self) -> Self:
@@ -71,10 +58,6 @@ class ArtifactAssociation(StrictFrozenRecord):
 
 _Association = ArtifactAssociation | TrainingDefinition
 _ASSOCIATION_ADAPTER = TypeAdapter(_Association)
-
-
-def _json_association(association: _Association) -> dict[str, object]:
-    return association.model_dump(mode="json")
 
 
 def _hydrate_association(raw: object) -> _Association:
@@ -96,8 +79,7 @@ class _Heads(nn.Module):
 
     def forward(self, state: torch.Tensor) -> MinBlockFeeOutput:
         return MinBlockFeeOutput(
-            action_logits=self.action(state),
-            minimum_fee_z=self.regression(state).squeeze(-1),
+            action_logits=self.action(state), minimum_fee_z=self.regression(state).squeeze(-1)
         )
 
 
@@ -111,13 +93,7 @@ def _head(input_width: int, hidden: int, output_width: int, dropout: float) -> n
 
 
 class _LstmModel(nn.Module):
-    def __init__(
-        self,
-        definition: LstmDefinition,
-        *,
-        feature_count: int,
-        actions: int,
-    ) -> None:
+    def __init__(self, definition: LstmDefinition, *, feature_count: int, actions: int) -> None:
         super().__init__()
         self.lstm = nn.LSTM(
             input_size=feature_count,
@@ -126,12 +102,7 @@ class _LstmModel(nn.Module):
             dropout=definition.dropout if definition.layers > 1 else 0.0,
             batch_first=True,
         )
-        self.heads = _Heads(
-            definition.hidden,
-            definition.head_hidden,
-            actions,
-            definition.dropout,
-        )
+        self.heads = _Heads(definition.hidden, definition.head_hidden, actions, definition.dropout)
 
     def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
         sequence, _ = self.lstm(inputs)
@@ -150,12 +121,7 @@ def _sinusoidal_positions(length: int, width: int) -> torch.Tensor:
 
 
 def _encoder(
-    *,
-    width: int,
-    heads: int,
-    feedforward: int,
-    layers: int,
-    dropout: float,
+    *, width: int, heads: int, feedforward: int, layers: int, dropout: float
 ) -> nn.TransformerEncoder:
     layer = nn.TransformerEncoderLayer(
         d_model=width,
@@ -266,15 +232,11 @@ class _FitModule(pl.LightningModule):
                 self.model = _LstmModel(model, **common)
             case TransformerDefinition():
                 self.model = _TransformerModel(
-                    model,
-                    context_blocks=experiment.context_blocks,
-                    **common,
+                    model, context_blocks=experiment.context_blocks, **common
                 )
             case TransformerLstmDefinition():
                 self.model = _TransformerLstmModel(
-                    model,
-                    context_blocks=experiment.context_blocks,
-                    **common,
+                    model, context_blocks=experiment.context_blocks, **common
                 )
 
     def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
@@ -282,61 +244,35 @@ class _FitModule(pl.LightningModule):
 
     def _loss(self, batch: Mapping[str, torch.Tensor]) -> torch.Tensor:
         return min_block_fee_loss(
-            self(batch["inputs"]),
-            label=batch["label"],
-            target=batch["target"],
+            self(batch["inputs"]), label=batch["label"], target=batch["target"]
         )
 
-    def _log_epoch_loss(
-        self,
-        role: Literal["training", "validation"],
-        loss_by_origin: torch.Tensor,
-    ) -> None:
-        loss = loss_by_origin.detach().mean(dtype=torch.float64)
+    def _log_epoch(self, name: str, values: torch.Tensor) -> None:
         self.log(
-            f"{role}_total_loss",
-            loss,
+            name,
+            values.detach().mean(dtype=torch.float64),
             on_step=False,
             on_epoch=True,
             logger=False,
-            batch_size=loss_by_origin.numel(),
+            batch_size=values.numel(),
         )
 
-    def training_step(
-        self,
-        batch: Mapping[str, torch.Tensor],
-        batch_idx: int,
-    ) -> torch.Tensor:
+    def training_step(self, batch: Mapping[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         del batch_idx
         loss_by_origin = self._loss(batch)
-        self._log_epoch_loss("training", loss_by_origin)
+        self._log_epoch("training_total_loss", loss_by_origin)
         return loss_by_origin.mean()
 
-    def validation_step(
-        self,
-        batch: Mapping[str, torch.Tensor],
-        batch_idx: int,
-    ) -> None:
+    def validation_step(self, batch: Mapping[str, torch.Tensor], batch_idx: int) -> None:
         del batch_idx
         output = self(batch["inputs"])
-        loss_by_origin = min_block_fee_loss(
-            output,
-            label=batch["label"],
-            target=batch["target"],
-        )
-        self._log_epoch_loss("validation", loss_by_origin)
+        loss_by_origin = min_block_fee_loss(output, label=batch["label"], target=batch["target"])
+        self._log_epoch("validation_total_loss", loss_by_origin)
         actions = decode_action(output)
         selected = batch["base_fees"].gather(1, actions.unsqueeze(1)).squeeze(1)
         minimum = batch["base_fees"].amin(dim=1)
         gap = (selected - minimum).to(torch.float64) / minimum
-        self.log(
-            "validation_base_fee_optimality_gap",
-            gap.mean(dtype=torch.float64),
-            on_step=False,
-            on_epoch=True,
-            logger=False,
-            batch_size=gap.numel(),
-        )
+        self._log_epoch("validation_base_fee_optimality_gap", gap)
 
     def on_validation_epoch_end(self) -> None:
         loss = float(self.trainer.callback_metrics["validation_total_loss"])
@@ -353,16 +289,12 @@ class _FitModule(pl.LightningModule):
     def configure_optimizers(self) -> torch.optim.AdamW:
         fit = self.definition.method.fit
         return torch.optim.AdamW(
-            self.parameters(),
-            lr=fit.learning_rate,
-            weight_decay=fit.weight_decay,
+            self.parameters(), lr=fit.learning_rate, weight_decay=fit.weight_decay
         )
 
 
 def _fit(
-    association: _Association,
-    prepared: HistoricalPreparation,
-    scratch: Path,
+    association: _Association, prepared: HistoricalPreparation, scratch: Path
 ) -> tuple[Path, RetainedResult]:
     definition = _training_definition(association)
     scratch.mkdir(parents=True, exist_ok=True)
@@ -370,13 +302,12 @@ def _fit(
     fit = definition.method.fit
     pl.seed_everything(fit.seed)
 
-    module = _FitModule(_json_association(association))
+    module = _FitModule(association.model_dump(mode="json"))
     best = ModelCheckpoint(
         dirpath=scratch,
         filename="best-{epoch:02d}",
         monitor="validation_base_fee_optimality_gap",
         save_weights_only=True,
-        every_n_epochs=1,
         save_on_train_epoch_end=False,
         auto_insert_metric_name=False,
         enable_version_counter=False,
@@ -407,7 +338,6 @@ def _fit(
                 dirpath=scratch,
                 filename="last",
                 save_weights_only=False,
-                every_n_epochs=1,
                 save_on_train_epoch_end=True,
                 auto_insert_metric_name=False,
                 enable_version_counter=False,
@@ -415,13 +345,9 @@ def _fit(
         ],
     )
     prepared = prepared.to(trainer.strategy.root_device)
-    training_loader = prepared.training.loader(
-        batch_size=_runtime.FIT_BATCH_SIZE,
-        shuffle=True,
-    )
+    training_loader = prepared.training.loader(batch_size=_runtime.FIT_BATCH_SIZE, shuffle=True)
     validation_loader = prepared.validation.loader(
-        batch_size=_runtime.FIT_BATCH_SIZE,
-        shuffle=False,
+        batch_size=_runtime.FIT_BATCH_SIZE, shuffle=False
     )
     last_checkpoint = scratch / "last.ckpt"
     trainer.fit(
@@ -442,20 +368,14 @@ def _fit(
     )
 
 
-def train(
-    request: TrainRequest,
-    storage_root: Path,
-) -> None:
+def train(request: TrainRequest, storage_root: Path) -> None:
     source = request.source
     canonical = artifact_checkpoint_path(storage_root, request.artifact_id)
     if canonical.exists():
         raise FileExistsError(canonical)
 
     method = load_selected_method(storage_root, source)
-    prepared = prepare_fit_history(
-        load_corpus(storage_root, source.corpus_id),
-        source.experiment,
-    )
+    prepared = prepare_fit_history(load_corpus(storage_root, source.corpus_id), source.experiment)
     association = ArtifactAssociation(
         request=request,
         feature_state=prepared.feature_state,
@@ -469,33 +389,18 @@ def train(
     shutil.rmtree(scratch)
 
 
-def run_candidate(
-    storage_root: Path,
-    request: TuneRequest,
-    method_index: int,
-) -> None:
-    candidate_scratch = candidate_scratch_directory(
-        storage_root,
-        request.study_id,
-        method_index,
-    )
-    prepared = prepare_fit_history(
-        load_corpus(storage_root, request.corpus_id),
-        request.experiment,
-    )
+def run_candidate(storage_root: Path, request: TuneRequest, method_index: int) -> None:
+    candidate_scratch = candidate_scratch_directory(storage_root, request.study_id, method_index)
+    prepared = prepare_fit_history(load_corpus(storage_root, request.corpus_id), request.experiment)
     definition = TrainingDefinition(
-        experiment=request.experiment,
-        method=request.method_at(method_index),
+        experiment=request.experiment, method=request.method_at(method_index)
     )
     _, result = _fit(definition, prepared, candidate_scratch)
     retain_result(storage_root, request, method_index, result)
     shutil.rmtree(candidate_scratch)
 
 
-def load_artifact(
-    storage_root: Path,
-    artifact_id: UUID,
-) -> tuple[ArtifactAssociation, nn.Module]:
+def load_artifact(storage_root: Path, artifact_id: UUID) -> tuple[ArtifactAssociation, nn.Module]:
     module = _FitModule.load_from_checkpoint(
         artifact_checkpoint_path(storage_root, artifact_id),
         map_location="cpu",

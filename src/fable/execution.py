@@ -73,37 +73,22 @@ def submit_candidates(candidates: Sequence[CandidateProcessInput]) -> int:
 
 
 def _submit_allocation(
-    inputs: Sequence[StrictFrozenRecord],
-    leaf: Literal["workflow", "candidate"],
+    inputs: Sequence[StrictFrozenRecord], leaf: Literal["workflow", "candidate"]
 ) -> int:
-    inputs = tuple(inputs)
-    _require_process_count(inputs)
-    remote = _load_remote()
+    if not 1 <= len(inputs) <= MAX_ALLOCATION_PROCESS_COUNT:
+        raise ValueError("an allocation requires one to three process inputs")
+    remote = _Remote.model_validate(yaml.safe_load(Path("REMOTE.yaml").read_bytes()))
     return _invoke_sbatch(
         remote,
         _render_allocation_script(
-            remote,
-            tuple(process_input.model_dump_json() for process_input in inputs),
-            leaf,
+            remote, tuple(process_input.model_dump_json() for process_input in inputs), leaf
         ),
     )
 
 
-def _load_remote() -> _Remote:
-    return _Remote.model_validate(yaml.safe_load(Path("REMOTE.yaml").read_bytes()))
-
-
 def _invoke_sbatch(remote: _Remote, script: str) -> int:
     result = subprocess.run(
-        [
-            "ssh",
-            "-T",
-            "-o",
-            "BatchMode=yes",
-            remote.ssh,
-            "sbatch",
-            "--parsable",
-        ],
+        ["ssh", "-T", "-o", "BatchMode=yes", remote.ssh, "sbatch", "--parsable"],
         input=script,
         text=True,
         stdout=subprocess.PIPE,
@@ -113,28 +98,19 @@ def _invoke_sbatch(remote: _Remote, script: str) -> int:
 
 
 def _render_allocation_script(
-    remote: _Remote,
-    process_inputs_json: tuple[str, ...],
-    leaf: Literal["workflow", "candidate"],
+    remote: _Remote, process_inputs_json: tuple[str, ...], leaf: Literal["workflow", "candidate"]
 ) -> str:
     resources = remote.resources
     task_count = len(process_inputs_json)
 
     def render_step(slot: int, process_input_json: str) -> str:
-        step_output = (
-            ""
-            if task_count == 1
-            else (
-                f"--output={shlex.quote(remote.log_root)}/${{SLURM_JOB_ID}}-{slot}.out "
-                f"--error={shlex.quote(remote.log_root)}/${{SLURM_JOB_ID}}-{slot}.out "
-            )
-        )
         command = (
             "srun --exclusive --exact --nodes=1 --ntasks=1 "
             f"--gres={resources.gres} "
             f"--cpus-per-task={resources.cpus_per_task} "
             f"--mem={resources.memory_gb}G "
-            f"{step_output}"
+            f"--output={shlex.quote(remote.log_root)}/${{SLURM_JOB_ID}}-{slot}.out "
+            f"--error={shlex.quote(remote.log_root)}/${{SLURM_JOB_ID}}-{slot}.out "
             f"apptainer run --nv --bind {shlex.quote(remote.storage_root)} "
             f"{shlex.quote(remote.image)} remote {leaf}"
         )
@@ -168,11 +144,6 @@ for pid in "${{pids[@]}}"; do
 done
 exit "$status"
 """
-
-
-def _require_process_count(inputs: Sequence[object]) -> None:
-    if not 1 <= len(inputs) <= MAX_ALLOCATION_PROCESS_COUNT:
-        raise ValueError("an allocation requires one to three process inputs")
 
 
 def _workflow_identity(request: WorkflowRequest) -> tuple[str, UUID]:

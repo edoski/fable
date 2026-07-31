@@ -28,17 +28,11 @@ def candidates(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) 
     rows = read_cells(bundle)
     process_inputs: list[CandidateProcessInput] = []
     for row in rows:
-        request = TuneRequest.model_validate_json(
-            Path(row["request"]).read_bytes(),
-            strict=True,
-        )
+        request = TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         if request.study_id != UUID(row["study_id"]):
             raise ValueError("candidate row Study ID must match its request")
         process_inputs.append(
-            CandidateProcessInput(
-                request=request,
-                method_index=int(row["method_index"]),
-            )
+            CandidateProcessInput(request=request, method_index=int(row["method_index"]))
         )
     _launch(bundle, rows, process_inputs, submit_candidates, tasks_per_job)
 
@@ -47,10 +41,7 @@ def workflows(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) -
     bundle = bundle.resolve()
     rows = read_cells(bundle)
     process_inputs = [
-        WORKFLOW_REQUEST_ADAPTER.validate_json(
-            Path(row["request"]).read_bytes(),
-            strict=True,
-        )
+        WORKFLOW_REQUEST_ADAPTER.validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in rows
     ]
     _launch(bundle, rows, process_inputs, submit_workflows, tasks_per_job)
@@ -69,7 +60,8 @@ def _launch(
         raise ValueError("tasks per job must be two or three")
 
     jobs_path = bundle / "jobs.tsv"
-    submitted_rows = _load_submitted_rows(jobs_path)
+    jobs_exist = jobs_path.exists()
+    submitted_rows = _load_submitted_rows(jobs_path) if jobs_exist else set()
     pending = [
         (index, row, process_input)
         for index, (row, process_input) in enumerate(zip(rows, process_inputs, strict=True))
@@ -78,10 +70,9 @@ def _launch(
     if not pending:
         return
 
-    exists = jobs_path.exists()
-    with jobs_path.open("a" if exists else "x", newline="", encoding="utf-8") as destination:
+    with jobs_path.open("a" if jobs_exist else "x", newline="", encoding="utf-8") as destination:
         writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
-        if not exists:
+        if not jobs_exist:
             writer.writerow(("job_id", "slot", "row", "cell"))
         start = 0
         for group_size in _allocation_sizes(len(pending), tasks_per_job):
@@ -107,9 +98,6 @@ def _allocation_sizes(pending_count: int, capacity: int) -> list[int]:
 
 
 def _load_submitted_rows(jobs_path: Path) -> set[int]:
-    if not jobs_path.exists():
-        return set()
-
     with jobs_path.open(newline="", encoding="utf-8") as source:
         return {int(job["row"]) for job in csv.DictReader(source, delimiter="\t")}
 

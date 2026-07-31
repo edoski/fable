@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -12,6 +11,7 @@ import { formatGwei } from "../analytics";
 import { DetailRow } from "../components/DetailRow";
 import { HorizonSlider } from "../components/HorizonSlider";
 import { NetworkIcon } from "../components/NetworkIcon";
+import { Overlay } from "../components/Overlay";
 import {
   CHAINS,
   CHAIN_LABELS,
@@ -171,46 +171,44 @@ function ErrorDialog({
   onRetry: () => void;
 }) {
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible>
-      <View style={styles.errorDialogRoot}>
-        <Pressable
-          accessibilityLabel="Dismiss inference error"
-          onPress={onClose}
-          style={styles.backdrop}
-        />
-        <View
-          accessibilityRole="alert"
-          style={[styles.dialog, styles.errorDialog]}
-        >
-          <View style={styles.errorDialogIcon}>
-            <Ionicons
-              color={colors.red}
-              name="alert-circle-outline"
-              size={28}
-            />
-          </View>
-          <Text style={styles.errorDialogTitle}>Inference failed</Text>
-          <Text style={styles.errorDialogText}>{message}</Text>
-          <View style={styles.errorActions}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={onClose}
-              style={styles.dismissButton}
-            >
-              <Text style={styles.dismissButtonText}>Dismiss</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={onRetry}
-              style={[styles.button, styles.retryButton]}
-            >
-              <Ionicons color={colors.surface} name="refresh" size={17} />
-              <Text style={styles.buttonText}>Retry</Text>
-            </Pressable>
-          </View>
+    <Overlay
+      animationType="fade"
+      backdropLabel="Dismiss inference error"
+      centered
+      onClose={onClose}
+    >
+      <View
+        accessibilityRole="alert"
+        style={[styles.dialog, styles.errorDialog]}
+      >
+        <View style={styles.errorDialogIcon}>
+          <Ionicons
+            color={colors.red}
+            name="alert-circle-outline"
+            size={28}
+          />
+        </View>
+        <Text style={styles.errorDialogTitle}>Inference failed</Text>
+        <Text style={styles.errorDialogText}>{message}</Text>
+        <View style={styles.errorActions}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClose}
+            style={styles.dismissButton}
+          >
+            <Text style={styles.dismissButtonText}>Dismiss</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onRetry}
+            style={[styles.button, styles.retryButton]}
+          >
+            <Ionicons color={colors.surface} name="refresh" size={17} />
+            <Text style={styles.buttonText}>Retry</Text>
+          </Pressable>
         </View>
       </View>
-    </Modal>
+    </Overlay>
   );
 }
 

@@ -16,8 +16,7 @@ _SCRIPT = _ROOT / "experiments" / "feature_ablation.py"
 
 
 def test_prepare_authors_full_leave_one_out_and_base_only_matrix(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path.parent)
     result = run_script(_SCRIPT, "prepare", tmp_path.name)
@@ -52,14 +51,8 @@ def test_prepare_authors_full_leave_one_out_and_base_only_matrix(
     assert {len(request.methods) for request in requests} == {1}
     assert {row["method_index"] for row in rows} == {"0"}
     assert requests[0].experiment.model_dump() == {
-        "training_window": {
-            "first_parent_block": 23_936_094,
-            "last_parent_block": 25_118_158,
-        },
-        "validation_window": {
-            "first_parent_block": 25_118_359,
-            "last_parent_block": 25_268_763,
-        },
+        "training_window": {"first_parent_block": 23_936_094, "last_parent_block": 25_118_158},
+        "validation_window": {"first_parent_block": 25_118_359, "last_parent_block": 25_268_763},
         "context_blocks": 100,
         "horizon_blocks": 5,
         "ordered_features": (
@@ -107,9 +100,7 @@ def test_prepare_authors_full_leave_one_out_and_base_only_matrix(
     )
 
 
-def test_close_publishes_all_studies_and_report_averages_each_configuration(
-    tmp_path: Path,
-) -> None:
+def test_close_publishes_all_studies_and_report_averages_each_configuration(tmp_path: Path) -> None:
     experiment_id = UUID(run_script(_SCRIPT, "prepare", tmp_path).stdout.strip())
     bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
     objectives = {
@@ -131,22 +122,13 @@ def test_close_publishes_all_studies_and_report_averages_each_configuration(
 
     canonical = tmp_path / "experiments" / "feature_ablation" / str(experiment_id)
     manifest_path = canonical / "manifest.json"
-    manifest = ExperimentManifest.model_validate_json(
-        manifest_path.read_bytes(),
-        strict=True,
-    )
-    published_rows = read_tsv_rows(canonical / "cells.tsv")
+    manifest = ExperimentManifest.model_validate_json(manifest_path.read_bytes(), strict=True)
     assert result.stdout.strip() == str(experiment_id)
     assert len(manifest.root) == 102
     assert [str(record_id) for record_id in manifest.root.values()] == [
         row["study_id"] for row in rows
     ]
-    assert published_rows == [
-        {**row, "request": str(canonical / "requests" / Path(row["request"]).name)}
-        for row in rows
-    ]
-    assert all(Path(row["request"]).is_file() for row in published_rows)
-    assert (canonical / "jobs.tsv").read_text(encoding="utf-8") == jobs
+    assert {path.name for path in canonical.iterdir()} == {"manifest.json"}
     assert not bundle.exists()
 
     report = run_script(_SCRIPT, "report", tmp_path, experiment_id)
@@ -158,16 +140,10 @@ def test_close_publishes_all_studies_and_report_averages_each_configuration(
     assert lines[-1] == "avalanche\tbase_only\t0.25"
 
 
-def test_close_rejects_existing_canonical_bundle_without_changing_scratch(
-    tmp_path: Path,
-) -> None:
+def test_close_rejects_existing_canonical_bundle_without_changing_scratch(tmp_path: Path) -> None:
     experiment_id = UUID(run_script(_SCRIPT, "prepare", tmp_path).stdout.strip())
     bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
-    publish_generated_studies(
-        tmp_path,
-        read_tsv_rows(bundle / "cells.tsv"),
-        default_objective=1.0,
-    )
+    publish_generated_studies(tmp_path, read_tsv_rows(bundle / "cells.tsv"), default_objective=1.0)
     canonical = bundle.with_name(str(experiment_id))
     canonical.mkdir()
 

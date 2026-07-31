@@ -90,8 +90,7 @@ def _reorder(frame: pl.DataFrame) -> pl.DataFrame:
     ],
 )
 def test_block_frame_rejects_invalid_owned_facts(
-    mutate: Callable[[pl.DataFrame], pl.DataFrame],
-    match: str,
+    mutate: Callable[[pl.DataFrame], pl.DataFrame], match: str
 ) -> None:
     with pytest.raises(ValueError, match=match):
         BlockFrame(mutate(_valid_frame()), _definition())
@@ -106,9 +105,7 @@ def test_block_frame_rejects_invalid_owned_facts(
     ],
 )
 def test_select_range_returns_exact_inclusive_block_range(
-    first_block: int,
-    last_block: int,
-    expected: list[int],
+    first_block: int, last_block: int, expected: list[int]
 ) -> None:
     selected = BlockFrame(_valid_frame(), _definition()).select_range(first_block, last_block)
 

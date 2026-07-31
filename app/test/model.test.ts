@@ -18,11 +18,10 @@ vi.mock("react-native-executorch-expo-resource-fetcher", () => ({
 import {
   createModelRuntime,
   type MobileChainManifest,
-  type MobileManifest,
   type ModelManifest,
   type ModelSelection,
 } from "../src/model";
-import type { Chain, Horizon } from "../src/domain";
+import type { Horizon } from "../src/domain";
 import { deferred, flushMicrotasks } from "./helpers";
 
 type NativeTensor = {
@@ -42,46 +41,30 @@ function modelEntry(index: number, K: Horizon): ModelManifest {
   };
 }
 
-function chainManifest(firstIndex: number): MobileChainManifest {
-  return {
-    context_blocks: 2,
-    features: [
-      {
-        name: "log_base_fee_per_gas" as const,
-        mean: 1,
-        standard_deviation: 2,
-      },
-    ],
-    models: {
-      2: modelEntry(firstIndex, 2),
-      3: modelEntry(firstIndex + 1, 3),
-      4: modelEntry(firstIndex + 2, 4),
-      5: modelEntry(firstIndex + 3, 5),
+const MANIFEST: MobileChainManifest = {
+  context_blocks: 2,
+  features: [
+    {
+      name: "log_base_fee_per_gas",
+      mean: 1,
+      standard_deviation: 2,
     },
-  };
-}
-
-const MANIFEST: MobileManifest = {
-  chains: {
-    ethereum: chainManifest(1),
-    polygon: chainManifest(5),
-    avalanche: chainManifest(9),
+  ],
+  models: {
+    2: modelEntry(1, 2),
+    3: modelEntry(2, 3),
+    4: modelEntry(3, 4),
+    5: modelEntry(4, 5),
   },
 };
 
-const RESOURCES: Record<Chain, Record<Horizon, number>> = {
-  ethereum: { 2: 12, 3: 13, 4: 14, 5: 15 },
-  polygon: { 2: 22, 3: 23, 4: 24, 5: 25 },
-  avalanche: { 2: 32, 3: 33, 4: 34, 5: 35 },
-};
-
-function selection(chain: Chain, K: Horizon): ModelSelection {
+function selection(K: Horizon): ModelSelection {
   return {
-    chain,
+    chain: "ethereum",
     K,
-    source: RESOURCES[chain][K],
-    chainManifest: MANIFEST.chains[chain],
-    modelManifest: MANIFEST.chains[chain].models[K],
+    source: 10 + K,
+    chainManifest: MANIFEST,
+    modelManifest: MANIFEST.models[K],
   };
 }
 
@@ -115,7 +98,7 @@ describe("model runtime", () => {
     const module = native();
     const factory = vi.fn(() => module);
     const runtime = createModelRuntime(factory);
-    const selected = selection("ethereum", 2);
+    const selected = selection(2);
     const input = new Float32Array([1, 2]);
 
     const first = await runtime.execute(selected, input);
@@ -175,8 +158,8 @@ describe("model runtime", () => {
       .mockImplementationOnce(() => first)
       .mockImplementationOnce(() => second);
     const runtime = createModelRuntime(factory);
-    const firstSelection = selection("ethereum", 2);
-    const secondSelection = selection("ethereum", 3);
+    const firstSelection = selection(2);
+    const secondSelection = selection(3);
 
     const firstRun = runtime.execute(
       firstSelection,
@@ -250,7 +233,7 @@ describe("model runtime", () => {
 
     await expect(
       runtime.execute(
-        selection("ethereum", 2),
+        selection(2),
         new Float32Array([1, 2]),
       ),
     ).rejects.toThrow(message);

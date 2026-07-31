@@ -21,10 +21,7 @@ def test_experiment_manifest_loads_ordered_typed_mapping_from_exact_directory(
     tmp_path: Path,
 ) -> None:
     manifest = ExperimentManifest(
-        root={
-            "ethereum.lstm": RECORD_ID,
-            "polygon.transformer": OTHER_RECORD_ID,
-        }
+        root={"ethereum.lstm": RECORD_ID, "polygon.transformer": OTHER_RECORD_ID}
     )
     path = experiment_manifest_path(tmp_path, ExperimentKind.HPO, EXPERIMENT_ID)
     path.parent.mkdir(parents=True)
@@ -32,9 +29,7 @@ def test_experiment_manifest_loads_ordered_typed_mapping_from_exact_directory(
 
     loaded = load_experiment_manifest(tmp_path, ExperimentKind.HPO, EXPERIMENT_ID)
 
-    assert path == (
-        tmp_path / "experiments" / "hpo" / str(EXPERIMENT_ID) / "manifest.json"
-    )
+    assert path == (tmp_path / "experiments" / "hpo" / str(EXPERIMENT_ID) / "manifest.json")
     assert list(loaded.items()) == [
         ("ethereum.lstm", RECORD_ID),
         ("polygon.transformer", OTHER_RECORD_ID),

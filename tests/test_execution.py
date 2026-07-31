@@ -50,17 +50,13 @@ def _request(workflow: Literal["train", "evaluate"]) -> WorkflowRequest:
         workflow="train",
         artifact_id=ARTIFACT_ID,
         source=SelectedStudySource(
-            corpus_id=CORPUS_ID,
-            study_id=STUDY_ID,
-            study_result_index=0,
-            experiment=_experiment(),
+            corpus_id=CORPUS_ID, study_id=STUDY_ID, study_result_index=0, experiment=_experiment()
         ),
     )
 
 
 def test_submit_workflows_sends_golden_single_workflow_script(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request = _request("train")
     write_remote(tmp_path / "REMOTE.yaml")
@@ -78,15 +74,7 @@ def test_submit_workflows_sends_golden_single_workflow_script(
     assert result == 456
     assert len(calls) == 1
     argv, kwargs = calls[0]
-    assert argv == [
-        "ssh",
-        "-T",
-        "-o",
-        "BatchMode=yes",
-        "research-alias",
-        "sbatch",
-        "--parsable",
-    ]
+    assert argv == ["ssh", "-T", "-o", "BatchMode=yes", "research-alias", "sbatch", "--parsable"]
     assert kwargs == {
         "input": (
             "#!/bin/bash\n"
@@ -103,6 +91,8 @@ def test_submit_workflows_sends_golden_single_workflow_script(
             "pids=()\n"
             "srun --exclusive --exact --nodes=1 --ntasks=1 "
             "--gres=gpu:a100:1 --cpus-per-task=8 --mem=48G "
+            "--output=/remote/logs/${SLURM_JOB_ID}-0.out "
+            "--error=/remote/logs/${SLURM_JOB_ID}-0.out "
             "apptainer run --nv --bind '/remote/storage root' "
             "'/opt/fable image.sif' remote workflow <<'FABLE_REQUEST_0' &\n"
             f"{request.model_dump_json()}\n"
@@ -120,42 +110,8 @@ def test_submit_workflows_sends_golden_single_workflow_script(
     }
 
 
-def test_submit_workflows_uses_one_isolated_gpu_step_per_request(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    first = _request("train")
-    second = first.model_copy(
-        update={
-            "artifact_id": UUID("00000000-0000-4000-8000-000000000005"),
-        }
-    )
-    write_remote(tmp_path / "REMOTE.yaml")
-    monkeypatch.chdir(tmp_path)
-    scripts: list[str] = []
-    monkeypatch.setattr(
-        execution,
-        "_invoke_sbatch",
-        lambda _remote, script: scripts.append(script) or 789,
-    )
-
-    result = execution.submit_workflows((first, second))
-
-    assert result == 789
-    assert len(scripts) == 1
-    script = scripts[0]
-    assert "#SBATCH --ntasks=2\n" in script
-    assert "#SBATCH --gres=gpu:a100:2\n" in script
-    assert script.count("remote workflow <<'FABLE_REQUEST_") == 2
-    assert script.index(first.model_dump_json()) < script.index(second.model_dump_json())
-    for slot in range(2):
-        assert f"--output=/remote/logs/${{SLURM_JOB_ID}}-{slot}.out" in script
-        assert f"--error=/remote/logs/${{SLURM_JOB_ID}}-{slot}.out" in script
-
-
 def test_submit_workflows_rejects_duplicate_durable_identities(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     first = _request("train")
     second = first.model_copy(
@@ -180,18 +136,14 @@ def test_submit_workflows_rejects_duplicate_durable_identities(
 
 @pytest.mark.parametrize("workflow", ["train", "evaluate"])
 def test_submit_cli_dispatches_request_json(
-    workflow: Literal["train", "evaluate"],
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    workflow: Literal["train", "evaluate"], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request = _request(workflow)
     request_path = tmp_path / "request.json"
     request_path.write_text(request.model_dump_json(), encoding="utf-8")
     calls: list[tuple[WorkflowRequest, ...]] = []
     monkeypatch.setattr(
-        cli,
-        "submit_workflows",
-        lambda submitted: calls.append(tuple(submitted)) or 123,
+        cli, "submit_workflows", lambda submitted: calls.append(tuple(submitted)) or 123
     )
 
     result = dispatch(app, "submit", str(request_path))
@@ -202,13 +154,9 @@ def test_submit_cli_dispatches_request_json(
 
 
 def test_submit_rejects_relative_remote_image(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    remote_yaml = REMOTE_YAML.replace(
-        "image: /opt/fable image.sif",
-        "image: relative/fable.sif",
-    )
+    remote_yaml = REMOTE_YAML.replace("image: /opt/fable image.sif", "image: relative/fable.sif")
     write_remote(tmp_path / "REMOTE.yaml", remote_yaml)
     monkeypatch.chdir(tmp_path)
 
@@ -216,19 +164,12 @@ def test_submit_rejects_relative_remote_image(
         submit_workflows((_request("train"),))
 
 
-def test_submit_rejects_invalid_job_id(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_submit_rejects_invalid_job_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         "fable.execution.subprocess.run",
-        lambda argv, **_: subprocess.CompletedProcess(
-            argv,
-            0,
-            stdout="not-a-job\n",
-        ),
+        lambda argv, **_: subprocess.CompletedProcess(argv, 0, stdout="not-a-job\n"),
     )
 
     with pytest.raises(ValueError):

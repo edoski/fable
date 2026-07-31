@@ -1,15 +1,13 @@
 import type { Chain, Horizon } from "./domain";
-import type { InferenceRun, RunOutcome } from "./history";
+import type { InferenceOutcome } from "./inference";
+import type { InferenceRun } from "./history";
 
-type ChartDatum = {
+export type WaitBucket = {
+  fableGwei: number | null;
+  immediateGwei: number | null;
   label: string;
-  value: number | null;
-};
-
-type FeeComparisonDatum = {
-  label: string;
-  immediate: number;
-  fable: number;
+  runCount: number;
+  savingsPercent: number | null;
 };
 
 export type RunSummary = {
@@ -25,6 +23,7 @@ const RUN_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
   month: "short",
 });
+const GWEI = 1_000_000_000;
 
 export function runsForSelection(
   runs: readonly InferenceRun[],
@@ -54,6 +53,10 @@ export function realizedSavingsPercent(run: InferenceRun): number | null {
   if (outcome === null) {
     return null;
   }
+  return savingsPercent(outcome);
+}
+
+function savingsPercent(outcome: InferenceOutcome): number {
   return (
     ((outcome.immediate_base_fee_per_gas -
       outcome.selected_base_fee_per_gas) /
@@ -77,85 +80,41 @@ export function formatGwei(value: number): string {
   return `${gwei.toFixed(2)} Gwei`;
 }
 
-export function recommendedWaitData(
+export function waitBuckets(
   runs: readonly InferenceRun[],
   horizon: Horizon,
-): ChartDatum[] {
+): WaitBucket[] {
   if (runs.length === 0) {
     return [];
   }
-  return runsBySelectedAction(runs, horizon).map((selected, offset) => ({
-    label: String(offset),
-    value: selected.length,
-  }));
-}
 
-export function savingsByWaitData(
-  runs: readonly InferenceRun[],
-  horizon: Horizon,
-): ChartDatum[] {
-  if (runs.length === 0) {
-    return [];
-  }
-  return runsBySelectedAction(runs, horizon).map((selected, offset) => {
-    const savings = selected.flatMap((run) => {
-      const value = realizedSavingsPercent(run);
-      return value === null ? [] : [value];
+  return Array.from({ length: horizon }, (_, offset) => {
+    const matchingRuns = runs.filter(
+      (run) => run.selected_action_k === offset,
+    );
+    const outcomes = matchingRuns.flatMap((run) => {
+      const outcome = validOutcome(run);
+      return outcome === null ? [] : [outcome];
     });
+    const fableFeeMean = mean(
+      outcomes.map((outcome) => outcome.selected_base_fee_per_gas),
+    );
+    const immediateFeeMean = mean(
+      outcomes.map((outcome) => outcome.immediate_base_fee_per_gas),
+    );
+
     return {
+      fableGwei: fableFeeMean === null ? null : fableFeeMean / GWEI,
+      immediateGwei:
+        immediateFeeMean === null ? null : immediateFeeMean / GWEI,
       label: String(offset),
-      value: mean(savings),
+      runCount: matchingRuns.length,
+      savingsPercent: mean(outcomes.map(savingsPercent)),
     };
   });
 }
 
-export function feeComparisonData(
-  runs: readonly InferenceRun[],
-  horizon: Horizon,
-): FeeComparisonDatum[] {
-  return runsBySelectedAction(runs, horizon).flatMap((selected, offset) => {
-    const outcomes = selected.flatMap((run) => {
-      const outcome = validOutcome(run);
-      return outcome === null ? [] : [outcome];
-    });
-    if (outcomes.length === 0) {
-      return [];
-    }
-    return [
-      {
-        label: String(offset),
-        immediate:
-          (mean(
-            outcomes.map(
-              (outcome) => outcome.immediate_base_fee_per_gas,
-            ),
-          ) ?? 0) / 1_000_000_000,
-        fable:
-          (mean(
-            outcomes.map(
-              (outcome) => outcome.selected_base_fee_per_gas,
-            ),
-          ) ?? 0) / 1_000_000_000,
-      },
-    ];
-  });
-}
-
-function runsBySelectedAction(
-  runs: readonly InferenceRun[],
-  horizon: Horizon,
-): InferenceRun[][] {
-  const groups = Array.from(
-    { length: horizon },
-    () => [] as InferenceRun[],
-  );
-  for (const run of runs) {
-    groups[run.selected_action_k]?.push(run);
-  }
-  return groups;
-}
-
-function validOutcome(run: InferenceRun): RunOutcome | null {
+function validOutcome(run: InferenceRun): InferenceOutcome | null {
   const outcome = run.outcome;
   if (
     outcome === undefined ||
