@@ -1,6 +1,6 @@
 # FABLE architectural simplification ledger
 
-Status: planning; implementation not started.
+Status: all slices green; final integration and cleanup pending.
 
 This ledger is the authoritative local specification for the approved architectural
 simplification run. The orchestrating thread owns this file. Implementers and reviewers must not
@@ -401,7 +401,7 @@ runtime semantics.
 
 ## Slice 3 — Compact-CUDA reconciliation
 
-Status: ready; Slices 1 and 2 are green.
+Status: green.
 
 Proposed refs: the then-current `main` head and the pre-existing compact-CUDA head. Record both
 immutable SHAs immediately before dispatch. Work in the shared checkout with one writer, switch to
@@ -463,16 +463,27 @@ code remains.
 
 ### Implementation-review record
 
-- Main ref: pending.
-- Compact baseline: pending.
-- Implementer: pending.
-- Implementation head: pending.
-- Focused/integration checks: pending.
-- Reviewer: pending.
-- Standards findings: pending.
-- Spec findings: pending.
-- Correction rounds: pending.
-- Final result: pending.
+- Main ref: `55fefb1a51935a8dac2d78c422cd9fe759d4cc47`.
+- Compact baseline: `852d06a6f83646d170449f2554ce88bdeccdb5fc`.
+- Implementer: `/root/slice3_cuda_sync`.
+- Implementation head: `90dd50a1422dabdacaf8ddbedb2088ba1cc1a529`, a merge whose parents are the
+  exact compact baseline followed by the exact reviewed main ref.
+- Focused/integration checks: focused Python 28 passed; focused app 21 passed; full Python suite
+  89 passed; full app suite 35 passed; Ruff check and format passed; Pyright passed; Vulture passed
+  with no findings; app typecheck passed; Transformer state parity matched 22 plain and 26 hybrid
+  keys/shapes with `positions` absent; float32 recurrence/export passed; stale-name search and
+  `git diff --check` passed. Main is an ancestor. The final SHA-256 of the reviewed compact delta is
+  `ef37e0d83fa6e300c456695e3e8cdb284c32fd5c7f106f725c9984887ff47b97`.
+- Reviewer: `/root/slice3_review`, with parallel `/root/slice3_review/standards_axis` and
+  `/root/slice3_review/spec_axis`.
+- Standards findings: 0.
+- Spec findings: 0.
+- Correction rounds: 0.
+- Explicitly not run: GPU smoke/training, Slurm submission, research image build, remote checkout,
+  mobile export, native builds, real-device checks, and visual chart inspection.
+- Final result: `GREEN LIGHT`; every non-divergent file is byte-identical to reviewed main and every
+  remaining hunk in the exact eight-file delta is CUDA/device-resident batching code, integration,
+  test coverage, or documentation.
 
 ## Final integration and cleanup
 
