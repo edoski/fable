@@ -1,6 +1,6 @@
 # FABLE residual leanness ledger
 
-Status: execution in progress. Slices 1–3 are complete and green.
+Status: execution in progress. Slices 1–4 are complete and green; final integration is pending.
 
 ## Authority
 
@@ -359,6 +359,29 @@ observable at the same surfaces.
 Dependencies: Slice 2 green. External gates: none; external execution is forbidden.
 
 ## Slice 4: app and app-test cleanup
+
+Status: complete. Independent review returned zero Standards findings and zero Spec findings.
+
+### Execution record
+
+- Baseline: `d326c4c596a71a1527f3028c2bfe3ab42c3a098e`.
+- Implementer: `/root/slice4_app`.
+- Implementation head: `64466223c91c87844c0f67973f2716037e3285e4`.
+- Commit: `refactor(app): simplify analytics and model runtime`.
+- Reviewer: `/root/slice4_reviewer`, with independent Standards and Spec axes.
+- Scope: six app source/test files; 188 additions and 305 deletions, net -117.
+- All seven approved changes were implemented. `resolveOutcomes`, native assets, and every declared
+  non-goal remained untouched.
+- Implementer checks: 25 focused tests and the 35-test full app suite passed; TypeScript typecheck
+  passed; 10,000 randomized old/new wait-bucket JSON comparisons matched exactly; diff checks
+  passed. The app has no formatting or lint script.
+- Reviewer checks: 25 focused tests and the 35-test full app suite passed; TypeScript typecheck
+  passed; 20,000 randomized baseline/head wait-bucket JSON comparisons matched exactly; diff
+  checks passed. Model replacement/disposal, synchronous disposed rejection, failure cleanup,
+  tensor validation, output copying, rendered strings, and chart hierarchy matched the protected
+  contracts.
+- Review result: `GREEN LIGHT` with zero Standards findings and zero Spec findings; no correction
+  round. No simulator, device check, visual redesign, or asset regeneration was needed.
 
 ### Scope
 
