@@ -1,6 +1,6 @@
 # FABLE architectural simplification ledger
 
-Status: all slices green; final integration and cleanup pending.
+Status: all slices and final integration green; ledger cleanup pending.
 
 This ledger is the authoritative local specification for the approved architectural
 simplification run. The orchestrating thread owns this file. Implementers and reviewers must not
@@ -507,3 +507,24 @@ After all three slices are green:
 7. Report completion only if every slice has a zero-finding green review, both branches pass final
    integration, compact-CUDA contains `main`, its delta is bounded exactly as required, and the
    ledger has been removed from both branch tips.
+
+### Final integration record
+
+- `main` verified at `55fefb1a51935a8dac2d78c422cd9fe759d4cc47`: Ruff check passed; all 47
+  Python files were formatted; Pyright reported 0 errors, warnings, or information messages;
+  Vulture reported no findings; 89 Python tests passed; 35 app tests passed; app typecheck passed.
+- `codex/compact-cuda-execution` verified at
+  `cd5bfcf91e56a71b6ee5e6b4e6840580e93805d9`: the same quality, formatting, typing,
+  dead-code, 89-test Python, 35-test app, and app typecheck gates passed.
+- Compact-CUDA contains the exact reviewed `main` product head. Excluding this temporary ledger,
+  its delta is exactly the eight approved CUDA/data-loader files and has SHA-256
+  `ef37e0d83fa6e300c456695e3e8cdb284c32fd5c7f106f725c9984887ff47b97`.
+- Final local warnings were expected environment/runtime notices: unused local GPU, MPS pin-memory
+  support, small test data-loader worker counts, and an intentionally nonempty resume checkpoint
+  directory. No check failed.
+- `docs/experiments/` remains the only untracked path and was not changed or staged by this run.
+- Unrun external gates remain GPU smoke/training, Slurm submission, research image build, remote
+  checkout, mobile export, native builds, real-device checks, and Analytics chart visual inspection.
+- Cleanup next: commit this final record on compact-CUDA, delete the ledger there, delete it on
+  `main`, merge the exact `main` deletion commit into compact-CUDA, and leave the checkout on
+  `main`.
