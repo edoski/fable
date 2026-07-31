@@ -52,7 +52,7 @@ def _request(
 def _row(
     origin: int,
     predicted_action: int,
-    predicted_log: float | None,
+    predicted_log: float,
     minimum_action: int,
     immediate_fee: int,
     immediate_priority_fee_p50: int,
@@ -61,7 +61,7 @@ def _row(
     deadline_fee: int,
     deadline_priority_fee_p50: int,
     minimum_fee: int,
-) -> dict[str, int | float | None]:
+) -> dict[str, int | float]:
     return {
         "origin_block": origin,
         "predicted_action_k": predicted_action,
@@ -77,7 +77,7 @@ def _row(
     }
 
 
-def _rows() -> list[dict[str, int | float | None]]:
+def _rows() -> list[dict[str, int | float]]:
     return [
         _row(20, 0, math.log(10) + 1.0, 0, 10, 0, 10, 0, 30, 3, 10),
         _row(21, 1, math.log(10) - 1.0, 2, 20, 0, 15, 5, 10, 0, 10),
@@ -89,7 +89,7 @@ def _rows() -> list[dict[str, int | float | None]]:
     ]
 
 
-def _observations(rows: list[dict[str, int | float | None]] | None = None) -> pl.DataFrame:
+def _observations(rows: list[dict[str, int | float]] | None = None) -> pl.DataFrame:
     return pl.DataFrame(rows or _rows(), schema=OBSERVATION_SCHEMA)
 
 
