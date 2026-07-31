@@ -26,6 +26,16 @@ Status: execution authorized. No product implementation has started.
 Before each slice, record its immutable baseline, branch, worktrees, status, implementer, and
 reviewer. Preserve `docs/experiments/` byte-for-byte.
 
+## Run isolation
+
+- Approved-ledger commit: `52a816c5c7c1c573bab6752627d405fd548d246d`.
+- Run-owned branch: `codex/residual-leanness`.
+- Run-owned worktree: `/Users/edo/dev/python/fable-residual-leanness`.
+- The run branch and worktree were created from the approved-ledger commit.
+- The original `/Users/edo/dev/python/fable` checkout remains on `main`; its untracked
+  `docs/experiments/` is outside the run worktree and remains protected.
+- No other branch or worktree is run-owned.
+
 ## Decisions
 
 - Keep the run compressed to four ordered slices.
@@ -79,6 +89,8 @@ Thirty-two findings are planned:
   allocation-size cases; fold constant-feature rejection into the existing contract table.
 
 ## Slice 1: formatter policy
+
+Status: pending.
 
 ### Scope
 
