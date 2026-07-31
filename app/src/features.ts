@@ -56,23 +56,6 @@ export function buildModelInput(
   priorityFeeRewards: readonly PriorityFeeRewards[] | null,
   manifest: ChainManifest,
 ): Float32Array {
-  if (
-    usesPriorityFees(manifest) &&
-    (priorityFeeRewards === null ||
-      priorityFeeRewards.length !== manifest.context_blocks ||
-      priorityFeeRewards.some(
-        (rewards) =>
-          rewards.length !== 2 ||
-          Array.from(rewards).some(
-            (reward) =>
-              typeof reward !== "bigint" || reward < 0n,
-          ),
-      ))
-  ) {
-    throw new Error(
-      "Priority-fee rewards must provide nonnegative P50 and P90 values for every context block",
-    );
-  }
   const predecessorOffset = Number(needsPredecessor(manifest));
   const featureCount = manifest.features.length;
   const output = new Float32Array(manifest.context_blocks * featureCount);

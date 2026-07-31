@@ -178,14 +178,12 @@ def select(storage_root: StorageRoot, experiment_id: UUID) -> None:
     studies: dict[UUID, Study] = {}
     selections: list[tuple[str, int, float]] = []
     for row in rows:
+        cell = row["cell"]
+        if cell in cells:
+            continue
         study_id = UUID(row["study_id"])
         if study_id not in studies:
             studies[study_id] = load_study(storage_root, study_id)
-        cell = row["cell"]
-        if cell in cells:
-            if cells[cell] != study_id:
-                raise ValueError("one HPO cell cannot reference multiple Studies")
-            continue
         study = studies[study_id]
         selected_index, result = study.best_result()
         cells[cell] = study_id

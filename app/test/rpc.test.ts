@@ -254,6 +254,18 @@ describe("createChainSession", () => {
       }),
       message: "Fee history must contain exactly 3 reward rows, got 2",
     },
+    {
+      name: "each reward row to contain P50 and P90",
+      feature: "log1p_effective_priority_fee_per_gas_p90" as const,
+      history: (oldestBlock: bigint, count: number) => ({
+        ...feeHistory(oldestBlock, count),
+        reward: feeHistory(oldestBlock, count).reward.map((rewards, index) =>
+          index === 0 ? rewards.slice(0, 1) : rewards,
+        ),
+      }),
+      message:
+        "Fee history reward rows must contain nonnegative P50 and P90 values",
+    },
   ])("requires $name", async ({ feature, history, message }) => {
     const session = createChainSession(
       "ethereum",

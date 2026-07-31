@@ -2,7 +2,6 @@ import { buildModelInput } from "./features";
 import type { Chain, Horizon } from "./domain";
 import { createDefaultModelCatalog, createModelRuntime } from "./model";
 import type {
-  ModelCatalog,
   ModelOutput,
   ModelRuntime,
   ModelSelection,
@@ -45,8 +44,8 @@ export type InferenceEngine = {
 };
 
 export type InferenceEngineDependencies = {
-  catalog: ModelCatalog;
   model: ModelRuntime;
+  selectModel(K: Horizon): ModelSelection;
   session: ChainSession;
 };
 
@@ -54,9 +53,9 @@ export function createInferenceEngine(
   chain: Chain,
   dependencies: InferenceEngineDependencies = defaultDependencies(chain),
 ): InferenceEngine {
-  const { catalog, model, session } = dependencies;
+  const { model, selectModel, session } = dependencies;
   async function run(K: Horizon): Promise<InferenceResult> {
-    const selection = catalog.select(chain, K);
+    const selection = selectModel(K);
     const context = await attempt("Could not read the selected chain.", () =>
       session.sync(),
     );
@@ -147,8 +146,8 @@ function defaultDependencies(chain: Chain): InferenceEngineDependencies {
   const catalog = createDefaultModelCatalog();
   const manifest = catalog.chainManifest(chain);
   return {
-    catalog,
     model: createModelRuntime(),
+    selectModel: (K) => catalog.select(chain, K),
     session: createChainSession(chain, manifest),
   };
 }

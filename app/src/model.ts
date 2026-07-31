@@ -32,7 +32,6 @@ export type MobileManifest = {
 };
 
 export type ModelSelection = {
-  chain: Chain;
   K: Horizon;
   source: number;
   chainManifest: MobileChainManifest;
@@ -95,7 +94,6 @@ export function createDefaultModelCatalog(): ModelCatalog {
     },
     select(chain, K) {
       return {
-        chain,
         K,
         source: resources[chain][K],
         chainManifest: manifest.chains[chain],
@@ -108,16 +106,14 @@ export function createDefaultModelCatalog(): ModelCatalog {
 export function createModelRuntime(
   createNativeModule: NativeModuleFactory = () => new ExecutorchModule(),
 ): ModelRuntime {
-  let current: { key: string; module: NativeModule } | null = null;
+  let current: { artifactId: string; module: NativeModule } | null = null;
   let disposed = false;
   let disposal: Promise<void> | null = null;
   const serialize = createSerialQueue();
 
-  async function ensureLoaded(
-    selection: ModelSelection,
-    key: string,
-  ): Promise<NativeModule> {
-    if (current?.key === key) return current.module;
+  async function ensureLoaded(selection: ModelSelection): Promise<NativeModule> {
+    const artifactId = selection.modelManifest.artifact_id;
+    if (current?.artifactId === artifactId) return current.module;
 
     if (current !== null) {
       const previous = current.module;
@@ -133,7 +129,7 @@ export function createModelRuntime(
       throw error;
     }
 
-    current = { key, module };
+    current = { artifactId, module };
     return module;
   }
 
@@ -142,9 +138,8 @@ export function createModelRuntime(
     input: Float32Array,
   ): Promise<ModelOutput> {
     if (disposed) throw new Error("Model runtime is disposed");
-    const key = selectionKey(selection);
     return serialize(async () => {
-      const module = await ensureLoaded(selection, key);
+      const module = await ensureLoaded(selection);
       const outputs = await module.forward([
         {
           dataPtr: input,
@@ -173,10 +168,6 @@ export function createModelRuntime(
   }
 
   return { execute, dispose };
-}
-
-function selectionKey(selection: ModelSelection): string {
-  return `${selection.chain}:${selection.K}:${selection.modelManifest.artifact_id}`;
 }
 
 function decodeOutputs(

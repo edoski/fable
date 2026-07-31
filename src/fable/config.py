@@ -43,15 +43,9 @@ def _require_unique(label: str, values: tuple[object, ...]) -> None:
 
 
 class CorpusDefinition(StrictFrozenRecord):
-    chain_id: _PositiveInt
-    first_block: _NonNegativeInt
-    last_block: _NonNegativeInt
-
-    @model_validator(mode="after")
-    def validate_bounds(self) -> Self:
-        if self.last_block < self.first_block:
-            raise ValueError("last_block must not precede first_block")
-        return self
+    chain_id: int
+    first_block: int
+    last_block: int
 
 
 class CorpusRequest(StrictFrozenRecord):

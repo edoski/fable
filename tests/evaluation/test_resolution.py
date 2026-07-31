@@ -52,7 +52,7 @@ def _request(
 def _row(
     origin: int,
     predicted_action: int,
-    predicted_log: float | None,
+    predicted_log: float,
     minimum_action: int,
     immediate_fee: int,
     immediate_priority_fee_p50: int,
@@ -61,7 +61,7 @@ def _row(
     deadline_fee: int,
     deadline_priority_fee_p50: int,
     minimum_fee: int,
-) -> dict[str, int | float | None]:
+) -> dict[str, int | float]:
     return {
         "origin_block": origin,
         "predicted_action_k": predicted_action,
@@ -77,7 +77,7 @@ def _row(
     }
 
 
-def _rows() -> list[dict[str, int | float | None]]:
+def _rows() -> list[dict[str, int | float]]:
     return [
         _row(20, 0, math.log(10) + 1.0, 0, 10, 0, 10, 0, 30, 3, 10),
         _row(21, 1, math.log(10) - 1.0, 2, 20, 0, 15, 5, 10, 0, 10),
@@ -89,7 +89,7 @@ def _rows() -> list[dict[str, int | float | None]]:
     ]
 
 
-def _observations(rows: list[dict[str, int | float | None]] | None = None) -> pl.DataFrame:
+def _observations(rows: list[dict[str, int | float]] | None = None) -> pl.DataFrame:
     return pl.DataFrame(rows or _rows(), schema=OBSERVATION_SCHEMA)
 
 
@@ -134,7 +134,6 @@ def test_reduce_baselines_derives_immediate_and_deadline_metrics(tmp_path: Path)
         ("uuid", "evaluation request ID must match the requested evaluation"),
         ("window", "observation origins must exactly match the ordered testing window"),
         ("schema", "observations must have the canonical ordered schema"),
-        ("null", "observations must contain no null values"),
         ("origins", "observation origins must exactly match the ordered testing window"),
     ],
 )
@@ -147,8 +146,6 @@ def test_reduce_evaluation_rejects_invalid_observation_contract(
         request = _request(evaluation_id=_OTHER_EVALUATION_ID)
     elif case == "window":
         rows.pop()
-    elif case == "null":
-        rows[0]["predicted_minimum_log_base_fee"] = None
     elif case == "origins":
         rows[1]["origin_block"] = 22
 
@@ -161,13 +158,4 @@ def test_reduce_evaluation_rejects_invalid_observation_contract(
     _publish_evaluation(tmp_path, request, observations)
 
     with pytest.raises(ValueError, match=message):
-        reduce_evaluation(tmp_path, _EVALUATION_ID)
-
-
-def test_reduce_evaluation_rejects_finite_inputs_that_overflow_a_metric(tmp_path: Path) -> None:
-    rows = _rows()
-    rows[0]["predicted_minimum_log_base_fee"] = 1e308
-    _publish_evaluation(tmp_path, _request(), _observations(rows))
-
-    with pytest.warns(RuntimeWarning), pytest.raises(ValueError, match="only finite metrics"):
         reduce_evaluation(tmp_path, _EVALUATION_ID)

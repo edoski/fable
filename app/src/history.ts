@@ -21,17 +21,16 @@ export function addRun(
   runs: readonly InferenceRun[],
   result: InferenceResult,
 ): InferenceRun[] {
-  return [createRun(result), ...runs];
-}
-
-function createRun(result: InferenceResult): InferenceRun {
   const ranAt = new Date().toISOString();
   runSequence += 1;
-  return {
-    id: `${ranAt}:${runSequence}:${result.chain}:${result.K}:${result.head_hash}`,
-    ran_at: ranAt,
-    ...result,
-  };
+  return [
+    {
+      id: `${ranAt}:${runSequence}:${result.chain}:${result.K}:${result.head_hash}`,
+      ran_at: ranAt,
+      ...result,
+    },
+    ...runs,
+  ];
 }
 
 export async function resolvePendingRuns(

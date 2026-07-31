@@ -17,7 +17,6 @@ import {
 import type { BlockRow, Horizon } from "../src/domain";
 import type {
   MobileChainManifest,
-  ModelCatalog,
   ModelManifest,
   ModelOutput,
   ModelRuntime,
@@ -85,18 +84,10 @@ const chainManifest: MobileChainManifest = {
 
 function selection(K: Horizon): ModelSelection {
   return {
-    chain: "ethereum",
     K,
     source: 10 + K,
     chainManifest,
     modelManifest: chainManifest.models[K],
-  };
-}
-
-function catalog(): ModelCatalog {
-  return {
-    chainManifest: vi.fn(() => chainManifest),
-    select: vi.fn((_chain, K) => selection(K)),
   };
 }
 
@@ -135,8 +126,8 @@ function createTestEngine(
   overrides: Partial<InferenceEngineDependencies> = {},
 ) {
   const dependencies: InferenceEngineDependencies = {
-    catalog: catalog(),
     model: runtime(),
+    selectModel: vi.fn(selection),
     session: session(),
     ...overrides,
   };

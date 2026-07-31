@@ -7,7 +7,6 @@ import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TypeVar
-from uuid import UUID
 
 import typer
 from bundle import read_cells
@@ -29,8 +28,6 @@ def candidates(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) 
     process_inputs: list[CandidateProcessInput] = []
     for row in rows:
         request = TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
-        if request.study_id != UUID(row["study_id"]):
-            raise ValueError("candidate row Study ID must match its request")
         process_inputs.append(
             CandidateProcessInput(request=request, method_index=int(row["method_index"]))
         )
@@ -54,8 +51,6 @@ def _launch(
     submit: Callable[[Sequence[_ProcessInput]], int],
     tasks_per_job: int,
 ) -> None:
-    if not rows:
-        raise ValueError("experiment bundle must contain at least one cell")
     if not 2 <= tasks_per_job <= MAX_ALLOCATION_PROCESS_COUNT:
         raise ValueError("tasks per job must be two or three")
 

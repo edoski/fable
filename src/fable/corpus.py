@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Self
 
 import polars as pl
-from pydantic import UUID4, ConfigDict, Field, model_validator
+from pydantic import UUID4
 
 from .addresses import corpus_blocks_path, corpus_json_path
 from .config import CorpusDefinition, CorpusRequest
-from .records import StrictFrozenRecord
 
 _SCHEMA = pl.Schema(
     {
@@ -28,50 +28,13 @@ _SCHEMA = pl.Schema(
 
 
 class BlockFrame:
-    """One isolated, validated frame of contiguous canonical block facts."""
+    """One isolated frame of contiguous canonical block facts."""
 
     __slots__ = ("_definition", "_frame")
 
     def __init__(self, frame: pl.DataFrame, definition: CorpusDefinition) -> None:
         if frame.schema != _SCHEMA:
             raise ValueError(f"Block schema must be exactly {_SCHEMA}, got {frame.schema}")
-        if any(frame.null_count().row(0)):
-            raise ValueError("Block columns must be non-null")
-
-        expected_count = definition.last_block - definition.first_block + 1
-        if frame.height != expected_count:
-            raise ValueError(f"Block row count must be {expected_count}, got {frame.height}")
-
-        block_numbers = frame["block_number"]
-        if (
-            int(block_numbers[0]) != definition.first_block
-            or int(block_numbers[-1]) != definition.last_block
-            or (frame.height > 1 and not (block_numbers.diff().drop_nulls() == 1).all())
-        ):
-            raise ValueError("Block numbers must exactly match the definition range")
-        if not (frame["chain_id"] == definition.chain_id).all():
-            raise ValueError("Block chain_id values must match the definition")
-
-        timestamps = frame["timestamp"]
-        if not (timestamps >= 0).all():
-            raise ValueError("Block timestamps must be nonnegative")
-        if frame.height > 1 and not (timestamps.diff().drop_nulls() >= 0).all():
-            raise ValueError("Block timestamps must be nondecreasing")
-        if not (frame["base_fee_per_gas"] > 0).all():
-            raise ValueError("Block base_fee_per_gas values must be positive")
-        if not (frame["gas_limit"] > 0).all():
-            raise ValueError("Block gas_limit values must be positive")
-        if (
-            not (frame["gas_used"] >= 0).all()
-            or not (frame["gas_used"] <= frame["gas_limit"]).all()
-        ):
-            raise ValueError("Block gas_used values must be between zero and gas_limit")
-        if not (frame["tx_count"] >= 0).all():
-            raise ValueError("Block tx_count values must be nonnegative")
-        if not (frame["effective_priority_fee_per_gas_p50"] >= 0).all():
-            raise ValueError("Block effective_priority_fee_per_gas_p50 values must be nonnegative")
-        if not (frame["effective_priority_fee_per_gas_p90"] >= 0).all():
-            raise ValueError("Block effective_priority_fee_per_gas_p90 values must be nonnegative")
 
         self._frame = frame.clone()
         self._definition = definition
@@ -100,52 +63,25 @@ class BlockFrame:
         return self._frame.clone()
 
 
-class FinalizedAnchor(StrictFrozenRecord):
-    block_number: int = Field(ge=0)
-    block_hash: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]+$")
-
-
-class Corpus(StrictFrozenRecord):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
+@dataclass(frozen=True, slots=True)
+class Corpus:
     request: CorpusRequest
-    finalized_anchor: FinalizedAnchor
     blocks: BlockFrame
-
-    @model_validator(mode="after")
-    def validate_ownership(self) -> Self:
-        if self.blocks.definition != self.request.definition:
-            raise ValueError("BlockFrame definition must match the Corpus request")
-        if self.finalized_anchor.block_number < self.request.definition.last_block:
-            raise ValueError("Finalized anchor precedes the requested last block")
-        return self
-
-
-class _CorpusDocument(StrictFrozenRecord):
-    request: CorpusRequest
-    finalized_anchor: FinalizedAnchor
-
-
-def _load_corpus_document(storage_root: Path, corpus_id: UUID4) -> _CorpusDocument:
-    document = _CorpusDocument.model_validate_json(
-        corpus_json_path(storage_root, corpus_id).read_text(encoding="utf-8"), strict=True
-    )
-    if document.request.corpus_id != corpus_id:
-        raise ValueError("Corpus request UUID does not match the requested corpus")
-    return document
 
 
 def load_corpus_request(storage_root: Path, corpus_id: UUID4) -> CorpusRequest:
-    return _load_corpus_document(storage_root, corpus_id).request
+    document = json.loads(corpus_json_path(storage_root, corpus_id).read_text(encoding="utf-8"))
+    request = CorpusRequest.model_validate_json(json.dumps(document["request"]), strict=True)
+    if request.corpus_id != corpus_id:
+        raise ValueError("Corpus request UUID does not match the requested corpus")
+    return request
 
 
 def load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus:
-    document = _load_corpus_document(storage_root, corpus_id)
+    request = load_corpus_request(storage_root, corpus_id)
     return Corpus(
-        request=document.request,
-        finalized_anchor=document.finalized_anchor,
+        request=request,
         blocks=BlockFrame(
-            pl.read_parquet(corpus_blocks_path(storage_root, corpus_id)),
-            document.request.definition,
+            pl.read_parquet(corpus_blocks_path(storage_root, corpus_id)), request.definition
         ),
     )

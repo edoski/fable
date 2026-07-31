@@ -50,7 +50,7 @@ corpus / study / min_block_fee / execution
 
 This high-level diagram summarizes the production import direction. Direct owner seams are:
 
-- `corpus` owns canonical `BlockFrame` row truth and completed Corpus association.
+- `corpus` owns canonical `BlockFrame` row access and Corpus request hydration.
 - `temporal` owns causal feature state, fixed-block context/outcome geometry, and historical batches.
 - `min_block_fee` owns target state, the fixed training loss, two-head output, and decode.
 - `modeling` owns request-bound candidate and selected fitting, the three concrete neural
@@ -525,7 +525,7 @@ The sections below place each direct owner interface beside the scientific and d
 
 ### Corpus input
 
-FABLE consumes and validates one completed canonical Corpus pair. Corpus production is external.
+FABLE consumes one completed canonical Corpus pair. Corpus production is external.
 
 ```text
 corpora/<corpus_id>/
@@ -535,11 +535,10 @@ corpora/<corpus_id>/
 
 `corpus.json` stores the exact `CorpusRequest` and one finalized anchor. `blocks.parquet` stores the
 requested contiguous rows in block-number order with the exact nine-column canonical schema
-documented in the [reference](#corpus-object). `load_corpus()` strictly hydrates the request and
-anchor, checks the requested UUID, constructs the canonical `BlockFrame`, and requires the anchor
-to cover the completed range.
+documented in the [reference](#corpus-object). `load_corpus()` hydrates the request, checks the
+requested UUID and exact Parquet schema, and constructs the canonical `BlockFrame`.
 
-`BlockFrame(frame, definition)` is the public canonical-row boundary. Its `definition` identifies the exact owned range, `select_range(first_block, last_block)` returns an inclusive trusted subrange, and `to_polars()` returns an isolated native frame. Construction and native access isolate caller mutation. Range selection is positional after the full frame has been validated; it does not rescan rows. The value carries neither hashes nor finality provenance.
+`BlockFrame(frame, definition)` is the public canonical-row interface. Its `definition` identifies the exact owned range, `select_range(first_block, last_block)` returns an inclusive subrange, and `to_polars()` returns an isolated native frame. Construction checks the exact schema and native access isolates caller mutation. Range selection is positional and does not rescan rows. The value carries neither hashes nor finality provenance.
 
 ### Temporal preparation
 
@@ -656,9 +655,9 @@ The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical e
 
 #### Transient reduction
 
-`reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, expected nonnull row count, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. It requires all seven computed metrics to be finite. `reduce_baselines(storage_root, evaluation_id) -> polars.DataFrame` derives the three economic metrics for the immediate and deadline policies. Neither reducer reloads the artifact or Corpus or externally authenticates the horizon or source. Results have no evaluation ID, count, sums, supports, arrays, or auxiliary fields and are not persisted.
+`reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. `reduce_baselines(storage_root, evaluation_id) -> polars.DataFrame` derives the three economic metrics for the immediate and deadline policies. Neither reducer reloads the artifact or Corpus or externally authenticates the horizon or source. Results have no evaluation ID, count, sums, supports, arrays, or auxiliary fields and are not persisted.
 
-Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps human-readable architecture-chain cell names to the required horizon `2`, `3`, `4`, and `5` Evaluation UUIDs. The final experiment runner owns that scientific association and builds the nine declared cells. Reduction verifies exact schemas, nonnull consecutive origins, predicted-action ranges, and required decision-origin coverage. Its six-metric rows are transient and are not persisted.
+Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps human-readable architecture-chain cell names to the required horizon `2`, `3`, `4`, and `5` Evaluation UUIDs. The final experiment runner owns that scientific association and builds the nine declared cells. Reduction verifies exact schemas, consecutive origins, predicted-action ranges, and required decision-origin coverage. Its six-metric rows are transient and are not persisted.
 
 ## Exact reference
 
@@ -683,9 +682,9 @@ Distribution name, import root, and installed executable are `fable`; the static
 
 | Record | Ordered field | Type and rule |
 | --- | --- | --- |
-| `CorpusDefinition` | `chain_id` | PositiveInt |
-|  | `first_block` | NonNegativeInt |
-|  | `last_block` | NonNegativeInt, `last_block≥first_block` |
+| `CorpusDefinition` | `chain_id` | int |
+|  | `first_block` | int |
+|  | `last_block` | int |
 | `CorpusRequest` | `corpus_id` | UUIDv4 |
 |  | `definition` | `CorpusDefinition` |
 
@@ -806,7 +805,7 @@ Direct loader:
 load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus
 ```
 
-`Corpus.blocks` is a `BlockFrame` whose definition equals the request definition. The finalized anchor covers its last block. These in-memory ownership facts do not change the durable JSON or Parquet formats above.
+`Corpus` contains the hydrated request and its `BlockFrame`. Finalized-anchor metadata remains part of the durable producer format but is not represented in the in-memory value.
 
 #### Experiment manifest
 
@@ -978,7 +977,7 @@ app/assets/models/
 
 The manifest owns shared context and feature state plus each model's artifact UUID and target state. The app trusts this build-time bundle through typed direct lookups and twelve static `.pte` requires. It has no download, alternate runtime, or remote inference fallback.
 
-Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; session disposal unwatches without aborting in-flight reads. App's one engine-and-selection identity gate protects visible results and history commits. The model runtime serializes native load, forward, replacement, and disposal; the history queue serializes persistence and outcome retries. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call supplies both features and must begin at the first context block. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
+Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; session disposal unwatches without aborting in-flight reads. App's one engine-and-selection identity gate protects visible results and history commits. The model runtime serializes native load, forward, replacement, and disposal; the history queue serializes persistence and outcome retries. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call must begin at the first context block and return exactly `C` rows containing nonnegative P50 and P90 values. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
 
 The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real
 `MOBILE.yaml`, generated assets, and device-acceptance evidence do not yet exist. The
