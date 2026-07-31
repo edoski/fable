@@ -26,10 +26,7 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.experiments import (
-    ExperimentKind,
-    load_experiment_manifest,
-)
+from fable.experiments import ExperimentKind, load_experiment_manifest
 from fable.study import Study, load_study
 
 _KIND = ExperimentKind.HPO
@@ -64,17 +61,9 @@ _FIT = FitMethod(
 
 def _model(family: str, capacity: int, dropout: float) -> ModelDefinition:
     if family == "lstm":
-        hidden, layers, head_hidden = (
-            (256, 2, 256),
-            (256, 1, 128),
-            (384, 2, 256),
-        )[capacity]
+        hidden, layers, head_hidden = ((256, 2, 256), (256, 1, 128), (384, 2, 256))[capacity]
         return LstmDefinition(
-            family="lstm",
-            hidden=hidden,
-            layers=layers,
-            head_hidden=head_hidden,
-            dropout=dropout,
+            family="lstm", hidden=hidden, layers=layers, head_hidden=head_hidden, dropout=dropout
         )
     if family == "transformer":
         model_width, attention_heads, transformer_layers, feedforward_width, head_hidden = (
@@ -133,17 +122,9 @@ def _methods(family: str) -> tuple[Method, ...]:
 
 
 def _selected_context_studies(
-    storage_root: Path,
-    experiment_id: UUID,
-) -> tuple[
-    dict[tuple[str, str], Study],
-    tuple[tuple[str, int, float], ...],
-]:
-    manifest = load_experiment_manifest(
-        storage_root,
-        ExperimentKind.C_STUDY,
-        experiment_id,
-    )
+    storage_root: Path, experiment_id: UUID
+) -> tuple[dict[tuple[str, str], Study], tuple[tuple[str, int, float], ...]]:
+    manifest = load_experiment_manifest(storage_root, ExperimentKind.C_STUDY, experiment_id)
     studies: dict[tuple[str, str, int], Study] = {}
     objectives: dict[tuple[str, int], list[float]] = {}
     for cell, study_id in manifest.items():
@@ -157,10 +138,7 @@ def _selected_context_studies(
     winners: list[tuple[str, int, float]] = []
     for chain in _CHAINS:
         contexts = {context for candidate_chain, _, context in studies if candidate_chain == chain}
-        winner = min(
-            contexts,
-            key=lambda context: (fmean(objectives[chain, context]), context),
-        )
+        winner = min(contexts, key=lambda context: (fmean(objectives[chain, context]), context))
         winners.append((chain, winner, fmean(objectives[chain, winner])))
         for family in _FAMILIES:
             selected[chain, family] = studies[chain, family, winner]

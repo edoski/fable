@@ -38,9 +38,7 @@ _BASELINE_RESULT_SCHEMA = pl.Schema(
 
 
 def _request(
-    *,
-    evaluation_id: UUID = _EVALUATION_ID,
-    testing_window: BlockWindow | None = None,
+    *, evaluation_id: UUID = _EVALUATION_ID, testing_window: BlockWindow | None = None
 ) -> EvaluateRequest:
     return EvaluateRequest(
         workflow="evaluate",
@@ -96,9 +94,7 @@ def _observations(rows: list[dict[str, int | float | None]] | None = None) -> pl
 
 
 def _publish_evaluation(
-    storage_root: Path,
-    request: EvaluateRequest,
-    observations: pl.DataFrame,
+    storage_root: Path, request: EvaluateRequest, observations: pl.DataFrame
 ) -> None:
     directory = evaluation_directory(storage_root, _EVALUATION_ID)
     directory.mkdir(parents=True)
@@ -116,21 +112,11 @@ def test_reduce_evaluation_derives_exact_metrics_from_self_contained_observation
     assert result.schema == _RESULT_SCHEMA
     assert result.height == 1
     assert result.row(0) == pytest.approx(
-        (
-            3.0 / 7.0,
-            0.375,
-            1.0,
-            1.5,
-            199.0 / 980.0,
-            1.0 / 14.0,
-            69.0 / 98.0,
-        )
+        (3.0 / 7.0, 0.375, 1.0, 1.5, 199.0 / 980.0, 1.0 / 14.0, 69.0 / 98.0)
     )
 
 
-def test_reduce_baselines_derives_immediate_and_deadline_metrics(
-    tmp_path: Path,
-) -> None:
+def test_reduce_baselines_derives_immediate_and_deadline_metrics(tmp_path: Path) -> None:
     _publish_evaluation(tmp_path, _request(), _observations())
 
     result = reduce_baselines(tmp_path, _EVALUATION_ID)
@@ -138,18 +124,7 @@ def test_reduce_baselines_derives_immediate_and_deadline_metrics(
     assert result.schema == _BASELINE_RESULT_SCHEMA
     assert result["policy"].to_list() == ["immediate", "deadline"]
     assert result.select(pl.exclude("policy")).rows() == pytest.approx(
-        [
-            (
-                0.0,
-                0.0,
-                19.0 / 14.0,
-            ),
-            (
-                -33.0 / 140.0,
-                -151.0 / 490.0,
-                8.0 / 7.0,
-            ),
-        ]
+        [(0.0, 0.0, 19.0 / 14.0), (-33.0 / 140.0, -151.0 / 490.0, 8.0 / 7.0)]
     )
 
 
@@ -164,9 +139,7 @@ def test_reduce_baselines_derives_immediate_and_deadline_metrics(
     ],
 )
 def test_reduce_evaluation_rejects_invalid_observation_contract(
-    tmp_path: Path,
-    case: str,
-    message: str,
+    tmp_path: Path, case: str, message: str
 ) -> None:
     request = _request()
     rows = _rows()

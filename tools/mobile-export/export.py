@@ -12,9 +12,7 @@ from uuid import UUID
 import torch
 import typer
 import yaml
-from executorch.backends.xnnpack.partition.xnnpack_partitioner import (
-    XnnpackPartitioner,
-)
+from executorch.backends.xnnpack.partition.xnnpack_partitioner import XnnpackPartitioner
 from executorch.exir import ExecutorchProgramManager, to_edge_transform_and_lower
 from executorch.runtime import Runtime
 from pydantic import UUID4, Field, TypeAdapter
@@ -27,16 +25,11 @@ from fable.modeling import ArtifactAssociation, load_artifact
 _Chain = Literal["ethereum", "polygon", "avalanche"]
 _Horizon = Annotated[int, Field(ge=2, le=5)]
 
-_CHAINS: dict[_Chain, int] = {
-    "ethereum": 1,
-    "polygon": 137,
-    "avalanche": 43114,
-}
+_CHAINS: dict[_Chain, int] = {"ethereum": 1, "polygon": 137, "avalanche": 43114}
 _HORIZONS = (2, 3, 4, 5)
 
 _Roster = Annotated[
-    dict[_Chain, Annotated[dict[_Horizon, UUID4], Field(min_length=4)]],
-    Field(min_length=3),
+    dict[_Chain, Annotated[dict[_Horizon, UUID4], Field(min_length=4)]], Field(min_length=3)
 ]
 _ROSTER_ADAPTER = TypeAdapter(_Roster)
 
@@ -84,10 +77,7 @@ def _feature_contract(association: ArtifactAssociation) -> _FeatureContract:
     )
 
 
-def _load_cells(
-    storage_root: Path,
-    roster: _Roster,
-) -> dict[str, dict[int, _Cell]]:
+def _load_cells(storage_root: Path, roster: _Roster) -> dict[str, dict[int, _Cell]]:
     corpus_requests: dict[UUID, CorpusRequest] = {}
     cells: dict[str, dict[int, _Cell]] = {}
     for chain, chain_id in _CHAINS.items():
@@ -127,12 +117,7 @@ def _load_cells(
 def _example_inputs(features: _FeatureContract) -> tuple[torch.Tensor, torch.Tensor]:
     shape = (1, features.context_blocks, len(features.names))
     zeros = torch.zeros(shape, dtype=torch.float32)
-    nonzero = torch.linspace(
-        -1.0,
-        1.0,
-        steps=math.prod(shape),
-        dtype=torch.float32,
-    ).reshape(shape)
+    nonzero = torch.linspace(-1.0, 1.0, steps=math.prod(shape), dtype=torch.float32).reshape(shape)
     return zeros, nonzero
 
 
@@ -186,8 +171,7 @@ def _export_model(cell: _Cell, destination: Path) -> None:
 
     exported = torch.export.export(model, (samples[0],), strict=True)
     program = to_edge_transform_and_lower(
-        exported,
-        partitioner=[XnnpackPartitioner()],
+        exported, partitioner=[XnnpackPartitioner()]
     ).to_executorch()
     _assert_xnnpack_delegation(program)
     destination.write_bytes(program.buffer)
@@ -211,16 +195,9 @@ def _manifest(cells: dict[str, dict[int, _Cell]]) -> dict[str, object]:
         chains[chain] = {
             "context_blocks": features.context_blocks,
             "features": [
-                {
-                    "name": name,
-                    "mean": mean,
-                    "standard_deviation": standard_deviation,
-                }
+                {"name": name, "mean": mean, "standard_deviation": standard_deviation}
                 for name, mean, standard_deviation in zip(
-                    features.names,
-                    features.means,
-                    features.standard_deviations,
-                    strict=True,
+                    features.names, features.means, features.standard_deviations, strict=True
                 )
             ],
             "models": {
@@ -237,11 +214,7 @@ def _manifest(cells: dict[str, dict[int, _Cell]]) -> dict[str, object]:
     return {"chains": chains}
 
 
-def export_bundle(
-    storage_root: Path,
-    roster_path: Path,
-    output_directory: Path,
-) -> None:
+def export_bundle(storage_root: Path, roster_path: Path, output_directory: Path) -> None:
     if output_directory.exists():
         raise FileExistsError(output_directory)
 
@@ -250,21 +223,14 @@ def export_bundle(
 
     output_directory.parent.mkdir(parents=True, exist_ok=True)
     scratch = Path(
-        tempfile.mkdtemp(
-            prefix=f".{output_directory.name}.",
-            dir=output_directory.parent,
-        )
+        tempfile.mkdtemp(prefix=f".{output_directory.name}.", dir=output_directory.parent)
     )
     try:
         for chain in _CHAINS:
             for horizon in _HORIZONS:
-                _export_model(
-                    cells[chain][horizon],
-                    scratch / f"{chain}-k{horizon}.pte",
-                )
+                _export_model(cells[chain][horizon], scratch / f"{chain}-k{horizon}.pte")
         (scratch / "manifest.json").write_text(
-            json.dumps(_manifest(cells), indent=2, allow_nan=False) + "\n",
-            encoding="utf-8",
+            json.dumps(_manifest(cells), indent=2, allow_nan=False) + "\n", encoding="utf-8"
         )
         if output_directory.exists():
             raise FileExistsError(output_directory)
@@ -279,11 +245,7 @@ def main(
     output_directory: Path,
     storage_root: Annotated[Path, typer.Option(envvar="STORAGE_ROOT")],
 ) -> None:
-    export_bundle(
-        storage_root,
-        roster_path,
-        output_directory,
-    )
+    export_bundle(storage_root, roster_path, output_directory)
 
 
 if __name__ == "__main__":

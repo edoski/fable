@@ -87,14 +87,11 @@ class BlockFrame:
             raise ValueError("Selected range must be within the BlockFrame definition")
 
         definition = CorpusDefinition(
-            chain_id=self._definition.chain_id,
-            first_block=first_block,
-            last_block=last_block,
+            chain_id=self._definition.chain_id, first_block=first_block, last_block=last_block
         )
         selected: BlockFrame = object.__new__(BlockFrame)
         selected._frame = self._frame.slice(
-            first_block - self._definition.first_block,
-            last_block - first_block + 1,
+            first_block - self._definition.first_block, last_block - first_block + 1
         )
         selected._definition = definition
         return selected
@@ -131,8 +128,7 @@ class _CorpusDocument(StrictFrozenRecord):
 
 def _load_corpus_document(storage_root: Path, corpus_id: UUID4) -> _CorpusDocument:
     document = _CorpusDocument.model_validate_json(
-        corpus_json_path(storage_root, corpus_id).read_text(encoding="utf-8"),
-        strict=True,
+        corpus_json_path(storage_root, corpus_id).read_text(encoding="utf-8"), strict=True
     )
     if document.request.corpus_id != corpus_id:
         raise ValueError("Corpus request UUID does not match the requested corpus")

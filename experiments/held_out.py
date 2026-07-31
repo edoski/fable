@@ -20,21 +20,14 @@ from bundle import (
 from fable.config import BlockWindow, EvaluateRequest
 from fable.corpus import load_corpus_request
 from fable.evaluation import reduce_baselines, reduce_evaluation, reduce_rolling
-from fable.experiments import (
-    ExperimentKind,
-    load_experiment_manifest,
-)
+from fable.experiments import ExperimentKind, load_experiment_manifest
 from fable.study import load_study
 
 _MAX_HORIZON = 200
 _KIND = ExperimentKind.HELD_OUT
 
 
-def prepare(
-    storage_root: StorageRoot,
-    hpo_experiment_id: UUID,
-    k_experiment_id: UUID,
-) -> None:
+def prepare(storage_root: StorageRoot, hpo_experiment_id: UUID, k_experiment_id: UUID) -> None:
     experiment_id = uuid4()
     hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_experiment_id)
@@ -54,8 +47,7 @@ def prepare(
             artifact_id=artifact_id,
             corpus_id=study.request.corpus_id,
             testing_window=BlockWindow(
-                first_parent_block=first_parent,
-                last_parent_block=last_parent,
+                first_parent_block=first_parent, last_parent_block=last_parent
             ),
         )
         cells.append((cell, request))
@@ -87,9 +79,7 @@ def baselines(storage_root: StorageRoot, experiment_id: UUID) -> None:
 
 
 def _print_cells(
-    storage_root: Path,
-    experiment_id: UUID,
-    reducer: Callable[[Path, UUID], pl.DataFrame],
+    storage_root: Path, experiment_id: UUID, reducer: Callable[[Path, UUID], pl.DataFrame]
 ) -> None:
     manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
     results = []

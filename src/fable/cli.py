@@ -10,12 +10,7 @@ from uuid import UUID
 
 import typer
 
-from .config import (
-    WORKFLOW_REQUEST_ADAPTER,
-    TrainRequest,
-    TuneRequest,
-    WorkflowRequest,
-)
+from .config import WORKFLOW_REQUEST_ADAPTER, TrainRequest, TuneRequest, WorkflowRequest
 from .evaluation import evaluate
 from .execution import CandidateProcessInput, submit_candidates, submit_workflows
 from .modeling import run_candidate, train
@@ -37,10 +32,7 @@ def _resolve_storage_root() -> Path:
 
 @app.command("submit")
 def submit_command(
-    request_paths: Annotated[
-        list[Path],
-        typer.Argument(metavar="REQUEST.json"),
-    ],
+    request_paths: Annotated[list[Path], typer.Argument(metavar="REQUEST.json")],
 ) -> None:
     requests: list[WorkflowRequest] = [
         WORKFLOW_REQUEST_ADAPTER.validate_json(path.read_bytes()) for path in request_paths
@@ -51,10 +43,7 @@ def submit_command(
 
 @remote_app.command("workflow")
 def workflow_command() -> None:
-    request = WORKFLOW_REQUEST_ADAPTER.validate_json(
-        sys.stdin.buffer.read(),
-        strict=True,
-    )
+    request = WORKFLOW_REQUEST_ADAPTER.validate_json(sys.stdin.buffer.read(), strict=True)
     storage_root = _resolve_storage_root()
 
     if isinstance(request, TrainRequest):
@@ -65,15 +54,9 @@ def workflow_command() -> None:
 
 @remote_app.command("candidate", hidden=True)
 def candidate_command() -> None:
-    candidate = CandidateProcessInput.model_validate_json(
-        sys.stdin.buffer.read(),
-    )
+    candidate = CandidateProcessInput.model_validate_json(sys.stdin.buffer.read())
     storage_root = _resolve_storage_root()
-    run_candidate(
-        storage_root,
-        candidate.request,
-        candidate.method_index,
-    )
+    run_candidate(storage_root, candidate.request, candidate.method_index)
 
 
 @study_app.command("run")
@@ -88,7 +71,5 @@ def study_run_command(
 
 
 @study_app.command("finalize")
-def study_finalize_command(
-    study_id: Annotated[UUID, typer.Argument(metavar="STUDY_ID")],
-) -> None:
+def study_finalize_command(study_id: Annotated[UUID, typer.Argument(metavar="STUDY_ID")]) -> None:
     publish_study(_resolve_storage_root(), study_id)

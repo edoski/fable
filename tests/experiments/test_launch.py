@@ -53,8 +53,7 @@ def _write_workflow_bundle(root: Path, count: int) -> tuple[Path, list[UUID]]:
 
 
 def test_candidates_submit_typed_inputs_and_restart_skips_recorded_rows(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
@@ -77,18 +76,8 @@ def test_candidates_submit_typed_inputs_and_restart_skips_recorded_rows(
     jobs = read_tsv_rows(bundle / "jobs.tsv")
     assert len(jobs) == 102
     assert jobs[:3] == [
-        {
-            "job_id": "1001",
-            "slot": "0",
-            "row": "0",
-            "cell": "ethereum.lstm.full",
-        },
-        {
-            "job_id": "1001",
-            "slot": "1",
-            "row": "1",
-            "cell": "ethereum.lstm.without_base_fee",
-        },
+        {"job_id": "1001", "slot": "0", "row": "0", "cell": "ethereum.lstm.full"},
+        {"job_id": "1001", "slot": "1", "row": "1", "cell": "ethereum.lstm.without_base_fee"},
         {
             "job_id": "1001",
             "slot": "2",
@@ -132,13 +121,7 @@ def test_workflows_use_fewest_ordered_allocations_without_avoidable_singletons(
         return 2_000 + len(batches)
 
     monkeypatch.setattr(launcher, "submit_workflows", submit)
-    result = dispatch(
-        launcher.app,
-        "workflows",
-        str(bundle),
-        "--tasks-per-job",
-        str(capacity),
-    )
+    result = dispatch(launcher.app, "workflows", str(bundle), "--tasks-per-job", str(capacity))
 
     assert result.exit_code == 0
     assert result.output.splitlines() == [
@@ -157,8 +140,7 @@ def test_workflows_use_fewest_ordered_allocations_without_avoidable_singletons(
 
 
 def test_launch_persists_each_success_and_failure_leaves_later_groups_pending(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     bundle, evaluation_ids = _write_workflow_bundle(tmp_path, 8)
     launcher = _load_launcher(monkeypatch)

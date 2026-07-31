@@ -38,11 +38,7 @@ def test_target_and_native_loss_match_hand_derived_fixture() -> None:
     predictions = (targets + torch.tensor([0.0, 0.5, 1.0, 2.0])).detach().requires_grad_()
     output = MinBlockFeeOutput(action_logits=logits, minimum_fee_z=predictions)
 
-    loss_by_origin = min_block_fee_loss(
-        output,
-        label=labels,
-        target=targets,
-    )
+    loss_by_origin = min_block_fee_loss(output, label=labels, target=targets)
     log_three = math.log(3.0)
     expected_total = torch.tensor([log_three, log_three + 0.125, log_three + 0.5, log_three + 1.5])
 
@@ -63,8 +59,7 @@ def test_target_state_requires_nonconstant_minima() -> None:
 
 def test_decode_uses_native_first_index_argmax_and_ignores_auxiliary_values() -> None:
     output = MinBlockFeeOutput(
-        torch.tensor([[3.0, 3.0, 2.0], [4.0, 4.0, -1.0]]),
-        torch.tensor([math.nan]),
+        torch.tensor([[3.0, 3.0, 2.0], [4.0, 4.0, -1.0]]), torch.tensor([math.nan])
     )
 
     assert torch.equal(decode_action(output), torch.tensor([0, 0], dtype=torch.int64))

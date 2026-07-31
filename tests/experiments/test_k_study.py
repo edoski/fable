@@ -24,11 +24,7 @@ from fable.config import (
     TuneRequest,
 )
 from fable.evaluation import OBSERVATION_SCHEMA
-from fable.experiments import (
-    ExperimentKind,
-    ExperimentManifest,
-    experiment_manifest_path,
-)
+from fable.experiments import ExperimentKind, ExperimentManifest, experiment_manifest_path
 from fable.min_block_fee import TargetState
 from fable.modeling import ArtifactAssociation
 from fable.study import RetainedResult, Study
@@ -41,13 +37,7 @@ _HELD_OUT_SCRIPT = _ROOT / "experiments" / "held_out.py"
 _HPO_EXPERIMENT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 _CORPUS_ID = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
 _METHOD = Method(
-    model=LstmDefinition(
-        family="lstm",
-        hidden=256,
-        layers=2,
-        head_hidden=256,
-        dropout=0.2,
-    ),
+    model=LstmDefinition(family="lstm", hidden=256, layers=2, head_hidden=256, dropout=0.2),
     fit=FitMethod(
         learning_rate=3e-4,
         weight_decay=1e-4,
@@ -61,13 +51,7 @@ _METHOD = Method(
     ),
 )
 _ARTIFACT_METHOD = Method(
-    model=LstmDefinition(
-        family="lstm",
-        hidden=1,
-        layers=1,
-        head_hidden=1,
-        dropout=0.0,
-    ),
+    model=LstmDefinition(family="lstm", hidden=1, layers=1, head_hidden=1, dropout=0.0),
     fit=_METHOD.fit,
 )
 
@@ -99,46 +83,27 @@ def _publish_hpo(storage_root: Path) -> None:
         study = Study(
             request=request,
             trials=(
-                RetainedResult(
-                    objective=2.0,
-                    selected_epoch=1,
-                    completed_epochs=1,
-                ),
-                RetainedResult(
-                    objective=1.0,
-                    selected_epoch=1,
-                    completed_epochs=1,
-                ),
+                RetainedResult(objective=2.0, selected_epoch=1, completed_epochs=1),
+                RetainedResult(objective=1.0, selected_epoch=1, completed_epochs=1),
             ),
         )
         path = storage_root / "studies" / f"{study_id}.json"
         path.parent.mkdir(exist_ok=True)
         path.write_text(study.model_dump_json(), encoding="utf-8")
         cells[cell] = study_id
-    manifest_path = experiment_manifest_path(
-        storage_root,
-        ExperimentKind.HPO,
-        _HPO_EXPERIMENT_ID,
-    )
+    manifest_path = experiment_manifest_path(storage_root, ExperimentKind.HPO, _HPO_EXPERIMENT_ID)
     manifest_path.parent.mkdir(parents=True)
-    manifest_path.write_text(
-        ExperimentManifest(root=cells).model_dump_json(),
-        encoding="utf-8",
-    )
+    manifest_path.write_text(ExperimentManifest(root=cells).model_dump_json(), encoding="utf-8")
 
 
 def _publish_artifacts(storage_root: Path, rows: list[dict[str, str]]) -> None:
     for row in rows:
-        request = TrainRequest.model_validate_json(
-            Path(row["request"]).read_bytes(),
-            strict=True,
-        )
+        request = TrainRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         feature_count = len(request.source.experiment.ordered_features)
         association = ArtifactAssociation(
             request=request,
             feature_state=FeatureState(
-                means=(0.0,) * feature_count,
-                standard_deviations=(1.0,) * feature_count,
+                means=(0.0,) * feature_count, standard_deviations=(1.0,) * feature_count
             ),
             target_state=TargetState(mean=0.0, standard_deviation=1.0),
             method=_ARTIFACT_METHOD,
@@ -160,8 +125,7 @@ def _publish_artifacts(storage_root: Path, rows: list[dict[str, str]]) -> None:
 def _publish_evaluations(storage_root: Path, rows: list[dict[str, str]]) -> None:
     for row in rows:
         request = EvaluateRequest.model_validate_json(
-            Path(row["request"]).read_bytes(),
-            strict=True,
+            Path(row["request"]).read_bytes(), strict=True
         )
         directory = evaluation_directory(storage_root, request.evaluation_id)
         directory.mkdir(parents=True, exist_ok=True)
@@ -191,17 +155,10 @@ def _publish_evaluations(storage_root: Path, rows: list[dict[str, str]]) -> None
         ).write_parquet(directory / "observations.parquet")
 
 
-def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
-    tmp_path: Path,
-) -> None:
+def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(tmp_path: Path) -> None:
     _publish_hpo(tmp_path)
 
-    result = run_script(
-        _SCRIPT,
-        "prepare",
-        tmp_path,
-        _HPO_EXPERIMENT_ID,
-    )
+    result = run_script(_SCRIPT, "prepare", tmp_path, _HPO_EXPERIMENT_ID)
     experiment_id = UUID(result.stdout.strip())
     bundle = tmp_path / "experiments" / "k_study" / f".{experiment_id}"
     rows = read_tsv_rows(bundle / "cells.tsv")
@@ -268,26 +225,15 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(
     corpus = {
         "request": {
             "corpus_id": str(_CORPUS_ID),
-            "definition": {
-                "chain_id": 1,
-                "first_block": 0,
-                "last_block": 1_000,
-            },
+            "definition": {"chain_id": 1, "first_block": 0, "last_block": 1_000},
         },
-        "finalized_anchor": {
-            "block_number": 1_000,
-            "block_hash": "0" * 64,
-        },
+        "finalized_anchor": {"block_number": 1_000, "block_hash": "0" * 64},
     }
     corpus_path = tmp_path / "corpora" / str(_CORPUS_ID) / "corpus.json"
     corpus_path.parent.mkdir(parents=True)
     corpus_path.write_text(json.dumps(corpus), encoding="utf-8")
     held_out_result = run_script(
-        _HELD_OUT_SCRIPT,
-        "prepare",
-        tmp_path,
-        _HPO_EXPERIMENT_ID,
-        experiment_id,
+        _HELD_OUT_SCRIPT, "prepare", tmp_path, _HPO_EXPERIMENT_ID, experiment_id
     )
     held_out_experiment_id = UUID(held_out_result.stdout.strip())
 

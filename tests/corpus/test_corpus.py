@@ -38,10 +38,7 @@ def _request() -> CorpusRequest:
 def _valid_document() -> dict[str, object]:
     return {
         "request": _request().model_dump(mode="json"),
-        "finalized_anchor": {
-            "block_number": 103,
-            "block_hash": "a" * 64,
-        },
+        "finalized_anchor": {"block_number": 103, "block_hash": "a" * 64},
     }
 
 
@@ -57,11 +54,7 @@ def _valid_blocks() -> pl.DataFrame:
     )
 
 
-def _write_corpus(
-    root: Path,
-    document: dict[str, object],
-    blocks: pl.DataFrame,
-) -> None:
+def _write_corpus(root: Path, document: dict[str, object], blocks: pl.DataFrame) -> None:
     corpus_json_path(root, CORPUS_ID).parent.mkdir(parents=True)
     corpus_json_path(root, CORPUS_ID).write_text(json.dumps(document), encoding="utf-8")
     blocks.write_parquet(corpus_blocks_path(root, CORPUS_ID))
@@ -78,11 +71,7 @@ def test_load_corpus_reads_one_valid_canonical_pair(tmp_path) -> None:
     assert_frame_equal(corpus.blocks.to_polars(), blocks)
 
 
-def _invalidate(
-    case: str,
-    document: dict[str, object],
-    blocks: pl.DataFrame,
-) -> pl.DataFrame:
+def _invalidate(case: str, document: dict[str, object], blocks: pl.DataFrame) -> pl.DataFrame:
     request = cast(dict[str, object], document["request"])
     anchor = cast(dict[str, object], document["finalized_anchor"])
     if case == "json_shape":
@@ -101,14 +90,7 @@ def _invalidate(
 
 
 @pytest.mark.parametrize(
-    "case",
-    (
-        "json_shape",
-        "uuid_association",
-        "anchor_shape",
-        "anchor_relation",
-        "corrupt_blocks",
-    ),
+    "case", ("json_shape", "uuid_association", "anchor_shape", "anchor_relation", "corrupt_blocks")
 )
 def test_load_corpus_rejects_invalid_canonical_facts(tmp_path, case: str) -> None:
     document = _valid_document()

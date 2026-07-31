@@ -28,17 +28,11 @@ def candidates(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) 
     rows = read_cells(bundle)
     process_inputs: list[CandidateProcessInput] = []
     for row in rows:
-        request = TuneRequest.model_validate_json(
-            Path(row["request"]).read_bytes(),
-            strict=True,
-        )
+        request = TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         if request.study_id != UUID(row["study_id"]):
             raise ValueError("candidate row Study ID must match its request")
         process_inputs.append(
-            CandidateProcessInput(
-                request=request,
-                method_index=int(row["method_index"]),
-            )
+            CandidateProcessInput(request=request, method_index=int(row["method_index"]))
         )
     _launch(bundle, rows, process_inputs, submit_candidates, tasks_per_job)
 
@@ -47,10 +41,7 @@ def workflows(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) -
     bundle = bundle.resolve()
     rows = read_cells(bundle)
     process_inputs = [
-        WORKFLOW_REQUEST_ADAPTER.validate_json(
-            Path(row["request"]).read_bytes(),
-            strict=True,
-        )
+        WORKFLOW_REQUEST_ADAPTER.validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in rows
     ]
     _launch(bundle, rows, process_inputs, submit_workflows, tasks_per_job)

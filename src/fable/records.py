@@ -4,8 +4,4 @@ from pydantic import BaseModel, ConfigDict
 
 
 class StrictFrozenRecord(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        strict=True,
-    )
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)

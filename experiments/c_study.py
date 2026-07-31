@@ -6,18 +6,10 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import typer
-from bundle import (
-    StorageRoot,
-    close_study_bundle,
-    open_bundle,
-    write_tune_cells,
-)
+from bundle import StorageRoot, close_study_bundle, open_bundle, write_tune_cells
 
 from fable.config import TuneRequest
-from fable.experiments import (
-    ExperimentKind,
-    load_experiment_manifest,
-)
+from fable.experiments import ExperimentKind, load_experiment_manifest
 from fable.study import Study, load_study
 
 _KIND = ExperimentKind.C_STUDY
@@ -26,14 +18,9 @@ _CHAINS = ("ethereum", "polygon", "avalanche")
 _FAMILIES = ("lstm", "transformer", "transformer_lstm")
 
 
-def _full_feature_studies(
-    storage_root: Path,
-    experiment_id: UUID,
-) -> dict[tuple[str, str], Study]:
+def _full_feature_studies(storage_root: Path, experiment_id: UUID) -> dict[tuple[str, str], Study]:
     manifest = load_experiment_manifest(
-        storage_root,
-        ExperimentKind.FEATURE_ABLATION,
-        experiment_id,
+        storage_root, ExperimentKind.FEATURE_ABLATION, experiment_id
     )
     studies: dict[tuple[str, str], Study] = {}
     for cell, study_id in manifest.items():
@@ -43,10 +30,7 @@ def _full_feature_studies(
     return studies
 
 
-def prepare(
-    storage_root: StorageRoot,
-    feature_experiment_id: UUID,
-) -> None:
+def prepare(storage_root: StorageRoot, feature_experiment_id: UUID) -> None:
     experiment_id = uuid4()
     selected = _full_feature_studies(storage_root, feature_experiment_id)
     bundle = open_bundle(storage_root, _KIND, experiment_id)

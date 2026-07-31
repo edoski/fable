@@ -15,10 +15,7 @@ from bundle import (
 )
 
 from fable.config import SelectedStudySource, TrainRequest
-from fable.experiments import (
-    ExperimentKind,
-    load_experiment_manifest,
-)
+from fable.experiments import ExperimentKind, load_experiment_manifest
 from fable.modeling import load_artifact
 from fable.study import load_study
 
@@ -28,11 +25,7 @@ _HORIZONS = (2, 3, 4, 5, 10, 25, 50, 100, 200)
 
 def prepare(storage_root: StorageRoot, hpo_experiment_id: UUID) -> None:
     experiment_id = uuid4()
-    manifest = load_experiment_manifest(
-        storage_root,
-        ExperimentKind.HPO,
-        hpo_experiment_id,
-    )
+    manifest = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     bundle = open_bundle(storage_root, _KIND, experiment_id)
 
     cells: list[tuple[str, TrainRequest]] = []

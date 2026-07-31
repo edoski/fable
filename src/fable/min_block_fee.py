@@ -12,14 +12,8 @@ from pydantic import Field
 
 from .records import StrictFrozenRecord
 
-_FiniteFloat: TypeAlias = Annotated[
-    float,
-    Field(allow_inf_nan=False),
-]
-_PositiveFloat: TypeAlias = Annotated[
-    float,
-    Field(gt=0.0, allow_inf_nan=False),
-]
+_FiniteFloat: TypeAlias = Annotated[float, Field(allow_inf_nan=False)]
+_PositiveFloat: TypeAlias = Annotated[float, Field(gt=0.0, allow_inf_nan=False)]
 
 
 class TargetState(StrictFrozenRecord):
@@ -43,10 +37,7 @@ def fit_target_state(raw_minima: NDArray[np.int64]) -> TargetState:
     return TargetState(mean=mean, standard_deviation=standard_deviation)
 
 
-def standardize_target(
-    raw_minima: NDArray[np.int64],
-    state: TargetState,
-) -> NDArray[np.float32]:
+def standardize_target(raw_minima: NDArray[np.int64], state: TargetState) -> NDArray[np.float32]:
     standardized = (_natural_log(raw_minima) - state.mean) / state.standard_deviation
     result = np.ascontiguousarray(standardized, dtype=np.float32)
     if not np.isfinite(result).all():
@@ -55,21 +46,10 @@ def standardize_target(
 
 
 def min_block_fee_loss(
-    output: MinBlockFeeOutput,
-    *,
-    label: torch.Tensor,
-    target: torch.Tensor,
+    output: MinBlockFeeOutput, *, label: torch.Tensor, target: torch.Tensor
 ) -> torch.Tensor:
-    classification = F.cross_entropy(
-        output.action_logits,
-        label,
-        reduction="none",
-    )
-    regression = F.smooth_l1_loss(
-        output.minimum_fee_z,
-        target,
-        reduction="none",
-    )
+    classification = F.cross_entropy(output.action_logits, label, reduction="none")
+    regression = F.smooth_l1_loss(output.minimum_fee_z, target, reduction="none")
     return classification + regression
 
 

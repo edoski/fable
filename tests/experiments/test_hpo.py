@@ -24,19 +24,12 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
     publish_generated_studies(
-        tmp_path,
-        read_tsv_rows(feature_bundle / "cells.tsv"),
-        default_objective=1.0,
+        tmp_path, read_tsv_rows(feature_bundle / "cells.tsv"), default_objective=1.0
     )
     run_script(_FEATURE_SCRIPT, "close", tmp_path, feature_experiment_id)
 
     c_experiment_id = UUID(
-        run_script(
-            _C_SCRIPT,
-            "prepare",
-            tmp_path,
-            feature_experiment_id,
-        ).stdout.strip()
+        run_script(_C_SCRIPT, "prepare", tmp_path, feature_experiment_id).stdout.strip()
     )
     c_bundle = tmp_path / "experiments" / "c_study" / f".{c_experiment_id}"
     c_rows = read_tsv_rows(c_bundle / "cells.tsv")
@@ -91,16 +84,12 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         for family in ("lstm", "transformer", "transformer_lstm")
     }
     publish_generated_studies(
-        tmp_path,
-        c_rows,
-        default_objective=1.0,
-        objectives=context_objectives,
+        tmp_path, c_rows, default_objective=1.0, objectives=context_objectives
     )
     c_result = run_script(_C_SCRIPT, "close", tmp_path, c_experiment_id)
     c_canonical = tmp_path / "experiments" / "c_study" / str(c_experiment_id)
     c_manifest = ExperimentManifest.model_validate_json(
-        (c_canonical / "manifest.json").read_bytes(),
-        strict=True,
+        (c_canonical / "manifest.json").read_bytes(), strict=True
     )
 
     assert c_result.stdout.strip() == str(c_experiment_id)
@@ -111,12 +100,7 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     assert {path.name for path in c_canonical.iterdir()} == {"manifest.json"}
     assert not c_bundle.exists()
 
-    result = run_script(
-        _HPO_SCRIPT,
-        "prepare",
-        tmp_path,
-        c_experiment_id,
-    )
+    result = run_script(_HPO_SCRIPT, "prepare", tmp_path, c_experiment_id)
     experiment_id = UUID(result.stdout.strip())
     assert result.stderr.splitlines() == [
         "ethereum\t50\t0.25",
@@ -126,10 +110,7 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
     rows = read_tsv_rows(bundle / "cells.tsv")
     requests = {
-        row["cell"]: TuneRequest.model_validate_json(
-            Path(row["request"]).read_bytes(),
-            strict=True,
-        )
+        row["cell"]: TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in rows
     }
 
@@ -149,11 +130,7 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
             if cell.startswith(f"{chain}.")
         }
         for chain in ("ethereum", "polygon", "avalanche")
-    } == {
-        "ethereum": {50},
-        "polygon": {100},
-        "avalanche": {200},
-    }
+    } == {"ethereum": {50}, "polygon": {100}, "avalanche": {200}}
     assert requests["ethereum.lstm"].methods[0].model.model_dump() == {
         "family": "lstm",
         "hidden": 256,
@@ -212,15 +189,10 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
 
 @pytest.mark.parametrize(
     ("second_study", "message"),
-    (
-        ("valid", "one HPO cell cannot reference multiple Studies"),
-        ("missing", "FileNotFoundError"),
-    ),
+    (("valid", "one HPO cell cannot reference multiple Studies"), ("missing", "FileNotFoundError")),
 )
 def test_hpo_select_validates_every_distinct_repeated_cell_reference(
-    tmp_path: Path,
-    second_study: str,
-    message: str,
+    tmp_path: Path, second_study: str, message: str
 ) -> None:
     source_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     source = tmp_path / "experiments" / "feature_ablation" / f".{source_id}"

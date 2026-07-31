@@ -16,12 +16,7 @@ PREFETCH_FACTOR = 2
 PERSISTENT_WORKERS = True
 
 
-def data_loader(
-    dataset: Dataset[_Item],
-    *,
-    batch_size: int,
-    shuffle: bool,
-) -> DataLoader[_Item]:
+def data_loader(dataset: Dataset[_Item], *, batch_size: int, shuffle: bool) -> DataLoader[_Item]:
     workers = NUM_WORKERS
     return DataLoader(
         dataset,

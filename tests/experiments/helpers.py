@@ -27,9 +27,7 @@ def publish_generated_studies(
             request=request,
             trials=tuple(
                 RetainedResult(
-                    objective=objective + method_index,
-                    selected_epoch=1,
-                    completed_epochs=1,
+                    objective=objective + method_index, selected_epoch=1, completed_epochs=1
                 )
                 for method_index, _ in enumerate(request.methods)
             ),

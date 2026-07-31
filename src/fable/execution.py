@@ -73,8 +73,7 @@ def submit_candidates(candidates: Sequence[CandidateProcessInput]) -> int:
 
 
 def _submit_allocation(
-    inputs: Sequence[StrictFrozenRecord],
-    leaf: Literal["workflow", "candidate"],
+    inputs: Sequence[StrictFrozenRecord], leaf: Literal["workflow", "candidate"]
 ) -> int:
     inputs = tuple(inputs)
     _require_process_count(inputs)
@@ -82,9 +81,7 @@ def _submit_allocation(
     return _invoke_sbatch(
         remote,
         _render_allocation_script(
-            remote,
-            tuple(process_input.model_dump_json() for process_input in inputs),
-            leaf,
+            remote, tuple(process_input.model_dump_json() for process_input in inputs), leaf
         ),
     )
 
@@ -95,15 +92,7 @@ def _load_remote() -> _Remote:
 
 def _invoke_sbatch(remote: _Remote, script: str) -> int:
     result = subprocess.run(
-        [
-            "ssh",
-            "-T",
-            "-o",
-            "BatchMode=yes",
-            remote.ssh,
-            "sbatch",
-            "--parsable",
-        ],
+        ["ssh", "-T", "-o", "BatchMode=yes", remote.ssh, "sbatch", "--parsable"],
         input=script,
         text=True,
         stdout=subprocess.PIPE,
@@ -113,9 +102,7 @@ def _invoke_sbatch(remote: _Remote, script: str) -> int:
 
 
 def _render_allocation_script(
-    remote: _Remote,
-    process_inputs_json: tuple[str, ...],
-    leaf: Literal["workflow", "candidate"],
+    remote: _Remote, process_inputs_json: tuple[str, ...], leaf: Literal["workflow", "candidate"]
 ) -> str:
     resources = remote.resources
     task_count = len(process_inputs_json)

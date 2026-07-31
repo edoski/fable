@@ -6,12 +6,7 @@ from statistics import fmean
 from uuid import UUID, uuid4
 
 import typer
-from bundle import (
-    StorageRoot,
-    close_study_bundle,
-    open_bundle,
-    write_tune_cells,
-)
+from bundle import StorageRoot, close_study_bundle, open_bundle, write_tune_cells
 
 from fable.config import (
     BlockWindow,
@@ -24,10 +19,7 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.experiments import (
-    ExperimentKind,
-    load_experiment_manifest,
-)
+from fable.experiments import ExperimentKind, load_experiment_manifest
 from fable.study import load_study
 
 _KIND = ExperimentKind.FEATURE_ABLATION
@@ -64,13 +56,7 @@ _FIT = FitMethod(
 )
 _METHODS = (
     Method(
-        model=LstmDefinition(
-            family="lstm",
-            hidden=256,
-            layers=2,
-            head_hidden=256,
-            dropout=0.2,
-        ),
+        model=LstmDefinition(family="lstm", hidden=256, layers=2, head_hidden=256, dropout=0.2),
         fit=_FIT,
     ),
     Method(
@@ -109,20 +95,12 @@ _FEATURE_UNITS: tuple[tuple[str, tuple[FeatureName, ...]], ...] = (
     ("block_interval", ("block_interval_seconds",)),
     ("hour", ("hour_sin", "hour_cos")),
     ("day_of_week", ("dow_sin", "dow_cos")),
-    (
-        "priority_fee_p50",
-        ("log1p_effective_priority_fee_per_gas_p50",),
-    ),
-    (
-        "priority_fee_p90",
-        ("log1p_effective_priority_fee_per_gas_p90",),
-    ),
+    ("priority_fee_p50", ("log1p_effective_priority_fee_per_gas_p50",)),
+    ("priority_fee_p90", ("log1p_effective_priority_fee_per_gas_p90",)),
 )
 
 
-def _feature_configurations(
-    chain: str,
-) -> tuple[tuple[str, tuple[FeatureName, ...]], ...]:
+def _feature_configurations(chain: str) -> tuple[tuple[str, tuple[FeatureName, ...]], ...]:
     units = tuple(
         unit
         for unit in _FEATURE_UNITS
@@ -132,20 +110,11 @@ def _feature_configurations(
     leave_one_out = tuple(
         (
             f"without_{omitted_name}",
-            tuple(
-                feature
-                for name, unit in units
-                if name != omitted_name
-                for feature in unit
-            ),
+            tuple(feature for name, unit in units if name != omitted_name for feature in unit),
         )
         for omitted_name, _ in units
     )
-    return (
-        ("full", full),
-        *leave_one_out,
-        ("base_only", ("log_base_fee_per_gas",)),
-    )
+    return (("full", full), *leave_one_out, ("base_only", ("log_base_fee_per_gas",)))
 
 
 def prepare(storage_root: StorageRoot) -> None:

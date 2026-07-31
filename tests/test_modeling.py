@@ -39,12 +39,7 @@ from fable.config import (
 )
 from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
 from fable.min_block_fee import TargetState, min_block_fee_loss
-from fable.modeling import (
-    ArtifactAssociation,
-    load_artifact,
-    run_candidate,
-    train,
-)
+from fable.modeling import ArtifactAssociation, load_artifact, run_candidate, train
 from fable.study import RetainedResult, Study, load_study, publish_study
 from fable.temporal import FeatureState, prepare_fit_history
 from tests.helpers import modeling_method
@@ -52,10 +47,7 @@ from tests.helpers import modeling_method
 ARTIFACT_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
 STUDY_ID = UUID("40000000-0000-4000-8000-000000000001")
-_BASE_FEES = np.array(
-    [11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2],
-    dtype=np.int64,
-)
+_BASE_FEES = np.array([11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2], dtype=np.int64)
 
 
 @pytest.fixture(autouse=True)
@@ -65,14 +57,8 @@ def _use_single_process_loaders(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _experiment() -> ExperimentSemantics:
     return ExperimentSemantics(
-        training_window=BlockWindow(
-            first_parent_block=12,
-            last_parent_block=15,
-        ),
-        validation_window=BlockWindow(
-            first_parent_block=20,
-            last_parent_block=21,
-        ),
+        training_window=BlockWindow(first_parent_block=12, last_parent_block=15),
+        validation_window=BlockWindow(first_parent_block=20, last_parent_block=21),
         context_blocks=3,
         horizon_blocks=2,
         ordered_features=("log_base_fee_per_gas", "gas_utilization"),
@@ -107,8 +93,7 @@ def _corpus() -> Corpus:
 
 def _corpus_request() -> CorpusRequest:
     return CorpusRequest(
-        corpus_id=CORPUS_ID,
-        definition=CorpusDefinition(chain_id=1, first_block=10, last_block=23),
+        corpus_id=CORPUS_ID, definition=CorpusDefinition(chain_id=1, first_block=10, last_block=23)
     )
 
 
@@ -172,10 +157,7 @@ def test_transformer_lstm_uses_exportable_float32_recurrence() -> None:
         dropout=0.0,
     )
     model = modeling._TransformerLstmModel(
-        definition,
-        context_blocks=3,
-        feature_count=2,
-        actions=2,
+        definition, context_blocks=3, feature_count=2, actions=2
     ).eval()
     inputs = torch.zeros((2, 3, 2))
     torch.export.export(model, (inputs,), strict=True)
@@ -195,19 +177,12 @@ def _train_request(artifact_id: UUID = ARTIFACT_ID) -> TrainRequest:
         workflow="train",
         artifact_id=artifact_id,
         source=SelectedStudySource(
-            corpus_id=CORPUS_ID,
-            study_id=STUDY_ID,
-            study_result_index=0,
-            experiment=_experiment(),
+            corpus_id=CORPUS_ID, study_id=STUDY_ID, study_result_index=0, experiment=_experiment()
         ),
     )
 
 
-def _write_selected_study(
-    storage_root: Path,
-    request: TrainRequest,
-    method: Method,
-) -> None:
+def _write_selected_study(storage_root: Path, request: TrainRequest, method: Method) -> None:
     source = request.source
     study = Study(
         request=TuneRequest(
@@ -217,13 +192,7 @@ def _write_selected_study(
             experiment=source.experiment,
             methods=(method,),
         ),
-        trials=(
-            RetainedResult(
-                objective=0.5,
-                selected_epoch=1,
-                completed_epochs=1,
-            ),
-        ),
+        trials=(RetainedResult(objective=0.5, selected_epoch=1, completed_epochs=1),),
     )
     path = study_json_path(storage_root, source.study_id)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -243,19 +212,13 @@ def _use_cpu_trainer(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_artifact_association_round_trips_strict_json() -> None:
     association = ArtifactAssociation(
         request=_train_request(),
-        feature_state=FeatureState(
-            means=(1.0, 2.0),
-            standard_deviations=(0.5, 0.25),
-        ),
+        feature_state=FeatureState(means=(1.0, 2.0), standard_deviations=(0.5, 0.25)),
         target_state=TargetState(mean=3.0, standard_deviation=0.75),
         method=modeling_method(),
     )
 
     assert (
-        ArtifactAssociation.model_validate_json(
-            association.model_dump_json(),
-            strict=True,
-        )
+        ArtifactAssociation.model_validate_json(association.model_dump_json(), strict=True)
         == association
     )
 
@@ -265,10 +228,7 @@ def test_artifact_association_rejects_feature_width_mismatch() -> None:
     with pytest.raises(ValidationError, match="feature state width"):
         ArtifactAssociation(
             request=_train_request(),
-            feature_state=FeatureState(
-                means=(1.0,),
-                standard_deviations=(0.5,),
-            ),
+            feature_state=FeatureState(means=(1.0,), standard_deviations=(0.5,)),
             target_state=target_state,
             method=modeling_method(),
         )
@@ -276,13 +236,7 @@ def test_artifact_association_rejects_feature_width_mismatch() -> None:
 
 def test_transformer_encoder_layers_have_independent_matrix_initialization() -> None:
     torch.manual_seed(71)
-    encoder = modeling._encoder(
-        width=4,
-        heads=2,
-        feedforward=7,
-        layers=2,
-        dropout=0.1,
-    )
+    encoder = modeling._encoder(width=4, heads=2, feedforward=7, layers=2, dropout=0.1)
     matrices = [
         [parameter for parameter in layer.parameters() if parameter.ndim > 1]
         for layer in encoder.layers
@@ -295,9 +249,7 @@ def test_transformer_encoder_layers_have_independent_matrix_initialization() -> 
     )
 
 
-def test_epoch_logs_weight_short_batches_in_float64(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_epoch_logs_weight_short_batches_in_float64(monkeypatch: pytest.MonkeyPatch) -> None:
     prepared = prepare_fit_history(_corpus(), _experiment())
     association = ArtifactAssociation(
         request=_train_request(),
@@ -349,17 +301,10 @@ def test_epoch_logs_weight_short_batches_in_float64(
 
 
 def test_lstm_trains_loads_and_applies_direct_loss(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     artifact_id = UUID("30000000-0000-4000-8000-000000000001")
-    model = LstmDefinition(
-        family="lstm",
-        hidden=5,
-        layers=1,
-        head_hidden=3,
-        dropout=0.1,
-    )
+    model = LstmDefinition(family="lstm", hidden=5, layers=1, head_hidden=3, dropout=0.1)
     method = _definition(model).method
     request = _train_request(artifact_id)
     _write_corpus(tmp_path)
@@ -382,11 +327,7 @@ def test_lstm_trains_loads_and_applies_direct_loss(
         assert output.minimum_fee_z.shape == (batch["inputs"].shape[0],)
         assert torch.isfinite(output.action_logits).all()
         assert torch.isfinite(output.minimum_fee_z).all()
-        loss_by_origin = min_block_fee_loss(
-            output,
-            label=batch["label"],
-            target=batch["target"],
-        )
+        loss_by_origin = min_block_fee_loss(output, label=batch["label"], target=batch["target"])
         assert torch.isfinite(loss_by_origin.mean())
 
     mismatched_id = UUID("30000000-0000-4000-8000-000000000009")
@@ -396,18 +337,11 @@ def test_lstm_trains_loads_and_applies_direct_loss(
 
 
 def test_train_preserves_canonical_created_during_publication(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     artifact_id = UUID("30000000-0000-4000-8000-000000000002")
     method = _definition(
-        LstmDefinition(
-            family="lstm",
-            hidden=5,
-            layers=1,
-            head_hidden=3,
-            dropout=0.1,
-        )
+        LstmDefinition(family="lstm", hidden=5, layers=1, head_hidden=3, dropout=0.1)
     ).method
     request = _train_request(artifact_id)
     _write_corpus(tmp_path)
@@ -430,18 +364,10 @@ def test_train_preserves_canonical_created_during_publication(
 
 
 def test_candidate_failure_preserves_checkpoint_and_resume_publishes_result(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     method = Method(
-        model=LstmDefinition(
-            family="lstm",
-            hidden=5,
-            layers=1,
-            head_hidden=3,
-            dropout=0.0,
-        ),
+        model=LstmDefinition(family="lstm", hidden=5, layers=1, head_hidden=3, dropout=0.0),
         fit=FitMethod(
             learning_rate=0.004,
             weight_decay=0.002,
@@ -460,11 +386,7 @@ def test_candidate_failure_preserves_checkpoint_and_resume_publishes_result(
     fit_kwargs: list[dict[str, object]] = []
 
     class InterruptAfterEpoch(Callback):
-        def on_train_batch_start(
-            self,
-            trainer: Any,
-            *_args: object,
-        ) -> None:
+        def on_train_batch_start(self, trainer: Any, *_args: object) -> None:
             if trainer.current_epoch == 1:
                 raise RuntimeError("simulated interruption")
 
@@ -503,8 +425,7 @@ def test_candidate_failure_preserves_checkpoint_and_resume_publishes_result(
     last_checkpoint = torch.load(scratch / "last.ckpt", map_location="cpu", weights_only=True)
     assert "optimizer_states" in last_checkpoint
     assert last_checkpoint["hyper_parameters"]["association"] == TrainingDefinition(
-        experiment=request.experiment,
-        method=method,
+        experiment=request.experiment, method=method
     ).model_dump(mode="json")
 
     run_candidate(tmp_path, request, 0)

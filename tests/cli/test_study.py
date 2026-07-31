@@ -10,13 +10,7 @@ from typer.testing import CliRunner
 import fable.cli as cli
 import fable.execution as execution
 from fable.cli import app
-from fable.config import (
-    ExperimentSemantics,
-    FitMethod,
-    LstmDefinition,
-    Method,
-    TuneRequest,
-)
+from fable.config import ExperimentSemantics, FitMethod, LstmDefinition, Method, TuneRequest
 from fable.execution import CandidateProcessInput
 from tests.helpers import dispatch, window, write_remote
 
@@ -26,13 +20,7 @@ STORAGE_ROOT = Path("/remote/storage root")
 
 
 METHOD = Method(
-    model=LstmDefinition(
-        family="lstm",
-        hidden=16,
-        layers=1,
-        head_hidden=8,
-        dropout=0.2,
-    ),
+    model=LstmDefinition(family="lstm", hidden=16, layers=1, head_hidden=8, dropout=0.2),
     fit=FitMethod(
         learning_rate=3e-4,
         weight_decay=1e-4,
@@ -61,22 +49,16 @@ REQUEST = TuneRequest(
 
 
 def test_study_run_submits_typed_candidate_and_prints_job_id(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request_path = tmp_path / "TUNE_REQUEST.json"
     request_path.write_text(REQUEST.model_dump_json(), encoding="utf-8")
     calls: list[tuple[CandidateProcessInput, ...]] = []
     monkeypatch.setattr(
-        cli,
-        "submit_candidates",
-        lambda candidates: calls.append(tuple(candidates)) or 123,
+        cli, "submit_candidates", lambda candidates: calls.append(tuple(candidates)) or 123
     )
 
-    result = CliRunner().invoke(
-        app,
-        ["study", "run", str(request_path), "0"],
-    )
+    result = CliRunner().invoke(app, ["study", "run", str(request_path), "0"])
 
     assert result.exit_code == 0
     assert result.output == "123\n"
@@ -84,8 +66,7 @@ def test_study_run_submits_typed_candidate_and_prints_job_id(
 
 
 def test_submit_candidates_scales_three_gpu_allocation_and_preserves_payload_order(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     second_request = REQUEST.model_copy(
         update={"study_id": UUID("10000000-0000-4000-8000-000000000002")}
@@ -102,9 +83,7 @@ def test_submit_candidates_scales_three_gpu_allocation_and_preserves_payload_ord
     monkeypatch.chdir(tmp_path)
     scripts: list[str] = []
     monkeypatch.setattr(
-        execution,
-        "_invoke_sbatch",
-        lambda _remote, script: scripts.append(script) or 456,
+        execution, "_invoke_sbatch", lambda _remote, script: scripts.append(script) or 456
     )
 
     result = execution.submit_candidates(candidates)
@@ -123,15 +102,12 @@ def test_submit_candidates_scales_three_gpu_allocation_and_preserves_payload_ord
 
 
 def test_submit_candidates_rejects_duplicate_study_slots(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     first = CandidateProcessInput(request=REQUEST, method_index=0)
     second = CandidateProcessInput(
         request=REQUEST.model_copy(
-            update={
-                "corpus_id": UUID("20000000-0000-4000-8000-000000000002"),
-            }
+            update={"corpus_id": UUID("20000000-0000-4000-8000-000000000002")}
         ),
         method_index=0,
     )
@@ -148,23 +124,13 @@ def test_submit_candidates_rejects_duplicate_study_slots(
         execution.submit_candidates((first, second))
 
 
-def test_remote_candidate_dispatches_input(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_remote_candidate_dispatches_input(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = json.dumps(
-        {
-            "request": REQUEST.model_dump(mode="json"),
-            "method_index": 0,
-        },
-        separators=(",", ":"),
+        {"request": REQUEST.model_dump(mode="json"), "method_index": 0}, separators=(",", ":")
     )
     calls: list[tuple[Path, TuneRequest, int]] = []
 
-    def fake_run_candidate(
-        storage_root: Path,
-        request: TuneRequest,
-        method_index: int,
-    ) -> None:
+    def fake_run_candidate(storage_root: Path, request: TuneRequest, method_index: int) -> None:
         calls.append((storage_root, request, method_index))
 
     monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
@@ -179,11 +145,7 @@ def test_remote_candidate_dispatches_input(
 
 def test_remote_candidate_rejects_method_index_outside_request() -> None:
     payload = json.dumps(
-        {
-            "request": REQUEST.model_dump(mode="json"),
-            "method_index": 1,
-        },
-        separators=(",", ":"),
+        {"request": REQUEST.model_dump(mode="json"), "method_index": 1}, separators=(",", ":")
     )
 
     result = dispatch(app, "remote", "candidate", input=payload)

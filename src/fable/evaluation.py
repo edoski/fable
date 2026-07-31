@@ -12,11 +12,7 @@ import torch
 from torch import nn
 
 from . import _runtime
-from .addresses import (
-    evaluation_directory,
-    evaluation_json_path,
-    evaluation_observations_path,
-)
+from .addresses import evaluation_directory, evaluation_json_path, evaluation_observations_path
 from .config import EvaluateRequest
 from .corpus import load_corpus
 from .min_block_fee import TargetState, decode_action
@@ -42,10 +38,7 @@ OBSERVATION_SCHEMA = pl.Schema(
 _DEVICE = torch.device("cuda:0")
 
 
-def evaluate(
-    request: EvaluateRequest,
-    storage_root: Path,
-) -> None:
+def evaluate(request: EvaluateRequest, storage_root: Path) -> None:
     """Publish canonical observations for one exact artifact/window request."""
 
     scratch = storage_root / "evaluations" / f".{request.evaluation_id}"
@@ -66,8 +59,7 @@ def evaluate(
     )
     first_outcome_block = testing_window.first_parent_block + 1
     outcomes = corpus.blocks.select_range(
-        first_outcome_block,
-        testing_window.last_parent_block + experiment.horizon_blocks,
+        first_outcome_block, testing_window.last_parent_block + experiment.horizon_blocks
     ).to_polars()
     outcome_base_fees = outcomes["base_fee_per_gas"].to_numpy()
     outcome_priority_fees_p50 = outcomes["effective_priority_fee_per_gas_p50"].to_numpy()
@@ -107,11 +99,7 @@ def _collect_observations(
     predicted_minimum_z = np.empty(count, dtype=np.float64)
     minimum_actions = np.empty(count, dtype=np.int64)
 
-    loader = _runtime.data_loader(
-        dataset,
-        batch_size=_runtime.EVALUATION_BATCH_SIZE,
-        shuffle=False,
-    )
+    loader = _runtime.data_loader(dataset, batch_size=_runtime.EVALUATION_BATCH_SIZE, shuffle=False)
     model.to(_DEVICE)
     cursor = 0
     with torch.inference_mode():
@@ -164,18 +152,12 @@ def reduce_baselines(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     columns = _load_evaluation(storage_root, evaluation_id)
     rows = []
     for policy in ("immediate", "deadline"):
-        metrics = _require_finite(
-            _economic_metrics(columns, policy),
-            "baseline reduction",
-        )
+        metrics = _require_finite(_economic_metrics(columns, policy), "baseline reduction")
         rows.append({"policy": policy, **metrics})
     return pl.DataFrame(rows)
 
 
-def reduce_rolling(
-    storage_root: Path,
-    roster: Mapping[str, Mapping[int, UUID]],
-) -> pl.DataFrame:
+def reduce_rolling(storage_root: Path, roster: Mapping[str, Mapping[int, UUID]]) -> pl.DataFrame:
     """Compare one-shot and rolling economics for explicit K-study cells."""
 
     rows = [
@@ -185,22 +167,16 @@ def reduce_rolling(
     return pl.DataFrame(rows)
 
 
-def _load_evaluation(
-    storage_root: Path,
-    evaluation_id: UUID,
-) -> dict[str, np.ndarray]:
+def _load_evaluation(storage_root: Path, evaluation_id: UUID) -> dict[str, np.ndarray]:
     request = EvaluateRequest.model_validate_json(
-        evaluation_json_path(storage_root, evaluation_id).read_text(encoding="utf-8"),
-        strict=True,
+        evaluation_json_path(storage_root, evaluation_id).read_text(encoding="utf-8"), strict=True
     )
     if request.evaluation_id != evaluation_id:
         raise ValueError("evaluation request ID must match the requested evaluation")
     columns = _read_observations(evaluation_observations_path(storage_root, evaluation_id))
     window = request.testing_window
     expected_origins = np.arange(
-        window.first_parent_block,
-        window.last_parent_block + 1,
-        dtype=np.int64,
+        window.first_parent_block, window.last_parent_block + 1, dtype=np.int64
     )
     origins = columns["origin_block"]
     if not np.array_equal(origins, expected_origins):
@@ -223,10 +199,7 @@ def _reduce(columns: Mapping[str, np.ndarray]) -> pl.DataFrame:
     )
     metrics = _require_finite(
         {
-            **_classification_metrics(
-                columns["predicted_action_k"],
-                columns["minimum_action_k"],
-            ),
+            **_classification_metrics(columns["predicted_action_k"], columns["minimum_action_k"]),
             "log_fee_mae": float(np.mean(np.abs(log_errors))),
             "log_fee_mse": float(np.mean(np.square(log_errors))),
             **_economic_metrics(columns, "selected"),
@@ -237,8 +210,7 @@ def _reduce(columns: Mapping[str, np.ndarray]) -> pl.DataFrame:
 
 
 def _classification_metrics(
-    predicted_actions: np.ndarray,
-    minimum_actions: np.ndarray,
+    predicted_actions: np.ndarray, minimum_actions: np.ndarray
 ) -> dict[str, float]:
     classes = np.union1d(minimum_actions, predicted_actions)
     f1_by_class = [
@@ -257,9 +229,7 @@ def _classification_metrics(
 
 
 def _reduce_rolling_cell(
-    storage_root: Path,
-    cell: str,
-    evaluation_ids: Mapping[int, UUID],
+    storage_root: Path, cell: str, evaluation_ids: Mapping[int, UUID]
 ) -> dict[str, str | float]:
     decision_origins: np.ndarray | None = None
     selections = []
@@ -268,10 +238,7 @@ def _reduce_rolling_cell(
         if decision_origins is None:
             decision_origins = columns["origin_block"].copy()
         selection = _rolling_arrays(
-            columns,
-            decision_origins=decision_origins,
-            cell=cell,
-            horizon=horizon,
+            columns, decision_origins=decision_origins, cell=cell, horizon=horizon
         )
         selections.append(selection)
         if horizon > 2:
@@ -286,16 +253,10 @@ def _reduce_rolling_cell(
     for name in one_shot:
         metrics[f"one_shot_{name}"] = one_shot[name]
         metrics[f"rolling_{name}"] = rolling[name]
-    return {
-        "cell": cell,
-        **_require_finite(metrics, f"{cell} rolling comparison"),
-    }
+    return {"cell": cell, **_require_finite(metrics, f"{cell} rolling comparison")}
 
 
-def _load_rolling_observations(
-    storage_root: Path,
-    evaluation_id: UUID,
-) -> dict[str, np.ndarray]:
+def _load_rolling_observations(storage_root: Path, evaluation_id: UUID) -> dict[str, np.ndarray]:
     columns = _read_observations(evaluation_observations_path(storage_root, evaluation_id))
     origins = columns["origin_block"]
     if origins.size == 0 or np.any(np.diff(origins) != 1):
@@ -304,11 +265,7 @@ def _load_rolling_observations(
 
 
 def _rolling_arrays(
-    columns: Mapping[str, np.ndarray],
-    *,
-    decision_origins: np.ndarray,
-    cell: str,
-    horizon: int,
+    columns: Mapping[str, np.ndarray], *, decision_origins: np.ndarray, cell: str, horizon: int
 ) -> dict[str, np.ndarray]:
     actions = columns["predicted_action_k"]
     if np.any((actions < 0) | (actions >= horizon)):

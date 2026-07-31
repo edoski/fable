@@ -47,21 +47,12 @@ def dispatch(app: Typer, *arguments: str, input: str | None = None) -> Result:
 
 
 def window(first: int) -> BlockWindow:
-    return BlockWindow(
-        first_parent_block=first,
-        last_parent_block=first + 9,
-    )
+    return BlockWindow(first_parent_block=first, last_parent_block=first + 9)
 
 
 def modeling_method() -> Method:
     return Method(
-        model=LstmDefinition(
-            family="lstm",
-            hidden=5,
-            layers=1,
-            head_hidden=3,
-            dropout=0.1,
-        ),
+        model=LstmDefinition(family="lstm", hidden=5, layers=1, head_hidden=3, dropout=0.1),
         fit=FitMethod(
             learning_rate=0.002,
             weight_decay=0.003,

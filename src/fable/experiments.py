@@ -19,38 +19,22 @@ class ExperimentKind(StrEnum):
 
 
 class ExperimentManifest(
-    RootModel[
-        Annotated[
-            dict[Annotated[str, Field(min_length=1)], UUID4],
-            Field(min_length=1),
-        ]
-    ]
+    RootModel[Annotated[dict[Annotated[str, Field(min_length=1)], UUID4], Field(min_length=1)]]
 ):
     model_config = ConfigDict(frozen=True, strict=True)
 
 
-def experiment_directory(
-    storage_root: Path,
-    kind: ExperimentKind,
-    experiment_id: UUID,
-) -> Path:
+def experiment_directory(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -> Path:
     return storage_root / "experiments" / kind / str(experiment_id)
 
 
-def experiment_manifest_path(
-    storage_root: Path,
-    kind: ExperimentKind,
-    experiment_id: UUID,
-) -> Path:
+def experiment_manifest_path(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -> Path:
     return experiment_directory(storage_root, kind, experiment_id) / "manifest.json"
 
 
 def load_experiment_manifest(
-    storage_root: Path,
-    kind: ExperimentKind,
-    experiment_id: UUID,
+    storage_root: Path, kind: ExperimentKind, experiment_id: UUID
 ) -> dict[str, UUID4]:
     return ExperimentManifest.model_validate_json(
-        experiment_manifest_path(storage_root, kind, experiment_id).read_bytes(),
-        strict=True,
+        experiment_manifest_path(storage_root, kind, experiment_id).read_bytes(), strict=True
     ).root

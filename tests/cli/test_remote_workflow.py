@@ -44,24 +44,16 @@ def _request(kind: Literal["selected", "evaluate"]) -> WorkflowRequest:
             testing_window=window(300),
         )
     source = SelectedStudySource(
-        corpus_id=CORPUS_ID,
-        study_id=STUDY_ID,
-        study_result_index=2,
-        experiment=_experiment(),
+        corpus_id=CORPUS_ID, study_id=STUDY_ID, study_result_index=2, experiment=_experiment()
     )
     return TrainRequest(workflow="train", artifact_id=ARTIFACT_ID, source=source)
 
 
 @pytest.mark.parametrize(
-    "kind",
-    [
-        pytest.param("selected", id="selected"),
-        pytest.param("evaluate", id="evaluate"),
-    ],
+    "kind", [pytest.param("selected", id="selected"), pytest.param("evaluate", id="evaluate")]
 )
 def test_remote_workflow_dispatches_final_request(
-    kind: Literal["selected", "evaluate"],
-    monkeypatch: pytest.MonkeyPatch,
+    kind: Literal["selected", "evaluate"], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request = _request(kind)
     train_calls: list[tuple[TrainRequest, Path]] = []
@@ -78,12 +70,7 @@ def test_remote_workflow_dispatches_final_request(
         lambda active_request, storage_root: evaluate_calls.append((active_request, storage_root)),
     )
 
-    result = dispatch(
-        app,
-        "remote",
-        "workflow",
-        input=request.model_dump_json(),
-    )
+    result = dispatch(app, "remote", "workflow", input=request.model_dump_json())
 
     assert result.exit_code == 0
     assert result.output == ""

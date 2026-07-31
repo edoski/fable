@@ -39,9 +39,7 @@ def _publish_evaluation(
     evaluation_id = _EVALUATION_IDS[horizon]
     rows = []
     for origin, action in zip(
-        range(first_origin, first_origin + len(actions)),
-        actions,
-        strict=True,
+        range(first_origin, first_origin + len(actions)), actions, strict=True
     ):
         outcome_blocks = range(origin + 1, origin + horizon + 1)
         outcome_base_fees = [base_fees[block] for block in outcome_blocks]
@@ -69,20 +67,8 @@ def _publish_evaluation(
 
 
 def _publish_all_terminal_evaluations(storage_root: Path) -> None:
-    base_fees = {
-        101: 100,
-        102: 80,
-        103: 60,
-        104: 40,
-        105: 20,
-    }
-    priority_fees = {
-        101: 10,
-        102: 8,
-        103: 6,
-        104: 4,
-        105: 2,
-    }
+    base_fees = {101: 100, 102: 80, 103: 60, 104: 40, 105: 20}
+    priority_fees = {101: 10, 102: 8, 103: 6, 104: 4, 105: 2}
     _publish_evaluation(
         storage_root,
         5,
@@ -135,9 +121,7 @@ def test_reduce_rolling_all_terminal_actions_end_at_original_deadline(tmp_path: 
     assert result.select(pl.exclude("cell")).row(0) == pytest.approx((0.8, 0.8, 0.8, 0.8, 0.0, 0.0))
 
 
-def test_reduce_rolling_all_nonterminal_actions_keep_origin_and_k2_is_final(
-    tmp_path: Path,
-) -> None:
+def test_reduce_rolling_all_nonterminal_actions_keep_origin_and_k2_is_final(tmp_path: Path) -> None:
     base_fees = {101: 100, 102: 40, 103: 60, 104: 80, 105: 20}
     priority_fees = {101: 10, 102: 4, 103: 6, 104: 8, 105: 2}
     for horizon, actions in ((5, [3]), (4, [2]), (3, [1]), (2, [0])):
@@ -165,9 +149,7 @@ def test_reduce_rolling_all_nonterminal_actions_keep_origin_and_k2_is_final(
     ],
 )
 def test_reduce_rolling_rejects_invalid_observations(
-    tmp_path: Path,
-    case: str,
-    message: str,
+    tmp_path: Path, case: str, message: str
 ) -> None:
     _publish_all_terminal_evaluations(tmp_path)
     horizon = 2 if case == "missing" else 3

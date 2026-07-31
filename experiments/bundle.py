@@ -12,11 +12,7 @@ from uuid import UUID
 import typer
 
 from fable.config import EvaluateRequest, TrainRequest, TuneRequest
-from fable.experiments import (
-    ExperimentKind,
-    ExperimentManifest,
-    experiment_directory,
-)
+from fable.experiments import ExperimentKind, ExperimentManifest, experiment_directory
 from fable.study import load_study
 
 StorageRoot: TypeAlias = Annotated[Path, typer.Argument(resolve_path=True)]
@@ -34,10 +30,7 @@ def open_bundle(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -
     return bundle
 
 
-def write_tune_cells(
-    bundle: Path,
-    cells: Iterable[tuple[str, TuneRequest]],
-) -> None:
+def write_tune_cells(bundle: Path, cells: Iterable[tuple[str, TuneRequest]]) -> None:
     rows: list[tuple[str, Path, int, UUID]] = []
     for index, (cell, request) in enumerate(cells):
         request_path = _write_request(bundle, index, request)
@@ -48,10 +41,7 @@ def write_tune_cells(
     _write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
 
 
-def write_train_cells(
-    bundle: Path,
-    cells: Iterable[tuple[str, TrainRequest]],
-) -> None:
+def write_train_cells(bundle: Path, cells: Iterable[tuple[str, TrainRequest]]) -> None:
     rows = (
         (cell, _write_request(bundle, index, request), request.artifact_id)
         for index, (cell, request) in enumerate(cells)
@@ -59,10 +49,7 @@ def write_train_cells(
     _write_cells(bundle, ("cell", "request", "artifact_id"), rows)
 
 
-def write_evaluate_cells(
-    bundle: Path,
-    cells: Iterable[tuple[str, EvaluateRequest]],
-) -> None:
+def write_evaluate_cells(bundle: Path, cells: Iterable[tuple[str, EvaluateRequest]]) -> None:
     rows = (
         (cell, _write_request(bundle, index, request), request.evaluation_id)
         for index, (cell, request) in enumerate(cells)
@@ -76,11 +63,7 @@ def _write_request(bundle: Path, index: int, request: BundleRequest) -> Path:
     return path
 
 
-def _write_cells(
-    bundle: Path,
-    header: Sequence[str],
-    rows: Iterable[Sequence[object]],
-) -> None:
+def _write_cells(bundle: Path, header: Sequence[str], rows: Iterable[Sequence[object]]) -> None:
     with (bundle / "cells.tsv").open("x", newline="", encoding="utf-8") as destination:
         writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
         writer.writerow(header)
@@ -93,10 +76,7 @@ def read_cells(bundle: Path) -> list[dict[str, str]]:
 
 
 def publish_bundle(
-    storage_root: Path,
-    kind: ExperimentKind,
-    experiment_id: UUID,
-    cells: dict[str, UUID],
+    storage_root: Path, kind: ExperimentKind, experiment_id: UUID, cells: dict[str, UUID]
 ) -> None:
     manifest = ExperimentManifest(root=cells)
     bundle = bundle_path(storage_root, kind, experiment_id)
@@ -112,11 +92,7 @@ def publish_bundle(
     bundle.rename(canonical)
 
 
-def close_study_bundle(
-    storage_root: Path,
-    kind: ExperimentKind,
-    experiment_id: UUID,
-) -> None:
+def close_study_bundle(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, kind, experiment_id)
     rows = read_cells(bundle)
 
