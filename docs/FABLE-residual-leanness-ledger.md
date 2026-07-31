@@ -1,6 +1,7 @@
 # FABLE residual leanness ledger
 
-Status: execution in progress. Slices 1–4 are complete and green; final integration is pending.
+Status: execution in progress. Slices 1–4 and final combined verification are green; integration
+is pending.
 
 ## Authority
 
@@ -446,6 +447,20 @@ behavior remain unchanged.
 
 Dependencies: Slice 3 green. External gates: no simulator or device check is required because the
 accepted scope changes no visual structure.
+
+## Final verification
+
+- Verified head: `dd4287bf76c381d3c8506ee5099eb002b83a2e9f`.
+- Combined Slice 1–4 diff: 50 files; 734 additions and 1,991 deletions, net -1,257.
+- Python gates: Ruff format and lint passed; Pyright reported zero errors; Vulture passed; all 118
+  tests passed.
+- App gates: TypeScript typecheck passed; all seven test files and 35 tests passed.
+- Repository diff checks passed, the run worktree remained clean, and every implementation slice
+  retained its recorded immutable parent/head pair.
+- Integration is a fast-forward from `main` at
+  `52a816c5c7c1c573bab6752627d405fd548d246d`. Preserve the original untracked
+  `docs/experiments/` byte-for-byte, then remove only the run-owned worktree and
+  `codex/residual-leanness` branch.
 
 ## Execution gate
 
