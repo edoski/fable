@@ -7,15 +7,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import polars as pl
-import typer
-from bundle import (
-    StorageRoot,
-    bundle_path,
-    open_bundle,
-    publish_bundle,
-    read_cells,
-    write_evaluate_cells,
-)
+from bundle import StorageRoot, close_bundle, open_bundle, run, write_evaluate_cells
 
 from fable.config import BlockWindow, EvaluateRequest
 from fable.corpus import load_corpus_request
@@ -58,16 +50,7 @@ def prepare(storage_root: StorageRoot, hpo_experiment_id: UUID, k_experiment_id:
 
 
 def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
-    bundle = bundle_path(storage_root, _KIND, experiment_id)
-    rows = read_cells(bundle)
-
-    cells: dict[str, UUID] = {}
-    for row in rows:
-        evaluation_id = UUID(row["evaluation_id"])
-        reduce_evaluation(storage_root, evaluation_id)
-        cells[row["cell"]] = evaluation_id
-    publish_bundle(storage_root, _KIND, experiment_id, cells)
-    print(experiment_id)
+    close_bundle(storage_root, _KIND, experiment_id, "evaluation_id", reduce_evaluation)
 
 
 def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
@@ -100,13 +83,5 @@ def rolling(storage_root: StorageRoot, experiment_id: UUID) -> None:
     print(reduce_rolling(storage_root, roster).write_csv(None, separator="\t"), end="")
 
 
-app = typer.Typer(add_completion=False)
-app.command()(prepare)
-app.command()(close)
-app.command()(report)
-app.command()(baselines)
-app.command()(rolling)
-
-
 if __name__ == "__main__":
-    app()
+    run(prepare, close, report, baselines, rolling)

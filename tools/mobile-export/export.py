@@ -214,7 +214,11 @@ def _manifest(cells: dict[str, dict[int, _Cell]]) -> dict[str, object]:
     return {"chains": chains}
 
 
-def export_bundle(storage_root: Path, roster_path: Path, output_directory: Path) -> None:
+def export_bundle(
+    storage_root: Annotated[Path, typer.Option(envvar="STORAGE_ROOT")],
+    roster_path: Path,
+    output_directory: Path,
+) -> None:
     if output_directory.exists():
         raise FileExistsError(output_directory)
 
@@ -240,13 +244,5 @@ def export_bundle(storage_root: Path, roster_path: Path, output_directory: Path)
             shutil.rmtree(scratch)
 
 
-def main(
-    roster_path: Path,
-    output_directory: Path,
-    storage_root: Annotated[Path, typer.Option(envvar="STORAGE_ROOT")],
-) -> None:
-    export_bundle(storage_root, roster_path, output_directory)
-
-
 if __name__ == "__main__":
-    typer.run(main)
+    typer.run(export_bundle)

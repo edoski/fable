@@ -5,8 +5,7 @@ from __future__ import annotations
 from statistics import fmean
 from uuid import UUID, uuid4
 
-import typer
-from bundle import StorageRoot, close_study_bundle, open_bundle, write_tune_cells
+from bundle import StorageRoot, close_bundle, open_bundle, run, write_tune_cells
 
 from fable.config import (
     BlockWindow,
@@ -145,7 +144,7 @@ def prepare(storage_root: StorageRoot) -> None:
 
 
 def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
-    close_study_bundle(storage_root, _KIND, experiment_id)
+    close_bundle(storage_root, _KIND, experiment_id, "study_id", load_study)
 
 
 def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
@@ -161,11 +160,5 @@ def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
             print(f"{chain}\t{configuration}\t{fmean(objectives[chain, configuration]):g}")
 
 
-app = typer.Typer(add_completion=False)
-app.command()(prepare)
-app.command()(close)
-app.command()(report)
-
-
 if __name__ == "__main__":
-    app()
+    run(prepare, close, report)

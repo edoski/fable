@@ -14,6 +14,7 @@ from bundle import (
     open_bundle,
     publish_bundle,
     read_cells,
+    run,
     write_tune_cells,
 )
 
@@ -195,10 +196,5 @@ def select(storage_root: StorageRoot, experiment_id: UUID) -> None:
         print(f"{cell}\t{selected_index}\t{objective:g}")
 
 
-app = typer.Typer(add_completion=False)
-app.command()(prepare)
-app.command()(select)
-
-
 if __name__ == "__main__":
-    app()
+    run(prepare, select)

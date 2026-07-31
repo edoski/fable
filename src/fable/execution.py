@@ -75,19 +75,15 @@ def submit_candidates(candidates: Sequence[CandidateProcessInput]) -> int:
 def _submit_allocation(
     inputs: Sequence[StrictFrozenRecord], leaf: Literal["workflow", "candidate"]
 ) -> int:
-    inputs = tuple(inputs)
-    _require_process_count(inputs)
-    remote = _load_remote()
+    if not 1 <= len(inputs) <= MAX_ALLOCATION_PROCESS_COUNT:
+        raise ValueError("an allocation requires one to three process inputs")
+    remote = _Remote.model_validate(yaml.safe_load(Path("REMOTE.yaml").read_bytes()))
     return _invoke_sbatch(
         remote,
         _render_allocation_script(
             remote, tuple(process_input.model_dump_json() for process_input in inputs), leaf
         ),
     )
-
-
-def _load_remote() -> _Remote:
-    return _Remote.model_validate(yaml.safe_load(Path("REMOTE.yaml").read_bytes()))
 
 
 def _invoke_sbatch(remote: _Remote, script: str) -> int:
@@ -148,11 +144,6 @@ for pid in "${{pids[@]}}"; do
 done
 exit "$status"
 """
-
-
-def _require_process_count(inputs: Sequence[object]) -> None:
-    if not 1 <= len(inputs) <= MAX_ALLOCATION_PROCESS_COUNT:
-        raise ValueError("an allocation requires one to three process inputs")
 
 
 def _workflow_identity(request: WorkflowRequest) -> tuple[str, UUID]:

@@ -10,7 +10,7 @@ from uuid import UUID
 
 import typer
 
-from .config import WORKFLOW_REQUEST_ADAPTER, TrainRequest, TuneRequest, WorkflowRequest
+from .config import WORKFLOW_REQUEST_ADAPTER, TrainRequest, TuneRequest
 from .evaluation import evaluate
 from .execution import CandidateProcessInput, submit_candidates, submit_workflows
 from .modeling import run_candidate, train
@@ -34,9 +34,7 @@ def _resolve_storage_root() -> Path:
 def submit_command(
     request_paths: Annotated[list[Path], typer.Argument(metavar="REQUEST.json")],
 ) -> None:
-    requests: list[WorkflowRequest] = [
-        WORKFLOW_REQUEST_ADAPTER.validate_json(path.read_bytes()) for path in request_paths
-    ]
+    requests = [WORKFLOW_REQUEST_ADAPTER.validate_json(path.read_bytes()) for path in request_paths]
     for request in requests:
         typer.echo(submit_workflows((request,)))
 

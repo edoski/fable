@@ -60,7 +60,8 @@ def _launch(
         raise ValueError("tasks per job must be two or three")
 
     jobs_path = bundle / "jobs.tsv"
-    submitted_rows = _load_submitted_rows(jobs_path)
+    jobs_exist = jobs_path.exists()
+    submitted_rows = _load_submitted_rows(jobs_path) if jobs_exist else set()
     pending = [
         (index, row, process_input)
         for index, (row, process_input) in enumerate(zip(rows, process_inputs, strict=True))
@@ -69,10 +70,9 @@ def _launch(
     if not pending:
         return
 
-    exists = jobs_path.exists()
-    with jobs_path.open("a" if exists else "x", newline="", encoding="utf-8") as destination:
+    with jobs_path.open("a" if jobs_exist else "x", newline="", encoding="utf-8") as destination:
         writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
-        if not exists:
+        if not jobs_exist:
             writer.writerow(("job_id", "slot", "row", "cell"))
         start = 0
         for group_size in _allocation_sizes(len(pending), tasks_per_job):
@@ -98,9 +98,6 @@ def _allocation_sizes(pending_count: int, capacity: int) -> list[int]:
 
 
 def _load_submitted_rows(jobs_path: Path) -> set[int]:
-    if not jobs_path.exists():
-        return set()
-
     with jobs_path.open(newline="", encoding="utf-8") as source:
         return {int(job["row"]) for job in csv.DictReader(source, delimiter="\t")}
 

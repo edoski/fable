@@ -5,8 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID, uuid4
 
-import typer
-from bundle import StorageRoot, close_study_bundle, open_bundle, write_tune_cells
+from bundle import StorageRoot, close_bundle, open_bundle, run, write_tune_cells
 
 from fable.config import TuneRequest
 from fable.experiments import ExperimentKind, load_experiment_manifest
@@ -56,13 +55,8 @@ def prepare(storage_root: StorageRoot, feature_experiment_id: UUID) -> None:
 
 
 def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
-    close_study_bundle(storage_root, _KIND, experiment_id)
-
-
-app = typer.Typer(add_completion=False)
-app.command()(prepare)
-app.command()(close)
+    close_bundle(storage_root, _KIND, experiment_id, "study_id", load_study)
 
 
 if __name__ == "__main__":
-    app()
+    run(prepare, close)

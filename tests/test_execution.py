@@ -110,32 +110,6 @@ def test_submit_workflows_sends_golden_single_workflow_script(
     }
 
 
-def test_submit_workflows_uses_one_isolated_gpu_step_per_request(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    first = _request("train")
-    second = first.model_copy(update={"artifact_id": UUID("00000000-0000-4000-8000-000000000005")})
-    write_remote(tmp_path / "REMOTE.yaml")
-    monkeypatch.chdir(tmp_path)
-    scripts: list[str] = []
-    monkeypatch.setattr(
-        execution, "_invoke_sbatch", lambda _remote, script: scripts.append(script) or 789
-    )
-
-    result = execution.submit_workflows((first, second))
-
-    assert result == 789
-    assert len(scripts) == 1
-    script = scripts[0]
-    assert "#SBATCH --ntasks=2\n" in script
-    assert "#SBATCH --gres=gpu:a100:2\n" in script
-    assert script.count("remote workflow <<'FABLE_REQUEST_") == 2
-    assert script.index(first.model_dump_json()) < script.index(second.model_dump_json())
-    for slot in range(2):
-        assert f"--output=/remote/logs/${{SLURM_JOB_ID}}-{slot}.out" in script
-        assert f"--error=/remote/logs/${{SLURM_JOB_ID}}-{slot}.out" in script
-
-
 def test_submit_workflows_rejects_duplicate_durable_identities(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

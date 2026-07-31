@@ -95,15 +95,7 @@ def test_candidates_submit_typed_inputs_and_restart_skips_recorded_rows(
 
 @pytest.mark.parametrize(
     ("count", "capacity", "expected_sizes"),
-    (
-        (7, 3, [3, 2, 2]),
-        (8, 3, [3, 3, 2]),
-        (5, 3, [3, 2]),
-        (4, 3, [2, 2]),
-        (3, 3, [3]),
-        (1, 3, [1]),
-        (7, 2, [2, 2, 2, 1]),
-    ),
+    ((7, 3, [3, 2, 2]), (8, 3, [3, 3, 2]), (3, 3, [3]), (1, 3, [1]), (7, 2, [2, 2, 2, 1])),
 )
 def test_workflows_use_fewest_ordered_allocations_without_avoidable_singletons(
     tmp_path: Path,

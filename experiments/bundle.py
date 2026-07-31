@@ -4,19 +4,26 @@ from __future__ import annotations
 
 import csv
 import shutil
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Annotated, TypeAlias
+from typing import Annotated, Literal, TypeAlias
 from uuid import UUID
 
 import typer
 
 from fable.config import EvaluateRequest, TrainRequest, TuneRequest
 from fable.experiments import ExperimentKind, ExperimentManifest, experiment_directory
-from fable.study import load_study
 
 StorageRoot: TypeAlias = Annotated[Path, typer.Argument(resolve_path=True)]
 BundleRequest: TypeAlias = TuneRequest | TrainRequest | EvaluateRequest
+_RecordColumn: TypeAlias = Literal["study_id", "artifact_id", "evaluation_id"]
+
+
+def run(*commands: Callable[..., None]) -> None:
+    app = typer.Typer(add_completion=False)
+    for command in commands:
+        app.command()(command)
+    app()
 
 
 def bundle_path(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -> Path:
@@ -92,15 +99,21 @@ def publish_bundle(
     bundle.rename(canonical)
 
 
-def close_study_bundle(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -> None:
+def close_bundle(
+    storage_root: Path,
+    kind: ExperimentKind,
+    experiment_id: UUID,
+    column: _RecordColumn,
+    verify: Callable[[Path, UUID], object],
+) -> None:
     bundle = bundle_path(storage_root, kind, experiment_id)
     rows = read_cells(bundle)
 
     cells: dict[str, UUID] = {}
     for row in rows:
-        study_id = UUID(row["study_id"])
-        load_study(storage_root, study_id)
-        cells[row["cell"]] = study_id
+        record_id = UUID(row[column])
+        verify(storage_root, record_id)
+        cells[row["cell"]] = record_id
 
     publish_bundle(storage_root, kind, experiment_id, cells)
     print(experiment_id)
