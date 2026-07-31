@@ -1,7 +1,7 @@
 # FABLE residual leanness ledger
 
-Status: execution in progress. Slices 1–4 and final combined verification are green; integration
-is pending.
+Status: complete. Slices 1–4 and final combined verification are green, the reviewed history is
+integrated into `main`, and the run-owned isolation is removed.
 
 ## Authority
 
@@ -461,6 +461,18 @@ accepted scope changes no visual structure.
   `52a816c5c7c1c573bab6752627d405fd548d246d`. Preserve the original untracked
   `docs/experiments/` byte-for-byte, then remove only the run-owned worktree and
   `codex/residual-leanness` branch.
+
+## Integration record
+
+- `main` fast-forwarded from `52a816c5c7c1c573bab6752627d405fd548d246d` to the reviewed source
+  head `2c5cdb557ff850db94c786b97d967410532f2d00`.
+- The sole protected file under the original untracked `docs/experiments/` had the same SHA-256
+  before and after integration; the directory remains untracked.
+- The run-owned `/Users/edo/dev/python/fable-residual-leanness` worktree and
+  `codex/residual-leanness` branch were removed. The original worktree remains on `main`, and the
+  unrelated `codex/compact-cuda-execution` branch remains.
+- No push, SSH, Slurm, `sbatch`, simulator, device operation, native asset regeneration, or other
+  external mutation occurred.
 
 ## Execution gate
 
