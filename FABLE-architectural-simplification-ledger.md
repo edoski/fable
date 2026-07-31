@@ -337,7 +337,7 @@ submission contracts.
 
 ## Slice 2 — App fixture, presentation primitives, and runtime state
 
-Status: ready; Slice 1 is green.
+Status: green.
 
 Proposed baseline: Slice 1 final green head plus the orchestrator's ledger update. Record the
 immutable SHA immediately before dispatch.
@@ -383,19 +383,25 @@ runtime semantics.
 
 ### Implementation-review record
 
-- Baseline: pending.
-- Implementer: pending.
-- Implementation head: pending.
-- Focused/integration checks: pending.
-- Reviewer: pending.
-- Standards findings: pending.
-- Spec findings: pending.
-- Correction rounds: pending.
-- Final result: pending.
+- Baseline: `922296bc41c51d5aa5fe75661692bd9d96573597`.
+- Implementer: `/root/slice2_app`.
+- Implementation head: `be78019f0e381f1553238745adb0eceab9c20126`.
+- Focused/integration checks: model/inference 14 passed; App/Analytics 7 passed; full app suite
+  35 passed; TypeScript typecheck passed; `git diff --check` passed. The orchestrator reran the full
+  app suite and typecheck with the same results.
+- Reviewer: `/root/slice2_review`, with parallel `/root/slice2_review/standards_axis` and
+  `/root/slice2_review/spec_axis`.
+- Standards findings: 0.
+- Spec findings: 0.
+- Correction rounds: 0.
+- Explicitly not run: visual inspection of the three Analytics charts. The available simulator has
+  Expo Go only; FABLE requires a development build containing its custom ExecuTorch native module.
+  A native build was outside scope. The reviewer found no code-evidenced parity risk.
+- Final result: `GREEN LIGHT`; read-only review pinned the exact baseline and implementation head.
 
 ## Slice 3 — Compact-CUDA reconciliation
 
-Status: proposed; depends on Slices 1 and 2 green.
+Status: ready; Slices 1 and 2 are green.
 
 Proposed refs: the then-current `main` head and the pre-existing compact-CUDA head. Record both
 immutable SHAs immediately before dispatch. Work in the shared checkout with one writer, switch to
