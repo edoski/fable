@@ -36,7 +36,7 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
+from fable.corpus import BlockFrame, Corpus
 from fable.min_block_fee import TargetState, min_block_fee_loss
 from fable.modeling import ArtifactAssociation, load_artifact, run_candidate, train
 from fable.study import RetainedResult, Study, load_study, publish_study
@@ -82,7 +82,6 @@ def _corpus() -> Corpus:
     request = _corpus_request()
     return Corpus(
         request=request,
-        finalized_anchor=FinalizedAnchor(block_number=23, block_hash="a" * 64),
         blocks=BlockFrame(
             pl.DataFrame(
                 {
@@ -116,7 +115,7 @@ def _write_corpus(storage_root: Path) -> None:
         json.dumps(
             {
                 "request": corpus.request.model_dump(mode="json"),
-                "finalized_anchor": corpus.finalized_anchor.model_dump(mode="json"),
+                "finalized_anchor": {"block_number": 23, "block_hash": "a" * 64},
             }
         ),
         encoding="utf-8",

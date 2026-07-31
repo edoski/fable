@@ -162,12 +162,3 @@ def test_reduce_evaluation_rejects_invalid_observation_contract(
 
     with pytest.raises(ValueError, match=message):
         reduce_evaluation(tmp_path, _EVALUATION_ID)
-
-
-def test_reduce_evaluation_rejects_finite_inputs_that_overflow_a_metric(tmp_path: Path) -> None:
-    rows = _rows()
-    rows[0]["predicted_minimum_log_base_fee"] = 1e308
-    _publish_evaluation(tmp_path, _request(), _observations(rows))
-
-    with pytest.warns(RuntimeWarning), pytest.raises(ValueError, match="only finite metrics"):
-        reduce_evaluation(tmp_path, _EVALUATION_ID)

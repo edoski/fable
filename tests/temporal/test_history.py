@@ -8,7 +8,7 @@ from pydantic import UUID4, TypeAdapter
 from torch.utils.data import DataLoader
 
 from fable.config import BlockWindow, CorpusDefinition, CorpusRequest, ExperimentSemantics
-from fable.corpus import BlockFrame, Corpus, FinalizedAnchor
+from fable.corpus import BlockFrame, Corpus
 from fable.temporal import prepare_fit_history, prepare_historical_window
 
 _CORPUS_ID = TypeAdapter(UUID4).validate_python("11111111-1111-4111-8111-111111111111")
@@ -36,11 +36,7 @@ def _corpus(first_block: int = 10, last_block: int = 29) -> Corpus:
         corpus_id=_CORPUS_ID,
         definition=CorpusDefinition(chain_id=1, first_block=first_block, last_block=last_block),
     )
-    return Corpus(
-        request=request,
-        finalized_anchor=FinalizedAnchor(block_number=last_block, block_hash="a" * 64),
-        blocks=BlockFrame(frame, request.definition),
-    )
+    return Corpus(request=request, blocks=BlockFrame(frame, request.definition))
 
 
 def _experiment() -> ExperimentSemantics:
@@ -142,11 +138,7 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
     request = CorpusRequest(
         corpus_id=_CORPUS_ID, definition=CorpusDefinition(chain_id=1, first_block=9, last_block=29)
     )
-    corpus = Corpus(
-        request=request,
-        finalized_anchor=FinalizedAnchor(block_number=29, block_hash="a" * 64),
-        blocks=BlockFrame(frame, request.definition),
-    )
+    corpus = Corpus(request=request, blocks=BlockFrame(frame, request.definition))
     experiment = _experiment().model_copy(
         update={
             "ordered_features": (
@@ -161,13 +153,11 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
 
     torch.testing.assert_close(preparation.training[0]["inputs"], torch.from_numpy(expected[:3]))
 
-    without_predecessor = corpus.model_copy(
-        update={
-            "request": request.model_copy(
-                update={"definition": CorpusDefinition(chain_id=1, first_block=10, last_block=29)}
-            ),
-            "blocks": corpus.blocks.select_range(10, 29),
-        }
+    without_predecessor = Corpus(
+        request=request.model_copy(
+            update={"definition": CorpusDefinition(chain_id=1, first_block=10, last_block=29)}
+        ),
+        blocks=corpus.blocks.select_range(10, 29),
     )
     with pytest.raises(ValueError, match="within the BlockFrame definition"):
         prepare_fit_history(without_predecessor, experiment)

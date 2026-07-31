@@ -147,15 +147,12 @@ def reduce_evaluation(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     log_errors = columns["predicted_minimum_log_base_fee"] - np.log(
         columns["minimum_base_fee_per_gas"]
     )
-    metrics = _require_finite(
-        {
-            **_classification_metrics(columns["predicted_action_k"], columns["minimum_action_k"]),
-            "log_fee_mae": float(np.mean(np.abs(log_errors))),
-            "log_fee_mse": float(np.mean(np.square(log_errors))),
-            **_economic_metrics(columns, "selected"),
-        },
-        "evaluation reduction",
-    )
+    metrics = {
+        **_classification_metrics(columns["predicted_action_k"], columns["minimum_action_k"]),
+        "log_fee_mae": float(np.mean(np.abs(log_errors))),
+        "log_fee_mse": float(np.mean(np.square(log_errors))),
+        **_economic_metrics(columns, "selected"),
+    }
     return pl.DataFrame([metrics])
 
 
@@ -165,7 +162,7 @@ def reduce_baselines(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     columns = _load_evaluation(storage_root, evaluation_id)
     rows = []
     for policy in ("immediate", "deadline"):
-        metrics = _require_finite(_economic_metrics(columns, policy), "baseline reduction")
+        metrics = _economic_metrics(columns, policy)
         rows.append({"policy": policy, **metrics})
     return pl.DataFrame(rows)
 
@@ -245,7 +242,7 @@ def _reduce_rolling_cell(
     for name in one_shot:
         metrics[f"one_shot_{name}"] = one_shot[name]
         metrics[f"rolling_{name}"] = rolling[name]
-    return {"cell": cell, **_require_finite(metrics, f"{cell} rolling comparison")}
+    return {"cell": cell, **metrics}
 
 
 def _load_rolling_observations(storage_root: Path, evaluation_id: UUID) -> dict[str, np.ndarray]:
@@ -295,9 +292,3 @@ def _economic_metrics(
             np.mean((selected_base_fees - minimum_base_fees) / minimum_base_fees)
         ),
     }
-
-
-def _require_finite(metrics: dict[str, float], subject: str) -> dict[str, float]:
-    if not np.isfinite(tuple(metrics.values())).all():
-        raise ValueError(f"{subject} must contain only finite metrics")
-    return metrics

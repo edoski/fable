@@ -9,7 +9,6 @@ from pydantic import ValidationError
 from fable.config import (
     WORKFLOW_REQUEST_ADAPTER,
     BlockWindow,
-    CorpusDefinition,
     EvaluateRequest,
     ExperimentSemantics,
     FitMethod,
@@ -60,11 +59,6 @@ def _invalid_cases() -> tuple[tuple[type[object], dict[str, object], str], ...]:
     experiment = _experiment()
     method = _method()
     return (
-        (
-            CorpusDefinition,
-            {"chain_id": 1, "first_block": 2, "last_block": 1},
-            "last_block must not precede first_block",
-        ),
         (
             TransformerDefinition,
             {

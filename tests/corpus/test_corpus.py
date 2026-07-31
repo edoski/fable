@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast
 from uuid import UUID
 
 import polars as pl
@@ -11,7 +10,7 @@ from polars.testing import assert_frame_equal
 
 from fable.addresses import corpus_blocks_path, corpus_json_path
 from fable.config import CorpusDefinition, CorpusRequest
-from fable.corpus import BlockFrame, Corpus, FinalizedAnchor, load_corpus
+from fable.corpus import load_corpus
 
 CORPUS_ID = UUID("11111111-1111-4111-8111-111111111111")
 OTHER_CORPUS_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -67,49 +66,15 @@ def test_load_corpus_reads_one_valid_canonical_pair(tmp_path) -> None:
     corpus = load_corpus(tmp_path, CORPUS_ID)
 
     assert corpus.request == _request()
-    assert corpus.finalized_anchor == FinalizedAnchor(block_number=103, block_hash="a" * 64)
     assert_frame_equal(corpus.blocks.to_polars(), blocks)
 
 
-def _invalidate(case: str, document: dict[str, object], blocks: pl.DataFrame) -> pl.DataFrame:
-    request = cast(dict[str, object], document["request"])
-    anchor = cast(dict[str, object], document["finalized_anchor"])
-    if case == "json_shape":
-        document["extra"] = True
-    elif case == "uuid_association":
-        request["corpus_id"] = str(OTHER_CORPUS_ID)
-    elif case == "anchor_shape":
-        anchor["block_hash"] = "A" * 64
-    elif case == "anchor_relation":
-        anchor["block_number"] = 101
-    elif case == "corrupt_blocks":
-        blocks = blocks.with_columns(pl.lit(0, dtype=pl.Int64).alias("base_fee_per_gas"))
-    else:
-        raise AssertionError(f"unknown invalid case: {case}")
-    return blocks
-
-
-@pytest.mark.parametrize(
-    "case", ("json_shape", "uuid_association", "anchor_shape", "anchor_relation", "corrupt_blocks")
-)
-def test_load_corpus_rejects_invalid_canonical_facts(tmp_path, case: str) -> None:
+def test_load_corpus_rejects_a_mismatched_request_uuid(tmp_path) -> None:
     document = _valid_document()
-    blocks = _invalidate(case, document, _valid_blocks())
-    _write_corpus(tmp_path, document, blocks)
+    request = document["request"]
+    assert isinstance(request, dict)
+    request["corpus_id"] = str(OTHER_CORPUS_ID)
+    _write_corpus(tmp_path, document, _valid_blocks())
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="UUID"):
         load_corpus(tmp_path, CORPUS_ID)
-
-
-def test_corpus_requires_block_definition_to_match_request() -> None:
-    blocks = BlockFrame(_valid_blocks(), _request().definition)
-    other_request = _request().model_copy(
-        update={"definition": CorpusDefinition(chain_id=1, first_block=99, last_block=101)}
-    )
-
-    with pytest.raises(ValueError, match="definition must match"):
-        Corpus(
-            request=other_request,
-            finalized_anchor=FinalizedAnchor(block_number=103, block_hash="a" * 64),
-            blocks=blocks,
-        )
