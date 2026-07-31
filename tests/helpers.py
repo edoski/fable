@@ -9,7 +9,7 @@ from click.testing import Result
 from typer import Typer
 from typer.testing import CliRunner
 
-from fable.config import BlockWindow, FitMethod, LstmDefinition, Method
+from fable.config import BlockWindow
 
 REMOTE_YAML = """ssh: research-alias
 image: /opt/fable image.sif
@@ -48,20 +48,3 @@ def dispatch(app: Typer, *arguments: str, input: str | None = None) -> Result:
 
 def window(first: int) -> BlockWindow:
     return BlockWindow(first_parent_block=first, last_parent_block=first + 9)
-
-
-def modeling_method() -> Method:
-    return Method(
-        model=LstmDefinition(family="lstm", hidden=5, layers=1, head_hidden=3, dropout=0.1),
-        fit=FitMethod(
-            learning_rate=0.002,
-            weight_decay=0.003,
-            accumulation=2,
-            gradient_clip_norm=0.4,
-            seed=19,
-            max_epochs=4,
-            validate_every_completed_epoch=1,
-            patience=1,
-            min_delta=0.02,
-        ),
-    )

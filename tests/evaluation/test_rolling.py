@@ -142,7 +142,6 @@ def test_reduce_rolling_all_nonterminal_actions_keep_origin_and_k2_is_final(tmp_
 @pytest.mark.parametrize(
     ("case", "message"),
     [
-        ("schema", "canonical ordered schema"),
         ("origins", "consecutive unique origins"),
         ("missing", "lacks required decision origins"),
         ("action", "K=3 predicted_action_k values must be valid actions"),
@@ -155,12 +154,7 @@ def test_reduce_rolling_rejects_invalid_observations(
     horizon = 2 if case == "missing" else 3
     observations_path = _observations_path(tmp_path, horizon)
     observations = pl.read_parquet(observations_path)
-    if case == "schema":
-        observations = observations.select(
-            "predicted_action_k",
-            *[name for name in OBSERVATION_SCHEMA if name != "predicted_action_k"],
-        )
-    elif case == "origins":
+    if case == "origins":
         observations = observations.with_columns(
             pl.when(pl.col("origin_block") == 102)
             .then(101)

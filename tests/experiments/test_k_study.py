@@ -108,7 +108,7 @@ def _publish_artifacts(storage_root: Path, rows: list[dict[str, str]]) -> None:
             target_state=TargetState(mean=0.0, standard_deviation=1.0),
             method=_ARTIFACT_METHOD,
         )
-        encoded = modeling._json_association(association)
+        encoded = association.model_dump(mode="json")
         module = modeling._FitModule(encoded)
         path = artifact_checkpoint_path(storage_root, request.artifact_id)
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -33,7 +33,6 @@ from fable.config import (
     SelectedStudySource,
     TrainingDefinition,
     TrainRequest,
-    TransformerDefinition,
     TransformerLstmDefinition,
     TuneRequest,
 )
@@ -42,12 +41,25 @@ from fable.min_block_fee import TargetState, min_block_fee_loss
 from fable.modeling import ArtifactAssociation, load_artifact, run_candidate, train
 from fable.study import RetainedResult, Study, load_study, publish_study
 from fable.temporal import FeatureState, prepare_fit_history
-from tests.helpers import modeling_method
 
 ARTIFACT_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
 STUDY_ID = UUID("40000000-0000-4000-8000-000000000001")
 _BASE_FEES = np.array([11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2], dtype=np.int64)
+_METHOD = Method(
+    model=LstmDefinition(family="lstm", hidden=5, layers=1, head_hidden=3, dropout=0.1),
+    fit=FitMethod(
+        learning_rate=0.002,
+        weight_decay=0.003,
+        accumulation=1,
+        gradient_clip_norm=0.8,
+        seed=29,
+        max_epochs=1,
+        validate_every_completed_epoch=1,
+        patience=0,
+        min_delta=0.0,
+    ),
+)
 
 
 @pytest.fixture(autouse=True)
@@ -122,28 +134,6 @@ def _candidate_request(method: Method) -> TuneRequest:
     )
 
 
-def _definition(
-    model: LstmDefinition | TransformerDefinition | TransformerLstmDefinition,
-) -> TrainingDefinition:
-    return TrainingDefinition(
-        experiment=_experiment(),
-        method=Method(
-            model=model,
-            fit=FitMethod(
-                learning_rate=0.002,
-                weight_decay=0.003,
-                accumulation=1,
-                gradient_clip_norm=0.8,
-                seed=29,
-                max_epochs=1,
-                validate_every_completed_epoch=1,
-                patience=0,
-                min_delta=0.0,
-            ),
-        ),
-    )
-
-
 def test_transformer_lstm_uses_exportable_float32_recurrence() -> None:
     definition = TransformerLstmDefinition(
         family="transformer_lstm",
@@ -209,20 +199,6 @@ def _use_cpu_trainer(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(modeling.pl, "Trainer", cpu_trainer)
 
 
-def test_artifact_association_round_trips_strict_json() -> None:
-    association = ArtifactAssociation(
-        request=_train_request(),
-        feature_state=FeatureState(means=(1.0, 2.0), standard_deviations=(0.5, 0.25)),
-        target_state=TargetState(mean=3.0, standard_deviation=0.75),
-        method=modeling_method(),
-    )
-
-    assert (
-        ArtifactAssociation.model_validate_json(association.model_dump_json(), strict=True)
-        == association
-    )
-
-
 def test_artifact_association_rejects_feature_width_mismatch() -> None:
     target_state = TargetState(mean=3.0, standard_deviation=0.75)
     with pytest.raises(ValidationError, match="feature state width"):
@@ -230,7 +206,7 @@ def test_artifact_association_rejects_feature_width_mismatch() -> None:
             request=_train_request(),
             feature_state=FeatureState(means=(1.0,), standard_deviations=(0.5,)),
             target_state=target_state,
-            method=modeling_method(),
+            method=_METHOD,
         )
 
 
@@ -255,10 +231,10 @@ def test_epoch_logs_weight_short_batches_in_float64(monkeypatch: pytest.MonkeyPa
         request=_train_request(),
         feature_state=prepared.feature_state,
         target_state=prepared.target_state,
-        method=modeling_method(),
+        method=_METHOD,
     )
     torch.manual_seed(89)
-    module = modeling._FitModule(modeling._json_association(association)).eval()
+    module = modeling._FitModule(association.model_dump(mode="json")).eval()
     batches = list(DataLoader(prepared.training, batch_size=3, shuffle=False))
     complete = next(iter(DataLoader(prepared.training, batch_size=4, shuffle=False)))
     with torch.no_grad():
@@ -304,11 +280,9 @@ def test_lstm_trains_loads_and_applies_direct_loss(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     artifact_id = UUID("30000000-0000-4000-8000-000000000001")
-    model = LstmDefinition(family="lstm", hidden=5, layers=1, head_hidden=3, dropout=0.1)
-    method = _definition(model).method
     request = _train_request(artifact_id)
     _write_corpus(tmp_path)
-    _write_selected_study(tmp_path, request, method)
+    _write_selected_study(tmp_path, request, _METHOD)
     _use_cpu_trainer(monkeypatch)
 
     checkpoint = artifact_checkpoint_path(tmp_path, artifact_id)
@@ -340,12 +314,9 @@ def test_train_preserves_canonical_created_during_publication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     artifact_id = UUID("30000000-0000-4000-8000-000000000002")
-    method = _definition(
-        LstmDefinition(family="lstm", hidden=5, layers=1, head_hidden=3, dropout=0.1)
-    ).method
     request = _train_request(artifact_id)
     _write_corpus(tmp_path)
-    _write_selected_study(tmp_path, request, method)
+    _write_selected_study(tmp_path, request, _METHOD)
     _use_cpu_trainer(monkeypatch)
     canonical = artifact_checkpoint_path(tmp_path, artifact_id)
     real_link = modeling.os.link

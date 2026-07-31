@@ -224,19 +224,13 @@ def prepare_fit_history(corpus: Corpus, experiment: ExperimentSemantics) -> Hist
         feature_state=feature_state,
     )
     training_origins = _origin_rows(backing, training_window)
-    training_labels, training_minima = _minimum_outcomes(
+    _, training_minima = _minimum_outcomes(
         backing.base_fees.numpy(), training_origins, horizon_blocks=experiment.horizon_blocks
     )
     target_state = fit_target_state(training_minima)
 
     return HistoricalPreparation(
-        training=_build_dataset(
-            backing,
-            experiment,
-            training_window,
-            target_state,
-            outcomes=(training_labels, training_minima),
-        ),
+        training=_build_dataset(backing, experiment, training_window, target_state),
         validation=_build_dataset(backing, experiment, validation_window, target_state),
         feature_state=feature_state,
         target_state=target_state,
@@ -309,9 +303,8 @@ def _minimum_outcomes(
     for start in range(0, origin_rows.size, _OUTCOME_CHUNK_SIZE):
         stop = min(start + _OUTCOME_CHUNK_SIZE, origin_rows.size)
         outcomes = base_fees[origin_rows[start:stop, None] + offsets]
-        chunk_labels = outcomes.argmin(axis=1)
-        labels[start:stop] = chunk_labels
-        minima[start:stop] = outcomes[np.arange(stop - start), chunk_labels]
+        labels[start:stop] = outcomes.argmin(axis=1)
+        minima[start:stop] = outcomes.min(axis=1)
     return labels, minima
 
 
@@ -320,16 +313,10 @@ def _build_dataset(
     experiment: ExperimentSemantics,
     window: BlockWindow,
     target_state: TargetState,
-    *,
-    outcomes: tuple[_IntVector, _IntVector] | None = None,
 ) -> HistoricalDataset:
     origin_rows = _origin_rows(backing, window)
-    labels, minima = (
-        _minimum_outcomes(
-            backing.base_fees.numpy(), origin_rows, horizon_blocks=experiment.horizon_blocks
-        )
-        if outcomes is None
-        else outcomes
+    labels, minima = _minimum_outcomes(
+        backing.base_fees.numpy(), origin_rows, horizon_blocks=experiment.horizon_blocks
     )
     return HistoricalDataset(
         backing,

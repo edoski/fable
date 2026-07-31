@@ -15,7 +15,6 @@ from .config import Method, SelectedStudySource, TuneRequest
 from .records import StrictFrozenRecord
 
 _Epoch: TypeAlias = Annotated[int, Field(ge=1)]
-_MethodIndex: TypeAlias = Annotated[int, Field(ge=0)]
 
 
 class RetainedResult(StrictFrozenRecord):
@@ -49,7 +48,7 @@ class Study(StrictFrozenRecord):
 
 class _CandidateResult(StrictFrozenRecord):
     request: TuneRequest
-    method_index: _MethodIndex
+    method_index: Annotated[int, Field(ge=0)]
     result: RetainedResult
 
 
@@ -100,7 +99,9 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
 
 
 def load_study(storage_root: Path, study_id: UUID) -> Study:
-    study = _load_study_path(study_json_path(storage_root, study_id))
+    study = Study.model_validate_json(
+        study_json_path(storage_root, study_id).read_bytes(), strict=True
+    )
     if study.request.study_id != study_id:
         raise ValueError("Study ID does not match requested Study ID")
     return study
@@ -124,10 +125,6 @@ def candidate_scratch_directory(storage_root: Path, study_id: UUID4, method_inde
 
 def _result_path(storage_root: Path, study_id: UUID4, method_index: int) -> Path:
     return _study_scratch(storage_root, study_id) / f"result-{method_index}.json"
-
-
-def _load_study_path(path: Path) -> Study:
-    return Study.model_validate_json(path.read_bytes(), strict=True)
 
 
 def _load_candidate_result_path(path: Path) -> _CandidateResult:

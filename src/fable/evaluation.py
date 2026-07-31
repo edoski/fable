@@ -143,7 +143,20 @@ def _collect_observations(
 def reduce_evaluation(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     """Derive one testing evaluation's seven metrics from its observations."""
 
-    return _reduce(_load_evaluation(storage_root, evaluation_id))
+    columns = _load_evaluation(storage_root, evaluation_id)
+    log_errors = columns["predicted_minimum_log_base_fee"] - np.log(
+        columns["minimum_base_fee_per_gas"]
+    )
+    metrics = _require_finite(
+        {
+            **_classification_metrics(columns["predicted_action_k"], columns["minimum_action_k"]),
+            "log_fee_mae": float(np.mean(np.abs(log_errors))),
+            "log_fee_mse": float(np.mean(np.square(log_errors))),
+            **_economic_metrics(columns, "selected"),
+        },
+        "evaluation reduction",
+    )
+    return pl.DataFrame([metrics])
 
 
 def reduce_baselines(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
@@ -169,7 +182,7 @@ def reduce_rolling(storage_root: Path, roster: Mapping[str, Mapping[int, UUID]])
 
 def _load_evaluation(storage_root: Path, evaluation_id: UUID) -> dict[str, np.ndarray]:
     request = EvaluateRequest.model_validate_json(
-        evaluation_json_path(storage_root, evaluation_id).read_text(encoding="utf-8"), strict=True
+        evaluation_json_path(storage_root, evaluation_id).read_bytes()
     )
     if request.evaluation_id != evaluation_id:
         raise ValueError("evaluation request ID must match the requested evaluation")
@@ -193,39 +206,18 @@ def _read_observations(path: Path) -> dict[str, np.ndarray]:
     return {name: observations[name].to_numpy() for name in OBSERVATION_SCHEMA}
 
 
-def _reduce(columns: Mapping[str, np.ndarray]) -> pl.DataFrame:
-    log_errors = columns["predicted_minimum_log_base_fee"] - np.log(
-        columns["minimum_base_fee_per_gas"]
-    )
-    metrics = _require_finite(
-        {
-            **_classification_metrics(columns["predicted_action_k"], columns["minimum_action_k"]),
-            "log_fee_mae": float(np.mean(np.abs(log_errors))),
-            "log_fee_mse": float(np.mean(np.square(log_errors))),
-            **_economic_metrics(columns, "selected"),
-        },
-        "evaluation reduction",
-    )
-    return pl.DataFrame({name: [value] for name, value in metrics.items()})
-
-
 def _classification_metrics(
     predicted_actions: np.ndarray, minimum_actions: np.ndarray
 ) -> dict[str, float]:
-    classes = np.union1d(minimum_actions, predicted_actions)
-    f1_by_class = [
-        2.0
-        * np.count_nonzero((minimum_actions == action) & (predicted_actions == action))
-        / (
-            np.count_nonzero(minimum_actions == action)
-            + np.count_nonzero(predicted_actions == action)
-        )
-        for action in classes
-    ]
-    return {
-        "accuracy": float(np.mean(predicted_actions == minimum_actions)),
-        "f1_macro": float(np.mean(f1_by_class)),
-    }
+    matches = predicted_actions == minimum_actions
+    class_count = max(int(predicted_actions.max()), int(minimum_actions.max())) + 1
+    truth = np.bincount(minimum_actions, minlength=class_count)
+    predictions = np.bincount(predicted_actions, minlength=class_count)
+    true_positives = np.bincount(minimum_actions[matches], minlength=class_count)
+    denominators = truth + predictions
+    present = denominators > 0
+    f1_by_class = 2.0 * true_positives[present] / denominators[present]
+    return {"accuracy": float(np.mean(matches)), "f1_macro": float(np.mean(f1_by_class))}
 
 
 def _reduce_rolling_cell(

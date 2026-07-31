@@ -8,7 +8,7 @@ import os
 import shutil
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal, Self, cast
+from typing import Self, cast
 from uuid import UUID
 
 import lightning.pytorch as pl
@@ -58,10 +58,6 @@ class ArtifactAssociation(StrictFrozenRecord):
 
 _Association = ArtifactAssociation | TrainingDefinition
 _ASSOCIATION_ADAPTER = TypeAdapter(_Association)
-
-
-def _json_association(association: _Association) -> dict[str, object]:
-    return association.model_dump(mode="json")
 
 
 def _hydrate_association(raw: object) -> _Association:
@@ -251,42 +247,32 @@ class _FitModule(pl.LightningModule):
             self(batch["inputs"]), label=batch["label"], target=batch["target"]
         )
 
-    def _log_epoch_loss(
-        self, role: Literal["training", "validation"], loss_by_origin: torch.Tensor
-    ) -> None:
-        loss = loss_by_origin.detach().mean(dtype=torch.float64)
+    def _log_epoch(self, name: str, values: torch.Tensor) -> None:
         self.log(
-            f"{role}_total_loss",
-            loss,
+            name,
+            values.detach().mean(dtype=torch.float64),
             on_step=False,
             on_epoch=True,
             logger=False,
-            batch_size=loss_by_origin.numel(),
+            batch_size=values.numel(),
         )
 
     def training_step(self, batch: Mapping[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         del batch_idx
         loss_by_origin = self._loss(batch)
-        self._log_epoch_loss("training", loss_by_origin)
+        self._log_epoch("training_total_loss", loss_by_origin)
         return loss_by_origin.mean()
 
     def validation_step(self, batch: Mapping[str, torch.Tensor], batch_idx: int) -> None:
         del batch_idx
         output = self(batch["inputs"])
         loss_by_origin = min_block_fee_loss(output, label=batch["label"], target=batch["target"])
-        self._log_epoch_loss("validation", loss_by_origin)
+        self._log_epoch("validation_total_loss", loss_by_origin)
         actions = decode_action(output)
         selected = batch["base_fees"].gather(1, actions.unsqueeze(1)).squeeze(1)
         minimum = batch["base_fees"].amin(dim=1)
         gap = (selected - minimum).to(torch.float64) / minimum
-        self.log(
-            "validation_base_fee_optimality_gap",
-            gap.mean(dtype=torch.float64),
-            on_step=False,
-            on_epoch=True,
-            logger=False,
-            batch_size=gap.numel(),
-        )
+        self._log_epoch("validation_base_fee_optimality_gap", gap)
 
     def on_validation_epoch_end(self) -> None:
         loss = float(self.trainer.callback_metrics["validation_total_loss"])
@@ -316,7 +302,7 @@ def _fit(
     fit = definition.method.fit
     pl.seed_everything(fit.seed)
 
-    module = _FitModule(_json_association(association))
+    module = _FitModule(association.model_dump(mode="json"))
     training_loader = _runtime.data_loader(
         prepared.training, batch_size=_runtime.FIT_BATCH_SIZE, shuffle=True
     )
@@ -328,7 +314,6 @@ def _fit(
         filename="best-{epoch:02d}",
         monitor="validation_base_fee_optimality_gap",
         save_weights_only=True,
-        every_n_epochs=1,
         save_on_train_epoch_end=False,
         auto_insert_metric_name=False,
         enable_version_counter=False,
@@ -359,7 +344,6 @@ def _fit(
                 dirpath=scratch,
                 filename="last",
                 save_weights_only=False,
-                every_n_epochs=1,
                 save_on_train_epoch_end=True,
                 auto_insert_metric_name=False,
                 enable_version_counter=False,

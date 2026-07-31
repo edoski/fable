@@ -26,19 +26,15 @@ class MinBlockFeeOutput(NamedTuple):
     minimum_fee_z: torch.Tensor
 
 
-def _natural_log(values: NDArray[np.int64]) -> NDArray[np.float64]:
-    return np.log(values.astype(np.float64, copy=False))
-
-
 def fit_target_state(raw_minima: NDArray[np.int64]) -> TargetState:
-    natural_log = _natural_log(raw_minima)
+    natural_log = np.log(raw_minima)
     mean = float(natural_log.mean(dtype=np.float64))
     standard_deviation = float(natural_log.std(dtype=np.float64, ddof=0))
     return TargetState(mean=mean, standard_deviation=standard_deviation)
 
 
 def standardize_target(raw_minima: NDArray[np.int64], state: TargetState) -> NDArray[np.float32]:
-    standardized = (_natural_log(raw_minima) - state.mean) / state.standard_deviation
+    standardized = (np.log(raw_minima) - state.mean) / state.standard_deviation
     result = np.ascontiguousarray(standardized, dtype=np.float32)
     if not np.isfinite(result).all():
         raise ValueError("standardized targets must be finite")

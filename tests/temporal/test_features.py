@@ -214,22 +214,23 @@ def _fit(
             "finite float32",
             id="float32-overflow",
         ),
+        pytest.param(
+            lambda: _fit(
+                _blocks(
+                    base_fees=[10, 10],
+                    gas_used=[1, 1],
+                    gas_limits=[2, 2],
+                    tx_counts=[0, 0],
+                    timestamps=[0, 0],
+                    priority_fees=[0, 0],
+                ),
+                ordered_features=("log_base_fee_per_gas",),
+            ),
+            "greater than 0",
+            id="constant-feature",
+        ),
     ],
 )
 def test_feature_contract_rejections(operation: Callable[[], object], match: str) -> None:
     with pytest.raises(ValueError, match=match):
         operation()
-
-
-def test_fit_feature_state_rejects_constant_feature() -> None:
-    blocks = _blocks(
-        base_fees=[10, 10],
-        gas_used=[1, 1],
-        gas_limits=[2, 2],
-        tx_counts=[0, 0],
-        timestamps=[0, 0],
-        priority_fees=[0, 0],
-    )
-
-    with pytest.raises(ValueError):
-        _fit(blocks, ordered_features=("log_base_fee_per_gas",))
