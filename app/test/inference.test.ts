@@ -14,20 +14,21 @@ import {
   createInferenceEngine,
   type InferenceEngineDependencies,
 } from "../src/inference";
-import type { BlockRow, Horizon } from "../src/domain";
+import type { BlockRow } from "../src/domain";
 import type {
-  MobileChainManifest,
-  ModelManifest,
   ModelOutput,
   ModelRuntime,
-  ModelSelection,
 } from "../src/model";
 import type {
   ChainOutcome,
   ChainSession,
   PreparedChainContext,
 } from "../src/rpc";
-import { hashOf } from "./helpers";
+import {
+  chainManifest,
+  hashOf,
+  modelSelection,
+} from "./helpers";
 
 function block(
   number: bigint,
@@ -55,39 +56,6 @@ function context(
       block(head, headBaseFee),
     ],
     priorityFeeRewards: null,
-  };
-}
-
-function modelEntry(K: Horizon): ModelManifest {
-  return {
-    artifact_id: `00000000-0000-4000-8000-${K.toString().padStart(12, "0")}`,
-    target: { mean: Math.log(100), standard_deviation: 0.5 },
-  };
-}
-
-const chainManifest: MobileChainManifest = {
-  context_blocks: 2,
-  features: [
-    {
-      name: "log_base_fee_per_gas",
-      mean: 0,
-      standard_deviation: 1,
-    },
-  ],
-  models: {
-    2: modelEntry(2),
-    3: modelEntry(3),
-    4: modelEntry(4),
-    5: modelEntry(5),
-  },
-};
-
-function selection(K: Horizon): ModelSelection {
-  return {
-    K,
-    source: 10 + K,
-    chainManifest,
-    modelManifest: chainManifest.models[K],
   };
 }
 
@@ -127,7 +95,7 @@ function createTestEngine(
 ) {
   const dependencies: InferenceEngineDependencies = {
     model: runtime(),
-    selectModel: vi.fn(selection),
+    selectModel: vi.fn(modelSelection),
     session: session(),
     ...overrides,
   };
@@ -162,7 +130,7 @@ describe("InferenceEngine", () => {
     expect(events).toEqual(["sync", "execute"]);
     expect(chainSession.sync).toHaveBeenCalledOnce();
     expect(model.execute).toHaveBeenCalledWith(
-      selection(4),
+      modelSelection(4),
       new Float32Array([
         Math.fround(Math.log(39)),
         Math.fround(Math.log(40)),

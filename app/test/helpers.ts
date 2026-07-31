@@ -1,7 +1,46 @@
 import type { Hash } from "viem";
 
+import type { Horizon } from "../src/domain";
 import type { InferenceRun } from "../src/history";
 import type { InferenceResult } from "../src/inference";
+import type {
+  MobileChainManifest,
+  ModelManifest,
+  ModelSelection,
+} from "../src/model";
+
+function modelEntry(K: Horizon): ModelManifest {
+  return {
+    artifact_id: `00000000-0000-4000-8000-${K.toString().padStart(12, "0")}`,
+    target: { mean: Math.log(100), standard_deviation: 0.5 },
+  };
+}
+
+export const chainManifest: MobileChainManifest = {
+  context_blocks: 2,
+  features: [
+    {
+      name: "log_base_fee_per_gas",
+      mean: 0,
+      standard_deviation: 1,
+    },
+  ],
+  models: {
+    2: modelEntry(2),
+    3: modelEntry(3),
+    4: modelEntry(4),
+    5: modelEntry(5),
+  },
+};
+
+export function modelSelection(K: Horizon): ModelSelection {
+  return {
+    K,
+    source: 10 + K,
+    chainManifest,
+    modelManifest: chainManifest.models[K],
+  };
+}
 
 export function inferenceResult(
   overrides: Partial<InferenceResult> = {},

@@ -6,6 +6,18 @@ export const styles = StyleSheet.create({
   page: { flexGrow: 1, gap: 20, padding: 18, paddingBottom: 30 },
   title: { color: colors.ink, fontSize: 30, fontWeight: "800" },
   section: { gap: 10 },
+  headerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  cardRow: { flexDirection: "row", gap: 9 },
+  clippedCard: {
+    borderRadius: radii.large,
+    overflow: "hidden",
+  },
+  lastRow: { borderBottomWidth: 0 },
+  accentText: { color: colors.teal },
   sectionTitle: { color: colors.ink, fontSize: 17, fontWeight: "700" },
   surface: {
     backgroundColor: colors.surface,
@@ -56,16 +68,10 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 11,
   },
-  detailRowLast: { borderBottomWidth: 0 },
   detailLabel: { color: colors.muted, fontSize: 12 },
   detailValue: { color: colors.ink, fontSize: 12, fontWeight: "600" },
   horizonSlider: { height: 28, width: "100%" },
 
-  titleRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
   networkBadge: {
     alignItems: "center",
     backgroundColor: colors.blueSoft,
@@ -77,13 +83,7 @@ export const styles = StyleSheet.create({
   },
   networkBadgeText: { color: colors.blue, fontSize: 11, fontWeight: "700" },
   networkSheet: { paddingTop: 18 },
-  networkSheetHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
   networkSheetTitle: { color: colors.ink, fontSize: 20, fontWeight: "800" },
-  networkOptions: { flexDirection: "row", gap: 9 },
   networkOption: {
     backgroundColor: colors.background,
     minHeight: 88,
@@ -98,8 +98,6 @@ export const styles = StyleSheet.create({
     padding: 12,
   },
   storageErrorText: { color: colors.errorInk, fontSize: 12 },
-  summarySection: { gap: 10 },
-  summaryCards: { flexDirection: "row", gap: 9 },
   summaryCard: {
     alignItems: "center",
     borderRadius: radii.medium,
@@ -111,9 +109,7 @@ export const styles = StyleSheet.create({
   },
   summaryLabel: { color: colors.muted, fontSize: 10, textAlign: "center" },
   summaryValue: { color: colors.blue, fontSize: 20, fontWeight: "800" },
-  summaryValueAccent: { color: colors.teal },
   graphSection: { gap: 14 },
-  graphFilter: { gap: 10 },
   graphSliderCard: {
     borderRadius: radii.large,
     paddingHorizontal: 14,
@@ -125,11 +121,6 @@ export const styles = StyleSheet.create({
     gap: 14,
     overflow: "hidden",
     padding: 14,
-  },
-  chartHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
   },
   chartTitle: { color: colors.ink, fontSize: 15, fontWeight: "700" },
   graph: { gap: 2 },
@@ -163,10 +154,6 @@ export const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: "center",
   },
-  runList: {
-    borderRadius: radii.large,
-    overflow: "hidden",
-  },
   runScroller: { maxHeight: 272 },
   runRow: {
     alignItems: "center",
@@ -178,7 +165,6 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  runRowLast: { borderBottomWidth: 0 },
   runIcon: {
     alignItems: "center",
     backgroundColor: colors.blueSoft,
@@ -221,7 +207,6 @@ export const styles = StyleSheet.create({
   groupTitle: { color: colors.blue, fontSize: 15, fontWeight: "700" },
   closeButton: { minHeight: 50 },
 
-  networkRow: { flexDirection: "row", gap: 9 },
   inferenceNetworkCard: {
     backgroundColor: colors.surface,
     minHeight: 112,
@@ -229,10 +214,6 @@ export const styles = StyleSheet.create({
   },
   check: { position: "absolute", right: 7, top: 7 },
   networkLabel: { color: colors.ink, fontSize: 12, fontWeight: "700" },
-  conditionsCard: {
-    borderRadius: radii.large,
-    overflow: "hidden",
-  },
   windowCard: {
     borderRadius: radii.large,
     gap: 12,
@@ -375,13 +356,11 @@ export const styles = StyleSheet.create({
   timelineLabel: { color: colors.ink, fontSize: 11, fontWeight: "700" },
   timelineBlock: { color: colors.muted, fontSize: 8 },
   timelineOffset: { color: colors.ink, fontSize: 13, fontWeight: "700" },
-  timelineOffsetActive: { color: colors.teal },
   timelineTargetLabel: {
     color: colors.transparent,
     fontSize: 7,
     fontWeight: "800",
   },
-  timelineTargetLabelActive: { color: colors.teal },
   detailsTitle: {
     borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,

@@ -107,7 +107,6 @@ export function createModelRuntime(
   createNativeModule: NativeModuleFactory = () => new ExecutorchModule(),
 ): ModelRuntime {
   let current: { artifactId: string; module: NativeModule } | null = null;
-  let disposed = false;
   let disposal: Promise<void> | null = null;
   const serialize = createSerialQueue();
 
@@ -137,7 +136,7 @@ export function createModelRuntime(
     selection: ModelSelection,
     input: Float32Array,
   ): Promise<ModelOutput> {
-    if (disposed) throw new Error("Model runtime is disposed");
+    if (disposal !== null) throw new Error("Model runtime is disposed");
     return serialize(async () => {
       const module = await ensureLoaded(selection);
       const outputs = await module.forward([
@@ -157,7 +156,6 @@ export function createModelRuntime(
 
   function dispose(): Promise<void> {
     if (disposal !== null) return disposal;
-    disposed = true;
     disposal = serialize(async () => {
       if (current === null) return;
       const model = current;
