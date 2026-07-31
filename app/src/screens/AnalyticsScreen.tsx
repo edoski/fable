@@ -22,18 +22,20 @@ import { styles } from "../styles";
 import { colors, radii } from "../theme";
 
 function SummaryCard({
+  format,
   value,
   label,
   accent = false,
 }: {
-  value: string;
+  format: (value: number) => string;
+  value: number | null;
   label: string;
   accent?: boolean;
 }) {
   return (
     <View style={[styles.surface, styles.summaryCard]}>
       <Text style={[styles.summaryValue, accent && styles.summaryValueAccent]}>
-        {value}
+        {value === null ? "—" : format(value)}
       </Text>
       <Text numberOfLines={1} style={styles.summaryLabel}>
         {label}
@@ -71,21 +73,6 @@ function niceStep(range: number): number {
   return multiplier * magnitude;
 }
 
-function EmptyGraph({ outcomes }: { outcomes: boolean }) {
-  return (
-    <View style={styles.emptyGraph}>
-      <Text style={styles.emptyGraphTitle}>
-        {outcomes ? "No outcomes yet" : "No runs yet"}
-      </Text>
-      <Text style={styles.emptyGraphText}>
-        {outcomes
-          ? "Resolved inferences will populate this graph."
-          : "Runs will populate this graph."}
-      </Text>
-    </View>
-  );
-}
-
 function chartScale(values: readonly number[]) {
   const rawMinimum = Math.min(0, ...values);
   const rawMaximum = Math.max(0, ...values);
@@ -111,30 +98,41 @@ function chartScale(values: readonly number[]) {
   };
 }
 
-function ChartFrame({
-  children,
-  xAxisTitle,
-}: PropsWithChildren<{ xAxisTitle: string }>) {
-  return (
-    <View style={styles.graph}>
-      {children}
-      <Text style={styles.graphXAxisTitle}>{xAxisTitle}</Text>
-    </View>
-  );
-}
-
 function ChartCard({
   children,
+  empty,
   legend,
   title,
-}: PropsWithChildren<{ legend?: ReactNode; title: string }>) {
+  xAxisTitle,
+}: PropsWithChildren<{
+  empty: "runs" | "outcomes" | null;
+  legend?: ReactNode;
+  title: string;
+  xAxisTitle: string;
+}>) {
   return (
     <View style={[styles.surface, styles.chartCard]}>
       <View style={styles.chartHeader}>
         <Text style={styles.chartTitle}>{title}</Text>
         {legend}
       </View>
-      {children}
+      {empty === null ? (
+        <View style={styles.graph}>
+          {children}
+          <Text style={styles.graphXAxisTitle}>{xAxisTitle}</Text>
+        </View>
+      ) : (
+        <View style={styles.emptyGraph}>
+          <Text style={styles.emptyGraphTitle}>
+            {empty === "outcomes" ? "No outcomes yet" : "No runs yet"}
+          </Text>
+          <Text style={styles.emptyGraphText}>
+            {empty === "outcomes"
+              ? "Resolved inferences will populate this graph."
+              : "Runs will populate this graph."}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -147,22 +145,20 @@ function RecommendedWaitChart({
   const scale = chartScale(buckets.map((bucket) => bucket.runCount));
 
   return (
-    <ChartCard title="Recommended wait distribution">
-      {buckets.length === 0 ? (
-        <EmptyGraph outcomes={false} />
-      ) : (
-        <ChartFrame xAxisTitle="Wait (blocks)">
-          <GiftedBarChart
-            {...AXIS_PROPS}
-            {...scale.chartProps}
-            data={buckets.map((bucket) => ({
-              frontColor: colors.blue,
-              label: bucket.label,
-              value: bucket.runCount,
-            }))}
-          />
-        </ChartFrame>
-      )}
+    <ChartCard
+      empty={buckets.length === 0 ? "runs" : null}
+      title="Recommended wait distribution"
+      xAxisTitle="Wait (blocks)"
+    >
+      <GiftedBarChart
+        {...AXIS_PROPS}
+        {...scale.chartProps}
+        data={buckets.map((bucket) => ({
+          frontColor: colors.blue,
+          label: bucket.label,
+          value: bucket.runCount,
+        }))}
+      />
     </ChartCard>
   );
 }
@@ -178,30 +174,27 @@ function SavingsByWaitChart({
   const scale = chartScale(values);
 
   return (
-    <ChartCard title="Savings by wait (%)">
-      {values.length === 0 ? (
-        <EmptyGraph outcomes />
-      ) : (
-        <ChartFrame xAxisTitle="Wait (blocks)">
-          <GiftedBarChart
-            {...AXIS_PROPS}
-            {...scale.chartProps}
-            data={buckets.map((bucket) => ({
-              frontColor:
-                bucket.savingsPercent !== null &&
-                bucket.savingsPercent < 0
-                  ? colors.red
-                  : colors.teal,
-              label: bucket.label,
-              value: bucket.savingsPercent ?? 0,
-            }))}
-            formatYLabel={(label) => `${Number(label).toFixed(0)}%`}
-            mostNegativeValue={scale.minimum}
-            negativeStepValue={scale.step}
-            noOfSectionsBelowXAxis={scale.negativeSections}
-          />
-        </ChartFrame>
-      )}
+    <ChartCard
+      empty={values.length === 0 ? "outcomes" : null}
+      title="Savings by wait (%)"
+      xAxisTitle="Wait (blocks)"
+    >
+      <GiftedBarChart
+        {...AXIS_PROPS}
+        {...scale.chartProps}
+        data={buckets.map((bucket) => ({
+          frontColor:
+            bucket.savingsPercent !== null && bucket.savingsPercent < 0
+              ? colors.red
+              : colors.teal,
+          label: bucket.label,
+          value: bucket.savingsPercent ?? 0,
+        }))}
+        formatYLabel={(label) => `${Number(label).toFixed(0)}%`}
+        mostNegativeValue={scale.minimum}
+        negativeStepValue={scale.step}
+        noOfSectionsBelowXAxis={scale.negativeSections}
+      />
     </ChartCard>
   );
 }
@@ -236,37 +229,33 @@ function BaseFeeByWaitChart({
         </View>
       }
       title="Base fee by wait (Gwei)"
+      empty={data.length === 0 ? "outcomes" : null}
+      xAxisTitle="Recommended wait (blocks)"
     >
-      {data.length === 0 ? (
-        <EmptyGraph outcomes />
-      ) : (
-        <ChartFrame xAxisTitle="Recommended wait (blocks)">
-          <GiftedBarChart
-            {...AXIS_PROPS}
-            {...scale.chartProps}
-            barWidth={18}
-            data={data.flatMap((bucket, index) => [
-              {
-                frontColor: colors.amberSoft,
-                label: bucket.label,
-                labelWidth: 36,
-                spacing: 4,
-                value: bucket.immediateGwei,
-              },
-              {
-                frontColor: colors.blue,
-                spacing: index === data.length - 1 ? 0 : 20,
-                value: bucket.fableGwei,
-              },
-            ])}
-            formatYLabel={(label) => {
-              const value = Number(label);
-              return value >= 10 ? value.toFixed(0) : value.toFixed(1);
-            }}
-            spacing={0}
-          />
-        </ChartFrame>
-      )}
+      <GiftedBarChart
+        {...AXIS_PROPS}
+        {...scale.chartProps}
+        barWidth={18}
+        data={data.flatMap((bucket, index) => [
+          {
+            frontColor: colors.amberSoft,
+            label: bucket.label,
+            labelWidth: 36,
+            spacing: 4,
+            value: bucket.immediateGwei,
+          },
+          {
+            frontColor: colors.blue,
+            spacing: index === data.length - 1 ? 0 : 20,
+            value: bucket.fableGwei,
+          },
+        ])}
+        formatYLabel={(label) => {
+          const value = Number(label);
+          return value >= 10 ? value.toFixed(0) : value.toFixed(1);
+        }}
+        spacing={0}
+      />
     </ChartCard>
   );
 }
@@ -512,28 +501,19 @@ export function AnalyticsScreen({
           <View style={styles.summaryCards}>
             <SummaryCard
               accent
+              format={formatSavings}
               label="Avg savings"
-              value={
-                summary.averageSavingsPercent === null
-                  ? "—"
-                  : formatSavings(summary.averageSavingsPercent)
-              }
+              value={summary.averageSavingsPercent}
             />
             <SummaryCard
+              format={(value) => `${value.toFixed(0)}%`}
               label="Win rate"
-              value={
-                summary.winPercent === null
-                  ? "—"
-                  : `${summary.winPercent.toFixed(0)}%`
-              }
+              value={summary.winPercent}
             />
             <SummaryCard
+              format={(value) => value.toFixed(1)}
               label="Avg wait (blocks)"
-              value={
-                summary.averageWait === null
-                  ? "—"
-                  : summary.averageWait.toFixed(1)
-              }
+              value={summary.averageWait}
             />
           </View>
         </View>

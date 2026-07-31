@@ -228,64 +228,40 @@ describe("createChainSession", () => {
     session.dispose();
   });
 
-  it("requires fee history to start at the first context block", async () => {
-    const session = createChainSession(
-      "ethereum",
-      manifestOf(
-        3,
-        "log1p_effective_priority_fee_per_gas_p50",
-      ),
-    );
-    installRpc({
-      history: (oldestBlock, count) =>
+  it.each([
+    {
+      name: "fee history to start at the first context block",
+      feature: "log1p_effective_priority_fee_per_gas_p50" as const,
+      history: (oldestBlock: bigint, count: number) =>
         feeHistory(oldestBlock + 1n, count),
-    });
-
-    await expect(session.sync()).rejects.toThrow(
-      "Fee history must start at block 10, got 11",
-    );
-    session.dispose();
-  });
-
-  it("requires fee history to include priority-fee rewards", async () => {
-    const session = createChainSession(
-      "ethereum",
-      manifestOf(
-        3,
-        "log1p_effective_priority_fee_per_gas_p50",
-      ),
-    );
-    installRpc({
-      history: (oldestBlock, count) => ({
+      message: "Fee history must start at block 10, got 11",
+    },
+    {
+      name: "fee history to include priority-fee rewards",
+      feature: "log1p_effective_priority_fee_per_gas_p50" as const,
+      history: (oldestBlock: bigint, count: number) => ({
         ...feeHistory(oldestBlock, count),
         reward: undefined,
       }),
-    });
-
-    await expect(session.sync()).rejects.toThrow(
-      "Fee history must include priority-fee rewards",
-    );
-    session.dispose();
-  });
-
-  it("requires one priority-fee reward row per context block", async () => {
-    const session = createChainSession(
-      "ethereum",
-      manifestOf(
-        3,
-        "log1p_effective_priority_fee_per_gas_p90",
-      ),
-    );
-    installRpc({
-      history: (oldestBlock, count) => ({
+      message: "Fee history must include priority-fee rewards",
+    },
+    {
+      name: "one priority-fee reward row per context block",
+      feature: "log1p_effective_priority_fee_per_gas_p90" as const,
+      history: (oldestBlock: bigint, count: number) => ({
         ...feeHistory(oldestBlock, count),
         reward: feeHistory(oldestBlock, count).reward.slice(1),
       }),
-    });
-
-    await expect(session.sync()).rejects.toThrow(
-      "Fee history must contain exactly 3 reward rows, got 2",
+      message: "Fee history must contain exactly 3 reward rows, got 2",
+    },
+  ])("requires $name", async ({ feature, history, message }) => {
+    const session = createChainSession(
+      "ethereum",
+      manifestOf(3, feature),
     );
+    installRpc({ history });
+
+    await expect(session.sync()).rejects.toThrow(message);
     session.dispose();
   });
 

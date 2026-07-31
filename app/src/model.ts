@@ -65,11 +65,6 @@ type NativeModule = {
 
 type NativeModuleFactory = () => NativeModule;
 
-type LoadedModel = {
-  key: string;
-  module: NativeModule;
-};
-
 initExecutorch({ resourceFetcher: ExpoResourceFetcher });
 
 export function createDefaultModelCatalog(): ModelCatalog {
@@ -113,25 +108,21 @@ export function createDefaultModelCatalog(): ModelCatalog {
 export function createModelRuntime(
   createNativeModule: NativeModuleFactory = () => new ExecutorchModule(),
 ): ModelRuntime {
-  let current: LoadedModel | null = null;
+  let current: { key: string; module: NativeModule } | null = null;
   let disposed = false;
   let disposal: Promise<void> | null = null;
   const serialize = createSerialQueue();
 
-  function requireActive(): void {
-    if (disposed) throw new Error("Model runtime is disposed");
-  }
-
   async function ensureLoaded(
     selection: ModelSelection,
     key: string,
-  ): Promise<LoadedModel> {
-    if (current?.key === key) return current;
+  ): Promise<NativeModule> {
+    if (current?.key === key) return current.module;
 
     if (current !== null) {
-      const previous = current;
+      const previous = current.module;
       current = null;
-      previous.module.delete();
+      previous.delete();
     }
 
     const module = createNativeModule();
@@ -142,23 +133,19 @@ export function createModelRuntime(
       throw error;
     }
 
-    const loaded: LoadedModel = {
-      key,
-      module,
-    };
-    current = loaded;
-    return loaded;
+    current = { key, module };
+    return module;
   }
 
   function execute(
     selection: ModelSelection,
     input: Float32Array,
   ): Promise<ModelOutput> {
-    requireActive();
+    if (disposed) throw new Error("Model runtime is disposed");
     const key = selectionKey(selection);
     return serialize(async () => {
-      const model = await ensureLoaded(selection, key);
-      const outputs = await model.module.forward([
+      const module = await ensureLoaded(selection, key);
+      const outputs = await module.forward([
         {
           dataPtr: input,
           sizes: [

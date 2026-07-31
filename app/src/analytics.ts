@@ -88,59 +88,30 @@ export function waitBuckets(
     return [];
   }
 
-  const buckets = Array.from({ length: horizon }, (_, offset) => ({
-    fableFeeMean: null as number | null,
-    immediateFeeMean: null as number | null,
-    label: String(offset),
-    outcomeCount: 0,
-    runCount: 0,
-    savingsPercent: null as number | null,
-  }));
+  return Array.from({ length: horizon }, (_, offset) => {
+    const matchingRuns = runs.filter(
+      (run) => run.selected_action_k === offset,
+    );
+    const outcomes = matchingRuns.flatMap((run) => {
+      const outcome = validOutcome(run);
+      return outcome === null ? [] : [outcome];
+    });
+    const fableFeeMean = mean(
+      outcomes.map((outcome) => outcome.selected_base_fee_per_gas),
+    );
+    const immediateFeeMean = mean(
+      outcomes.map((outcome) => outcome.immediate_base_fee_per_gas),
+    );
 
-  for (const run of runs) {
-    const bucket = buckets[run.selected_action_k];
-    if (bucket === undefined) {
-      continue;
-    }
-    bucket.runCount += 1;
-    const outcome = validOutcome(run);
-    if (outcome === null) {
-      continue;
-    }
-    bucket.outcomeCount += 1;
-    bucket.savingsPercent = nextMean(
-      bucket.savingsPercent,
-      savingsPercent(outcome),
-      bucket.outcomeCount,
-    );
-    bucket.immediateFeeMean = nextMean(
-      bucket.immediateFeeMean,
-      outcome.immediate_base_fee_per_gas,
-      bucket.outcomeCount,
-    );
-    bucket.fableFeeMean = nextMean(
-      bucket.fableFeeMean,
-      outcome.selected_base_fee_per_gas,
-      bucket.outcomeCount,
-    );
-  }
-
-  return buckets.map(
-    ({
-      fableFeeMean,
-      immediateFeeMean,
-      label,
-      runCount,
-      savingsPercent,
-    }) => ({
+    return {
       fableGwei: fableFeeMean === null ? null : fableFeeMean / GWEI,
       immediateGwei:
         immediateFeeMean === null ? null : immediateFeeMean / GWEI,
-      label,
-      runCount,
-      savingsPercent,
-    }),
-  );
+      label: String(offset),
+      runCount: matchingRuns.length,
+      savingsPercent: mean(outcomes.map(savingsPercent)),
+    };
+  });
 }
 
 function validOutcome(run: InferenceRun): InferenceOutcome | null {
@@ -152,15 +123,6 @@ function validOutcome(run: InferenceRun): InferenceOutcome | null {
     return null;
   }
   return outcome;
-}
-
-function nextMean(
-  average: number | null,
-  value: number,
-  count: number,
-): number {
-  const current = average ?? 0;
-  return current + (value - current) / count;
 }
 
 function mean(values: readonly number[]): number | null {
