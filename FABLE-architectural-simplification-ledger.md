@@ -259,7 +259,7 @@ status, and verify that only known unrelated files are present.
 
 ## Slice 1 — Python owners, orchestration, documentation, and focused tests
 
-Status: ready.
+Status: green.
 
 Proposed baseline: planning baseline plus the finalized ledger commit. Record the immutable SHA
 immediately before dispatch.
@@ -318,19 +318,26 @@ submission contracts.
 
 ### Implementation-review record
 
-- Baseline: pending.
-- Implementer: pending.
-- Implementation head: pending.
-- Focused/integration checks: pending.
-- Reviewer: pending.
-- Standards findings: pending.
-- Spec findings: pending.
-- Correction rounds: pending.
-- Final result: pending.
+- Baseline: `59766c072b6dd4d213e7ce243091850e8d15053d`.
+- Implementer: `/root/slice1_python`.
+- Implementation head: `acff461676270da1c083a87996791a3414b700f3`.
+- Focused/integration checks: corpus 11 passed; temporal 10 passed; modeling/export 7 passed;
+  evaluation 11 passed; orchestration/config/execution 24 passed; full suite 89 passed; Ruff check
+  and format passed; Pyright passed; Vulture passed with no findings; `git diff --check` passed;
+  representative Transformer and Transformer-LSTM state keys/shapes matched the planning record.
+  The orchestrator reran the full suite: 89 passed with 15 expected local Torch/Lightning warnings.
+- Reviewer: `/root/slice1_review`, with parallel `/root/slice1_review/standards_axis` and
+  `/root/slice1_review/spec_axis`.
+- Standards findings: 0.
+- Spec findings: 0.
+- Correction rounds: 0.
+- Explicitly not run: GPU training, Slurm submission, research image build, remote changes, mobile
+  export, and app checks.
+- Final result: `GREEN LIGHT`; read-only review pinned the exact baseline and implementation head.
 
 ## Slice 2 — App fixture, presentation primitives, and runtime state
 
-Status: proposed; depends on Slice 1 green.
+Status: ready; Slice 1 is green.
 
 Proposed baseline: Slice 1 final green head plus the orchestrator's ledger update. Record the
 immutable SHA immediately before dispatch.
