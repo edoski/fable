@@ -17,9 +17,9 @@ UUIDv4 values identify instances. Each completed object owns its exact typed req
 - `artifacts/<artifact_id>.ckpt`;
 - `evaluations/<evaluation_id>/evaluation.json` and `observations.parquet`.
 
-Typed requests, embedded associations, and the selected Study result index plus exact Method establish meaning. Completed objects are loaded directly and validated against the requested UUID and association.
+Typed requests, embedded associations, and the selected Study result index plus exact Method establish meaning. Corpus, Study, and artifact loaders validate the requested UUID and association. Evaluation publication validates its inputs before atomically publishing the request and observations at the requested evaluation address.
 
-A completed evaluation owns its exact `EvaluateRequest` plus sufficient canonical prediction and outcome observations. Loading it validates the strict request identity, exact schema, and ordered window coverage. Atomic publication owns observation value consistency, so transient reduction trusts those values and is recomputed directly from the completed evaluation object; Artifact and Corpus availability is not required after publication. Selection remains recomputed from its canonical Study object.
+A completed evaluation owns its exact `EvaluateRequest` plus sufficient canonical prediction and outcome observations. Atomic publication owns request pairing, ordered window coverage, and observation value consistency. Transient reduction validates the exact observation schema, trusts those publisher-owned facts, and is recomputed directly from `observations.parquet`; Artifact and Corpus availability is not required after publication. Selection remains recomputed from its canonical Study object.
 
 Artifact fitting and Study assembly use owner-local hidden scratch. The selected checkpoint or
 assembled Study remains inside that scratch while `os.link()` creates the canonical path without

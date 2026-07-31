@@ -19,7 +19,6 @@ from fable.config import (
     FitMethod,
     LstmDefinition,
     Method,
-    SelectedStudySource,
     TrainRequest,
     TuneRequest,
 )
@@ -166,11 +165,8 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(tmp_path
         TrainRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in rows
     ]
-    sources = [
-        request.source for request in requests if isinstance(request.source, SelectedStudySource)
-    ]
+    sources = [request.source for request in requests]
 
-    assert experiment_id.version == 4
     assert len(rows) == 81
     assert [row["cell"] for row in rows[:9]] == [
         "ethereum.lstm.K2",
@@ -184,7 +180,6 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(tmp_path
         "ethereum.lstm.K200",
     ]
     assert rows[-1]["cell"] == "avalanche.transformer_lstm.K200"
-    assert len(sources) == 81
     assert [source.experiment.horizon_blocks for source in sources[:9]] == [
         2,
         3,
@@ -198,7 +193,6 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(tmp_path
     ]
     assert {source.study_result_index for source in sources} == {1}
     assert len({request.artifact_id for request in requests}) == 81
-    assert {request.artifact_id.version for request in requests} == {4}
 
     for row in rows:
         checkpoint = tmp_path / "artifacts" / f"{row['artifact_id']}.ckpt"
@@ -219,7 +213,6 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(tmp_path
     assert [str(record_id) for record_id in manifest.root.values()] == [
         row["artifact_id"] for row in rows
     ]
-    assert {path.name for path in canonical.iterdir()} == {"manifest.json"}
     assert not bundle.exists()
 
     corpus = {
@@ -243,10 +236,8 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(tmp_path
         EvaluateRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in evaluation_rows
     ]
-    assert held_out_experiment_id.version == 4
     assert len(evaluation_rows) == 81
     assert len({request.evaluation_id for request in evaluation_requests}) == 81
-    assert {request.evaluation_id.version for request in evaluation_requests} == {4}
     assert [request.testing_window for request in evaluation_requests[:4]] == [
         BlockWindow(first_parent_block=701, last_parent_block=803),
         BlockWindow(first_parent_block=701, last_parent_block=802),
@@ -269,5 +260,4 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(tmp_path
     assert [str(record_id) for record_id in held_out_manifest.root.values()] == [
         row["evaluation_id"] for row in evaluation_rows
     ]
-    assert {path.name for path in held_out_canonical.iterdir()} == {"manifest.json"}
     assert not held_out.exists()

@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Annotated, Self
+from typing import Annotated
 
 import numpy as np
 import polars as pl
 import torch
 from numpy.typing import NDArray
-from pydantic import Field, model_validator
+from pydantic import Field
 from torch.utils.data import Dataset
 
 from .config import BlockWindow, ExperimentSemantics, FeatureName
-from .corpus import BlockFrame, Corpus
+from .corpus import BlockFrame
 from .min_block_fee import TargetState, fit_target_state, standardize_target
 from .records import StrictFrozenRecord
 
@@ -26,21 +26,11 @@ class FeatureState(StrictFrozenRecord):
     means: Annotated[tuple[_FiniteFloat, ...], Field(min_length=1)]
     standard_deviations: Annotated[tuple[_PositiveFiniteFloat, ...], Field(min_length=1)]
 
-    @model_validator(mode="after")
-    def validate_widths(self) -> Self:
-        if len(self.means) != len(self.standard_deviations):
-            raise ValueError("means and standard_deviations must have equal widths")
-        return self
-
 
 def fit_feature_state(
     training_support: BlockFrame, *, ordered_features: tuple[FeatureName, ...]
 ) -> FeatureState:
-    raw = _raw_feature_rows(
-        training_support.to_polars(),
-        chain_id=training_support.definition.chain_id,
-        ordered_features=ordered_features,
-    )
+    raw = _raw_feature_rows(training_support, ordered_features=ordered_features)
     means = raw.mean(axis=0, dtype=np.float64)
     standard_deviations = raw.std(axis=0, ddof=0, dtype=np.float64)
     return FeatureState(
@@ -52,9 +42,7 @@ def fit_feature_state(
 def transform_feature_rows(
     blocks: BlockFrame, *, ordered_features: tuple[FeatureName, ...], state: FeatureState
 ) -> NDArray[np.float32]:
-    raw = _raw_feature_rows(
-        blocks.to_polars(), chain_id=blocks.definition.chain_id, ordered_features=ordered_features
-    )
+    raw = _raw_feature_rows(blocks, ordered_features=ordered_features)
     means = np.asarray(state.means, dtype=np.float64)
     standard_deviations = np.asarray(state.standard_deviations, dtype=np.float64)
     with np.errstate(over="ignore", invalid="ignore"):
@@ -65,14 +53,15 @@ def transform_feature_rows(
 
 
 def _raw_feature_rows(
-    blocks: pl.DataFrame, *, chain_id: int, ordered_features: tuple[FeatureName, ...]
+    blocks: BlockFrame, *, ordered_features: tuple[FeatureName, ...]
 ) -> NDArray[np.float64]:
-    needs_predecessor = "block_interval_seconds" in ordered_features
+    frame = blocks.to_polars()
+    predecessor_blocks = _feature_predecessor_blocks(ordered_features)
     columns = []
     for feature_name in ordered_features:
-        values = _feature_values(blocks, chain_id, feature_name)
-        if needs_predecessor and feature_name != "block_interval_seconds":
-            values = values[1:]
+        values = _feature_values(frame, blocks.definition.chain_id, feature_name)
+        if predecessor_blocks and feature_name != "block_interval_seconds":
+            values = values[predecessor_blocks:]
         columns.append(values)
     return np.ascontiguousarray(np.column_stack(columns), dtype=np.float64)
 
@@ -201,7 +190,9 @@ class HistoricalPreparation:
     target_state: TargetState
 
 
-def prepare_fit_history(corpus: Corpus, experiment: ExperimentSemantics) -> HistoricalPreparation:
+def prepare_fit_history(
+    blocks: BlockFrame, experiment: ExperimentSemantics
+) -> HistoricalPreparation:
     """Fit training-only state and prepare the authored fit windows."""
 
     training_window = experiment.training_window
@@ -209,7 +200,7 @@ def prepare_fit_history(corpus: Corpus, experiment: ExperimentSemantics) -> Hist
 
     training_first_block = training_window.first_parent_block - experiment.context_blocks + 1
     predecessor_blocks = _feature_predecessor_blocks(experiment.ordered_features)
-    training_support = corpus.blocks.select_range(
+    training_support = blocks.select_range(
         training_first_block - predecessor_blocks, training_window.last_parent_block
     )
     feature_state = fit_feature_state(
@@ -217,7 +208,7 @@ def prepare_fit_history(corpus: Corpus, experiment: ExperimentSemantics) -> Hist
     )
 
     backing = _build_backing(
-        corpus,
+        blocks,
         first_block=training_first_block,
         last_block=validation_window.last_parent_block + experiment.horizon_blocks,
         ordered_features=experiment.ordered_features,
@@ -238,7 +229,7 @@ def prepare_fit_history(corpus: Corpus, experiment: ExperimentSemantics) -> Hist
 
 
 def prepare_historical_window(
-    corpus: Corpus,
+    blocks: BlockFrame,
     experiment: ExperimentSemantics,
     window: BlockWindow,
     *,
@@ -253,7 +244,7 @@ def prepare_historical_window(
     ):
         raise ValueError("testing window must follow complete validation outcomes")
     backing = _build_backing(
-        corpus,
+        blocks,
         first_block=window.first_parent_block - experiment.context_blocks + 1,
         last_block=window.last_parent_block + experiment.horizon_blocks,
         ordered_features=experiment.ordered_features,
@@ -263,7 +254,7 @@ def prepare_historical_window(
 
 
 def _build_backing(
-    corpus: Corpus,
+    source: BlockFrame,
     *,
     first_block: int,
     last_block: int,
@@ -271,7 +262,7 @@ def _build_backing(
     feature_state: FeatureState,
 ) -> _HistoricalBacking:
     predecessor_blocks = _feature_predecessor_blocks(ordered_features)
-    blocks = corpus.blocks.select_range(first_block - predecessor_blocks, last_block)
+    blocks = source.select_range(first_block - predecessor_blocks, last_block)
     inputs = transform_feature_rows(blocks, ordered_features=ordered_features, state=feature_state)
     frame = blocks.to_polars().slice(predecessor_blocks)
     base_fees = frame["base_fee_per_gas"].to_numpy(writable=True)

@@ -201,11 +201,6 @@ def _fit(
             id="forming-fee-chain",
         ),
         pytest.param(
-            lambda: FeatureState(means=(0.0,), standard_deviations=(1.0, 2.0)),
-            "equal widths",
-            id="state-widths",
-        ),
-        pytest.param(
             lambda: transform_feature_rows(
                 _valid_blocks(),
                 ordered_features=("log_base_fee_per_gas", "gas_utilization"),

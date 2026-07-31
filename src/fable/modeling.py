@@ -28,7 +28,7 @@ from .config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from .corpus import load_corpus
+from .corpus import load_corpus_blocks
 from .min_block_fee import MinBlockFeeOutput, TargetState, decode_action, min_block_fee_loss
 from .records import StrictFrozenRecord
 from .study import RetainedResult, candidate_scratch_directory, load_selected_method, retain_result
@@ -92,15 +92,24 @@ def _head(input_width: int, hidden: int, output_width: int, dropout: float) -> n
     )
 
 
+def _lstm(*, input_width: int, hidden: int, layers: int, dropout: float) -> nn.LSTM:
+    return nn.LSTM(
+        input_size=input_width,
+        hidden_size=hidden,
+        num_layers=layers,
+        dropout=dropout if layers > 1 else 0.0,
+        batch_first=True,
+    )
+
+
 class _LstmModel(nn.Module):
     def __init__(self, definition: LstmDefinition, *, feature_count: int, actions: int) -> None:
         super().__init__()
-        self.lstm = nn.LSTM(
-            input_size=feature_count,
-            hidden_size=definition.hidden,
-            num_layers=definition.layers,
-            dropout=definition.dropout if definition.layers > 1 else 0.0,
-            batch_first=True,
+        self.lstm = _lstm(
+            input_width=feature_count,
+            hidden=definition.hidden,
+            layers=definition.layers,
+            dropout=definition.dropout,
         )
         self.heads = _Heads(definition.hidden, definition.head_hidden, actions, definition.dropout)
 
@@ -132,20 +141,20 @@ def _encoder(
         batch_first=True,
     )
     encoder = nn.TransformerEncoder(layer, num_layers=layers)
-    for encoder_layer in encoder.layers:
-        for parameter in encoder_layer.parameters():
-            if parameter.ndim > 1:
-                nn.init.xavier_uniform_(parameter)
+    for parameter in encoder.parameters():
+        if parameter.ndim > 1:
+            nn.init.xavier_uniform_(parameter)
     return encoder
 
 
-class _TransformerBackbone(nn.Module):
+class _TransformerModel(nn.Module):
     def __init__(
         self,
         definition: TransformerDefinition | TransformerLstmDefinition,
         *,
         context_blocks: int,
         feature_count: int,
+        actions: int,
     ) -> None:
         super().__init__()
         self.projection = nn.Linear(feature_count, definition.model_width)
@@ -161,56 +170,30 @@ class _TransformerBackbone(nn.Module):
             layers=definition.transformer_layers,
             dropout=definition.dropout,
         )
+        self.lstm = (
+            _lstm(
+                input_width=definition.model_width,
+                hidden=definition.lstm_hidden,
+                layers=definition.lstm_layers,
+                dropout=definition.dropout,
+            )
+            if isinstance(definition, TransformerLstmDefinition)
+            else None
+        )
+        output_width = (
+            definition.lstm_hidden
+            if isinstance(definition, TransformerLstmDefinition)
+            else definition.model_width
+        )
+        self.heads = _Heads(output_width, definition.head_hidden, actions, definition.dropout)
 
-    def _encode(self, inputs: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
         projected = self.projection(inputs)
         positions = cast(torch.Tensor, self.positions).to(dtype=projected.dtype)
-        return self.encoder(projected + torch.unsqueeze(positions, 0))
-
-
-class _TransformerModel(_TransformerBackbone):
-    def __init__(
-        self,
-        definition: TransformerDefinition,
-        *,
-        context_blocks: int,
-        feature_count: int,
-        actions: int,
-    ) -> None:
-        super().__init__(definition, context_blocks=context_blocks, feature_count=feature_count)
-        self.heads = _Heads(
-            definition.model_width, definition.head_hidden, actions, definition.dropout
-        )
-
-    def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
-        return self.heads(self._encode(inputs)[:, -1])
-
-
-class _TransformerLstmModel(_TransformerBackbone):
-    def __init__(
-        self,
-        definition: TransformerLstmDefinition,
-        *,
-        context_blocks: int,
-        feature_count: int,
-        actions: int,
-    ) -> None:
-        super().__init__(definition, context_blocks=context_blocks, feature_count=feature_count)
-        self.lstm = nn.LSTM(
-            input_size=definition.model_width,
-            hidden_size=definition.lstm_hidden,
-            num_layers=definition.lstm_layers,
-            dropout=definition.dropout if definition.lstm_layers > 1 else 0.0,
-            batch_first=True,
-        )
-        self.heads = _Heads(
-            definition.lstm_hidden, definition.head_hidden, actions, definition.dropout
-        )
-
-    def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
-        encoded = self._encode(inputs)
-        with torch.autocast(encoded.device.type, enabled=False):
-            sequence, _ = self.lstm(encoded.float())
+        sequence = self.encoder(projected + torch.unsqueeze(positions, 0))
+        if self.lstm is not None:
+            with torch.autocast(sequence.device.type, enabled=False):
+                sequence, _ = self.lstm(sequence.float())
         return self.heads(sequence[:, -1])
 
 
@@ -230,12 +213,8 @@ class _FitModule(pl.LightningModule):
         match model:
             case LstmDefinition():
                 self.model = _LstmModel(model, **common)
-            case TransformerDefinition():
+            case TransformerDefinition() | TransformerLstmDefinition():
                 self.model = _TransformerModel(
-                    model, context_blocks=experiment.context_blocks, **common
-                )
-            case TransformerLstmDefinition():
-                self.model = _TransformerLstmModel(
                     model, context_blocks=experiment.context_blocks, **common
                 )
 
@@ -376,7 +355,9 @@ def train(request: TrainRequest, storage_root: Path) -> None:
         raise FileExistsError(canonical)
 
     method = load_selected_method(storage_root, source)
-    prepared = prepare_fit_history(load_corpus(storage_root, source.corpus_id), source.experiment)
+    prepared = prepare_fit_history(
+        load_corpus_blocks(storage_root, source.corpus_id), source.experiment
+    )
     association = ArtifactAssociation(
         request=request,
         feature_state=prepared.feature_state,
@@ -392,7 +373,9 @@ def train(request: TrainRequest, storage_root: Path) -> None:
 
 def run_candidate(storage_root: Path, request: TuneRequest, method_index: int) -> None:
     candidate_scratch = candidate_scratch_directory(storage_root, request.study_id, method_index)
-    prepared = prepare_fit_history(load_corpus(storage_root, request.corpus_id), request.experiment)
+    prepared = prepare_fit_history(
+        load_corpus_blocks(storage_root, request.corpus_id), request.experiment
+    )
     definition = TrainingDefinition(
         experiment=request.experiment, method=request.method_at(method_index)
     )

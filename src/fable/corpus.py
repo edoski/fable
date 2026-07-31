@@ -1,9 +1,8 @@
-"""Canonical block rows, Corpus values, and loading."""
+"""Canonical block rows and loading."""
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 
 import polars as pl
@@ -63,25 +62,16 @@ class BlockFrame:
         return self._frame.clone()
 
 
-@dataclass(frozen=True, slots=True)
-class Corpus:
-    request: CorpusRequest
-    blocks: BlockFrame
-
-
 def load_corpus_request(storage_root: Path, corpus_id: UUID4) -> CorpusRequest:
     document = json.loads(corpus_json_path(storage_root, corpus_id).read_text(encoding="utf-8"))
-    request = CorpusRequest.model_validate_json(json.dumps(document["request"]), strict=True)
+    request = CorpusRequest.model_validate_json(json.dumps(document["request"]))
     if request.corpus_id != corpus_id:
         raise ValueError("Corpus request UUID does not match the requested corpus")
     return request
 
 
-def load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus:
+def load_corpus_blocks(storage_root: Path, corpus_id: UUID4) -> BlockFrame:
     request = load_corpus_request(storage_root, corpus_id)
-    return Corpus(
-        request=request,
-        blocks=BlockFrame(
-            pl.read_parquet(corpus_blocks_path(storage_root, corpus_id)), request.definition
-        ),
+    return BlockFrame(
+        pl.read_parquet(corpus_blocks_path(storage_root, corpus_id)), request.definition
     )

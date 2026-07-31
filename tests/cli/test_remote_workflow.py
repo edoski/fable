@@ -1,20 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 from uuid import UUID
 
 import pytest
 
 import fable.cli as cli
 from fable.cli import app
-from fable.config import (
-    EvaluateRequest,
-    ExperimentSemantics,
-    SelectedStudySource,
-    TrainRequest,
-    WorkflowRequest,
-)
+from fable.config import EvaluateRequest, ExperimentSemantics, SelectedStudySource, TrainRequest
 from tests.helpers import dispatch, window
 
 CORPUS_ID = UUID("10000000-0000-4000-8000-000000000001")
@@ -34,28 +27,28 @@ def _experiment() -> ExperimentSemantics:
     )
 
 
-def _request(kind: Literal["selected", "evaluate"]) -> WorkflowRequest:
-    if kind == "evaluate":
-        return EvaluateRequest(
-            workflow="evaluate",
-            evaluation_id=EVALUATION_ID,
-            artifact_id=ARTIFACT_ID,
-            corpus_id=CORPUS_ID,
-            testing_window=window(300),
-        )
+def _train_request() -> TrainRequest:
     source = SelectedStudySource(
         corpus_id=CORPUS_ID, study_id=STUDY_ID, study_result_index=2, experiment=_experiment()
     )
     return TrainRequest(workflow="train", artifact_id=ARTIFACT_ID, source=source)
 
 
-@pytest.mark.parametrize(
-    "kind", [pytest.param("selected", id="selected"), pytest.param("evaluate", id="evaluate")]
-)
-def test_remote_workflow_dispatches_final_request(
-    kind: Literal["selected", "evaluate"], monkeypatch: pytest.MonkeyPatch
+def _evaluate_request() -> EvaluateRequest:
+    return EvaluateRequest(
+        workflow="evaluate",
+        evaluation_id=EVALUATION_ID,
+        artifact_id=ARTIFACT_ID,
+        corpus_id=CORPUS_ID,
+        testing_window=window(300),
+    )
+
+
+def test_remote_workflow_dispatches_train_and_evaluate_requests(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    request = _request(kind)
+    train_request = _train_request()
+    evaluate_request = _evaluate_request()
     train_calls: list[tuple[TrainRequest, Path]] = []
     evaluate_calls: list[tuple[EvaluateRequest, Path]] = []
     monkeypatch.setenv("STORAGE_ROOT", str(STORAGE_ROOT))
@@ -70,13 +63,12 @@ def test_remote_workflow_dispatches_final_request(
         lambda active_request, storage_root: evaluate_calls.append((active_request, storage_root)),
     )
 
-    result = dispatch(app, "remote", "workflow", input=request.model_dump_json())
+    train_result = dispatch(app, "remote", "workflow", input=train_request.model_dump_json())
+    evaluate_result = dispatch(app, "remote", "workflow", input=evaluate_request.model_dump_json())
 
-    assert result.exit_code == 0
-    assert result.output == ""
-    if isinstance(request, TrainRequest):
-        assert train_calls == [(request, STORAGE_ROOT)]
-        assert evaluate_calls == []
-    else:
-        assert train_calls == []
-        assert evaluate_calls == [(request, STORAGE_ROOT)]
+    assert train_result.exit_code == 0
+    assert train_result.output == ""
+    assert evaluate_result.exit_code == 0
+    assert evaluate_result.output == ""
+    assert train_calls == [(train_request, STORAGE_ROOT)]
+    assert evaluate_calls == [(evaluate_request, STORAGE_ROOT)]

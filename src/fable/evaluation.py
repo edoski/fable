@@ -12,9 +12,9 @@ import torch
 from torch import nn
 
 from . import _runtime
-from .addresses import evaluation_directory, evaluation_json_path, evaluation_observations_path
+from .addresses import evaluation_directory, evaluation_observations_path
 from .config import EvaluateRequest
-from .corpus import load_corpus
+from .corpus import load_corpus_blocks
 from .min_block_fee import TargetState, decode_action
 from .modeling import load_artifact
 from .temporal import HistoricalDataset, prepare_historical_window
@@ -44,21 +44,21 @@ def evaluate(request: EvaluateRequest, storage_root: Path) -> None:
     scratch = storage_root / "evaluations" / f".{request.evaluation_id}"
     scratch.mkdir(parents=True)
 
-    corpus = load_corpus(storage_root, request.corpus_id)
+    blocks = load_corpus_blocks(storage_root, request.corpus_id)
     association, model = load_artifact(storage_root, request.artifact_id)
     if association.request.source.corpus_id != request.corpus_id:
         raise ValueError("artifact source Corpus must match the evaluation Corpus")
     experiment = association.training_definition.experiment
     testing_window = request.testing_window
     dataset = prepare_historical_window(
-        corpus,
+        blocks,
         experiment,
         testing_window,
         feature_state=association.feature_state,
         target_state=association.target_state,
     )
     first_outcome_block = testing_window.first_parent_block + 1
-    outcomes = corpus.blocks.select_range(
+    outcomes = blocks.select_range(
         first_outcome_block, testing_window.last_parent_block + experiment.horizon_blocks
     ).to_polars()
     outcome_base_fees = outcomes["base_fee_per_gas"].to_numpy()
@@ -143,7 +143,7 @@ def _collect_observations(
 def reduce_evaluation(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     """Derive one testing evaluation's seven metrics from its observations."""
 
-    columns = _load_evaluation(storage_root, evaluation_id)
+    columns = _read_observations(evaluation_observations_path(storage_root, evaluation_id))
     log_errors = columns["predicted_minimum_log_base_fee"] - np.log(
         columns["minimum_base_fee_per_gas"]
     )
@@ -159,7 +159,7 @@ def reduce_evaluation(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
 def reduce_baselines(storage_root: Path, evaluation_id: UUID) -> pl.DataFrame:
     """Derive immediate and deadline policy metrics from one testing evaluation."""
 
-    columns = _load_evaluation(storage_root, evaluation_id)
+    columns = _read_observations(evaluation_observations_path(storage_root, evaluation_id))
     rows = []
     for policy in ("immediate", "deadline"):
         metrics = _economic_metrics(columns, policy)
@@ -175,23 +175,6 @@ def reduce_rolling(storage_root: Path, roster: Mapping[str, Mapping[int, UUID]])
         for cell, evaluation_ids in roster.items()
     ]
     return pl.DataFrame(rows)
-
-
-def _load_evaluation(storage_root: Path, evaluation_id: UUID) -> dict[str, np.ndarray]:
-    request = EvaluateRequest.model_validate_json(
-        evaluation_json_path(storage_root, evaluation_id).read_bytes()
-    )
-    if request.evaluation_id != evaluation_id:
-        raise ValueError("evaluation request ID must match the requested evaluation")
-    columns = _read_observations(evaluation_observations_path(storage_root, evaluation_id))
-    window = request.testing_window
-    expected_origins = np.arange(
-        window.first_parent_block, window.last_parent_block + 1, dtype=np.int64
-    )
-    origins = columns["origin_block"]
-    if not np.array_equal(origins, expected_origins):
-        raise ValueError("observation origins must exactly match the ordered testing window")
-    return columns
 
 
 def _read_observations(path: Path) -> dict[str, np.ndarray]:
