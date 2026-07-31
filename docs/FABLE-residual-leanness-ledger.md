@@ -1,6 +1,6 @@
 # FABLE residual leanness ledger
 
-Status: execution in progress. Slices 1 and 2 are complete and green.
+Status: execution in progress. Slices 1–3 are complete and green.
 
 ## Authority
 
@@ -265,6 +265,30 @@ fewer wrappers and defaults, while every numerical and durable contract remains 
 Dependencies: Slice 1 green. External gates: none.
 
 ## Slice 3: orchestration cleanup
+
+Status: complete. Independent review returned zero Standards findings and zero Spec findings.
+
+### Execution record
+
+- Baseline: `c8aed07776dd2cd2f25a1ee5fd18900dafdda07d`.
+- Implementer: `/root/slice3_orchestration`.
+- Implementation head: `d8ddd920ac0cf31bf1c390578114ac199d0be0b2`.
+- Commit: `refactor(orchestration): consolidate experiment mechanics`.
+- Reviewer: `/root/slice3_reviewer`, with independent Standards and Spec axes.
+- Scope: 12 files; 50 additions and 154 deletions, net -104.
+- All eight approved changes were implemented. The shared closer remains a fixed-domain loop with
+  explicit identifier columns and canonical verifiers at its four call sites; no registry,
+  fallback, compatibility path, or external execution was added.
+- Implementer checks: 27 focused orchestration tests, 11 mobile-export tests, and 118 full-suite
+  tests passed; Ruff format and lint, Pyright, and Vulture passed. All affected CLI help matched
+  the baseline. All four close workflows preserved manifest bytes, stdout, verifier order, and
+  manifest-only publication.
+- Reviewer checks: 20- and 25-test focused axes and 118 full-suite tests passed; 10 mobile-export
+  tests passed, while the optional real-XNNPACK test was unavailable because `flatc` is absent.
+  Ruff format and lint, Pyright, Vulture, and diff checks passed. Help output was byte-identical
+  across five experiment CLIs, 14 subcommands, and mobile export.
+- Review result: `GREEN LIGHT` with zero Standards findings and zero Spec findings; no correction
+  round. No SSH, Slurm, `sbatch`, or external RPC ran.
 
 ### Scope
 
