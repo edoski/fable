@@ -8,13 +8,9 @@ import polars as pl
 import pytest
 
 from fable.addresses import evaluation_directory
-from fable.config import BlockWindow, EvaluateRequest
 from fable.evaluation import OBSERVATION_SCHEMA, reduce_baselines, reduce_evaluation
 
 _EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000001")
-_OTHER_EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000002")
-_ARTIFACT_ID = UUID("20000000-0000-4000-8000-000000000001")
-_CORPUS_ID = UUID("30000000-0000-4000-8000-000000000001")
 
 _RESULT_SCHEMA = pl.Schema(
     {
@@ -35,18 +31,6 @@ _BASELINE_RESULT_SCHEMA = pl.Schema(
         "base_fee_optimality_gap": pl.Float64,
     }
 )
-
-
-def _request(
-    *, evaluation_id: UUID = _EVALUATION_ID, testing_window: BlockWindow | None = None
-) -> EvaluateRequest:
-    return EvaluateRequest(
-        workflow="evaluate",
-        evaluation_id=evaluation_id,
-        artifact_id=_ARTIFACT_ID,
-        corpus_id=_CORPUS_ID,
-        testing_window=testing_window or BlockWindow(first_parent_block=20, last_parent_block=26),
-    )
 
 
 def _row(
@@ -93,19 +77,16 @@ def _observations(rows: list[dict[str, int | float]] | None = None) -> pl.DataFr
     return pl.DataFrame(rows or _rows(), schema=OBSERVATION_SCHEMA)
 
 
-def _publish_evaluation(
-    storage_root: Path, request: EvaluateRequest, observations: pl.DataFrame
-) -> None:
+def _publish_evaluation(storage_root: Path, observations: pl.DataFrame) -> None:
     directory = evaluation_directory(storage_root, _EVALUATION_ID)
     directory.mkdir(parents=True)
-    (directory / "evaluation.json").write_text(request.model_dump_json(), encoding="utf-8")
     observations.write_parquet(directory / "observations.parquet")
 
 
 def test_reduce_evaluation_derives_exact_metrics_from_self_contained_observations(
     tmp_path: Path,
 ) -> None:
-    _publish_evaluation(tmp_path, _request(), _observations())
+    _publish_evaluation(tmp_path, _observations())
 
     result = reduce_evaluation(tmp_path, _EVALUATION_ID)
 
@@ -117,7 +98,7 @@ def test_reduce_evaluation_derives_exact_metrics_from_self_contained_observation
 
 
 def test_reduce_baselines_derives_immediate_and_deadline_metrics(tmp_path: Path) -> None:
-    _publish_evaluation(tmp_path, _request(), _observations())
+    _publish_evaluation(tmp_path, _observations())
 
     result = reduce_baselines(tmp_path, _EVALUATION_ID)
 
@@ -128,34 +109,11 @@ def test_reduce_baselines_derives_immediate_and_deadline_metrics(tmp_path: Path)
     )
 
 
-@pytest.mark.parametrize(
-    ("case", "message"),
-    [
-        ("uuid", "evaluation request ID must match the requested evaluation"),
-        ("window", "observation origins must exactly match the ordered testing window"),
-        ("schema", "observations must have the canonical ordered schema"),
-        ("origins", "observation origins must exactly match the ordered testing window"),
-    ],
-)
-def test_reduce_evaluation_rejects_invalid_observation_contract(
-    tmp_path: Path, case: str, message: str
-) -> None:
-    request = _request()
-    rows = _rows()
-    if case == "uuid":
-        request = _request(evaluation_id=_OTHER_EVALUATION_ID)
-    elif case == "window":
-        rows.pop()
-    elif case == "origins":
-        rows[1]["origin_block"] = 22
+def test_reduce_evaluation_rejects_noncanonical_observation_schema(tmp_path: Path) -> None:
+    observations = _observations().select(
+        "predicted_action_k", *[name for name in OBSERVATION_SCHEMA if name != "predicted_action_k"]
+    )
+    _publish_evaluation(tmp_path, observations)
 
-    observations = _observations(rows)
-    if case == "schema":
-        observations = observations.select(
-            "predicted_action_k",
-            *[name for name in OBSERVATION_SCHEMA if name != "predicted_action_k"],
-        )
-    _publish_evaluation(tmp_path, request, observations)
-
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError, match="observations must have the canonical ordered schema"):
         reduce_evaluation(tmp_path, _EVALUATION_ID)

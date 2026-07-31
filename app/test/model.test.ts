@@ -15,57 +15,18 @@ vi.mock("react-native-executorch-expo-resource-fetcher", () => ({
   ExpoResourceFetcher: { name: "expo-resource-fetcher" },
 }));
 
+import { createModelRuntime } from "../src/model";
 import {
-  createModelRuntime,
-  type MobileChainManifest,
-  type ModelManifest,
-  type ModelSelection,
-} from "../src/model";
-import type { Horizon } from "../src/domain";
-import { deferred, flushMicrotasks } from "./helpers";
+  deferred,
+  flushMicrotasks,
+  modelSelection,
+} from "./helpers";
 
 type NativeTensor = {
   dataPtr: ArrayBuffer | Float32Array;
   sizes: number[];
   scalarType: number;
 };
-
-function artifactId(index: number): string {
-  return `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}`;
-}
-
-function modelEntry(index: number, K: Horizon): ModelManifest {
-  return {
-    artifact_id: artifactId(index),
-    target: { mean: K, standard_deviation: 0.5 },
-  };
-}
-
-const MANIFEST: MobileChainManifest = {
-  context_blocks: 2,
-  features: [
-    {
-      name: "log_base_fee_per_gas",
-      mean: 1,
-      standard_deviation: 2,
-    },
-  ],
-  models: {
-    2: modelEntry(1, 2),
-    3: modelEntry(2, 3),
-    4: modelEntry(3, 4),
-    5: modelEntry(4, 5),
-  },
-};
-
-function selection(K: Horizon): ModelSelection {
-  return {
-    K,
-    source: 10 + K,
-    chainManifest: MANIFEST,
-    modelManifest: MANIFEST.models[K],
-  };
-}
 
 function output(
   values: readonly number[],
@@ -97,7 +58,7 @@ describe("model runtime", () => {
     const module = native();
     const factory = vi.fn(() => module);
     const runtime = createModelRuntime(factory);
-    const selected = selection(2);
+    const selected = modelSelection(2);
     const input = new Float32Array([1, 2]);
 
     const first = await runtime.execute(selected, input);
@@ -157,8 +118,8 @@ describe("model runtime", () => {
       .mockImplementationOnce(() => first)
       .mockImplementationOnce(() => second);
     const runtime = createModelRuntime(factory);
-    const firstSelection = selection(2);
-    const secondSelection = selection(3);
+    const firstSelection = modelSelection(2);
+    const secondSelection = modelSelection(3);
 
     const firstRun = runtime.execute(
       firstSelection,
@@ -232,7 +193,7 @@ describe("model runtime", () => {
 
     await expect(
       runtime.execute(
-        selection(2),
+        modelSelection(2),
         new Float32Array([1, 2]),
       ),
     ).rejects.toThrow(message);

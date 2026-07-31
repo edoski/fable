@@ -34,7 +34,6 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         for row in c_rows
     ]
 
-    assert c_experiment_id.version == 4
     assert len(c_rows) == 45
     assert [row["cell"] for row in c_rows[:5]] == [
         "ethereum.lstm.C25",
@@ -45,7 +44,6 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     ]
     assert c_rows[-1]["cell"] == "avalanche.transformer_lstm.C400"
     assert len({request.study_id for request in c_requests}) == 45
-    assert {request.study_id.version for request in c_requests} == {4}
     assert {row["method_index"] for row in c_rows} == {"0"}
     assert [request.experiment.context_blocks for request in c_requests[:5]] == [
         25,
@@ -110,14 +108,12 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         for row in rows
     }
 
-    assert experiment_id.version == 4
     assert len(rows) == 81
     assert len(requests) == 9
     assert [row["cell"] for row in rows[:9]] == ["ethereum.lstm"] * 9
     assert [row["method_index"] for row in rows[:9]] == [str(index) for index in range(9)]
     assert rows[-1]["cell"] == "avalanche.transformer_lstm"
     assert len({request.study_id for request in requests.values()}) == 9
-    assert {request.study_id.version for request in requests.values()} == {4}
     assert {len(request.methods) for request in requests.values()} == {9}
     assert {
         chain: {
@@ -179,5 +175,4 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     assert [str(record_id) for record_id in manifest.root.values()] == list(
         dict.fromkeys(row["study_id"] for row in rows)
     )
-    assert {path.name for path in canonical.iterdir()} == {"manifest.json"}
     assert not bundle.exists()

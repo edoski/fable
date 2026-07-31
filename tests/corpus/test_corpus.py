@@ -10,7 +10,7 @@ from polars.testing import assert_frame_equal
 
 from fable.addresses import corpus_blocks_path, corpus_json_path
 from fable.config import CorpusDefinition, CorpusRequest
-from fable.corpus import load_corpus
+from fable.corpus import load_corpus_blocks
 
 CORPUS_ID = UUID("11111111-1111-4111-8111-111111111111")
 OTHER_CORPUS_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -59,17 +59,16 @@ def _write_corpus(root: Path, document: dict[str, object], blocks: pl.DataFrame)
     blocks.write_parquet(corpus_blocks_path(root, CORPUS_ID))
 
 
-def test_load_corpus_reads_one_valid_canonical_pair(tmp_path) -> None:
+def test_load_corpus_blocks_reads_one_valid_canonical_pair(tmp_path) -> None:
     blocks = _valid_blocks()
     _write_corpus(tmp_path, _valid_document(), blocks)
 
-    corpus = load_corpus(tmp_path, CORPUS_ID)
+    loaded = load_corpus_blocks(tmp_path, CORPUS_ID)
 
-    assert corpus.request == _request()
-    assert_frame_equal(corpus.blocks.to_polars(), blocks)
+    assert_frame_equal(loaded.to_polars(), blocks)
 
 
-def test_load_corpus_rejects_a_mismatched_request_uuid(tmp_path) -> None:
+def test_load_corpus_blocks_rejects_a_mismatched_request_uuid(tmp_path) -> None:
     document = _valid_document()
     request = document["request"]
     assert isinstance(request, dict)
@@ -77,4 +76,4 @@ def test_load_corpus_rejects_a_mismatched_request_uuid(tmp_path) -> None:
     _write_corpus(tmp_path, document, _valid_blocks())
 
     with pytest.raises(ValueError, match="UUID"):
-        load_corpus(tmp_path, CORPUS_ID)
+        load_corpus_blocks(tmp_path, CORPUS_ID)

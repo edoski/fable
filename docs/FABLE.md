@@ -535,7 +535,7 @@ corpora/<corpus_id>/
 
 `corpus.json` stores the exact `CorpusRequest` and one finalized anchor. `blocks.parquet` stores the
 requested contiguous rows in block-number order with the exact nine-column canonical schema
-documented in the [reference](#corpus-object). `load_corpus()` hydrates the request, checks the
+documented in the [reference](#corpus-object). `load_corpus_blocks()` hydrates the request, checks the
 requested UUID and exact Parquet schema, and constructs the canonical `BlockFrame`.
 
 `BlockFrame(frame, definition)` is the public canonical-row interface. Its `definition` identifies the exact owned range, `select_range(first_block, last_block)` returns an inclusive subrange, and `to_polars()` returns an isolated native frame. Construction checks the exact schema and native access isolates caller mutation. Range selection is positional and does not rescan rows. The value carries neither hashes nor finality provenance.
@@ -544,7 +544,7 @@ requested UUID and exact Parquet schema, and constructs the canonical `BlockFram
 
 Temporal preparation has two direct paths: historical fixed-block examples and live closed-head inference. Both use the same ordered feature contract and persisted training-only feature state.
 
-`prepare_fit_history(corpus, experiment)` validates complete context/outcome support, fits state from training support only, and returns training and validation `HistoricalDataset` values with `FeatureState` and `TargetState`. `prepare_historical_window(corpus, experiment, window, *, feature_state, target_state)` prepares an exact testing window with persisted state after complete validation outcomes.
+`prepare_fit_history(blocks, experiment)` validates complete context/outcome support, fits state from training support only, and returns training and validation `HistoricalDataset` values with `FeatureState` and `TargetState`. `prepare_historical_window(blocks, experiment, window, *, feature_state, target_state)` prepares an exact testing window with persisted state after complete validation outcomes.
 
 Preparation keeps the first backing block, contiguous CPU float32 feature rows, and int64 base
 fees. Each dataset stores its first origin row plus int64 `k_i*` labels and float32 `z_i` targets;
@@ -655,7 +655,7 @@ The JSON is exactly the `EvaluateRequest`. The parquet schema is the canonical e
 
 #### Transient reduction
 
-`reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` strictly hydrates the request, validates its evaluation UUID, exact Parquet schema, and ordered testing origins, then trusts the publisher-owned row values and reduces only `observations.parquet`. `reduce_baselines(storage_root, evaluation_id) -> polars.DataFrame` derives the three economic metrics for the immediate and deadline policies. Neither reducer reloads the artifact or Corpus or externally authenticates the horizon or source. Results have no evaluation ID, count, sums, supports, arrays, or auxiliary fields and are not persisted.
+`reduce_evaluation(storage_root, evaluation_id) -> polars.DataFrame` validates the exact Parquet schema and reduces only `observations.parquet`. Atomic publication owns its pairing with `evaluation.json`, ordered testing-origin coverage, and row values. `reduce_baselines(storage_root, evaluation_id) -> polars.DataFrame` derives the three economic metrics for the immediate and deadline policies under the same trust boundary. Neither reducer reloads the request, artifact, or Corpus or externally authenticates the horizon or source. Results have no evaluation ID, count, sums, supports, arrays, or auxiliary fields and are not persisted.
 
 Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only each named Evaluation's `observations.parquet`. Its in-memory roster maps human-readable architecture-chain cell names to the required horizon `2`, `3`, `4`, and `5` Evaluation UUIDs. The final experiment runner owns that scientific association and builds the nine declared cells. Reduction verifies exact schemas, consecutive origins, predicted-action ranges, and required decision-origin coverage. Its six-metric rows are transient and are not persisted.
 
@@ -802,10 +802,10 @@ finalized_anchor:
 Direct loader:
 
 ```python
-load_corpus(storage_root: Path, corpus_id: UUID4) -> Corpus
+load_corpus_blocks(storage_root: Path, corpus_id: UUID4) -> BlockFrame
 ```
 
-`Corpus` contains the hydrated request and its `BlockFrame`. Finalized-anchor metadata remains part of the durable producer format but is not represented in the in-memory value.
+The loader validates the embedded request UUID and uses its definition to construct the returned `BlockFrame`. The request remains independently available through `load_corpus_request()`. Finalized-anchor metadata remains part of the durable producer format but is not represented in memory.
 
 #### Experiment manifest
 
@@ -877,7 +877,7 @@ Each `RetainedResult` has exact ordered fields:
 | Ordered field | Type/rule |
 | --- | --- |
 | `request` | exact `TrainRequest`; embedded artifact UUID must match path |
-| `feature_state` | Float64 means and positive standard deviations, equal feature width |
+| `feature_state` | nonempty Float64 means matching the ordered feature count; nonempty positive standard deviations |
 | `target_state` | Float64 finite mean and positive standard deviation |
 | `method` | exact selected Method |
 
@@ -1045,7 +1045,7 @@ The file contains predictions and the observed truth needed for local reduction.
 
 #### Transient reduction
 
-Destination: none. `reduce_evaluation()` structurally validates the completed evaluation, trusts its publisher-owned observation values, and returns a one-row DataFrame whose seven metrics must be finite. Status: derived, transient, noncanonical, nonnull. The row does not store `evaluation_id`, `n`, counts, sums, supports, arrays, or auxiliary fields.
+Destination: none. `reduce_evaluation()` validates the canonical observation schema, trusts atomic publication for request pairing, ordered coverage, and values, and returns a one-row DataFrame whose seven metrics must be finite. Status: derived, transient, noncanonical, nonnull. The row does not store `evaluation_id`, `n`, counts, sums, supports, arrays, or auxiliary fields.
 
 | # | Field | Type | Unit/direction |
 | ---: | --- | --- | --- |

@@ -52,7 +52,7 @@ function NetworkChoices({
   onChange: (chain: Chain) => void;
 }) {
   return (
-    <View style={styles.networkRow}>
+    <View style={styles.cardRow}>
       {CHAINS.map((choice) => {
         const active = choice === chain;
         const label = CHAIN_LABELS[choice];
@@ -92,7 +92,7 @@ function LiveConditions({ snapshot }: { snapshot: ChainSnapshot | null }) {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Live conditions</Text>
-      <View style={[styles.surface, styles.conditionsCard]}>
+      <View style={[styles.surface, styles.clippedCard]}>
         <DetailRow
           label="Latest block"
           value={snapshot?.head_block.toLocaleString() ?? "—"}
@@ -305,7 +305,7 @@ function Timeline({
             <Text
               style={[
                 styles.timelineOffset,
-                active && styles.timelineOffsetActive,
+                active && styles.accentText,
               ]}
             >
               +{offset}
@@ -318,7 +318,7 @@ function Timeline({
             <Text
               style={[
                 styles.timelineTargetLabel,
-                active && styles.timelineTargetLabelActive,
+                active && styles.accentText,
               ]}
             >
               {active ? "TARGET" : " "}

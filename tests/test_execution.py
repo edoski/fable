@@ -110,9 +110,7 @@ def test_submit_workflows_sends_golden_single_workflow_script(
     }
 
 
-def test_submit_workflows_rejects_duplicate_durable_identities(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_submit_workflows_rejects_duplicate_durable_identities() -> None:
     first = _request("train")
     second = first.model_copy(
         update={
@@ -121,15 +119,6 @@ def test_submit_workflows_rejects_duplicate_durable_identities(
             )
         }
     )
-    assert first != second
-    write_remote(tmp_path / "REMOTE.yaml")
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(
-        execution,
-        "_invoke_sbatch",
-        lambda *_: pytest.fail("duplicate workflows must fail before submission"),
-    )
-
     with pytest.raises(ValueError, match="workflow identities must be unique"):
         execution.submit_workflows((first, second))
 

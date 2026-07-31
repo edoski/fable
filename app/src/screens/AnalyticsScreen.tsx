@@ -34,7 +34,7 @@ function SummaryCard({
 }) {
   return (
     <View style={[styles.surface, styles.summaryCard]}>
-      <Text style={[styles.summaryValue, accent && styles.summaryValueAccent]}>
+      <Text style={[styles.summaryValue, accent && styles.accentText]}>
         {value === null ? "—" : format(value)}
       </Text>
       <Text numberOfLines={1} style={styles.summaryLabel}>
@@ -85,16 +85,14 @@ function chartScale(values: readonly number[]) {
   const negativeSections = Math.round(Math.abs(minimum) / step);
 
   return {
-    chartProps: {
-      maxValue: maximum,
-      noOfSections: positiveSections,
-      stepHeight:
-        CHART_HEIGHT / Math.max(positiveSections + negativeSections, 1),
-      stepValue: step,
-    },
-    minimum,
-    negativeSections,
-    step,
+    maxValue: maximum,
+    mostNegativeValue: minimum,
+    negativeStepValue: step,
+    noOfSections: positiveSections,
+    noOfSectionsBelowXAxis: negativeSections,
+    stepHeight:
+      CHART_HEIGHT / Math.max(positiveSections + negativeSections, 1),
+    stepValue: step,
   };
 }
 
@@ -112,7 +110,7 @@ function ChartCard({
 }>) {
   return (
     <View style={[styles.surface, styles.chartCard]}>
-      <View style={styles.chartHeader}>
+      <View style={styles.headerRow}>
         <Text style={styles.chartTitle}>{title}</Text>
         {legend}
       </View>
@@ -142,8 +140,6 @@ function RecommendedWaitChart({
 }: {
   buckets: readonly WaitBucket[];
 }) {
-  const scale = chartScale(buckets.map((bucket) => bucket.runCount));
-
   return (
     <ChartCard
       empty={buckets.length === 0 ? "runs" : null}
@@ -152,7 +148,7 @@ function RecommendedWaitChart({
     >
       <GiftedBarChart
         {...AXIS_PROPS}
-        {...scale.chartProps}
+        {...chartScale(buckets.map((bucket) => bucket.runCount))}
         data={buckets.map((bucket) => ({
           frontColor: colors.blue,
           label: bucket.label,
@@ -171,8 +167,6 @@ function SavingsByWaitChart({
   const values = buckets.flatMap((bucket) =>
     bucket.savingsPercent === null ? [] : [bucket.savingsPercent],
   );
-  const scale = chartScale(values);
-
   return (
     <ChartCard
       empty={values.length === 0 ? "outcomes" : null}
@@ -181,7 +175,7 @@ function SavingsByWaitChart({
     >
       <GiftedBarChart
         {...AXIS_PROPS}
-        {...scale.chartProps}
+        {...chartScale(values)}
         data={buckets.map((bucket) => ({
           frontColor:
             bucket.savingsPercent !== null && bucket.savingsPercent < 0
@@ -191,9 +185,6 @@ function SavingsByWaitChart({
           value: bucket.savingsPercent ?? 0,
         }))}
         formatYLabel={(label) => `${Number(label).toFixed(0)}%`}
-        mostNegativeValue={scale.minimum}
-        negativeStepValue={scale.step}
-        noOfSectionsBelowXAxis={scale.negativeSections}
       />
     </ChartCard>
   );
@@ -212,10 +203,6 @@ function BaseFeeByWaitChart({
       immediateGwei: number;
     } => bucket.fableGwei !== null && bucket.immediateGwei !== null,
   );
-  const scale = chartScale(
-    data.flatMap((bucket) => [bucket.immediateGwei, bucket.fableGwei]),
-  );
-
   return (
     <ChartCard
       legend={
@@ -234,7 +221,9 @@ function BaseFeeByWaitChart({
     >
       <GiftedBarChart
         {...AXIS_PROPS}
-        {...scale.chartProps}
+        {...chartScale(
+          data.flatMap((bucket) => [bucket.immediateGwei, bucket.fableGwei]),
+        )}
         barWidth={18}
         data={data.flatMap((bucket, index) => [
           {
@@ -295,7 +284,7 @@ function NetworkPicker({
       onClose={onClose}
     >
       <View style={[styles.dialog, styles.sheet, styles.networkSheet]}>
-        <View style={styles.networkSheetHeader}>
+        <View style={styles.headerRow}>
           <Text style={styles.networkSheetTitle}>Select network</Text>
           <Pressable
             accessibilityLabel="Close"
@@ -305,7 +294,7 @@ function NetworkPicker({
             <Ionicons color={colors.muted} name="close" size={25} />
           </Pressable>
         </View>
-        <View style={styles.networkOptions}>
+        <View style={styles.cardRow}>
           {CHAINS.map((chain) => {
             const active = chain === selected;
             return (
@@ -342,12 +331,9 @@ function RunDetails({
   run,
   onClose,
 }: {
-  run: InferenceRun | null;
+  run: InferenceRun;
   onClose: () => void;
 }) {
-  if (run === null) {
-    return null;
-  }
   const savings = realizedSavingsPercent(run);
   return (
     <Overlay
@@ -474,7 +460,7 @@ export function AnalyticsScreen({
         contentContainerStyle={styles.page}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.titleRow}>
+        <View style={styles.headerRow}>
           <Text style={styles.title}>Analytics</Text>
           <Pressable
             accessibilityHint="Opens network picker"
@@ -496,9 +482,9 @@ export function AnalyticsScreen({
           </View>
         )}
 
-        <View style={styles.summarySection}>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Summary</Text>
-          <View style={styles.summaryCards}>
+          <View style={styles.cardRow}>
             <SummaryCard
               accent
               format={formatSavings}
@@ -519,7 +505,7 @@ export function AnalyticsScreen({
         </View>
 
         <View style={styles.graphSection}>
-          <View style={styles.graphFilter}>
+          <View style={styles.section}>
             <Text style={styles.sectionTitle}>
               Horizon (K = {analyticsHorizon})
             </Text>
@@ -538,7 +524,7 @@ export function AnalyticsScreen({
         </View>
 
         <Text style={styles.sectionTitle}>Runs ({graphRuns.length})</Text>
-        <View style={[styles.surface, styles.runList]}>
+        <View style={[styles.surface, styles.clippedCard]}>
           {graphRuns.length === 0 ? (
             <View style={styles.emptyRuns}>
               <Text style={styles.emptyRunsTitle}>No runs yet</Text>
@@ -560,7 +546,7 @@ export function AnalyticsScreen({
                   onPress={() => setSelectedRunId(run.id)}
                   style={[
                     styles.runRow,
-                    index === graphRuns.length - 1 && styles.runRowLast,
+                    index === graphRuns.length - 1 && styles.lastRow,
                   ]}
                 >
                   <View style={styles.runIcon}>
@@ -590,7 +576,9 @@ export function AnalyticsScreen({
         </View>
       </ScrollView>
 
-      <RunDetails onClose={() => setSelectedRunId(null)} run={selectedRun} />
+      {selectedRun !== null && (
+        <RunDetails onClose={() => setSelectedRunId(null)} run={selectedRun} />
+      )}
       {networkPickerOpen && (
         <NetworkPicker
           onClose={() => setNetworkPickerOpen(false)}

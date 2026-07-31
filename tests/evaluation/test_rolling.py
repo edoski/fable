@@ -69,38 +69,16 @@ def _publish_evaluation(
 def _publish_all_terminal_evaluations(storage_root: Path) -> None:
     base_fees = {101: 100, 102: 80, 103: 60, 104: 40, 105: 20}
     priority_fees = {101: 10, 102: 8, 103: 6, 104: 4, 105: 2}
-    _publish_evaluation(
-        storage_root,
-        5,
-        first_origin=100,
-        actions=[4],
-        base_fees=base_fees,
-        priority_fees=priority_fees,
-    )
-    _publish_evaluation(
-        storage_root,
-        4,
-        first_origin=100,
-        actions=[0, 3],
-        base_fees=base_fees,
-        priority_fees=priority_fees,
-    )
-    _publish_evaluation(
-        storage_root,
-        3,
-        first_origin=100,
-        actions=[0, 0, 2],
-        base_fees=base_fees,
-        priority_fees=priority_fees,
-    )
-    _publish_evaluation(
-        storage_root,
-        2,
-        first_origin=100,
-        actions=[0, 0, 0, 1],
-        base_fees=base_fees,
-        priority_fees=priority_fees,
-    )
+    actions_by_horizon = {5: [4], 4: [0, 3], 3: [0, 0, 2], 2: [0, 0, 0, 1]}
+    for horizon, actions in actions_by_horizon.items():
+        _publish_evaluation(
+            storage_root,
+            horizon,
+            first_origin=100,
+            actions=actions,
+            base_fees=base_fees,
+            priority_fees=priority_fees,
+        )
 
 
 def _roster() -> dict[str, dict[int, UUID]]:

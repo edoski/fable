@@ -35,7 +35,7 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.corpus import BlockFrame, Corpus
+from fable.corpus import BlockFrame
 from fable.min_block_fee import TargetState, min_block_fee_loss
 from fable.modeling import ArtifactAssociation, load_artifact, run_candidate, train
 from fable.study import RetainedResult, Study, load_study, publish_study
@@ -71,28 +71,24 @@ def _experiment() -> ExperimentSemantics:
     )
 
 
-def _corpus() -> Corpus:
+def _blocks() -> BlockFrame:
     blocks = np.arange(10, 24, dtype=np.int64)
     request = _corpus_request()
-    return Corpus(
-        request=request,
-        blocks=BlockFrame(
-            pl.DataFrame(
-                {
-                    "block_number": blocks,
-                    "timestamp": blocks * 11,
-                    "chain_id": np.ones(blocks.size, dtype=np.int64),
-                    "base_fee_per_gas": _BASE_FEES,
-                    "gas_used": 30 + np.arange(blocks.size, dtype=np.int64),
-                    "gas_limit": np.full(blocks.size, 100, dtype=np.int64),
-                    "tx_count": 4 + np.arange(blocks.size, dtype=np.int64),
-                    "effective_priority_fee_per_gas_p50": np.arange(blocks.size, dtype=np.int64),
-                    "effective_priority_fee_per_gas_p90": 2
-                    * np.arange(blocks.size, dtype=np.int64),
-                }
-            ),
-            request.definition,
+    return BlockFrame(
+        pl.DataFrame(
+            {
+                "block_number": blocks,
+                "timestamp": blocks * 11,
+                "chain_id": np.ones(blocks.size, dtype=np.int64),
+                "base_fee_per_gas": _BASE_FEES,
+                "gas_used": 30 + np.arange(blocks.size, dtype=np.int64),
+                "gas_limit": np.full(blocks.size, 100, dtype=np.int64),
+                "tx_count": 4 + np.arange(blocks.size, dtype=np.int64),
+                "effective_priority_fee_per_gas_p50": np.arange(blocks.size, dtype=np.int64),
+                "effective_priority_fee_per_gas_p90": 2 * np.arange(blocks.size, dtype=np.int64),
+            }
         ),
+        request.definition,
     )
 
 
@@ -103,18 +99,19 @@ def _corpus_request() -> CorpusRequest:
 
 
 def _write_corpus(storage_root: Path) -> None:
-    corpus = _corpus()
+    request = _corpus_request()
+    blocks = _blocks()
     corpus_directory(storage_root, CORPUS_ID).mkdir(parents=True)
     corpus_json_path(storage_root, CORPUS_ID).write_text(
         json.dumps(
             {
-                "request": corpus.request.model_dump(mode="json"),
+                "request": request.model_dump(mode="json"),
                 "finalized_anchor": {"block_number": 23, "block_hash": "a" * 64},
             }
         ),
         encoding="utf-8",
     )
-    corpus.blocks.to_polars().write_parquet(corpus_blocks_path(storage_root, CORPUS_ID))
+    blocks.to_polars().write_parquet(corpus_blocks_path(storage_root, CORPUS_ID))
 
 
 def _candidate_request(method: Method) -> TuneRequest:
@@ -139,7 +136,7 @@ def test_transformer_lstm_uses_exportable_float32_recurrence() -> None:
         head_hidden=3,
         dropout=0.0,
     )
-    model = modeling._TransformerLstmModel(
+    model = modeling._TransformerModel(
         definition, context_blocks=3, feature_count=2, actions=2
     ).eval()
     inputs = torch.zeros((2, 3, 2))
@@ -219,7 +216,7 @@ def test_transformer_encoder_layers_have_independent_matrix_initialization() -> 
 
 
 def test_epoch_logs_weight_short_batches_in_float64(monkeypatch: pytest.MonkeyPatch) -> None:
-    prepared = prepare_fit_history(_corpus(), _experiment())
+    prepared = prepare_fit_history(_blocks(), _experiment())
     association = ArtifactAssociation(
         request=_train_request(),
         feature_state=prepared.feature_state,
@@ -287,7 +284,7 @@ def test_lstm_trains_loads_and_applies_direct_loss(
     assert checkpoint == tmp_path / "artifacts" / f"{artifact_id}.ckpt"
     assert checkpoint.is_file()
 
-    application_history = prepare_fit_history(_corpus(), _experiment())
+    application_history = prepare_fit_history(_blocks(), _experiment())
     batches = list(
         application_history.to(torch.device("cpu")).training.loader(batch_size=3, shuffle=False)
     )

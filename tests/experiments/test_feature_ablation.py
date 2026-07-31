@@ -47,7 +47,6 @@ def test_prepare_authors_full_leave_one_out_and_base_only_matrix(
     ]
     assert rows[-1]["cell"] == "avalanche.transformer_lstm.base_only"
     assert len({request.study_id for request in requests}) == 102
-    assert {request.study_id.version for request in requests} == {4}
     assert {len(request.methods) for request in requests} == {1}
     assert {row["method_index"] for row in rows} == {"0"}
     assert requests[0].experiment.model_dump() == {

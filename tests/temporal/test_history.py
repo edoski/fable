@@ -4,19 +4,17 @@ import numpy as np
 import polars as pl
 import pytest
 import torch
-from pydantic import UUID4, TypeAdapter
 
-from fable.config import BlockWindow, CorpusDefinition, CorpusRequest, ExperimentSemantics
-from fable.corpus import BlockFrame, Corpus
+from fable.config import BlockWindow, CorpusDefinition, ExperimentSemantics
+from fable.corpus import BlockFrame
 from fable.temporal import prepare_fit_history, prepare_historical_window
 
-_CORPUS_ID = TypeAdapter(UUID4).validate_python("11111111-1111-4111-8111-111111111111")
 _BASE_FEES = np.array(
     [11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2, 7, 6, 5, 4, 4, 9], dtype=np.int64
 )
 
 
-def _corpus(first_block: int = 10, last_block: int = 29) -> Corpus:
+def _blocks(first_block: int = 10, last_block: int = 29) -> BlockFrame:
     blocks = np.arange(10, 30, dtype=np.int64)
     frame = pl.DataFrame(
         {
@@ -31,11 +29,9 @@ def _corpus(first_block: int = 10, last_block: int = 29) -> Corpus:
             "effective_priority_fee_per_gas_p90": 4 + np.arange(blocks.size, dtype=np.int64),
         }
     ).filter(pl.col("block_number").is_between(first_block, last_block))
-    request = CorpusRequest(
-        corpus_id=_CORPUS_ID,
-        definition=CorpusDefinition(chain_id=1, first_block=first_block, last_block=last_block),
+    return BlockFrame(
+        frame, CorpusDefinition(chain_id=1, first_block=first_block, last_block=last_block)
     )
-    return Corpus(request=request, blocks=BlockFrame(frame, request.definition))
 
 
 def _experiment() -> ExperimentSemantics:
@@ -49,7 +45,7 @@ def _experiment() -> ExperimentSemantics:
 
 
 def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
-    preparation = prepare_fit_history(_corpus(), _experiment())
+    preparation = prepare_fit_history(_blocks(), _experiment())
     resident = preparation.to(torch.device("cpu"))
     training = next(iter(resident.training.loader(batch_size=4, shuffle=False)))
 
@@ -103,7 +99,7 @@ def test_fit_history_preserves_geometry_statistics_and_collation() -> None:
     )
 
     testing = prepare_historical_window(
-        _corpus(),
+        _blocks(),
         _experiment(),
         BlockWindow(first_parent_block=25, last_parent_block=26),
         feature_state=preparation.feature_state,
@@ -135,10 +131,7 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
             "effective_priority_fee_per_gas_p90": 2 * np.arange(blocks.size, dtype=np.int64),
         }
     )
-    request = CorpusRequest(
-        corpus_id=_CORPUS_ID, definition=CorpusDefinition(chain_id=1, first_block=9, last_block=29)
-    )
-    corpus = Corpus(request=request, blocks=BlockFrame(frame, request.definition))
+    blocks = BlockFrame(frame, CorpusDefinition(chain_id=1, first_block=9, last_block=29))
     experiment = _experiment().model_copy(
         update={
             "ordered_features": (
@@ -147,7 +140,7 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
             )
         }
     )
-    preparation = prepare_fit_history(corpus, experiment)
+    preparation = prepare_fit_history(blocks, experiment)
     raw = np.column_stack((np.log1p(np.arange(1, 7)), np.arange(11, 17))).astype(np.float64)
     expected = ((raw - raw.mean(axis=0)) / raw.std(axis=0, ddof=0)).astype(np.float32)
 
@@ -156,30 +149,25 @@ def test_interval_feature_uses_a_real_predecessor_outside_the_context() -> None:
     )
     torch.testing.assert_close(training["inputs"][0], torch.from_numpy(expected[:3]))
 
-    without_predecessor = Corpus(
-        request=request.model_copy(
-            update={"definition": CorpusDefinition(chain_id=1, first_block=10, last_block=29)}
-        ),
-        blocks=corpus.blocks.select_range(10, 29),
-    )
+    without_predecessor = blocks.select_range(10, 29)
     with pytest.raises(ValueError, match="within the BlockFrame definition"):
         prepare_fit_history(without_predecessor, experiment)
 
 
-@pytest.mark.parametrize("corpus", (_corpus(first_block=11), _corpus(last_block=23)))
-def test_fit_history_requires_complete_context_and_outcome_support(corpus: Corpus) -> None:
+@pytest.mark.parametrize("blocks", (_blocks(first_block=11), _blocks(last_block=23)))
+def test_fit_history_requires_complete_context_and_outcome_support(blocks: BlockFrame) -> None:
     with pytest.raises(ValueError, match="within the BlockFrame definition"):
-        prepare_fit_history(corpus, _experiment())
+        prepare_fit_history(blocks, _experiment())
 
 
 def test_testing_window_must_follow_complete_validation_outcomes() -> None:
-    corpus = _corpus()
+    blocks = _blocks()
     experiment = _experiment()
-    preparation = prepare_fit_history(corpus, experiment)
+    preparation = prepare_fit_history(blocks, experiment)
 
     with pytest.raises(ValueError, match="testing window must follow complete validation outcomes"):
         prepare_historical_window(
-            corpus,
+            blocks,
             experiment,
             BlockWindow(first_parent_block=24, last_parent_block=25),
             feature_state=preparation.feature_state,

@@ -55,70 +55,46 @@ def _method() -> Method:
     )
 
 
+def _transformer() -> TransformerDefinition:
+    return TransformerDefinition(
+        family="transformer",
+        model_width=32,
+        attention_heads=4,
+        transformer_layers=1,
+        feedforward_width=64,
+        head_hidden=8,
+        dropout=0.2,
+    )
+
+
+def _tune(*methods: Method) -> dict[str, object]:
+    return {
+        "workflow": "tune",
+        "study_id": STUDY_ID,
+        "corpus_id": CORPUS_ID,
+        "experiment": _experiment(),
+        "methods": methods,
+    }
+
+
 def _invalid_cases() -> tuple[tuple[type[object], dict[str, object], str], ...]:
     experiment = _experiment()
     method = _method()
     return (
         (
             TransformerDefinition,
-            {
-                "family": "transformer",
-                "model_width": 31,
-                "attention_heads": 1,
-                "transformer_layers": 1,
-                "feedforward_width": 32,
-                "head_hidden": 8,
-                "dropout": 0.2,
-            },
+            {**_transformer().model_dump(), "model_width": 31, "attention_heads": 1},
             "model_width must be even",
         ),
         (
             TransformerDefinition,
-            {
-                "family": "transformer",
-                "model_width": 30,
-                "attention_heads": 4,
-                "transformer_layers": 1,
-                "feedforward_width": 32,
-                "head_hidden": 8,
-                "dropout": 0.2,
-            },
+            {**_transformer().model_dump(), "model_width": 30},
             "model_width must be divisible by attention_heads",
         ),
+        (TuneRequest, _tune(method, method), "methods must not contain duplicates"),
         (
             TuneRequest,
-            {
-                "workflow": "tune",
-                "study_id": STUDY_ID,
-                "corpus_id": CORPUS_ID,
-                "experiment": experiment,
-                "methods": (method, method),
-            },
-            "methods must not contain duplicates",
-        ),
-        (
-            TuneRequest,
-            {
-                "workflow": "tune",
-                "study_id": STUDY_ID,
-                "corpus_id": CORPUS_ID,
-                "experiment": experiment,
-                "methods": (
-                    method,
-                    Method(
-                        model=TransformerDefinition(
-                            family="transformer",
-                            model_width=32,
-                            attention_heads=4,
-                            transformer_layers=1,
-                            feedforward_width=64,
-                            head_hidden=8,
-                            dropout=0.2,
-                        ),
-                        fit=method.fit,
-                    ),
-                ),
-            },
+            _tune(method, Method(model=_transformer(), fit=method.fit)),
             "methods must use one model family",
         ),
         (

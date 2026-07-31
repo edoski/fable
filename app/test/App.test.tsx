@@ -6,6 +6,7 @@ import {
 } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AppTab } from "../src/components/BottomTabs";
 import type { Chain, Horizon } from "../src/domain";
 import type {
   ChainSnapshot,
@@ -21,10 +22,18 @@ import {
 
 const mocks = vi.hoisted(() => ({
   addRun: vi.fn(),
-  analyticsProps: null as Record<string, unknown> | null,
-  bottomTabsProps: null as Record<string, unknown> | null,
+  analyticsProps: null as { loadError: string | null } | null,
+  bottomTabsProps: null as { onSelect(tab: AppTab): void } | null,
   createInferenceEngine: vi.fn(),
-  inferenceProps: null as Record<string, unknown> | null,
+  inferenceProps: null as {
+    chain: Chain;
+    horizon: Horizon;
+    onChainChange(chain: Chain): void;
+    onHorizonChange(horizon: Horizon): void;
+    onRun(): void;
+    snapshot: ChainSnapshot | null;
+    state: Record<string, unknown>;
+  } | null,
   loadRuns: vi.fn(),
   resolvePendingRuns: vi.fn(),
   saveRuns: vi.fn(),
@@ -52,21 +61,21 @@ vi.mock("../src/components/AppHeader", () => ({
 }));
 
 vi.mock("../src/components/BottomTabs", () => ({
-  BottomTabs: (props: Record<string, unknown>) => {
+  BottomTabs: (props: NonNullable<typeof mocks.bottomTabsProps>) => {
     mocks.bottomTabsProps = props;
     return null;
   },
 }));
 
 vi.mock("../src/screens/AnalyticsScreen", () => ({
-  AnalyticsScreen: (props: Record<string, unknown>) => {
+  AnalyticsScreen: (props: NonNullable<typeof mocks.analyticsProps>) => {
     mocks.analyticsProps = props;
     return null;
   },
 }));
 
 vi.mock("../src/screens/InferenceScreen", () => ({
-  InferenceScreen: (props: Record<string, unknown>) => {
+  InferenceScreen: (props: NonNullable<typeof mocks.inferenceProps>) => {
     mocks.inferenceProps = props;
     return null;
   },
@@ -111,30 +120,6 @@ function engine(): EngineHarness {
   };
 }
 
-function inferenceProps(): {
-  chain: Chain;
-  horizon: Horizon;
-  onChainChange(chain: Chain): void;
-  onHorizonChange(horizon: Horizon): void;
-  onRun(): void;
-  snapshot: ChainSnapshot | null;
-  state: Record<string, unknown>;
-} {
-  return mocks.inferenceProps as ReturnType<typeof inferenceProps>;
-}
-
-function bottomTabsProps(): {
-  onSelect(tab: "analytics" | "inference"): void;
-} {
-  return mocks.bottomTabsProps as ReturnType<typeof bottomTabsProps>;
-}
-
-function analyticsProps(): {
-  loadError: string | null;
-} {
-  return mocks.analyticsProps as ReturnType<typeof analyticsProps>;
-}
-
 beforeEach(() => {
   (
     globalThis as typeof globalThis & {
@@ -174,15 +159,15 @@ describe("App engine selection", () => {
     const result = inferenceResult();
     await renderApp();
 
-    act(() => inferenceProps().onRun());
+    act(() => mocks.inferenceProps!.onRun());
     expect(engines[0].engine.run).toHaveBeenCalledWith(5);
 
     await act(async () => {
-      inferenceProps().onHorizonChange(4);
-      inferenceProps().onHorizonChange(5);
+      mocks.inferenceProps!.onHorizonChange(4);
+      mocks.inferenceProps!.onHorizonChange(5);
       await flushMicrotasks();
     });
-    expect(inferenceProps()).toMatchObject({
+    expect(mocks.inferenceProps).toMatchObject({
       chain: "ethereum",
       horizon: 5,
       state: { status: "idle" },
@@ -193,7 +178,7 @@ describe("App engine selection", () => {
       await flushMicrotasks();
     });
 
-    expect(inferenceProps().state).toEqual({ status: "idle" });
+    expect(mocks.inferenceProps!.state).toEqual({ status: "idle" });
     expect(mocks.addRun).not.toHaveBeenCalled();
     expect(mocks.saveRuns).not.toHaveBeenCalled();
   });
@@ -201,13 +186,13 @@ describe("App engine selection", () => {
   it("does not publish a result from a replaced engine", async () => {
     const result = inferenceResult();
     await renderApp();
-    act(() => inferenceProps().onRun());
+    act(() => mocks.inferenceProps!.onRun());
 
     await act(async () => {
-      inferenceProps().onChainChange("polygon");
+      mocks.inferenceProps!.onChainChange("polygon");
       await flushMicrotasks();
     });
-    expect(inferenceProps().chain).toBe("polygon");
+    expect(mocks.inferenceProps!.chain).toBe("polygon");
     expect(engines).toHaveLength(2);
 
     await act(async () => {
@@ -215,7 +200,7 @@ describe("App engine selection", () => {
       await flushMicrotasks();
     });
 
-    expect(inferenceProps().state).toEqual({ status: "idle" });
+    expect(mocks.inferenceProps!.state).toEqual({ status: "idle" });
     expect(mocks.addRun).not.toHaveBeenCalled();
     expect(mocks.saveRuns).not.toHaveBeenCalled();
   });
@@ -226,9 +211,9 @@ describe("App history persistence", () => {
     mocks.loadRuns.mockRejectedValueOnce(new Error("Corrupt history"));
     await renderApp();
 
-    act(() => bottomTabsProps().onSelect("analytics"));
+    act(() => mocks.bottomTabsProps!.onSelect("analytics"));
 
-    expect(analyticsProps().loadError).toBe("Corrupt history");
+    expect(mocks.analyticsProps!.loadError).toBe("Corrupt history");
   });
 
   it("reports inference save failures only through the inference state", async () => {
@@ -237,17 +222,17 @@ describe("App history persistence", () => {
     mocks.saveRuns.mockRejectedValueOnce(new Error("Storage unavailable"));
     await renderApp();
 
-    act(() => inferenceProps().onRun());
+    act(() => mocks.inferenceProps!.onRun());
     await act(async () => {
       engines[0].resolveRun(result);
       await flushMicrotasks();
     });
 
-    expect(inferenceProps().state).toEqual({
+    expect(mocks.inferenceProps!.state).toEqual({
       message: "Could not save this run.",
       status: "error",
     });
-    act(() => bottomTabsProps().onSelect("analytics"));
-    expect(analyticsProps().loadError).toBeNull();
+    act(() => mocks.bottomTabsProps!.onSelect("analytics"));
+    expect(mocks.analyticsProps!.loadError).toBeNull();
   });
 });

@@ -175,23 +175,16 @@ def select(storage_root: StorageRoot, experiment_id: UUID) -> None:
     rows = read_cells(bundle)
 
     cells: dict[str, UUID] = {}
-    studies: dict[UUID, Study] = {}
-    selections: list[tuple[str, int, float]] = []
     for row in rows:
-        cell = row["cell"]
-        if cell in cells:
-            continue
-        study_id = UUID(row["study_id"])
-        if study_id not in studies:
-            studies[study_id] = load_study(storage_root, study_id)
-        study = studies[study_id]
-        selected_index, result = study.best_result()
-        cells[cell] = study_id
-        selections.append((cell, selected_index, result.objective))
+        cells.setdefault(row["cell"], UUID(row["study_id"]))
+    selections = [
+        (cell, *load_study(storage_root, study_id).best_result())
+        for cell, study_id in cells.items()
+    ]
 
     publish_bundle(storage_root, _KIND, experiment_id, cells)
-    for cell, selected_index, objective in selections:
-        print(f"{cell}\t{selected_index}\t{objective:g}")
+    for cell, selected_index, result in selections:
+        print(f"{cell}\t{selected_index}\t{result.objective:g}")
 
 
 if __name__ == "__main__":
