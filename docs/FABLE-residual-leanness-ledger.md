@@ -1,6 +1,6 @@
 # FABLE residual leanness ledger
 
-Status: execution authorized. No product implementation has started.
+Status: execution in progress. Slices 1 and 2 are complete and green.
 
 ## Authority
 
@@ -147,6 +147,30 @@ vertical formatting removed in one reviewable mechanical commit.
 Dependencies: none. External gates: none.
 
 ## Slice 2: Python scientific and runtime cleanup
+
+Status: complete. Independent review returned zero Standards findings and zero Spec findings.
+
+### Execution record
+
+- Baseline: `e84797cca171826d85606c65fa3b045b8e42b793`.
+- Implementer: `/root/slice2_python`.
+- Implementation head: `fbe969bc614cc6a580f91e379034d900a8a36b59`.
+- Commit: `refactor(science): simplify Python runtime`.
+- Reviewer: `/root/slice2_reviewer`, with independent Standards and Spec axes.
+- Scope: 11 Python files; 86 additions and 186 deletions, net -100.
+- All 15 approved changes were implemented. `HistoricalDataset` remains explicit, and the
+  classification reducer uses `O(N)` observation arrays plus count vectors rather than a
+  `K x N` allocation.
+- Implementer checks: 47 focused tests and 121 full-suite tests passed; Ruff format and lint,
+  Pyright, and Vulture passed; 5,600 randomized old/new F1 comparisons were bit-identical through
+  `K=200`.
+- Reviewer checks: 52 focused tests and 121 full-suite tests passed; Ruff format and lint,
+  Pyright, Vulture, and diff checks passed; an additional 1,120 randomized F1 comparisons were
+  bit-identical through `K=200`. Lightning checkpoint defaults resolved to
+  `(every_n_epochs=1, every_n_train_steps=0)`, and the one-row evaluation schema and column order
+  matched the baseline.
+- Review result: `GREEN LIGHT` with zero Standards findings and zero Spec findings; no correction
+  round.
 
 ### Scope
 
