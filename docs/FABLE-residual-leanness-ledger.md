@@ -90,7 +90,23 @@ Thirty-two findings are planned:
 
 ## Slice 1: formatter policy
 
-Status: pending.
+Status: complete under the user-approved review waiver.
+
+### Execution record
+
+- Baseline: `f57f165626dd87ed2258253da57a05e55cbecc25`.
+- Implementer: `/root/slice1_formatter`.
+- Implementation head: `9d9c5e3df9da5d49677dd33d905c288033b7c918`.
+- Commit: `style: compact Python formatting`.
+- Reviewer: waived explicitly by the user because this slice is pure formatting.
+- Scope: `pyproject.toml` plus 42 governed Python files; 346 additions, 1,369 deletions,
+  net -1,023.
+- Implementer checks: 42 changed Python ASTs equivalent to baseline; Ruff format and lint passed;
+  Pyright reported zero errors; Vulture passed; 123 tests passed.
+- Orchestrator verification: exact baseline parent and head confirmed; worktree clean; diff scope and
+  Ruff settings confirmed; 42 ASTs independently compared; Ruff format and lint, Pyright, and
+  Vulture passed.
+- Review result: waiver gate satisfied; no correction round.
 
 ### Scope
 
