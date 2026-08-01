@@ -252,9 +252,9 @@ None.
 
 ## Slice 1 — Core data, training, and trusted internal seams
 
-Status: proposed; decisions finalized.
+Status: green.
 
-Proposed baseline: finalized ledger commit. Record the exact SHA immediately before dispatch.
+Baseline: `ac60331ac3f790e4827ae36991d34ac593ff8ab6`.
 
 ### Expected outcome
 
@@ -289,8 +289,23 @@ unchanged.
 
 ### Implementation-review record
 
-- Baseline, implementer, head, checks, reviewer, Standards findings, Spec findings, correction
-  rounds, and final result: pending.
+- Implementer: `/root/slice1_implement` using the `implement` skill.
+- Implementation head: `35ee2fdf3d1b97cb23341609a6265865aa1d0782`
+  (`refactor(core): simplify trusted internal seams`); 16 files, 62 insertions, 181 deletions.
+- Implementer checks: focused suite 57 passed; active-campaign/strict JSON and Torch 2.7.1 TF32
+  probes passed; Ruff check and format check passed; Pyright zero errors/warnings; Vulture no
+  findings; full Python suite 84 passed; diff and status audits passed.
+- Reviewer: `/root/slice1_review` using the `code-review` skill, with independent parallel
+  Standards and Spec axes over the fixed `ac60331...35ee2fd` range.
+- Standards: zero actionable findings and zero smell findings. The user-approved one-call
+  `extra="ignore"` scratch-envelope exception is bounded and documented; nested scalar strictness
+  remains intact.
+- Spec: zero actionable findings. Decisions 6–8 and 12 are complete; protected scientific,
+  publication, resume, allocation, and cuDNN TF32 behavior remains intact.
+- Correction rounds: none.
+- Final result: `GREEN LIGHT`. Reviewer mutation audit found no changes; only protected
+  `?? docs/experiments/` remained.
+- Intentionally unrun: GPU training, Slurm/SSH, live RPC, remote checkout/image build.
 
 ## Slice 2 — Experiment authorship and durable grouping
 
