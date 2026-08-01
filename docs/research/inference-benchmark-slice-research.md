@@ -248,41 +248,32 @@ sudo /usr/bin/powermetrics \
   --samplers cpu_power,gpu_power,ane_power,thermal \
   --sample-rate 1000 \
   --poweravg 0 \
-  --format plist \
-  --output-file PATH
+  --format plist
 ```
 
-Authenticate interactively before the campaign, then elevate only the collector. The Python model
-runner must retain the invoking user's UID. Avoid an undocumented infinite `--sample-count` value;
-the installed help and manual disagree about its sentinel. Supervise the process and terminate it
-with SIGTERM, which the manual defines as a clean stop. Preserve the raw NUL-separated bytes.
+Authenticate interactively before the campaign, then elevate only the collector. The unprivileged
+Python runner opens the output file and passes it as collector stdout, so the raw capture remains
+user-owned. Omit `--sample-count`, supervise the process, and terminate it with SIGTERM, which the
+manual defines as a clean stop. Preserve the raw NUL-separated bytes.
 
-Apple does not publish a stable web schema for plist field names or units. Do not code expected
-paths as fact. A supervised preflight must capture simultaneous text and plist samples, bind the
-text's milliwatt labels to the current plist paths, store a sanitized fixture, and make the parser
-fail closed on any other schema. The preflight should specifically determine:
-
-- the sample elapsed-duration field and unit;
-- CPU, GPU, ANE, and combined power paths and units;
-- whether the combined field equals the intended three-rail quantity;
-- the sample timestamp/end-time representation; and
-- thermal-state values.
-
-If no validated combined field exists, summing the three rails is permitted only when the same
-preflight proves that they describe the same sample interval and milliwatt unit. Never add the
-combined field to its components.
+The 2026-08-01 supervised capture at `/tmp/fable-powermetrics.DBpLW8` resolved the local schema.
+Each NUL-separated plist record contains a whole-second UTC `timestamp`, nanosecond `elapsed_ns`,
+top-level `thermal_pressure`, and `processor.cpu_power`, `gpu_power`, `ane_power`, and
+`combined_power`. The combined value equals the three rails within printed rounding, and the paired
+text capture labels these power values in milliwatts. Store one sanitized XML sample containing
+only these fields; do not copy host, OS, boot, or unrelated sampler data into the repository.
 
 ### Phase protocol
 
 Process one architecture-chain cell at a time with its four warm resident models and input routes.
 For every pair:
 
-1. require AC power, Low Power Mode disabled, and nominal thermal pressure;
-2. wait the frozen recovery period;
+1. keep AC power connected and Low Power Mode disabled;
+2. wait the frozen recovery delay;
 3. run a 60-second loaded-idle phase with no forwards;
 4. run a 60-second active phase that continuously completes batch-one same-origin stress cascades;
    and
-5. wait for nominal thermal pressure before the next pair.
+5. retain any non-nominal pair as invalid for a later cell rerun.
 
 Always using idle then active is cleaner than alternating order here. An active-then-idle pair can
 raise its own baseline through residual heat. If alternating order is retained, a validated recovery
@@ -293,17 +284,17 @@ Cycle through the frozen origin list and rotate its starting offset by pair. Fea
 dataset preparation, and disk access remain outside the active phase. The active phase necessarily
 includes in-memory origin lookup, creation of four batch views, the four forwards and decodes, and
 minimal loop/count bookkeeping. Name this as workload energy rather than pretending it is isolated
-kernel energy. Record exact monotonic phase start/end times and the number of fully completed
-cascades; omit a partially completed final cascade from the count. The nominal duration is 60
-seconds, but calculations use the measured duration.
+kernel energy. Record wall-clock phase boundaries for joining plist samples and monotonic elapsed
+time for throughput. Count only fully completed cascades. The nominal duration is 60 seconds, but
+calculations use the measured duration.
 
 ### Parsing and energy calculation
 
 Split the capture on NUL and parse every nonempty record with Python `plistlib`. Each power sample
-describes an interval. Derive its start and end from the preflight-validated timestamp and elapsed
-duration. Accept it for a phase only if the entire sample interval lies inside that phase. Preserve
-every rejection reason. Require accepted samples to be chronologically ordered, nonoverlapping, and
-free of unexplained cadence gaps.
+describes an interval ending within the whole UTC second named by `timestamp`. Accept it only when
+the entire possible interval lies inside the recorded phase; this conservatively omits boundary
+samples despite the timestamp's one-second precision. No rejection ledger or cadence framework is
+needed because the raw trace remains the recomputation authority.
 
 For accepted sample `j`, after preflight confirms milliwatts and nanoseconds:
 
@@ -346,21 +337,17 @@ three rail powers as diagnostics and combined power as the primary input. Therma
 instantaneous control, not an energy integral. A non-nominal trial is retained and marked invalid by
 the prespecified environmental rule, then rerun; it is not silently deleted.
 
-The pilot should also compare active throughput with and without the collector. This quantifies
-collector overhead without pretending the collector is free. It does not become a thesis result
-unless it materially changes the protocol.
-
 ### Slice 2 tests and gate
 
-Use the sanitized real plist fixture for parser acceptance. Synthetic fixtures cover NUL framing,
-missing fields, wrong units, nonpositive elapsed time, out-of-order samples, boundary crossings,
-cadence gaps, thermal invalidation, incomplete cascades, collector failure, actual-duration
-throughput, negative pair estimates, and hand-calculated joules. Do not run `sudo` in tests.
+Use the sanitized real plist fixture for parser acceptance and compose NUL framing from repeated
+fixture bytes. Focused synthetic cases cover conservative boundary inclusion, thermal invalidation,
+incomplete cascades, collector failure, actual-duration throughput, negative estimates, and a
+hand-calculated time-weighted pair. Do not run `sudo` in tests.
 
-Scientific collection remains blocked until the supervised preflight validates the exact current
-plist schema and demonstrates a measurable active-idle signal. If a 60-second pilot cannot resolve
-that signal, lengthen the phase before increasing pair count; changing duration after inspecting
-main results is not permitted.
+The schema gate is complete. Scientific collection remains blocked until the final artifacts are
+available and a short active-idle run demonstrates a measurable signal. If 60 seconds cannot
+resolve it, lengthen the phase before increasing pair count; changing duration after inspecting main
+results is not permitted.
 
 ## Slice 3: statistical, deadline, and economic reduction
 

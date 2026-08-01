@@ -1,6 +1,6 @@
 # Inference benchmark implementation-review ledger
 
-Status: implementation active; Slice 1 green, Slice 2 instrument gate pending
+Status: implementation active; Slice 1 green, Slice 2 implementation ready
 
 Authority: [GitHub issue #148](https://github.com/edoski/fable/issues/148). Primary-source and
 repository evidence: [inference-benchmark-slice-research.md](inference-benchmark-slice-research.md).
@@ -119,21 +119,22 @@ repository evidence: [inference-benchmark-slice-research.md](inference-benchmark
   samplers. Preserve the raw NUL-separated plist trace.
 - Name the result **`powermetrics`-estimated incremental CPU+GPU+ANE energy on the reference Mac**.
   It is not total SoC, whole-machine, battery, or wall-plug energy.
-- Run twenty 60-second loaded-idle then 60-second active pairs per architecture-chain cell. Recover
-  to nominal thermal state before each pair. Do not alternate active first: residual heat could
+- Run twenty 60-second loaded-idle then 60-second active pairs per architecture-chain cell, with a
+  frozen recovery delay between pairs. Do not alternate active first: residual heat could
   contaminate its own idle baseline.
 - The active phase continuously runs batch-one same-origin stress cascades over the frozen origin
   sequence. It includes in-memory view selection, four forwards and decodes, and minimal loop/count
   bookkeeping; it excludes I/O and feature construction.
-- Parse only fields and units proven by a supervised text/plist preflight. Integrate actual sample
-  intervals and calculate pair energy from time-weighted power and measured active throughput:
+- Parse only fields and units proven by the supervised text/plist preflight. Treat the plist's
+  whole-second UTC timestamp conservatively at phase boundaries, integrate actual sample durations,
+  and calculate pair energy from time-weighted power and measured active throughput:
 
   `e_r = ((P_active_bar - P_idle_bar) / 1000) / (N_r / T_active_r)` joules per cascade.
 
-- Discard samples that cross phase boundaries, retain their rejection reasons, and retain negative
-  pair estimates. Report mean joules per cascade with a 95% Student-t interval across pairs,
-  `joules per cascade / 4` as an explicitly averaged per-forward value, raw phase power, accepted
-  duration, cascade count, throughput, and thermal validity.
+- Discard samples that may cross phase boundaries and retain negative pair estimates. Report mean
+  joules per cascade with a 95% Student-t interval across pairs, `joules per cascade / 4` as an
+  explicitly averaged per-forward value, phase power, accepted duration, cascade count,
+  throughput, and thermal validity.
 - No per-horizon energy campaign, CPU/GPU cycles, Energy Impact, battery-discharge inference,
   third-party meter, or undocumented plist energy counter.
 
@@ -293,34 +294,36 @@ permitted.
 
 ## Slice 2: `powermetrics` energy experiment
 
-Status: pending; externally gated
+Status: ready for implementation; scientific signal gate pending
 
 ### Scope and algorithm
 
-Add the fail-closed plist parser, supervised collector process, phase logger, thermal/recovery
-controls, continuous cascade loop, and pair reducer.
+Add a compact plist reader, supervised collector, phase logger, continuous cascade loop, and pair
+reducer to the existing experiment-private operator.
 
-The benchmark runner remains unprivileged. Administrator authorization covers only the exact Apple
-collector executable. One continuous collector runs across tagged phases for a cell and is stopped
-cleanly with SIGTERM. The command requests `cpu_power,gpu_power,ane_power,thermal`, an approximately
-1000 ms sample rate, plist format, and no averaged display rows. Raw bytes, stderr, exact command,
-Apple help output, and phase boundaries are preserved.
+The benchmark runner remains unprivileged. Administrator authorization covers only
+`/usr/bin/powermetrics`. One collector writes to a user-opened raw file for each cell, runs across
+all its phases, and stops with SIGTERM. It requests `cpu_power,gpu_power,ane_power,thermal`, a 1000
+ms interval, plist output, and no averaged display rows. Preserve the raw bytes and a compact phase
+record; do not build help, version, command, host-metadata, or rejection-ledger subsystems.
 
-Each of twenty pair records contains:
+Each cell runs twenty 60-second loaded-idle then 60-second active pairs, separated by the frozen
+recovery delay. Phase records use wall-clock nanoseconds for joining samples and monotonic elapsed
+time for active throughput. The active loop rotates through the resolved origins and counts only
+fully completed same-origin four-model cascades.
 
-- environment and thermal precondition;
-- exact idle and active monotonic boundaries;
-- accepted/rejected sample counts and reasons;
-- time-weighted CPU, GPU, ANE, and combined phase powers;
-- actual accepted sample duration and active wall duration;
-- completed cascade count and throughput;
-- baseline-subtracted joules per cascade; and
-- validity state without clipping a negative estimate.
+Split the NUL-separated trace and read `timestamp`, `elapsed_ns`, `thermal_pressure`, and the four
+`processor` power fields established by the preflight. The timestamp is a whole-second UTC sample
+end label, so omit a boundary sample unless its entire possible interval fits inside the phase.
+Time-weight accepted milliwatt values and divide the active-minus-idle watts by measured cascades
+per second. Keep negative estimates. A pair containing a non-nominal accepted sample remains in the
+output with `thermal_valid=false`; the scientific campaign reruns that cell rather than silently
+filtering it.
 
-A non-nominal pair is preserved as invalid and rerun after recovery; it is not silently deleted.
-The parser accepts only the sanitized schema captured from the reference Mac preflight and rejects
-missing fields, changed paths/units, invalid values, crossed boundaries, overlap, or unexplained
-cadence gaps.
+`pairs.parquet` contains pair index, accepted sample counts and durations, idle/active CPU, GPU,
+ANE, and combined mean power, active duration, completed cascade count and throughput, thermal
+validity, and joules per cascade. `phases.json` contains only the phase boundaries and frozen energy
+settings. Existing matching cell output is resumable; publication remains atomic.
 
 ### Non-goals
 
@@ -336,23 +339,25 @@ recompute every joule value.
 
 ### Checks
 
-- Captured sanitized text/plist fixture establishes current field paths and units.
-- Synthetic NUL framing, wrong/missing fields, invalid duration, order/overlap, boundary crossing,
-  cadence gap, collector failure, incomplete cascade, thermal invalidation, negative estimate, and
-  hand-calculated integration cases.
-- Preflight timing comparison with and without the collector.
+- A sanitized XML plist sample from the real capture establishes the parsed shape without retaining
+  machine or boot metadata; tests compose NUL framing from that fixture.
+- Focused tests cover parsing, conservative phase membership, a hand-calculated time-weighted pair,
+  negative estimates, thermal invalidation, completed-cascade counting, collector failure, atomic
+  publication, and resume.
 - No test invokes `sudo`.
 - Slice 1 checks plus focused energy tests and proportional full verification.
 
 ### Dependencies and gates
 
-Blocked until interactive `sudo powermetrics` preflight validates text/plist correspondence and a
-measurable active-idle signal. If 60 seconds is insufficient, freeze a longer phase before main
-collection rather than increasing repetitions after seeing results.
+Schema gate passed on 2026-08-01 using `/tmp/fable-powermetrics.DBpLW8`: three NUL-separated plist
+records exposed `timestamp`, nanosecond `elapsed_ns`, nominal thermal state, and CPU, GPU, ANE, and
+combined processor power fields; combined power equalled the three rails within printed rounding.
+The paired text capture labelled the powers in milliwatts. Raw host and boot fields will not enter
+the repository fixture.
 
-Gate status on 2026-08-01: `sudo -n true` returned `a password is required`. No privileged capture
-was attempted. The user must authenticate once with `sudo -v` in the shared terminal; the run will
-neither receive nor store the password.
+Implementation may proceed. Scientific collection remains blocked until final artifacts are
+transferred and a short active-idle run confirms that 60 seconds resolves the signal. If not,
+freeze a longer phase before main collection.
 
 ## Slice 3: statistical, deadline, and economic reduction
 
@@ -464,7 +469,7 @@ parity failure closes the optional slice without affecting the required CPU stud
 | Slice | Baseline | Head | Implementer | Reviewer | Corrections | Result |
 | --- | --- | --- | --- | --- | ---: | --- |
 | 1 | `64f8d7cf` | `495160da` | `slice1_cpu_latency` | `slice1_cpu_latency_review` | 2 | GREEN LIGHT |
-| 2 | pending | pending | pending | pending | 0 | gated |
+| 2 | pending | pending | pending | pending | 0 | ready |
 | 3 | pending | pending | pending | pending | 0 | gated |
 | 4 | pending | pending | pending | pending | 0 | deferred |
 
