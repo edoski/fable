@@ -85,3 +85,14 @@ Context-sensitivity preparation can begin from an open feature-ablation experime
 ## External activation gate
 
 After Slice 1 is green, re-check the live campaign. Publish only the nine completed full-feature Studies, copy and validate their canonical objects locally, prepare and queue Stage 2, and checkpoint-safely rebalance Stage 1 only when the current scheduler state still shows a material throughput gain. Preserve completed results, checkpoints, logs, Study IDs, and exact request payloads. Update heartbeat authority to count each feature cell satisfied by either its canonical Study or retained hidden result until all 102 are complete.
+
+### Activation result
+
+- State: complete
+- Published the nine completed full-feature parents as canonical remote Studies; removed only their owner-local hidden scratch.
+- Copied all nine Studies locally, loaded them with the current strict code, and verified remote/local SHA-256 equality.
+- Authored context-sensitivity experiment `2c30539b-8f6d-4f81-a556-eee4aebd561e`; verified 45 unique cells, Studies, request associations, and the exact five-context grid.
+- Checkpoint-validated Stage 1 rows 98 and 100, retired underfilled jobs 43287 and 43333, and resumed only those two candidates as job 43353 under their original Study IDs. The Stage 1 ledger remains exactly 102 unique rows and job-slot pairs.
+- Submitted Stage 2 jobs 43354–43365 as nine four-fit and three three-fit allocations. The 45-row Stage 2 ledger is complete, aligned, and unique.
+- Verified job 43353 CUDA, BF16, and full-state restoration markers for both resumed hybrid fits. Verified running Stage 2 job 43354 CUDA on all four LSTM fits, no BF16 markers, and no error markers.
+- Updated the heartbeat to monitor both campaigns, count canonical plus retained Stage 1 Studies, close/copy Stage 1 at 102, preserve GPU occupancy without thrashing, and stop before HPO pending user approval.
