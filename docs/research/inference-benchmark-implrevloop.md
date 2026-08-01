@@ -1,6 +1,6 @@
 # Inference benchmark implementation-review ledger
 
-Status: implementation active; Slice 1 green, Slice 2 implementation ready
+Status: implementation active; Slices 1 and 2 green, scientific campaigns externally gated
 
 Authority: [GitHub issue #148](https://github.com/edoski/fable/issues/148). Primary-source and
 repository evidence: [inference-benchmark-slice-research.md](inference-benchmark-slice-research.md).
@@ -294,7 +294,30 @@ permitted.
 
 ## Slice 2: `powermetrics` energy experiment
 
-Status: ready for implementation; scientific signal gate pending
+Status: green; scientific signal gate pending
+
+- Baseline: `d1631d8e33aa06b9e9e664761e682aae11a3010c`
+- Branch/worktree: direct `main`; sole pre-existing worktree
+- Pre-slice status: only protected untracked `docs/experiments/` and
+  `docs/research/macos-inference-energy.md`
+- Implementer: `slice2_powermetrics`
+- Initial head: `9a9c06816984ceb5126187c934497ecd045a39ed`
+- First independent review: zero Standards findings; one Spec finding. A single initial sudo
+  authorization would expire before later cell collectors because each cell lasts at least forty
+  minutes while the implementation launched each collector with `sudo -n`.
+- Correction head: `f313b398db2a06e129e9f0f91acd20e583517250`. Each unfinished cell now
+  completes inherited-terminal `sudo -v` immediately before launching its collector; resumed cells
+  return first. The model runner stays unprivileged and only `powermetrics` is launched elevated.
+- Review: `slice2_powermetrics_review` returned `GREEN LIGHT` with zero Standards findings and zero
+  Spec findings after one correction round.
+- Implementer verification: 15 focused tests, 37 proportional tests, 105-test full suite, Ruff and
+  format, repository Pyright, Vulture with no findings, CLI help, diff check, and successful parsing
+  of all three supplied raw plist records.
+- Reviewer verification: focused tests, full suite, Ruff, Pyright, Vulture, and fixed-range diff
+  checks across the initial implementation and correction.
+- Orchestrator integration: all 15 benchmark tests, scoped Ruff, repository Pyright, Vulture, and
+  fixed-range diff check passed. No sudo collector, final-model run, signal preflight, or scientific
+  measurement was run.
 
 ### Scope and algorithm
 
@@ -469,7 +492,7 @@ parity failure closes the optional slice without affecting the required CPU stud
 | Slice | Baseline | Head | Implementer | Reviewer | Corrections | Result |
 | --- | --- | --- | --- | --- | ---: | --- |
 | 1 | `64f8d7cf` | `495160da` | `slice1_cpu_latency` | `slice1_cpu_latency_review` | 2 | GREEN LIGHT |
-| 2 | pending | pending | pending | pending | 0 | ready |
+| 2 | `d1631d8e` | `f313b398` | `slice2_powermetrics` | `slice2_powermetrics_review` | 1 | GREEN LIGHT |
 | 3 | pending | pending | pending | pending | 0 | gated |
 | 4 | pending | pending | pending | pending | 0 | deferred |
 
