@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import signal
+import subprocess
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 from uuid import UUID
@@ -120,6 +124,19 @@ def _cell(events: list[str]) -> benchmark._Cell:
                     HistoricalDataset,
                     _Dataset(tuple(range(100, 101 + benchmark.ROLLING_HORIZONS[0] - horizon))),
                 ),
+            )
+            for horizon in reversed(benchmark.ROLLING_HORIZONS)
+        },
+    )
+
+
+def _energy_cell(events: list[str]) -> benchmark._Cell:
+    return benchmark._Cell(
+        name="ethereum.lstm",
+        horizons={
+            horizon: benchmark._Horizon(
+                model=_Model(horizon, events),
+                dataset=cast(HistoricalDataset, _Dataset((100, 101, 102))),
             )
             for horizon in reversed(benchmark.ROLLING_HORIZONS)
         },
@@ -349,6 +366,24 @@ def test_protocol_match_atomic_publication_and_resume(
     assert not interrupted.exists()
     assert not list(tmp_path.glob(".interrupted.*.tmp"))
 
+    directory = tmp_path / "directory"
+    benchmark._publish(
+        directory, lambda path: (path.mkdir(), (path / "complete").write_text("yes"))
+    )
+    assert (directory / "complete").read_text() == "yes"
+
+    interrupted_directory = tmp_path / "interrupted-directory"
+
+    def interrupt_directory(path: Path) -> None:
+        path.mkdir()
+        (path / "partial").write_text("partial")
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        benchmark._publish(interrupted_directory, interrupt_directory)
+    assert not interrupted_directory.exists()
+    assert not list(tmp_path.glob(".interrupted-directory.*.tmp"))
+
     calls = 0
 
     def load(*args: object) -> benchmark._Cell:
@@ -383,3 +418,259 @@ def test_protocol_is_only_the_derived_campaign_inputs() -> None:
     assert len(protocol.roster) == 36
     with pytest.raises(ValueError, match="greater than or equal to 1"):
         benchmark._protocol(_K_STUDY_ID, _HELD_OUT_ID, _resolved(), warmup_iterations=1, sweeps=0)
+
+
+def test_powermetrics_parsing_and_conservative_phase_membership() -> None:
+    fixture = Path(__file__).with_name("powermetrics-sample.plist").read_bytes()
+    sample, repeated = benchmark._power_samples(fixture + b"\0" + fixture + b"\0")
+
+    assert sample == repeated
+    assert sample.end_second == 1_785_596_705
+    assert sample.elapsed_ns == 1_008_260_624
+    assert (sample.cpu_mw, sample.gpu_mw, sample.ane_mw, sample.combined_mw) == (
+        2137.34,
+        88.2708,
+        0.0,
+        2225.62,
+    )
+    assert sample.thermal_pressure == "Nominal"
+
+    earliest_start = sample.end_second * 1_000_000_000 - sample.elapsed_ns
+    latest_end = (sample.end_second + 1) * 1_000_000_000
+    assert benchmark._contained(sample, earliest_start, latest_end)
+    assert not benchmark._contained(sample, earliest_start + 1, latest_end)
+    assert not benchmark._contained(sample, earliest_start, latest_end - 1)
+
+
+def test_pair_reduction_time_weights_power_and_retains_thermal_state() -> None:
+    fixture = Path(__file__).with_name("powermetrics-sample.plist").read_bytes()
+    base = benchmark._power_samples(fixture)[0]
+    samples = (
+        replace(
+            base,
+            end_second=9,
+            elapsed_ns=1_000_000_000,
+            cpu_mw=800.0,
+            gpu_mw=200.0,
+            combined_mw=1000.0,
+        ),
+        replace(
+            base,
+            end_second=10,
+            elapsed_ns=2_000_000_000,
+            cpu_mw=1600.0,
+            gpu_mw=400.0,
+            combined_mw=2000.0,
+        ),
+        replace(
+            base,
+            end_second=21,
+            elapsed_ns=1_000_000_000,
+            cpu_mw=3200.0,
+            gpu_mw=800.0,
+            combined_mw=4000.0,
+        ),
+        replace(
+            base,
+            end_second=22,
+            elapsed_ns=3_000_000_000,
+            thermal_pressure="Heavy",
+            cpu_mw=1600.0,
+            gpu_mw=400.0,
+            combined_mw=2000.0,
+        ),
+    )
+    idle = benchmark._Phase(1, "idle", 7_000_000_000, 12_000_000_000)
+    active = benchmark._Phase(
+        1, "active", 18_000_000_000, 24_000_000_000, active_seconds=4.0, completed_cascades=2
+    )
+
+    row = benchmark._pair_row(samples, idle, active)
+    joules_per_cascade = row.pop("joules_per_cascade")
+
+    assert row == {
+        "pair": 1,
+        "idle_samples": 2,
+        "idle_sample_seconds": 3.0,
+        "active_samples": 2,
+        "active_sample_seconds": 4.0,
+        "idle_cpu_mw": 4000.0 / 3.0,
+        "idle_gpu_mw": 1000.0 / 3.0,
+        "idle_ane_mw": 0.0,
+        "idle_combined_mw": 5000.0 / 3.0,
+        "active_cpu_mw": 2000.0,
+        "active_gpu_mw": 500.0,
+        "active_ane_mw": 0.0,
+        "active_combined_mw": 2500.0,
+        "active_seconds": 4.0,
+        "completed_cascades": 2,
+        "cascades_per_second": 0.5,
+        "thermal_valid": False,
+    }
+    assert joules_per_cascade == pytest.approx(5.0 / 3.0)
+
+
+def test_pair_reduction_preserves_negative_energy() -> None:
+    fixture = Path(__file__).with_name("powermetrics-sample.plist").read_bytes()
+    base = benchmark._power_samples(fixture)[0]
+    samples = (
+        replace(base, end_second=9, elapsed_ns=1_000_000_000, combined_mw=3000.0),
+        replace(base, end_second=21, elapsed_ns=1_000_000_000, combined_mw=1000.0),
+    )
+    idle = benchmark._Phase(1, "idle", 8_000_000_000, 10_000_000_000)
+    active = benchmark._Phase(
+        1, "active", 20_000_000_000, 22_000_000_000, active_seconds=4.0, completed_cascades=2
+    )
+
+    assert benchmark._pair_row(samples, idle, active)["joules_per_cascade"] == -4.0
+
+
+def test_active_phase_rotates_origins_and_counts_completed_cascades(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    ticks = iter((0, 0, 4, 8, 12, 13))
+    walls = iter((100, 200))
+    monkeypatch.setattr(benchmark.time, "perf_counter_ns", lambda: next(ticks))
+    monkeypatch.setattr(benchmark.time, "time_ns", lambda: next(walls))
+
+    phase = benchmark._active_phase(
+        _energy_cell(events), pair=2, duration_ns=10, alive=lambda: None
+    )
+
+    assert phase == benchmark._Phase(
+        pair=2, phase="active", start_ns=100, end_ns=200, active_seconds=13e-9, completed_cascades=3
+    )
+    assert events[::4] == ["model5:2", "model5:4", "model5:0"]
+
+
+def test_powermetrics_failure_stops_collection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Process:
+        returncode: int | None = None
+        signal: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def send_signal(self, sent: int) -> None:
+            self.signal = sent
+            self.returncode = 1
+
+        def wait(self) -> int:
+            assert self.returncode is not None
+            return self.returncode
+
+    process = Process()
+    invocation: list[str] = []
+
+    def popen(argv: list[str], **options: object) -> Process:
+        invocation.extend(argv)
+        assert options["stdout"] is not subprocess.PIPE
+        return process
+
+    monkeypatch.setattr(benchmark.subprocess, "Popen", popen)
+
+    with pytest.raises(RuntimeError, match="powermetrics failed"):
+        benchmark._capture_power(tmp_path / "trace.plist", lambda alive: alive())
+
+    assert invocation[:3] == ["sudo", "-n", "/usr/bin/powermetrics"]
+    assert process.signal == signal.SIGTERM
+
+
+def test_energy_cell_publishes_atomically_and_resumes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = Path(__file__).with_name("powermetrics-sample.plist").read_bytes()
+    sample = benchmark._power_samples(fixture)[0]
+    start = sample.end_second * 1_000_000_000 - sample.elapsed_ns
+    end = (sample.end_second + 1) * 1_000_000_000
+    phases = [
+        benchmark._Phase(1, "idle", start, end),
+        benchmark._Phase(1, "active", start, end, active_seconds=2.0, completed_cascades=1),
+    ]
+    loads = 0
+    captures = 0
+
+    def load(*args: object) -> benchmark._Cell:
+        nonlocal loads
+        loads += 1
+        return _energy_cell([])
+
+    def capture(path: Path, measure: object) -> list[benchmark._Phase]:
+        nonlocal captures
+        del measure
+        captures += 1
+        path.write_bytes(fixture + b"\0" + fixture + b"\0")
+        return phases
+
+    monkeypatch.setattr(benchmark, "_load_cell", load)
+    monkeypatch.setattr(benchmark, "_warm", lambda *_args: None)
+    monkeypatch.setattr(benchmark, "_capture_power", capture)
+    output = tmp_path / "campaign"
+    settings = benchmark._energy_settings(pairs=1, phase_seconds=1, recovery_seconds=0)
+
+    for _ in range(2):
+        benchmark._run_energy_unit(
+            tmp_path,
+            output,
+            "ethereum.lstm",
+            _resolved()["ethereum.lstm"],
+            warmup_iterations=1,
+            settings=settings,
+        )
+
+    cell = output / "energy" / "ethereum.lstm"
+    assert loads == captures == 1
+    assert {path.name for path in cell.iterdir()} == {
+        "powermetrics.plist",
+        "phases.json",
+        "pairs.parquet",
+    }
+    assert json.loads((cell / "phases.json").read_text())["settings"] == settings
+    assert pl.read_parquet(cell / "pairs.parquet")["pair"].to_list() == [1]
+
+    with pytest.raises(ValueError, match="settings"):
+        benchmark._run_energy_unit(
+            tmp_path,
+            output,
+            "ethereum.lstm",
+            _resolved()["ethereum.lstm"],
+            warmup_iterations=1,
+            settings=benchmark._energy_settings(pairs=1, phase_seconds=2, recovery_seconds=0),
+        )
+
+
+def test_energy_command_reuses_the_existing_protocol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "campaign"
+    protocol = _protocol()
+    benchmark._ensure_protocol(output, protocol)
+    resolved = _resolved()
+    units: list[tuple[str, int, dict[str, int]]] = []
+    monkeypatch.setattr(benchmark, "_resolve", lambda *_args: resolved)
+
+    def run_unit(
+        storage_root: Path,
+        target: Path,
+        cell: str,
+        requests: object,
+        warmup_iterations: int,
+        settings: dict[str, int],
+    ) -> None:
+        del storage_root, target, requests
+        units.append((cell, warmup_iterations, settings))
+
+    monkeypatch.setattr(benchmark, "_run_energy_unit", run_unit)
+
+    benchmark.run_energy(tmp_path, output, pairs=20, phase_seconds=60, recovery_seconds=30)
+
+    assert [cell for cell, _, _ in units] == list(resolved)
+    assert all(warmup == protocol.warmup_iterations for _, warmup, _ in units)
+    assert all(
+        settings
+        == {"pairs": 20, "phase_seconds": 60, "recovery_seconds": 30, "sample_rate_ms": 1000}
+        for _, _, settings in units
+    )

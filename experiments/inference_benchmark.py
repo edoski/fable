@@ -1,10 +1,16 @@
-"""Run the post-evaluation CPU inference-latency experiment."""
+"""Run the post-evaluation inference measurement experiments."""
 
 from __future__ import annotations
 
+import json
+import plistlib
+import shutil
+import signal
+import subprocess
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, TypeVar, cast
 from uuid import UUID, uuid4
@@ -26,6 +32,20 @@ from fable.records import StrictFrozenRecord
 from fable.temporal import HistoricalDataset, prepare_historical_window
 
 _T = TypeVar("_T")
+
+_POWERMETRICS = (
+    "sudo",
+    "-n",
+    "/usr/bin/powermetrics",
+    "--samplers",
+    "cpu_power,gpu_power,ane_power,thermal",
+    "--sample-rate",
+    "1000",
+    "--poweravg",
+    "0",
+    "--format",
+    "plist",
+)
 
 
 class Selection(StrictFrozenRecord):
@@ -58,6 +78,193 @@ class _Cell:
 class _Workload:
     name: str
     horizons: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _PowerSample:
+    end_second: int
+    elapsed_ns: int
+    thermal_pressure: str
+    cpu_mw: float
+    gpu_mw: float
+    ane_mw: float
+    combined_mw: float
+
+
+@dataclass(frozen=True, slots=True)
+class _Phase:
+    pair: int
+    phase: str
+    start_ns: int
+    end_ns: int
+    active_seconds: float = 0.0
+    completed_cascades: int = 0
+
+
+def _power_samples(raw: bytes) -> tuple[_PowerSample, ...]:
+    samples = []
+    for item in raw.split(b"\0"):
+        if not item:
+            continue
+        record = cast(dict[str, object], plistlib.loads(item))
+        processor = cast(dict[str, object], record["processor"])
+        timestamp = cast(datetime, record["timestamp"]).replace(tzinfo=UTC)
+        samples.append(
+            _PowerSample(
+                end_second=int(timestamp.timestamp()),
+                elapsed_ns=cast(int, record["elapsed_ns"]),
+                thermal_pressure=cast(str, record["thermal_pressure"]),
+                cpu_mw=cast(float, processor["cpu_power"]),
+                gpu_mw=cast(float, processor["gpu_power"]),
+                ane_mw=cast(float, processor["ane_power"]),
+                combined_mw=cast(float, processor["combined_power"]),
+            )
+        )
+    return tuple(samples)
+
+
+def _contained(sample: _PowerSample, start_ns: int, end_ns: int) -> bool:
+    return (
+        sample.end_second * 1_000_000_000 - sample.elapsed_ns >= start_ns
+        and (sample.end_second + 1) * 1_000_000_000 <= end_ns
+    )
+
+
+def _phase_power(samples: Sequence[_PowerSample], phase: _Phase) -> dict[str, float | int | bool]:
+    accepted = tuple(
+        sample for sample in samples if _contained(sample, phase.start_ns, phase.end_ns)
+    )
+    duration_ns = sum(sample.elapsed_ns for sample in accepted)
+
+    def mean(field: str) -> float:
+        return (
+            sum(cast(float, getattr(sample, field)) * sample.elapsed_ns for sample in accepted)
+            / duration_ns
+        )
+
+    return {
+        "samples": len(accepted),
+        "sample_seconds": duration_ns / 1_000_000_000,
+        "cpu_mw": mean("cpu_mw"),
+        "gpu_mw": mean("gpu_mw"),
+        "ane_mw": mean("ane_mw"),
+        "combined_mw": mean("combined_mw"),
+        "thermal_valid": all(sample.thermal_pressure == "Nominal" for sample in accepted),
+    }
+
+
+def _pair_row(
+    samples: Sequence[_PowerSample], idle_phase: _Phase, active_phase: _Phase
+) -> dict[str, float | int | bool]:
+    idle = _phase_power(samples, idle_phase)
+    active = _phase_power(samples, active_phase)
+    throughput = active_phase.completed_cascades / active_phase.active_seconds
+    row: dict[str, float | int | bool] = {
+        "pair": idle_phase.pair,
+        "idle_samples": idle["samples"],
+        "idle_sample_seconds": idle["sample_seconds"],
+        "active_samples": active["samples"],
+        "active_sample_seconds": active["sample_seconds"],
+    }
+    for rail in ("cpu", "gpu", "ane", "combined"):
+        row[f"idle_{rail}_mw"] = idle[f"{rail}_mw"]
+        row[f"active_{rail}_mw"] = active[f"{rail}_mw"]
+    row.update(
+        {
+            "active_seconds": active_phase.active_seconds,
+            "completed_cascades": active_phase.completed_cascades,
+            "cascades_per_second": throughput,
+            "thermal_valid": bool(idle["thermal_valid"] and active["thermal_valid"]),
+            "joules_per_cascade": (
+                (cast(float, active["combined_mw"]) - cast(float, idle["combined_mw"]))
+                / 1000
+                / throughput
+            ),
+        }
+    )
+    return row
+
+
+def _capture_power(path: Path, measure: Callable[[Callable[[], None]], _T]) -> _T:
+    with path.open("wb") as output:
+        process = subprocess.Popen(_POWERMETRICS, stdout=output, stderr=subprocess.DEVNULL)
+
+        def alive() -> None:
+            if process.poll() is not None:
+                raise RuntimeError("powermetrics failed")
+
+        try:
+            result = measure(alive)
+        finally:
+            if process.poll() is None:
+                process.send_signal(signal.SIGTERM)
+            returncode = process.wait()
+    if returncode not in (0, -signal.SIGTERM):
+        raise RuntimeError("powermetrics failed")
+    return result
+
+
+def _energy_settings(pairs: int, phase_seconds: int, recovery_seconds: int) -> dict[str, int]:
+    return {
+        "pairs": pairs,
+        "phase_seconds": phase_seconds,
+        "recovery_seconds": recovery_seconds,
+        "sample_rate_ms": 1000,
+    }
+
+
+def _run_phases(
+    cell: _Cell, settings: Mapping[str, int], alive: Callable[[], None]
+) -> tuple[_Phase, ...]:
+    phases = []
+    duration_ns = settings["phase_seconds"] * 1_000_000_000
+    for pair in range(1, settings["pairs"] + 1):
+        if pair > 1 and settings["recovery_seconds"]:
+            alive()
+            start_ns = time.time_ns()
+            time.sleep(settings["recovery_seconds"])
+            phases.append(_Phase(pair, "recovery", start_ns, time.time_ns()))
+        alive()
+        start_ns = time.time_ns()
+        time.sleep(settings["phase_seconds"])
+        phases.append(_Phase(pair, "idle", start_ns, time.time_ns()))
+        alive()
+        phases.append(_active_phase(cell, pair, duration_ns, alive))
+        alive()
+    return tuple(phases)
+
+
+def _phase_record(phase: _Phase) -> dict[str, float | int | str]:
+    record: dict[str, float | int | str] = {
+        "pair": phase.pair,
+        "phase": phase.phase,
+        "start_ns": phase.start_ns,
+        "end_ns": phase.end_ns,
+    }
+    if phase.phase == "active":
+        record["active_seconds"] = phase.active_seconds
+        record["completed_cascades"] = phase.completed_cascades
+    return record
+
+
+def _write_energy(path: Path, cell: _Cell, settings: Mapping[str, int]) -> None:
+    path.mkdir()
+    phases = _capture_power(
+        path / "powermetrics.plist", lambda alive: _run_phases(cell, settings, alive)
+    )
+    samples = _power_samples((path / "powermetrics.plist").read_bytes())
+    rows = []
+    for pair in range(1, settings["pairs"] + 1):
+        idle = next(phase for phase in phases if phase.pair == pair and phase.phase == "idle")
+        active = next(phase for phase in phases if phase.pair == pair and phase.phase == "active")
+        rows.append(_pair_row(samples, idle, active))
+    (path / "phases.json").write_text(
+        json.dumps(
+            {"settings": dict(settings), "phases": [_phase_record(phase) for phase in phases]},
+            sort_keys=True,
+        )
+    )
+    pl.DataFrame(rows).write_parquet(path / "pairs.parquet")
 
 
 def _resolve(
@@ -120,7 +327,7 @@ def _protocol(
     )
 
 
-def _publish(path: Path, write: Callable[[Path], None]) -> None:
+def _publish(path: Path, write: Callable[[Path], object]) -> None:
     if path.exists():
         raise FileExistsError(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,7 +338,10 @@ def _publish(path: Path, write: Callable[[Path], None]) -> None:
             raise FileExistsError(path)
         temporary.rename(path)
     finally:
-        temporary.unlink(missing_ok=True)
+        if temporary.is_dir():
+            shutil.rmtree(temporary)
+        else:
+            temporary.unlink(missing_ok=True)
 
 
 def _ensure_protocol(output: Path, protocol: Protocol) -> None:
@@ -183,6 +393,21 @@ def _infer(model: nn.Module, inputs: torch.Tensor) -> None:
     decode_action(output)
 
 
+def _workload_inputs(
+    cell: _Cell, horizons: Sequence[int], index: int
+) -> tuple[int, tuple[torch.Tensor, ...]]:
+    batches = tuple(_batch(cell.horizons[horizon], index) for horizon in horizons)
+    origin = batches[0][0]
+    if any(batch_origin != origin for batch_origin, _ in batches):
+        raise ValueError("cascade horizons do not contain the required same origin")
+    return origin, tuple(inputs for _, inputs in batches)
+
+
+def _run_workload(cell: _Cell, horizons: Sequence[int], inputs: Sequence[torch.Tensor]) -> None:
+    for horizon, batch in zip(horizons, inputs, strict=True):
+        _infer(cell.horizons[horizon].model, batch)
+
+
 def _warm(cell: _Cell, iterations: int) -> None:
     for horizon in reversed(ROLLING_HORIZONS):
         item = cell.horizons[horizon]
@@ -213,13 +438,9 @@ def _time_cell(cell: _Cell, sweep: int) -> pl.DataFrame:
         ):
             raise ValueError(f"{workload.name} horizons do not contain all required origins")
         for index in range(len(source.dataset)):
-            batches = tuple(_batch(cell.horizons[horizon], index) for horizon in workload.horizons)
-            origin = batches[0][0]
-            if any(batch_origin != origin for batch_origin, _ in batches):
-                raise ValueError("cascade horizons do not contain the required same origin")
+            origin, inputs = _workload_inputs(cell, workload.horizons, index)
             start = time.perf_counter_ns()
-            for horizon, (_, inputs) in zip(workload.horizons, batches, strict=True):
-                _infer(cell.horizons[horizon].model, inputs)
+            _run_workload(cell, workload.horizons, inputs)
             elapsed = time.perf_counter_ns() - start
             rows.append(
                 {
@@ -232,6 +453,29 @@ def _time_cell(cell: _Cell, sweep: int) -> pl.DataFrame:
                 }
             )
     return pl.DataFrame(rows)
+
+
+def _active_phase(cell: _Cell, pair: int, duration_ns: int, alive: Callable[[], None]) -> _Phase:
+    origin_count = len(cell.horizons[ROLLING_HORIZONS[0]].dataset)
+    start_ns = time.time_ns()
+    start = time.perf_counter_ns()
+    deadline = start + duration_ns
+    completed = 0
+    while time.perf_counter_ns() < deadline:
+        alive()
+        index = (pair - 1 + completed) % origin_count
+        _, inputs = _workload_inputs(cell, ROLLING_HORIZONS, index)
+        _run_workload(cell, ROLLING_HORIZONS, inputs)
+        completed += 1
+    elapsed = time.perf_counter_ns() - start
+    return _Phase(
+        pair=pair,
+        phase="active",
+        start_ns=start_ns,
+        end_ns=time.time_ns(),
+        active_seconds=elapsed / 1_000_000_000,
+        completed_cascades=completed,
+    )
 
 
 def _run_unit(
@@ -250,6 +494,29 @@ def _run_unit(
         _warm(cell, protocol.warmup_iterations)
         rows = _time_cell(cell, sweep)
     _publish(path, rows.write_parquet)
+
+
+def _run_energy_unit(
+    storage_root: Path,
+    output: Path,
+    cell_name: str,
+    resolved: Mapping[int, EvaluateRequest],
+    warmup_iterations: int,
+    settings: Mapping[str, int],
+) -> None:
+    path = output / "energy" / cell_name
+    if path.exists():
+        required = {"powermetrics.plist", "phases.json", "pairs.parquet"}
+        if not required <= {child.name for child in path.iterdir()}:
+            raise ValueError(f"incomplete energy cell: {cell_name}")
+        existing = json.loads((path / "phases.json").read_text())
+        if existing["settings"] != dict(settings):
+            raise ValueError(f"existing energy settings do not match: {cell_name}")
+        return
+    cell = _load_cell(storage_root, cell_name, resolved)
+    with torch.inference_mode():
+        _warm(cell, warmup_iterations)
+        _publish(path, lambda temporary: _write_energy(temporary, cell, settings))
 
 
 def run_cpu(
@@ -271,6 +538,30 @@ def run_cpu(
     for sweep in range(1, sweeps + 1):
         for cell in _rotate(cells, sweep - 1):
             _run_unit(storage_root, output, protocol, cell, sweep, resolved[cell])
+
+
+def run_energy(
+    storage_root: Path, output: Path, pairs: int, phase_seconds: int, recovery_seconds: int
+) -> None:
+    """Resume and complete one powermetrics energy campaign."""
+
+    protocol = Protocol.model_validate_json((output / "protocol.json").read_bytes(), strict=True)
+    resolved = _resolve(
+        storage_root, protocol.k_study_experiment_id, protocol.held_out_experiment_id
+    )
+    _ensure_protocol(
+        output,
+        _protocol(
+            protocol.k_study_experiment_id,
+            protocol.held_out_experiment_id,
+            resolved,
+            protocol.warmup_iterations,
+            protocol.sweeps,
+        ),
+    )
+    settings = _energy_settings(pairs, phase_seconds, recovery_seconds)
+    for cell, requests in resolved.items():
+        _run_energy_unit(storage_root, output, cell, requests, protocol.warmup_iterations, settings)
 
 
 StorageRoot = Annotated[Path, typer.Argument(resolve_path=True, exists=True, file_okay=False)]
@@ -295,8 +586,19 @@ def cpu(
     )
 
 
+def energy(
+    storage_root: StorageRoot,
+    output: Output,
+    recovery_seconds: Annotated[int, typer.Option(min=0)],
+    pairs: Annotated[int, typer.Option(min=1)] = 20,
+    phase_seconds: Annotated[int, typer.Option(min=1)] = 60,
+) -> None:
+    run_energy(storage_root, output, pairs, phase_seconds, recovery_seconds)
+
+
 app = typer.Typer(add_completion=False)
 app.command()(cpu)
+app.command()(energy)
 
 
 if __name__ == "__main__":
