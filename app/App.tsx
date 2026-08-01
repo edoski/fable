@@ -59,7 +59,7 @@ export default function App() {
     intended: INITIAL_SELECTION,
   });
   const runsRef = useRef<InferenceRun[]>([]);
-  const serializeHistory = useRef(createSerialQueue()).current;
+  const enqueueOrderedUpdate = useRef(createSerialQueue()).current;
 
   function fail(message: string): void {
     setInference({ status: "error", message });
@@ -71,7 +71,7 @@ export default function App() {
     ) => InferenceRun[] | Promise<InferenceRun[]>,
     isCurrent: () => boolean,
   ): Promise<void> {
-    return serializeHistory(async () => {
+    return enqueueOrderedUpdate(async () => {
       const current = runsRef.current;
       if (!isCurrent()) return;
       const next = await update(current);
@@ -104,7 +104,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    void serializeHistory(async () => {
+    void enqueueOrderedUpdate(async () => {
       try {
         const storedRuns = await loadRuns();
         runsRef.current = storedRuns;
@@ -116,7 +116,7 @@ export default function App() {
         );
       }
     });
-  }, [serializeHistory]);
+  }, [enqueueOrderedUpdate]);
 
   useEffect(() => {
     const engine = createInferenceEngine(selection.chain);
@@ -158,7 +158,7 @@ export default function App() {
       return;
     }
     owner.intended = next;
-    void serializeHistory(async () => {
+    void enqueueOrderedUpdate(async () => {
       const current = owner.applied;
       const intended = owner.intended;
       const chainChanged = intended.chain !== current.chain;
