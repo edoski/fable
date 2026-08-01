@@ -442,10 +442,11 @@ states the exact metric being shown.
 
 ## Slice 4 — Compact-CUDA branch reconciliation
 
-Status: ready; Slices 1–3 and main integration are green.
+Status: green.
 
-Proposed baseline: `bc9532cfecba0d908188c8d234b5666c716701ed`. Re-resolve the exact target
-tip and finalized `main` head immediately before dispatch.
+Compact baseline: `bc9532cfecba0d908188c8d234b5666c716701ed`.
+
+Finalized main parent: `44b309ee44c5a6f8a4ed00a4e6f30c425de79988`.
 
 ### Expected outcome
 
@@ -482,8 +483,32 @@ documentation express the same cleanup and scientific contracts on both branches
 
 ### Implementation-review record
 
-- Baseline, main head, implementer, reconciliation head, checks, reviewer, Standards findings, Spec
-  findings, correction rounds, and final result: pending.
+- Implementer: `/root/compact_reconcile` using the `implement` skill.
+- Reconciliation head: `60f73d4bad3781b59f7e8e0886f3197e076da30a`
+  (`merge(cuda): align architectural cleanup`), with exact parents `bc9532cf` and `44b309ee`.
+- Conflicts: `docs/FABLE.md` and `src/fable/temporal.py`. Resolution applied the shared cleanup and
+  TF32 wording while preserving device-resident backing, integer-index loader/collation, shared
+  device transfer, and their tests.
+- Implementer checks: focused compact suite 15 passed; full Python 84 passed; Ruff check/format,
+  Pyright, Vulture, full app Vitest 36, TypeScript, canonical mobile-export 11, diff, ancestry,
+  branch, worktree, and status checks passed.
+- Reviewer: `/root/compact_review` using the `code-review` skill, with independent parallel Standards
+  and Spec axes over the fixed `bc9532cf...60f73d4` merge range and explicit hunk comparison to
+  finalized main.
+- Standards: zero actionable findings and zero smells. Conflict resolutions correctly compose the
+  cleanup with compact batching; CPU worker/pinning/prefetch behavior did not return.
+- Spec: zero actionable findings. Both exact parents are ancestors, every reviewed main cleanup is
+  present, compact behavior was not widened, and the remaining main delta is exactly the approved
+  eight files.
+- Correction rounds: none.
+- Final result: `GREEN LIGHT`. Reviewer made no mutations; only protected
+  `?? docs/experiments/` remained.
+- Orchestrator compact integration: full Python 84, app 36, mobile-export 11, Ruff check/format,
+  Pyright, TypeScript, Vulture, documentation/conflict residue, diff, ancestry, filename/hunk,
+  branch, worktree, and status audits all passed. Only dependency and expected local Lightning
+  warnings were emitted.
+- Intentionally unrun: GPU execution/training, Slurm/SSH, live RPC, remote checkout/image build,
+  generated assets, native app build, simulator/device and visual acceptance.
 
 ## Final integration and cleanup
 
