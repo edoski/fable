@@ -261,3 +261,31 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(tmp_path
         row["evaluation_id"] for row in evaluation_rows
     ]
     assert not held_out.exists()
+
+    k_manifest_path = canonical / "manifest.json"
+    k_manifest_path.write_text(
+        ExperimentManifest(
+            root={
+                cell: artifact_id
+                for cell, artifact_id in manifest.root.items()
+                if not cell.endswith(".K200")
+            }
+        ).model_dump_json(),
+        encoding="utf-8",
+    )
+    derived_result = run_script(
+        _HELD_OUT_SCRIPT, "prepare", tmp_path, _HPO_EXPERIMENT_ID, experiment_id
+    )
+    derived_bundle = tmp_path / "experiments" / "held_out" / f".{derived_result.stdout.strip()}"
+    derived_rows = read_tsv_rows(derived_bundle / "cells.tsv")
+    derived_requests = [
+        EvaluateRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
+        for row in derived_rows
+    ]
+    assert len(derived_rows) == 72
+    assert [request.testing_window for request in derived_requests[:4]] == [
+        BlockWindow(first_parent_block=601, last_parent_block=903),
+        BlockWindow(first_parent_block=601, last_parent_block=902),
+        BlockWindow(first_parent_block=601, last_parent_block=901),
+        BlockWindow(first_parent_block=601, last_parent_block=900),
+    ]

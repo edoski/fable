@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fable.config import TuneRequest
 from fable.experiments import ExperimentManifest
+from fable.study import Study
 from tests.experiments.helpers import publish_generated_studies
 from tests.helpers import read_tsv_rows, run_script
 
@@ -80,6 +81,32 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     publish_generated_studies(
         tmp_path, c_rows, default_objective=1.0, objectives=context_objectives
     )
+    control_row = next(row for row in c_rows if row["cell"] == "ethereum.lstm.C50")
+    control_path = tmp_path / "studies" / f"{control_row['study_id']}.json"
+    control_study = Study.model_validate_json(control_path.read_bytes(), strict=True)
+    control = control_study.request.methods[0]
+    control = control.model_copy(
+        update={
+            "model": control.model.model_copy(update={"hidden": 320, "head_hidden": 320}),
+            "fit": control.fit.model_copy(
+                update={
+                    "accumulation": 2,
+                    "gradient_clip_norm": 0.5,
+                    "max_epochs": 40,
+                    "validate_every_completed_epoch": 2,
+                    "patience": 10,
+                    "min_delta": 0.01,
+                }
+            ),
+        }
+    )
+    control_path.write_text(
+        Study(
+            request=control_study.request.model_copy(update={"methods": (control,)}),
+            trials=control_study.trials,
+        ).model_dump_json(),
+        encoding="utf-8",
+    )
     c_result = run_script(_C_SCRIPT, "close", tmp_path, c_experiment_id)
     c_canonical = tmp_path / "experiments" / "c_study" / str(c_experiment_id)
     c_manifest = ExperimentManifest.model_validate_json(
@@ -125,23 +152,23 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     } == {"ethereum": {50}, "polygon": {100}, "avalanche": {200}}
     assert requests["ethereum.lstm"].methods[0].model.model_dump() == {
         "family": "lstm",
-        "hidden": 256,
+        "hidden": 320,
         "layers": 2,
-        "head_hidden": 256,
+        "head_hidden": 320,
         "dropout": 0.2,
     }
     assert requests["ethereum.lstm"].methods[0].fit.model_dump() == {
         "learning_rate": 0.0003,
         "weight_decay": 0.0001,
-        "accumulation": 1,
-        "gradient_clip_norm": 1.0,
+        "accumulation": 2,
+        "gradient_clip_norm": 0.5,
         "seed": 2026,
-        "max_epochs": 36,
-        "validate_every_completed_epoch": 1,
-        "patience": 8,
-        "min_delta": 0.0,
+        "max_epochs": 40,
+        "validate_every_completed_epoch": 2,
+        "patience": 10,
+        "min_delta": 0.01,
     }
-    assert requests["ethereum.lstm"].methods[-1].fit.model_dump() == {
+    assert requests["polygon.lstm"].methods[-1].fit.model_dump() == {
         "learning_rate": 0.0001,
         "weight_decay": 0.0001,
         "accumulation": 1,
@@ -152,6 +179,51 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         "patience": 8,
         "min_delta": 0.0,
     }
+    transformer = requests["polygon.transformer"].methods
+    hybrid = requests["polygon.transformer_lstm"].methods
+    attention_dimensions = (
+        "model_width",
+        "attention_heads",
+        "transformer_layers",
+        "feedforward_width",
+        "head_hidden",
+    )
+    transformer_dimensions = [
+        tuple(method.model.model_dump()[name] for name in attention_dimensions)
+        for method in transformer
+    ]
+    assert transformer_dimensions == [
+        (256, 4, 4, 512, 256),
+        (256, 4, 4, 512, 256),
+        (256, 4, 4, 512, 256),
+        (192, 4, 3, 384, 192),
+        (192, 4, 3, 384, 192),
+        (192, 4, 3, 384, 192),
+        (384, 8, 4, 768, 256),
+        (384, 8, 4, 768, 256),
+        (384, 8, 4, 768, 256),
+    ]
+    assert [
+        tuple(method.model.model_dump()[name] for name in attention_dimensions) for method in hybrid
+    ] == transformer_dimensions
+    assert [
+        (method.model.model_dump()["lstm_hidden"], method.model.model_dump()["lstm_layers"])
+        for method in hybrid
+    ] == [(width, 1) for width, *_ in transformer_dimensions]
+    assert [
+        (method.model.dropout, method.fit.learning_rate, method.fit.weight_decay)
+        for method in transformer
+    ] == [
+        (0.2, 0.0003, 0.0001),
+        (0.1, 0.0001, 0.0),
+        (0.3, 0.001, 0.001),
+        (0.2, 0.0001, 0.001),
+        (0.1, 0.001, 0.0001),
+        (0.3, 0.0003, 0.0),
+        (0.2, 0.001, 0.0),
+        (0.1, 0.0003, 0.001),
+        (0.3, 0.0001, 0.0001),
+    ]
 
     publish_generated_studies(tmp_path, rows, default_objective=0.5)
     result = run_script(_HPO_SCRIPT, "select", tmp_path, experiment_id)

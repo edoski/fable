@@ -844,18 +844,22 @@ deletes the temporary request files and both TSV files, and publishes the manife
 architecture-chain-context Studies for `C={25,50,100,200,400}`, then publishes their canonical
 Study references. `experiments/hpo.py` loads that manifest, selects one context per chain by mean
 validation objective across the three architectures, reports the selected contexts, and authors
-the exact nine architecture-chain Studies with their ordered nine-Method L9 rosters. Its final
-selector chooses the earliest minimum validation objective.
+the exact nine architecture-chain Studies with their ordered nine-Method L9 rosters. Each roster
+derives its capacity-zero model and nonsearched fit settings from the selected context Study, then
+varies capacity, dropout, learning rate, and weight decay. Transformer and Transformer-LSTM share
+one attention-capacity table; the hybrid adds its fixed recurrent tail. The final selector chooses
+the earliest minimum validation objective.
 
 `experiments/k_study.py` derives each architecture-chain HPO result and authors 81 fresh
 selected-Study Train requests for `K={2,3,4,5,10,25,50,100,200}`. It publishes the K-study
 manifest only after every artifact exists. `experiments/held_out.py` authors the corresponding
-held-out Evaluate requests. All horizons share the same first testing origin. The `K=2…4`
-ranges extend their last origin by three, two, or one blocks so the fixed-deadline rolling
-comparison has every reachable decision origin. Its report commands print, but do not persist, the
-ordinary and rolling reductions. Closure publishes the exact 81 evaluation references and removes
-the temporary bundle. `experiments/launch.py workflows BUNDLE` packs Train or Evaluate cells with
-the same packed execution contract.
+held-out Evaluate requests. It derives complete-outcome separation and corpus-tail support from the
+largest horizon in the loaded K-study roster, so all horizons share the same first testing origin.
+The explicit `K=2…5` rolling policy remains fixed: the `K=2…4` ranges extend their last origin by
+three, two, or one blocks so the fixed-deadline comparison has every reachable decision origin. Its
+report commands print, but do not persist, the ordinary and rolling reductions. Closure publishes
+the exact 81 evaluation references and removes the temporary bundle. `experiments/launch.py
+workflows BUNDLE` packs Train or Evaluate cells with the same packed execution contract.
 
 #### Study object
 
