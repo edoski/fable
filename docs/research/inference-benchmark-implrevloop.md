@@ -350,6 +350,10 @@ Blocked until interactive `sudo powermetrics` preflight validates text/plist cor
 measurable active-idle signal. If 60 seconds is insufficient, freeze a longer phase before main
 collection rather than increasing repetitions after seeing results.
 
+Gate status on 2026-08-01: `sudo -n true` returned `a password is required`. No privileged capture
+was attempted. The user must authenticate once with `sudo -v` in the shared terminal; the run will
+neither receive nor store the password.
+
 ## Slice 3: statistical, deadline, and economic reduction
 
 Status: pending
