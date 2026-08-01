@@ -72,11 +72,14 @@ Context-sensitivity preparation can begin from an open feature-ablation experime
 
 ### Status
 
-- State: ready for implementation
-- Implementer: pending
-- Reviewer: pending
-- Implementation head: pending
-- Review result: pending
+- State: green; external activation pending
+- Implementer: `/root/stage_overlap_implement`
+- Reviewer: `/root/stage_overlap_review`
+- Slice baseline: `11ff7be63cb59b1213ed132c14e1c3c87cf9d390`
+- Implementation head: `d3117fbb81ca1a36c1e3e8b7b15595e4d4a4fc1f`
+- Implementer checks: 19 focused tests passed; full suite 90 passed; Ruff format/check clean; Pyright zero errors; Vulture no findings; `git diff --check` clean.
+- Independent review: Standards zero findings; Spec zero findings; `GREEN LIGHT`.
+- Orchestrator integration check: the 19 focused experiment/execution tests passed; fixed-range `git diff --check` clean.
 - Corrections: none
 
 ## External activation gate
