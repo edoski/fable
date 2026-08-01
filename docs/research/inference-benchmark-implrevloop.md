@@ -1,9 +1,10 @@
 # Inference benchmark implementation-review ledger
 
-Status: implementation active; Slices 1 and 2 green, scientific campaigns externally gated
+Status: implementation active; Slices 1 and 2 green, Slice 3 ready, scientific campaigns gated
 
 Authority: [GitHub issue #148](https://github.com/edoski/fable/issues/148). Primary-source and
-repository evidence: [inference-benchmark-slice-research.md](inference-benchmark-slice-research.md).
+repository evidence: [inference-benchmark-slice-research.md](inference-benchmark-slice-research.md)
+and [inference-economic-assumptions.md](inference-economic-assumptions.md).
 
 ## Pre-run state
 
@@ -26,6 +27,7 @@ repository evidence: [inference-benchmark-slice-research.md](inference-benchmark
 - Run-owned planning files:
   - `docs/research/inference-benchmark-implrevloop.md`
   - `docs/research/inference-benchmark-slice-research.md`
+  - `docs/research/inference-economic-assumptions.md`
 - External mutations authorized: overwrite issue #148 only
 - Checkout policy: work directly on `main`; create no branch or worktree; one writer at a time
 - Authorized local mutations: scoped implementation commits and orchestration-ledger commits
@@ -138,7 +140,7 @@ repository evidence: [inference-benchmark-slice-research.md](inference-benchmark
 - No per-horizon energy campaign, CPU/GPU cycles, Energy Impact, battery-discharge inference,
   third-party meter, or undocumented plist energy counter.
 
-### Statistics, preflight, and economics
+### Statistics, preflight, and inference cost
 
 - Independent units are sweep means for latency and paired energy estimates for energy. Origins,
   cascades within a 60-second loop, and one-second power samples are not independent replicates.
@@ -150,15 +152,16 @@ repository evidence: [inference-benchmark-slice-research.md](inference-benchmark
   absolute criterion before main collection; do not divide by a near-zero pilot mean.
 - Pilot data stays outside the scientific report. The thesis states only the frozen final method,
   unless the pilot forces a material departure such as sampling or longer energy phases.
-- Primary economics uses the raw per-origin rolling base-fee difference in atomic native units per
-  gas. P50-inclusive savings remains a secondary retrospective representative-cost proxy. Never
-  multiply an average percentage saving by an average fee.
-- Report energy-cost proxy per cascade and per million cascades. Primary break-even gas is
-  `cost_EUR * atomic_units_per_token / (mean_raw_fee_difference * token_EUR)` when the mean raw
-  difference is positive; otherwise report no positive expected break-even.
-- Prices are strict static inputs: one electricity price in EUR/kWh and one dated native-token EUR
-  price, symbol, atomic-unit scale, source, and rounding rule per chain. No live price lookup or
-  arbitrary transaction-size example.
+- Freeze one electricity input: `0.2966 EUR/kWh`, Eurostat's latest complete Italian household
+  2025-S2 band-DC price at the 2026-08-01 research date, including taxes and levies. Use it exactly
+  and round only displayed outputs.
+- Report the CPU+GPU+ANE electricity-cost proxy per cascade and per million cascades by multiplying
+  joules by `0.2966 / 3_600_000`; transform the energy CI endpoints linearly.
+- This monetary proxy belongs only in the new inference-cost subsection. Held-out evaluation code,
+  metrics, results, and tables remain unchanged and may only be cross-referenced.
+- No native-token price, fee-to-EUR conversion, break-even gas, transaction gas-use assumption, or
+  live price lookup belongs in the primary study. Existing held-out evaluation remains the authority
+  for the optimizer's base-fee and P50-inclusive economic metrics.
 
 ### Scientific claim
 
@@ -254,7 +257,7 @@ For each cell and each sweep:
 Use a deterministic rotating pass and cell order across sweeps so no workload is always first or
 always hottest. Raw rows retain only cell, sweep, pass order, workload, origin block, and elapsed
 nanoseconds. Model outputs are decoded inside the clock and discarded because canonical
-observations already own predictions and later economic reduction reads them directly.
+observations already own predictions and their economic reduction.
 
 Chain and family names, base cells, horizon mappings, standalone workloads, and the cascade are
 derived from the manifest groups, artifact associations, and evaluator-owned `ROLLING_HORIZONS`.
@@ -382,7 +385,7 @@ Implementation may proceed. Scientific collection remains blocked until final ar
 transferred and a short active-idle run confirms that 60 seconds resolves the signal. If not,
 freeze a longer phase before main collection.
 
-## Slice 3: statistical, deadline, and economic reduction
+## Slice 3: statistical, deadline, and inference-cost reduction
 
 Status: pending
 
@@ -399,43 +402,36 @@ For each chain, derive one block-interval series from K5 root `h` to `h+1`, vali
 numbers, reject negative differences, and separate zero ties from positive values. Calculate
 positive interval median/p01 and, per architecture, margin and positive-interval shorter fraction.
 
-Reconstruct each dynamic-origin rolling route from the four canonical observation files. Because
-the public reducer exposes aggregates only, the experiment-private reconstruction must reproduce
-all three `reduce_rolling` aggregates exactly before raw selections are trusted. Derive mean raw
-base-fee differences and the secondary raw P50-inclusive differences directly from per-origin
-integers.
-
-Read one strict static assumptions file. Convert mean energy and its CI to the CPU+GPU+ANE
-energy-cost proxy. Calculate break-even gas from mean raw fee difference, native token atomic-unit
-scale, and dated price; explicitly handle zero/negative savings. Publish one `report.json`, then
-generate TSV/LaTeX tables only from that report.
+Convert mean energy and its CI to the CPU+GPU+ANE electricity-cost proxy with the frozen Eurostat
+input `0.2966 EUR/kWh`. Record that value and source once in `report.json`; no separate assumptions
+schema is needed for one fixed scalar. Generate TSV/LaTeX tables only from that report.
 
 ### Non-goals
 
-No live price/RPC lookup, universal block-time constants, inference from zero-second ties, ratio of
-fee sums, average-percentage multiplication, arbitrary gas-use examples, inclusion guarantee,
-generic persisted evaluator metric, or CI over origins/power samples.
+No live price/RPC lookup, native-token price, fee-to-EUR conversion, break-even gas, transaction
+gas-use assumption, held-out evaluation change, universal block-time constant, inference from
+zero-second ties, generic persisted evaluator metric, or CI over origins/power samples.
 
 ### Expected outcome
 
 The final machine-readable report and derived tables answer typical and tail latency, conservative
-model-compute feasibility, incremental energy/cost, and expected break-even gas for every declared
-cell while preserving the limits of the timestamp and Apple power estimators.
+model-compute feasibility, and incremental energy/electricity-cost proxy for every declared cell
+while preserving the limits of the timestamp and Apple power estimators.
 
 ### Checks
 
 - Hand-derived Student-t interval and repetition-projection fixtures.
 - Frozen empirical quantiles; positive, tied, and negative interval cases; millisecond conversion.
-- Dynamic rolling terminal/nonterminal routes and exact aggregate agreement with `reduce_rolling`.
-- Joule/kWh/EUR, million-cascade, atomic-token, positive/zero/negative saving, and break-even cases.
-- Strict assumptions/provenance and incomplete/mixed/pilot campaign rejection.
+- Joule/kWh/EUR, linearly transformed energy intervals, and million-cascade cost cases.
+- Frozen electricity value/source and incomplete/mixed/setup campaign rejection.
 - Recompute every table and compare it with `report.json`.
 - Slice 1 and 2 checks plus proportional full verification.
 
 ### Dependencies and gates
 
-Requires green Slices 1 and 2, completed measurements, and frozen electricity/token assumption
-inputs. Pilot output never enters the reducer.
+Implementation can use deterministic fixtures now that Slices 1 and 2 are green and the electricity
+input is frozen. Scientific reduction waits for the complete final latency and energy campaigns;
+setup output never enters the reducer.
 
 ## Slice 4: optional MPS comparison
 
@@ -493,7 +489,7 @@ parity failure closes the optional slice without affecting the required CPU stud
 | --- | --- | --- | --- | --- | ---: | --- |
 | 1 | `64f8d7cf` | `495160da` | `slice1_cpu_latency` | `slice1_cpu_latency_review` | 2 | GREEN LIGHT |
 | 2 | `d1631d8e` | `f313b398` | `slice2_powermetrics` | `slice2_powermetrics_review` | 1 | GREEN LIGHT |
-| 3 | pending | pending | pending | pending | 0 | gated |
+| 3 | pending | pending | pending | pending | 0 | ready |
 | 4 | pending | pending | pending | pending | 0 | deferred |
 
 ## Run-owned branches and worktrees

@@ -22,9 +22,9 @@ necessary evidence to the approved consumer-hardware claim.
 
 The source review identified five corrections that are now incorporated in the issue and ledger:
 
-1. The latency stress cascade and the economic rolling reducer are different workloads. The stress
-   cascade runs all four models at one unchanged origin; the economic reducer can advance its origin
-   after a terminal action.
+1. The latency stress cascade and the canonical held-out rolling reducer are different workloads.
+   The stress cascade runs all four models at one unchanged origin; the held-out reducer can advance
+   its origin after a terminal action and remains owned by evaluation.
 2. PyTorch `torch.utils.benchmark.Timer` is not the correct primary recorder for chronological
    per-origin tails. Use `time.perf_counter_ns()` after a fixed warmup.
 3. `powermetrics` supports an estimated combined CPU+GPU+ANE quantity. Calling it total SoC energy
@@ -42,8 +42,7 @@ generic benchmark database.
 ## Shared input and output contract
 
 The operator supplies the completed K-study experiment UUID, completed held-out experiment UUID,
-an explicit output directory, and later the frozen economic-assumption file. The implementation
-must fail rather than infer “latest” objects.
+and an explicit output directory. It must fail rather than infer “latest” objects.
 
 The completed K-study manifest is the artifact roster. K-study preparation creates names of the
 form `chain.family.K<horizon>` and the completed manifest maps each name directly to its artifact
@@ -144,8 +143,9 @@ This is the canonical evaluator's rule: actions are range-checked, required orig
 block number, and only a terminal action advances the origin
 ([`src/fable/evaluation.py:201-248`](../../src/fable/evaluation.py#L201)). The manual gives the same
 fixed-deadline contract ([`docs/FABLE.md:504-510`](../FABLE.md#L504)). It is a **same-root rolling
-episode** whose later decisions can belong to `h+1`, `h+2`, or `h+3`. It is reconstructed in Slice 3
-for economic savings; it is not compared as one physical same-block latency event.
+episode** whose later decisions can belong to `h+1`, `h+2`, or `h+3`. Canonical held-out evaluation
+already owns its economic metrics; Slice 3 does not reconstruct it or compare it as one physical
+same-block latency event.
 
 The timed stress cascade still executes `decode_action` after every forward and discards the
 result. It does not use actions to change its fixed same-origin inputs. Canonical
@@ -349,7 +349,7 @@ available and a short active-idle run demonstrates a measurable signal. If 60 se
 resolve it, lengthen the phase before increasing pair count; changing duration after inspecting main
 results is not permitted.
 
-## Slice 3: statistical, deadline, and economic reduction
+## Slice 3: statistical, deadline, and inference-cost reduction
 
 ### Statistical units and confidence intervals
 
@@ -428,7 +428,7 @@ A positive margin supports the declared conservative comparison. Also report the
 shorter fraction and unresolved tie fraction. The claim remains model-compute-only because RPC,
 propagation, feature construction, and submission are outside the clock.
 
-### Energy cost and break-even gas
+### Inference-cost proxy
 
 For each cell, convert the mean energy estimate with
 
@@ -439,61 +439,27 @@ c_{cascade}[\mathrm{EUR}]
 p_{electricity}[\mathrm{EUR/kWh}].
 \]
 
-Report the point cost per cascade, its direct energy-CI transformation, and cost per million
-cascades. Preserve a negative or zero lower CI bound as estimator uncertainty; do not describe it
-as physically negative consumption.
+Use the frozen `0.2966 EUR/kWh` Eurostat Italian household 2025-S2 band-DC price, including taxes
+and levies. Report the point cost per cascade, its direct energy-CI transformation, and cost per
+million cascades. Preserve a negative or zero lower CI bound as estimator uncertainty; do not
+describe it as physically negative consumption.
 
-Reconstruct the canonical dynamic-origin rolling episode directly from each horizon's sealed
-observations using the route above. This is independent of the same-origin timing stress workload.
-Because the public reducer exposes only aggregate metrics, the experiment-private reconstruction
-must verify that its resulting three economic aggregates exactly match `reduce_rolling` before its
-raw selected blocks are trusted. For root `i`, calculate the primary raw base-fee difference
+The result is an electricity-cost proxy because `powermetrics` estimates CPU+GPU+ANE rails rather
+than wall-plug energy, and the Eurostat value is a national all-in average rather than the owner's
+marginal tariff. It belongs only in the inference-cost subsection. Held-out evaluation code,
+metrics, results, and tables remain unchanged.
 
-\[
-\Delta_i
-=
-B_i(0)-B_i(\hat k_{rolling}),
-\]
-
-in atomic native units per gas. This follows FABLE's canonical base-fee-only estimand; P50-inclusive
-differences remain an explicitly secondary retrospective proxy
-([`src/fable/evaluation.py:251-275`](../../src/fable/evaluation.py#L251),
-[`docs/FABLE.md:496-510`](../FABLE.md#L496)). Do not multiply average fractional savings by average
-fees.
-
-Let `A_chain` be declared atomic native units per token and `q_chain` the dated EUR price per native
-token. The expected base-fee saving for gas usage `G` is
-
-\[
-S(G)[\mathrm{EUR}]
-=
-G\,\overline{\Delta}\,\frac{q_{chain}}{A_{chain}}.
-\]
-
-EIP-1559 defines transaction fee-per-gas components and charges gas used times effective gas price
-([EIP-1559](https://eips.ethereum.org/EIPS/eip-1559#specification)). Therefore the primary
-break-even gas quantity is
-
-\[
-G_{break-even}
-=
-\frac{c_{cascade}A_{chain}}
-     {\overline{\Delta}\,q_{chain}}.
-\]
-
-Compute `mean(Delta_i)` from raw per-origin integer differences first. If it is zero or negative,
-report “no positive expected base-fee break-even” rather than a negative gas amount. Record the
-electricity price, currency, date, source, token symbol, token price, atomic-unit scale, and rounding
-policy in a static strict input file. No reducer performs a live price lookup.
+No native-token price is required. A fee-to-EUR or break-even calculation would add a volatile
+market date and transaction-specific gas-use assumption to answer a different question. Existing
+held-out evaluation remains the authority for base-fee and P50-inclusive optimizer metrics.
 
 ### Slice 3 outputs and tests
 
 `report.json` is the single reduced authority and references immutable raw input digests. Generate
 TSV or LaTeX tables only from this report. Tests need hand-derived fixtures for Student-t intervals,
 preflight `n`, each latency quantile, positive/tied/negative block intervals, millisecond conversion,
-joule-to-kWh cost, million-cascade cost, positive/zero/negative fee differences, atomic-unit and
-token-price conversion, and break-even arithmetic. Recompute-and-compare tests should prove every
-table is derived from the raw records.
+joule-to-kWh cost, linearly transformed energy bounds, and million-cascade cost.
+Recompute-and-compare tests should prove every table is derived from the raw records.
 
 ## Slice 4: optional MPS
 
@@ -585,7 +551,7 @@ for:
 - one full-coverage/runtime and variance preflight, followed by frozen warmup, origin, and repetition
   settings;
 - a supervised `powermetrics` text/plist schema and signal preflight;
-- frozen electricity and dated native-token price inputs; and
+- the frozen `0.2966 EUR/kWh` electricity input; and
 - separate authorization for Slice 4 after final-artifact MPS parity and no-fallback validation.
 
 The preflights are setup checks. Their raw values do not need manuscript tables. The final
