@@ -31,7 +31,7 @@ class RetainedResult(StrictFrozenRecord):
 
 class Study(StrictFrozenRecord):
     request: TuneRequest
-    trials: Annotated[tuple[RetainedResult, ...], Field(min_length=1)]
+    trials: tuple[RetainedResult, ...]
 
     @model_validator(mode="after")
     def validate_trials(self) -> Self:
@@ -48,7 +48,6 @@ class Study(StrictFrozenRecord):
 
 class _CandidateResult(StrictFrozenRecord):
     request: TuneRequest
-    method_index: Annotated[int, Field(ge=0)]
     result: RetainedResult
 
 
@@ -59,10 +58,7 @@ def retain_result(
     result_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = result_path.with_name(f".{result_path.name}.tmp")
     temporary.write_text(
-        _CandidateResult(
-            request=request, method_index=method_index, result=result
-        ).model_dump_json(),
-        encoding="utf-8",
+        _CandidateResult(request=request, result=result).model_dump_json(), encoding="utf-8"
     )
     os.replace(temporary, result_path)
 
@@ -82,12 +78,10 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
         raise ValueError("result files do not match TuneRequest methods")
 
     trials: list[RetainedResult] = []
-    for method_index, result_path in enumerate(expected_paths):
-        candidate = first if method_index == 0 else _load_candidate_result_path(result_path)
+    for result_path in expected_paths:
+        candidate = first if result_path == first_path else _load_candidate_result_path(result_path)
         if candidate.request != request:
             raise ValueError("result requests must be identical")
-        if candidate.method_index != method_index:
-            raise ValueError("result method index does not match file index")
         trials.append(candidate.result)
 
     completed = scratch / "study.json"
@@ -99,9 +93,7 @@ def publish_study(storage_root: Path, study_id: UUID4) -> None:
 
 
 def load_study(storage_root: Path, study_id: UUID) -> Study:
-    study = Study.model_validate_json(
-        study_json_path(storage_root, study_id).read_bytes(), strict=True
-    )
+    study = Study.model_validate_json(study_json_path(storage_root, study_id).read_bytes())
     if study.request.study_id != study_id:
         raise ValueError("Study ID does not match requested Study ID")
     return study
@@ -128,4 +120,4 @@ def _result_path(storage_root: Path, study_id: UUID4, method_index: int) -> Path
 
 
 def _load_candidate_result_path(path: Path) -> _CandidateResult:
-    return _CandidateResult.model_validate_json(path.read_bytes(), strict=True)
+    return _CandidateResult.model_validate_json(path.read_bytes(), extra="ignore")

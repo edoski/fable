@@ -15,26 +15,27 @@ from fable.evaluation import reduce_baselines, reduce_evaluation, reduce_rolling
 from fable.experiments import ExperimentKind, load_experiment_manifest
 from fable.study import load_study
 
-_MAX_HORIZON = 200
 _KIND = ExperimentKind.HELD_OUT
 
 
 def prepare(storage_root: StorageRoot, hpo_experiment_id: UUID, k_experiment_id: UUID) -> None:
     experiment_id = uuid4()
-    hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_experiment_id)
+    horizons = {cell: int(cell.rsplit(".", maxsplit=1)[1].removeprefix("K")) for cell in k_study}
+    maximum_horizon = max(horizons.values())
+    hpo = load_experiment_manifest(storage_root, ExperimentKind.HPO, hpo_experiment_id)
     studies = {cell: load_study(storage_root, study_id) for cell, study_id in hpo.items()}
     bundle = open_bundle(storage_root, _KIND, experiment_id)
 
     cells: list[tuple[str, EvaluateRequest]] = []
     for cell, artifact_id in k_study.items():
-        chain, family, horizon_label = cell.split(".")
-        horizon = int(horizon_label.removeprefix("K"))
+        chain, family, _ = cell.split(".")
+        horizon = horizons[cell]
         study = studies[f"{chain}.{family}"]
         validation_end = study.request.experiment.validation_window.last_parent_block
         corpus_request = load_corpus_request(storage_root, study.request.corpus_id)
-        first_parent = validation_end + _MAX_HORIZON + 1
-        last_parent = corpus_request.definition.last_block - _MAX_HORIZON + max(0, 5 - horizon)
+        first_parent = validation_end + maximum_horizon + 1
+        last_parent = corpus_request.definition.last_block - maximum_horizon + max(0, 5 - horizon)
         request = EvaluateRequest(
             artifact_id=artifact_id,
             corpus_id=study.request.corpus_id,

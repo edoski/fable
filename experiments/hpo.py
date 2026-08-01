@@ -19,11 +19,9 @@ from bundle import (
 )
 
 from fable.config import (
-    FitMethod,
     LstmDefinition,
     Method,
     ModelDefinition,
-    TransformerDefinition,
     TransformerLstmDefinition,
     TuneRequest,
 )
@@ -47,71 +45,46 @@ _L9 = (
 _DROPOUT = (0.2, 0.1, 0.3)
 _LEARNING_RATE = (3e-4, 1e-4, 1e-3)
 _WEIGHT_DECAY = (1e-4, 0.0, 1e-3)
-_FIT = FitMethod(
-    learning_rate=3e-4,
-    weight_decay=1e-4,
-    accumulation=1,
-    gradient_clip_norm=1.0,
-    seed=2026,
-    max_epochs=36,
-    validate_every_completed_epoch=1,
-    patience=8,
-    min_delta=0.0,
-)
+_LSTM_CAPACITIES = ((256, 1, 128), (384, 2, 256))
+_TRANSFORMER_CAPACITIES = ((192, 4, 3, 384, 192), (384, 8, 4, 768, 256))
 
 
-def _model(family: str, capacity: int, dropout: float) -> ModelDefinition:
-    if family == "lstm":
-        hidden, layers, head_hidden = ((256, 2, 256), (256, 1, 128), (384, 2, 256))[capacity]
-        return LstmDefinition(
-            family="lstm", hidden=hidden, layers=layers, head_hidden=head_hidden, dropout=dropout
+def _model(control: ModelDefinition, capacity: int, dropout: float) -> ModelDefinition:
+    if capacity == 0:
+        return control.model_copy(update={"dropout": dropout})
+
+    if isinstance(control, LstmDefinition):
+        hidden, layers, head_hidden = _LSTM_CAPACITIES[capacity - 1]
+        return control.model_copy(
+            update={
+                "hidden": hidden,
+                "layers": layers,
+                "head_hidden": head_hidden,
+                "dropout": dropout,
+            }
         )
-    if family == "transformer":
-        model_width, attention_heads, transformer_layers, feedforward_width, head_hidden = (
-            (256, 4, 4, 512, 256),
-            (192, 4, 3, 384, 192),
-            (384, 8, 4, 768, 256),
-        )[capacity]
-        return TransformerDefinition(
-            family="transformer",
-            model_width=model_width,
-            attention_heads=attention_heads,
-            transformer_layers=transformer_layers,
-            feedforward_width=feedforward_width,
-            head_hidden=head_hidden,
-            dropout=dropout,
-        )
-    (
-        model_width,
-        attention_heads,
-        transformer_layers,
-        feedforward_width,
-        lstm_hidden,
-        lstm_layers,
-        head_hidden,
-    ) = (
-        (256, 4, 4, 512, 256, 1, 256),
-        (192, 4, 3, 384, 192, 1, 192),
-        (384, 8, 4, 768, 384, 1, 256),
-    )[capacity]
-    return TransformerLstmDefinition(
-        family="transformer_lstm",
-        model_width=model_width,
-        attention_heads=attention_heads,
-        transformer_layers=transformer_layers,
-        feedforward_width=feedforward_width,
-        lstm_hidden=lstm_hidden,
-        lstm_layers=lstm_layers,
-        head_hidden=head_hidden,
-        dropout=dropout,
+
+    model_width, attention_heads, transformer_layers, feedforward_width, head_hidden = (
+        _TRANSFORMER_CAPACITIES[capacity - 1]
     )
+    update = {
+        "model_width": model_width,
+        "attention_heads": attention_heads,
+        "transformer_layers": transformer_layers,
+        "feedforward_width": feedforward_width,
+        "head_hidden": head_hidden,
+        "dropout": dropout,
+    }
+    if isinstance(control, TransformerLstmDefinition):
+        update.update({"lstm_hidden": model_width, "lstm_layers": 1})
+    return control.model_copy(update=update)
 
 
-def _methods(family: str) -> tuple[Method, ...]:
+def _methods(control: Method) -> tuple[Method, ...]:
     return tuple(
         Method(
-            model=_model(family, capacity, _DROPOUT[dropout]),
-            fit=_FIT.model_copy(
+            model=_model(control.model, capacity, _DROPOUT[dropout]),
+            fit=control.fit.model_copy(
                 update={
                     "learning_rate": _LEARNING_RATE[learning_rate],
                     "weight_decay": _WEIGHT_DECAY[weight_decay],
@@ -151,15 +124,13 @@ def prepare(storage_root: StorageRoot, c_experiment_id: UUID) -> None:
     selected, context_winners = _selected_context_studies(storage_root, c_experiment_id)
     bundle = open_bundle(storage_root, _KIND, experiment_id)
 
-    methods_by_family = {family: _methods(family) for family in _FAMILIES}
-
     cells: list[tuple[str, TuneRequest]] = []
     for chain, family in product(_CHAINS, _FAMILIES):
         source = selected[chain, family]
         request = TuneRequest(
             corpus_id=source.request.corpus_id,
             experiment=source.request.experiment,
-            methods=methods_by_family[family],
+            methods=_methods(source.request.methods[0]),
         )
         cells.append((f"{chain}.{family}", request))
 
@@ -174,9 +145,7 @@ def select(storage_root: StorageRoot, experiment_id: UUID) -> None:
     bundle = bundle_path(storage_root, _KIND, experiment_id)
     rows = read_cells(bundle)
 
-    cells: dict[str, UUID] = {}
-    for row in rows:
-        cells.setdefault(row["cell"], UUID(row["study_id"]))
+    cells = {row["cell"]: UUID(row["study_id"]) for row in rows}
     selections = [
         (cell, *load_study(storage_root, study_id).best_result())
         for cell, study_id in cells.items()

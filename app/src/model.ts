@@ -38,11 +38,6 @@ export type ModelSelection = {
   modelManifest: ModelManifest;
 };
 
-export type ModelCatalog = {
-  chainManifest(chain: Chain): MobileChainManifest;
-  select(chain: Chain, K: Horizon): ModelSelection;
-};
-
 export type ModelOutput = {
   actionLogits: Float32Array;
   minimumFeeZ: number;
@@ -66,7 +61,7 @@ type NativeModuleFactory = () => NativeModule;
 
 initExecutorch({ resourceFetcher: ExpoResourceFetcher });
 
-export function createDefaultModelCatalog(): ModelCatalog {
+export function createDefaultModelCatalog() {
   const manifest = require("../assets/models/manifest.json") as MobileManifest;
   const resources = {
     ethereum: {
@@ -89,10 +84,10 @@ export function createDefaultModelCatalog(): ModelCatalog {
     },
   };
   return {
-    chainManifest(chain) {
+    chainManifest(chain: Chain) {
       return manifest.chains[chain];
     },
-    select(chain, K) {
+    select(chain: Chain, K: Horizon) {
       return {
         K,
         source: resources[chain][K],

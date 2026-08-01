@@ -51,12 +51,12 @@ class BlockFrame:
         definition = CorpusDefinition(
             chain_id=self._definition.chain_id, first_block=first_block, last_block=last_block
         )
-        selected: BlockFrame = object.__new__(BlockFrame)
-        selected._frame = self._frame.slice(
-            first_block - self._definition.first_block, last_block - first_block + 1
+        return BlockFrame(
+            self._frame.slice(
+                first_block - self._definition.first_block, last_block - first_block + 1
+            ),
+            definition,
         )
-        selected._definition = definition
-        return selected
 
     def to_polars(self) -> pl.DataFrame:
         return self._frame.clone()

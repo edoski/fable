@@ -129,9 +129,12 @@ export function createInferenceEngine(
     };
   }
 
-  function dispose(): Promise<void> {
-    session.dispose();
-    return model.dispose();
+  async function dispose(): Promise<void> {
+    try {
+      session.dispose();
+    } finally {
+      await model.dispose();
+    }
   }
 
   return {

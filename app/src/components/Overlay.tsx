@@ -11,14 +11,12 @@ import { colors } from "../theme";
 
 type Props = PropsWithChildren<{
   animationType: ModalProps["animationType"];
-  backdropLabel: string;
   centered?: boolean;
   onClose: () => void;
 }>;
 
 export function Overlay({
   animationType,
-  backdropLabel,
   centered = false,
   children,
   onClose,
@@ -31,11 +29,7 @@ export function Overlay({
       visible
     >
       <View style={[styles.root, centered ? styles.centered : styles.bottom]}>
-        <Pressable
-          accessibilityLabel={backdropLabel}
-          onPress={onClose}
-          style={styles.backdrop}
-        />
+        <Pressable onPress={onClose} style={styles.backdrop} />
         {children}
       </View>
     </Modal>

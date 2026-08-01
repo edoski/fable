@@ -1,5 +1,4 @@
 import type { Chain, Horizon } from "./domain";
-import type { InferenceOutcome } from "./inference";
 import type { InferenceRun } from "./history";
 
 export type WaitBucket = {
@@ -8,12 +7,6 @@ export type WaitBucket = {
   label: string;
   runCount: number;
   savingsPercent: number | null;
-};
-
-export type RunSummary = {
-  averageWait: number | null;
-  averageSavingsPercent: number | null;
-  winPercent: number | null;
 };
 
 const RUN_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
@@ -33,7 +26,7 @@ export function runsForSelection(
   return runs.filter((run) => run.chain === chain && run.K === horizon);
 }
 
-export function summarizeRuns(runs: readonly InferenceRun[]): RunSummary {
+export function summarizeRuns(runs: readonly InferenceRun[]) {
   const realized = runs.flatMap((run) => {
     const savings = realizedSavingsPercent(run);
     return savings === null ? [] : [[run.selected_action_k, savings] as const];
@@ -49,14 +42,10 @@ export function summarizeRuns(runs: readonly InferenceRun[]): RunSummary {
 }
 
 export function realizedSavingsPercent(run: InferenceRun): number | null {
-  const outcome = validOutcome(run);
-  if (outcome === null) {
-    return null;
-  }
-  return savingsPercent(outcome);
+  return run.outcome === undefined ? null : savingsPercent(run.outcome);
 }
 
-function savingsPercent(outcome: InferenceOutcome): number {
+function savingsPercent(outcome: NonNullable<InferenceRun["outcome"]>): number {
   return (
     ((outcome.immediate_base_fee_per_gas -
       outcome.selected_base_fee_per_gas) /
@@ -70,7 +59,7 @@ export function formatRunDate(value: string): string {
 }
 
 export function formatGwei(value: number): string {
-  const gwei = value / 1_000_000_000;
+  const gwei = value / GWEI;
   if (gwei >= 100) {
     return `${gwei.toFixed(0)} Gwei`;
   }
@@ -92,10 +81,9 @@ export function waitBuckets(
     const matchingRuns = runs.filter(
       (run) => run.selected_action_k === offset,
     );
-    const outcomes = matchingRuns.flatMap((run) => {
-      const outcome = validOutcome(run);
-      return outcome === null ? [] : [outcome];
-    });
+    const outcomes = matchingRuns.flatMap((run) =>
+      run.outcome === undefined ? [] : [run.outcome],
+    );
     const fableFeeMean = mean(
       outcomes.map((outcome) => outcome.selected_base_fee_per_gas),
     );
@@ -112,17 +100,6 @@ export function waitBuckets(
       savingsPercent: mean(outcomes.map(savingsPercent)),
     };
   });
-}
-
-function validOutcome(run: InferenceRun): InferenceOutcome | null {
-  const outcome = run.outcome;
-  if (
-    outcome === undefined ||
-    outcome.immediate_base_fee_per_gas <= 0
-  ) {
-    return null;
-  }
-  return outcome;
 }
 
 function mean(values: readonly number[]): number | null {

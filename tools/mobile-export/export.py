@@ -174,7 +174,8 @@ def _export_model(cell: _Cell, destination: Path) -> None:
         exported, partitioner=[XnnpackPartitioner()]
     ).to_executorch()
     _assert_xnnpack_delegation(program)
-    destination.write_bytes(program.buffer)
+    with destination.open("wb") as output:
+        program.write_to_file(output)
 
     method = Runtime.get().load_program(destination).load_method("forward")
     for sample, eager in zip(samples, eager_outputs, strict=True):

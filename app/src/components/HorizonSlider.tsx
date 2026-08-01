@@ -18,13 +18,6 @@ export function HorizonSlider({
 
   return (
     <Slider
-      accessibilityLabel="Prediction horizon"
-      accessibilityValue={{
-        max: maximum,
-        min: minimum,
-        now: value,
-        text: `${value} blocks`,
-      }}
       disabled={disabled}
       maximumTrackTintColor={colors.border}
       maximumValue={maximum}

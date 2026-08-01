@@ -22,7 +22,10 @@ import {
 
 const mocks = vi.hoisted(() => ({
   addRun: vi.fn(),
-  analyticsProps: null as { loadError: string | null } | null,
+  analyticsProps: null as {
+    loadError: string | null;
+    runs: readonly ReturnType<typeof inferenceRun>[];
+  } | null,
   bottomTabsProps: null as { onSelect(tab: AppTab): void } | null,
   createInferenceEngine: vi.fn(),
   inferenceProps: null as {
@@ -155,38 +158,57 @@ async function renderApp(): Promise<void> {
 }
 
 describe("App engine selection", () => {
-  it("does not publish a result after the horizon changes and returns", async () => {
+  it("applies the latest selection after an accepted history commit", async () => {
     const result = inferenceResult();
+    const acceptedRun = inferenceRun();
+    const firstSave = deferred<void>();
+    mocks.addRun.mockReturnValue([acceptedRun]);
+    mocks.saveRuns.mockImplementationOnce(() => firstSave.promise);
     await renderApp();
 
     act(() => mocks.inferenceProps!.onRun());
     expect(engines[0].engine.run).toHaveBeenCalledWith(5);
 
-    await act(async () => {
+    act(() => engines[0].resolveRun(result));
+    await vi.waitFor(() => expect(mocks.saveRuns).toHaveBeenCalledOnce());
+    expect(mocks.saveRuns).toHaveBeenLastCalledWith([acceptedRun]);
+
+    act(() => {
+      mocks.inferenceProps!.onChainChange("polygon");
       mocks.inferenceProps!.onHorizonChange(4);
+      mocks.inferenceProps!.onChainChange("ethereum");
       mocks.inferenceProps!.onHorizonChange(5);
-      await flushMicrotasks();
     });
     expect(mocks.inferenceProps).toMatchObject({
       chain: "ethereum",
       horizon: 5,
-      state: { status: "idle" },
+      state: { status: "loading" },
     });
+    expect(engines).toHaveLength(1);
 
     await act(async () => {
-      engines[0].resolveRun(result);
+      firstSave.resolve();
       await flushMicrotasks();
     });
 
-    expect(mocks.inferenceProps!.state).toEqual({ status: "idle" });
-    expect(mocks.addRun).not.toHaveBeenCalled();
-    expect(mocks.saveRuns).not.toHaveBeenCalled();
+    expect(mocks.saveRuns).toHaveBeenCalledOnce();
+    expect(mocks.inferenceProps).toMatchObject({
+      chain: "ethereum",
+      horizon: 5,
+      state: { status: "success", result },
+    });
+    expect(engines).toHaveLength(1);
+    act(() => mocks.bottomTabsProps!.onSelect("analytics"));
+    expect(mocks.analyticsProps!.runs).toEqual([acceptedRun]);
   });
 
   it("does not publish a result from a replaced engine", async () => {
     const result = inferenceResult();
     await renderApp();
     act(() => mocks.inferenceProps!.onRun());
+    vi.mocked(engines[0].engine.dispose).mockRejectedValueOnce(
+      new Error("native disposal failed"),
+    );
 
     await act(async () => {
       mocks.inferenceProps!.onChainChange("polygon");
@@ -194,6 +216,7 @@ describe("App engine selection", () => {
     });
     expect(mocks.inferenceProps!.chain).toBe("polygon");
     expect(engines).toHaveLength(2);
+    expect(engines[0].engine.dispose).toHaveBeenCalledOnce();
 
     await act(async () => {
       engines[0].resolveRun(result);

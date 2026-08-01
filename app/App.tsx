@@ -54,9 +54,12 @@ export default function App() {
   const [runs, setRuns] = useState<InferenceRun[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const activeEngine = useRef<ActiveEngine | null>(null);
-  const selectionIdentity = useRef(INITIAL_SELECTION);
+  const selectionState = useRef({
+    applied: INITIAL_SELECTION,
+    intended: INITIAL_SELECTION,
+  });
   const runsRef = useRef<InferenceRun[]>([]);
-  const serializeHistory = useRef(createSerialQueue()).current;
+  const enqueueOrderedUpdate = useRef(createSerialQueue()).current;
 
   function fail(message: string): void {
     setInference({ status: "error", message });
@@ -68,7 +71,7 @@ export default function App() {
     ) => InferenceRun[] | Promise<InferenceRun[]>,
     isCurrent: () => boolean,
   ): Promise<void> {
-    return serializeHistory(async () => {
+    return enqueueOrderedUpdate(async () => {
       const current = runsRef.current;
       if (!isCurrent()) return;
       const next = await update(current);
@@ -101,7 +104,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    void serializeHistory(async () => {
+    void enqueueOrderedUpdate(async () => {
       try {
         const storedRuns = await loadRuns();
         runsRef.current = storedRuns;
@@ -113,7 +116,7 @@ export default function App() {
         );
       }
     });
-  }, [serializeHistory]);
+  }, [enqueueOrderedUpdate]);
 
   useEffect(() => {
     const engine = createInferenceEngine(selection.chain);
@@ -142,31 +145,43 @@ export default function App() {
       if (activeEngine.current === current) {
         activeEngine.current = null;
       }
-      void engine.dispose();
+      void engine.dispose().catch(() => {});
     };
   }, [selection.chain]);
 
   function select(next: Selection): void {
-    const current = selectionIdentity.current;
-    if (next.chain === current.chain && next.horizon === current.horizon) {
+    const owner = selectionState.current;
+    if (
+      next.chain === owner.intended.chain &&
+      next.horizon === owner.intended.horizon
+    ) {
       return;
     }
-    selectionIdentity.current = next;
-    setInference({ status: "idle" });
-    if (next.chain !== current.chain) {
-      activeEngine.current = null;
-      setRpcStatus("checking");
-      setSnapshot(null);
-    }
-    setSelection(next);
+    owner.intended = next;
+    void enqueueOrderedUpdate(async () => {
+      const current = owner.applied;
+      const intended = owner.intended;
+      const chainChanged = intended.chain !== current.chain;
+      const horizonChanged = intended.horizon !== current.horizon;
+      if (!chainChanged && !horizonChanged) return;
+
+      owner.applied = intended;
+      setInference({ status: "idle" });
+      if (chainChanged) {
+        activeEngine.current = null;
+        setRpcStatus("checking");
+        setSnapshot(null);
+      }
+      setSelection(intended);
+    });
   }
 
   function selectChain(chain: Chain): void {
-    select({ ...selectionIdentity.current, chain });
+    select({ ...selectionState.current.intended, chain });
   }
 
   async function runInference() {
-    const selected = selectionIdentity.current;
+    const selected = selectionState.current.applied;
     const current = activeEngine.current;
     if (current === null || current.chain !== selected.chain) {
       fail("Could not connect to the selected chain.");
@@ -174,7 +189,7 @@ export default function App() {
     }
     const isCurrent = () =>
       activeEngine.current === current &&
-      selectionIdentity.current === selected;
+      selectionState.current.applied === selected;
 
     setInference({ status: "loading" });
     let result;
@@ -209,7 +224,7 @@ export default function App() {
       <StatusBar backgroundColor={colors.navy} barStyle="light-content" />
       <View style={styles.app}>
         <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
-          <AppHeader chain={selection.chain} status={rpcStatus} />
+          <AppHeader status={rpcStatus} />
         </SafeAreaView>
         <View style={styles.content}>
           {tab === "inference" ? (
@@ -218,7 +233,7 @@ export default function App() {
               horizon={selection.horizon}
               onChainChange={selectChain}
               onHorizonChange={(horizon) =>
-                select({ ...selectionIdentity.current, horizon })
+                select({ ...selectionState.current.intended, horizon })
               }
               onRun={() => void runInference()}
               onRunAgain={() => setInference({ status: "idle" })}
@@ -228,7 +243,7 @@ export default function App() {
           ) : (
             <AnalyticsScreen
               chain={selection.chain}
-              horizon={selection.horizon}
+              initialHorizon={selection.horizon}
               loadError={loadError}
               onChainChange={selectChain}
               runs={runs}

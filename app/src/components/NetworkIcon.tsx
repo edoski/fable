@@ -13,7 +13,6 @@ export function NetworkIcon({
   if (chain === "ethereum") {
     return (
       <Svg
-        accessible={false}
         height={size}
         viewBox="0 0 1920 1920"
         width={size}
@@ -50,7 +49,6 @@ export function NetworkIcon({
   if (chain === "polygon") {
     return (
       <Svg
-        accessible={false}
         height={size}
         viewBox="0 0 24.3 24.3"
         width={size}
@@ -64,7 +62,7 @@ export function NetworkIcon({
   }
 
   return (
-    <Svg accessible={false} height={size} viewBox="0 0 722 628" width={size}>
+    <Svg height={size} viewBox="0 0 722 628" width={size}>
       <Path
         d="M548.831 381.485c11.184-19.05 38.961-19.05 50.022 0l118.85 203.04c11.184 19.05-2.827 42.771-25.073 42.771H454.932c-22.246 0-36.135-23.721-25.073-42.771l118.972-203.04Z"
         fill={colors.avalanche}

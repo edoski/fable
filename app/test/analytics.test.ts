@@ -38,13 +38,12 @@ describe("analytics", () => {
         selected_action_k: 3,
         target_block: 14,
       }),
-      resolved("zero-baseline", 4, 0, 0),
       resolved("zero-selected", 2, 100, 0),
     ];
 
     const summary = summarizeRuns(runs);
 
-    expect(summary.averageWait).toBe(2);
+    expect(summary.averageWait).toBe(1.6);
     expect(summary.averageSavingsPercent).toBeCloseTo(25);
     expect(summary.winPercent).toBeCloseTo((2 / 3) * 100);
   });
@@ -61,7 +60,11 @@ describe("analytics", () => {
       }),
       resolved("lost", 2, 10, 12),
       resolved("zero-selected", 3, 10, 0),
-      resolved("invalid", 4, 0, 0),
+      inferenceRun({
+        id: "pending-longest",
+        selected_action_k: 4,
+        target_block: 15,
+      }),
     ];
     const collection = runsForSelection(
       [

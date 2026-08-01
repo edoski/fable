@@ -622,9 +622,17 @@ The selected epoch cannot exceed completed epochs. The enclosing Study requires 
 
 #### Indexed results and publication
 
-Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary sibling. Each private result envelope carries the full request, method index, and retained metrics.
+Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary
+sibling. Each private result envelope carries the full request and retained metrics. Its canonical
+filename owns the Method index; the private loader ignores the retired embedded `method_index`
+field in active-campaign scratch written by an earlier executable.
 
-`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first result. All files must carry the identical request and an embedded index matching the filename. Publication assembles metrics in `request.methods` order at `studies/.<study_id>/study.json`, creates `studies/<study_id>.json` directly with `os.link()`, then removes scratch. An occupied canonical path makes the link fail without overwrite. Failed cleanup after a successful link can leave scratch beside the valid canonical Study.
+`publish_study(storage_root, study_id)` requires exactly `result-0.json` through
+`result-(N-1).json` for the request taken from the first result. All files must carry the identical
+request. Publication assembles metrics in filename and `request.methods` order at
+`studies/.<study_id>/study.json`, creates `studies/<study_id>.json` directly with `os.link()`, then
+removes scratch. An occupied canonical path makes the link fail without overwrite. Failed cleanup
+after a successful link can leave scratch beside the valid canonical Study.
 
 #### Selected training
 
@@ -838,18 +846,22 @@ deletes the temporary request files and both TSV files, and publishes the manife
 architecture-chain-context Studies for `C={25,50,100,200,400}`, then publishes their canonical
 Study references. `experiments/hpo.py` loads that manifest, selects one context per chain by mean
 validation objective across the three architectures, reports the selected contexts, and authors
-the exact nine architecture-chain Studies with their ordered nine-Method L9 rosters. Its final
-selector chooses the earliest minimum validation objective.
+the exact nine architecture-chain Studies with their ordered nine-Method L9 rosters. Each roster
+derives its capacity-zero model and nonsearched fit settings from the selected context Study, then
+varies capacity, dropout, learning rate, and weight decay. Transformer and Transformer-LSTM share
+one attention-capacity table; the hybrid adds its fixed recurrent tail. The final selector chooses
+the earliest minimum validation objective.
 
 `experiments/k_study.py` derives each architecture-chain HPO result and authors 81 fresh
 selected-Study Train requests for `K={2,3,4,5,10,25,50,100,200}`. It publishes the K-study
 manifest only after every artifact exists. `experiments/held_out.py` authors the corresponding
-held-out Evaluate requests. All horizons share the same first testing origin. The `K=2…4`
-ranges extend their last origin by three, two, or one blocks so the fixed-deadline rolling
-comparison has every reachable decision origin. Its report commands print, but do not persist, the
-ordinary and rolling reductions. Closure publishes the exact 81 evaluation references and removes
-the temporary bundle. `experiments/launch.py workflows BUNDLE` packs Train or Evaluate cells with
-the same packed execution contract.
+held-out Evaluate requests. It derives complete-outcome separation and corpus-tail support from the
+largest horizon in the loaded K-study roster, so all horizons share the same first testing origin.
+The explicit `K=2…5` rolling policy remains fixed: the `K=2…4` ranges extend their last origin by
+three, two, or one blocks so the fixed-deadline comparison has every reachable decision origin. Its
+report commands print, but do not persist, the ordinary and rolling reductions. Closure publishes
+the exact 81 evaluation references and removes the temporary bundle. `experiments/launch.py
+workflows BUNDLE` packs Train or Evaluate cells with the same packed execution contract.
 
 #### Study object
 
@@ -946,8 +958,8 @@ Each allocation contains one to three processes and requests one node and one ta
 CPU allotment, and memory allotment per process input. Each process runs as an exclusive exact
 `srun` step, sees one GPU, receives one strict stdin record, and writes
 `<job_id>-<slot>.out` for every allocation size; `%j.out` remains the allocation log. The parent
-waits for every step and fails if any step fails. Candidate Study slots and workflow durable
-identities must be unique within an allocation.
+waits for every step and fails if any step fails. Experiment authors own unique workflow
+destinations and candidate Method indices before submission.
 
 Allocations change to `storage_root`, export `STORAGE_ROOT`, and run the immutable Apptainer image
 with NVIDIA support. The image dispatches `fable remote workflow` or `fable remote candidate`.
@@ -977,7 +989,7 @@ app/assets/models/
 
 The manifest owns shared context and feature state plus each model's artifact UUID and target state. The app trusts this build-time bundle through typed direct lookups and twelve static `.pte` requires. It has no download, alternate runtime, or remote inference fallback.
 
-Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; session disposal unwatches without aborting in-flight reads. App's one engine-and-selection identity gate protects visible results and history commits. The model runtime serializes native load, forward, replacement, and disposal; the history queue serializes persistence and outcome retries. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call must begin at the first context block and return exactly `C` rows containing nonnegative P50 and P90 values. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
+Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; the raw adapter requires every block to contain a positive base fee, so a rejected outcome read remains pending and retryable. Session disposal unwatches without aborting in-flight reads. App owns one selection record containing the applied selection and latest intent. Selection application shares the rejection-safe history FIFO with persistence and outcome retries, so an accepted history update publishes before the latest queued intent is applied; only an applied chain change replaces the engine. Applied selection and engine identity reject stale results. The model runtime serializes native load, forward, replacement, and disposal. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call must begin at the first context block and return exactly `C` rows containing nonnegative P50 and P90 values. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
 
 The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real
 `MOBILE.yaml`, generated assets, and device-acceptance evidence do not yet exist. The
@@ -991,11 +1003,12 @@ The internal installed-executable profile fits LSTMs in `32-true`, Transformers 
 precision, and Transformer-LSTMs in BF16 with their recurrent layer in float32. It also fixes fit
 batch size 64 and evaluation batch size 512. Historical execution keeps one contiguous feature
 and outcome source on the accelerator and gathers each batch by origin index without materializing
-every overlapping context window. Float32 matrix-multiplication precision is `high`; CUDA matmul
-and cuDNN TF32 remain enabled for float32 operations. Each fit calls `seed_everything(seed)` once.
-Lightning owns deterministic setup through `Trainer(deterministic=True)` and norm clipping
-through the configured `gradient_clip_norm`; shuffled loading uses the seeded global Torch RNG.
-These are code facts, not request, schema, YAML, or public configuration surfaces.
+every overlapping context window. Float32 matrix-multiplication precision is `high`, which owns
+CUDA matmul TF32; a separate cuDNN TF32 flag remains enabled for float32 operations. Each fit calls
+`seed_everything(seed)` once. Lightning owns deterministic setup through
+`Trainer(deterministic=True)` and norm clipping through the configured `gradient_clip_norm`;
+shuffled loading uses the seeded global Torch RNG. These are code facts, not request, schema, YAML,
+or public configuration surfaces.
 
 ### Evaluation API
 

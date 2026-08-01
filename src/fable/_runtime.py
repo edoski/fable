@@ -8,5 +8,4 @@ EVALUATION_BATCH_SIZE = 512
 
 def configure_torch() -> None:
     torch.set_float32_matmul_precision("high")
-    torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
