@@ -36,6 +36,7 @@ OBSERVATION_SCHEMA = pl.Schema(
 )
 
 _DEVICE = torch.device("cuda:0")
+ROLLING_HORIZONS = (5, 4, 3, 2)
 
 
 def evaluate(request: EvaluateRequest, storage_root: Path) -> None:
@@ -203,7 +204,7 @@ def _reduce_rolling_cell(
 ) -> dict[str, str | float]:
     decision_origins: np.ndarray | None = None
     selections = []
-    for horizon in range(5, 1, -1):
+    for horizon in ROLLING_HORIZONS:
         columns = _load_rolling_observations(storage_root, evaluation_ids[horizon])
         if decision_origins is None:
             decision_origins = columns["origin_block"].copy()
@@ -211,7 +212,7 @@ def _reduce_rolling_cell(
             columns, decision_origins=decision_origins, cell=cell, horizon=horizon
         )
         selections.append(selection)
-        if horizon > 2:
+        if horizon != ROLLING_HORIZONS[-1]:
             decision_origins += selection["predicted_action_k"] == horizon - 1
 
     initial = selections[0]
