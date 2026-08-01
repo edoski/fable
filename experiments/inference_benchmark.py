@@ -43,13 +43,6 @@ class Protocol(StrictFrozenRecord):
 
 
 @dataclass(frozen=True, slots=True)
-class _Resolved:
-    label: str
-    evaluation_id: UUID4
-    request: EvaluateRequest
-
-
-@dataclass(frozen=True, slots=True)
 class _Horizon:
     model: nn.Module
     dataset: HistoricalDataset
@@ -69,7 +62,7 @@ class _Workload:
 
 def _resolve(
     storage_root: Path, k_study_experiment_id: UUID, held_out_experiment_id: UUID
-) -> dict[str, dict[int, _Resolved]]:
+) -> dict[str, dict[int, EvaluateRequest]]:
     k_study = load_experiment_manifest(storage_root, ExperimentKind.K_STUDY, k_study_experiment_id)
     held_out = load_experiment_manifest(
         storage_root, ExperimentKind.HELD_OUT, held_out_experiment_id
@@ -82,10 +75,16 @@ def _resolve(
     }
     groups = {label.rsplit(".", maxsplit=1)[0] for label in labels}
     expected = {f"{group}.K{horizon}" for group in groups for horizon in ROLLING_HORIZONS}
-    if not groups or not expected <= k_study.keys() or not expected <= held_out.keys():
-        raise ValueError("completed manifests contain an incomplete rolling-horizon group")
+    if (
+        len(groups) != 9
+        or len(labels) != 36
+        or labels != expected
+        or not expected <= k_study.keys()
+        or not expected <= held_out.keys()
+    ):
+        raise ValueError("completed manifests must contain exactly nine rolling-horizon groups")
 
-    resolved: dict[str, dict[int, _Resolved]] = {group: {} for group in sorted(groups)}
+    resolved: dict[str, dict[int, EvaluateRequest]] = {group: {} for group in sorted(groups)}
     for label in sorted(expected):
         evaluation_id = held_out[label]
         request = EvaluateRequest.model_validate_json(
@@ -93,22 +92,15 @@ def _resolve(
         )
         if request.artifact_id != k_study[label]:
             raise ValueError(f"{label} evaluation does not name its K-study artifact")
-        association, model = load_artifact(storage_root, request.artifact_id)
-        del model
-        horizon = association.training_definition.experiment.horizon_blocks
         group, horizon_label = label.rsplit(".", maxsplit=1)
-        if horizon_label != f"K{horizon}" or horizon not in ROLLING_HORIZONS:
-            raise ValueError(f"{label} does not address its artifact horizon")
-        resolved[group][horizon] = _Resolved(
-            label=label, evaluation_id=evaluation_id, request=request
-        )
+        resolved[group][int(horizon_label.removeprefix("K"))] = request
     return resolved
 
 
 def _protocol(
     k_study_experiment_id: UUID,
     held_out_experiment_id: UUID,
-    resolved: Mapping[str, Mapping[int, _Resolved]],
+    resolved: Mapping[str, Mapping[int, EvaluateRequest]],
     warmup_iterations: int,
     sweeps: int,
 ) -> Protocol:
@@ -117,11 +109,11 @@ def _protocol(
         held_out_experiment_id=held_out_experiment_id,
         rolling_horizons=ROLLING_HORIZONS,
         roster={
-            item.label: Selection(
-                artifact_id=item.request.artifact_id, evaluation_id=item.evaluation_id
+            f"{cell}.K{horizon}": Selection(
+                artifact_id=request.artifact_id, evaluation_id=request.evaluation_id
             )
-            for group in resolved.values()
-            for item in group.values()
+            for cell, group in resolved.items()
+            for horizon, request in group.items()
         },
         warmup_iterations=warmup_iterations,
         sweeps=sweeps,
@@ -154,18 +146,20 @@ def _ensure_protocol(output: Path, protocol: Protocol) -> None:
     _publish(path, lambda temporary: temporary.write_text(protocol.model_dump_json()))
 
 
-def _load_cell(storage_root: Path, cell: str, resolved: Mapping[int, _Resolved]) -> _Cell:
+def _load_cell(storage_root: Path, cell: str, resolved: Mapping[int, EvaluateRequest]) -> _Cell:
     blocks: dict[UUID4, BlockFrame] = {}
     horizons = {}
     for horizon in reversed(ROLLING_HORIZONS):
-        request = resolved[horizon].request
+        request = resolved[horizon]
         association, model = load_artifact(storage_root, request.artifact_id)
         model.eval()
+        experiment = association.training_definition.experiment
+        if experiment.horizon_blocks != horizon:
+            raise ValueError(f"{cell}.K{horizon} does not address its artifact horizon")
         corpus = blocks.get(request.corpus_id)
         if corpus is None:
             corpus = load_corpus_blocks(storage_root, request.corpus_id)
             blocks[request.corpus_id] = corpus
-        experiment = association.training_definition.experiment
         horizons[horizon] = _Horizon(
             model=model,
             dataset=prepare_historical_window(
@@ -246,7 +240,7 @@ def _run_unit(
     protocol: Protocol,
     cell_name: str,
     sweep: int,
-    resolved: Mapping[int, _Resolved],
+    resolved: Mapping[int, EvaluateRequest],
 ) -> None:
     path = output / "latency" / cell_name / f"sweep-{sweep:03d}.parquet"
     if path.exists():

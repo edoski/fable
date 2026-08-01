@@ -126,14 +126,17 @@ def _cell(events: list[str]) -> benchmark._Cell:
     )
 
 
-def _resolved() -> dict[str, dict[int, benchmark._Resolved]]:
-    group = {}
-    for index, horizon in enumerate(reversed(benchmark.ROLLING_HORIZONS)):
-        request = _request(index, horizon)
-        group[horizon] = benchmark._Resolved(
-            label=f"ethereum.lstm.K{horizon}", evaluation_id=request.evaluation_id, request=request
-        )
-    return {"ethereum.lstm": group}
+def _resolved() -> dict[str, dict[int, EvaluateRequest]]:
+    groups = ("ethereum.lstm", *(f"chain{index}.family" for index in range(1, 9)))
+    return {
+        group: {
+            horizon: _request(
+                group_index * len(benchmark.ROLLING_HORIZONS) + horizon_index, horizon
+            )
+            for horizon_index, horizon in enumerate(reversed(benchmark.ROLLING_HORIZONS))
+        }
+        for group_index, group in enumerate(groups)
+    }
 
 
 def _protocol() -> benchmark.Protocol:
@@ -145,21 +148,19 @@ def _protocol() -> benchmark.Protocol:
 def test_resolve_derives_complete_groups_and_joins_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    group = "custom.family"
-    labels = tuple(f"{group}.K{horizon}" for horizon in benchmark.ROLLING_HORIZONS)
     k_study = {}
     held_out = {}
-    associations = {}
-    for index, (label, horizon) in enumerate(zip(labels, benchmark.ROLLING_HORIZONS, strict=True)):
-        request = _request(index, horizon)
-        k_study[label] = request.artifact_id
-        held_out[label] = request.evaluation_id
-        associations[request.artifact_id] = _association(horizon, request.artifact_id)
-        path = tmp_path / "evaluations" / str(request.evaluation_id) / "evaluation.json"
-        path.parent.mkdir(parents=True)
-        path.write_text(request.model_dump_json())
-    k_study[f"{group}.K10"] = UUID("30000000-0000-4000-8000-000000000010")
-    held_out[f"{group}.K10"] = UUID("40000000-0000-4000-8000-000000000010")
+    source = _resolved()
+    for group, requests in source.items():
+        for horizon, request in requests.items():
+            label = f"{group}.K{horizon}"
+            k_study[label] = request.artifact_id
+            held_out[label] = request.evaluation_id
+            path = tmp_path / "evaluations" / str(request.evaluation_id) / "evaluation.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(request.model_dump_json())
+    k_study["ethereum.lstm.K10"] = UUID("30000000-0000-4000-8000-000000000010")
+    held_out["ethereum.lstm.K10"] = UUID("40000000-0000-4000-8000-000000000010")
 
     monkeypatch.setattr(
         benchmark,
@@ -168,29 +169,21 @@ def test_resolve_derives_complete_groups_and_joins_artifacts(
             k_study if kind == benchmark.ExperimentKind.K_STUDY else held_out
         ),
     )
-    monkeypatch.setattr(
-        benchmark,
-        "load_artifact",
-        lambda root, artifact_id: (associations[artifact_id], nn.Identity()),
-    )
+    monkeypatch.setattr(benchmark, "load_artifact", lambda *_args: pytest.fail("model loaded"))
 
     resolved = benchmark._resolve(tmp_path, _K_STUDY_ID, _HELD_OUT_ID)
 
-    assert tuple(resolved) == (group,)
-    assert set(resolved[group]) == set(benchmark.ROLLING_HORIZONS)
-    original = k_study[labels[0]]
-    k_study[labels[0]] = UUID("ffffffff-ffff-4fff-8fff-ffffffffffff")
+    assert tuple(resolved) == tuple(sorted(source))
+    assert all(set(group) == set(benchmark.ROLLING_HORIZONS) for group in resolved.values())
+    label = "ethereum.lstm.K5"
+    original = k_study[label]
+    k_study[label] = UUID("ffffffff-ffff-4fff-8fff-ffffffffffff")
     with pytest.raises(ValueError, match="does not name"):
         benchmark._resolve(tmp_path, _K_STUDY_ID, _HELD_OUT_ID)
 
-    k_study[labels[0]] = original
-    associations[original] = _association(benchmark.ROLLING_HORIZONS[-1], original)
-    with pytest.raises(ValueError, match="does not address"):
-        benchmark._resolve(tmp_path, _K_STUDY_ID, _HELD_OUT_ID)
-
-    associations[original] = _association(benchmark.ROLLING_HORIZONS[0], original)
-    held_out.pop(labels[-1])
-    with pytest.raises(ValueError, match="incomplete"):
+    k_study[label] = original
+    held_out.pop(label)
+    with pytest.raises(ValueError, match="exactly nine"):
         benchmark._resolve(tmp_path, _K_STUDY_ID, _HELD_OUT_ID)
 
 
@@ -223,7 +216,7 @@ def test_cell_load_keeps_four_canonical_models_and_datasets(
         del root
         loaded_artifacts.append(artifact_id)
         horizon = next(
-            horizon for horizon, item in resolved.items() if item.request.artifact_id == artifact_id
+            horizon for horizon, request in resolved.items() if request.artifact_id == artifact_id
         )
         return _association(horizon, artifact_id), _Model(horizon, [])
 
@@ -247,11 +240,22 @@ def test_cell_load_keeps_four_canonical_models_and_datasets(
     cell = benchmark._load_cell(Path("/storage"), "ethereum.lstm", resolved)
 
     assert loaded_artifacts == [
-        resolved[horizon].request.artifact_id for horizon in reversed(benchmark.ROLLING_HORIZONS)
+        resolved[horizon].artifact_id for horizon in reversed(benchmark.ROLLING_HORIZONS)
     ]
     assert corpus_loads == 1
     assert set(cell.horizons) == set(benchmark.ROLLING_HORIZONS)
     assert all(not item.model.training for item in cell.horizons.values())
+
+    monkeypatch.setattr(
+        benchmark,
+        "load_artifact",
+        lambda root, artifact_id: (
+            _association(benchmark.ROLLING_HORIZONS[0], artifact_id),
+            nn.Identity(),
+        ),
+    )
+    with pytest.raises(ValueError, match=r"ethereum\.lstm\.K2"):
+        benchmark._load_cell(Path("/storage"), "ethereum.lstm", resolved)
 
 
 def test_warmup_is_fixed_and_excluded_from_clocks(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -376,5 +380,6 @@ def test_protocol_is_only_the_derived_campaign_inputs() -> None:
         "sweeps",
     )
     assert protocol.rolling_horizons == benchmark.ROLLING_HORIZONS
+    assert len(protocol.roster) == 36
     with pytest.raises(ValueError, match="greater than or equal to 1"):
         benchmark._protocol(_K_STUDY_ID, _HELD_OUT_ID, _resolved(), warmup_iterations=1, sweeps=0)
