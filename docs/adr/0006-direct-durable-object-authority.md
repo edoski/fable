@@ -19,6 +19,10 @@ UUIDv4 values identify instances. Each completed object owns its exact typed req
 
 Typed requests, embedded associations, and the selected Study result index plus exact Method establish meaning. Corpus, Study, and artifact loaders validate the requested UUID and association. Evaluation publication validates its inputs before atomically publishing the request and observations at the requested evaluation address.
 
+Before an experiment closes, another experiment author may read its hidden authored `cells.tsv`
+to identify canonical records that already exist. After closure, the manifest is authoritative.
+Downstream scientific inputs always come from the canonical records, never private scratch results.
+
 A completed evaluation owns its exact `EvaluateRequest` plus sufficient canonical prediction and outcome observations. Atomic publication owns request pairing, ordered window coverage, and observation value consistency. Transient reduction validates the exact observation schema, trusts those publisher-owned facts, and is recomputed directly from `observations.parquet`; Artifact and Corpus availability is not required after publication. Selection remains recomputed from its canonical Study object.
 
 Artifact fitting and Study assembly use owner-local hidden scratch. The selected checkpoint or

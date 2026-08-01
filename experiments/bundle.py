@@ -12,7 +12,12 @@ from uuid import UUID
 import typer
 
 from fable.config import EvaluateRequest, TrainRequest, TuneRequest
-from fable.experiments import ExperimentKind, ExperimentManifest, experiment_directory
+from fable.experiments import (
+    ExperimentKind,
+    ExperimentManifest,
+    experiment_directory,
+    load_experiment_manifest,
+)
 
 StorageRoot: TypeAlias = Annotated[Path, typer.Argument(resolve_path=True)]
 BundleRequest: TypeAlias = TuneRequest | TrainRequest | EvaluateRequest
@@ -80,6 +85,18 @@ def _write_cells(bundle: Path, header: Sequence[str], rows: Iterable[Sequence[ob
 def read_cells(bundle: Path) -> list[dict[str, str]]:
     with (bundle / "cells.tsv").open(newline="", encoding="utf-8") as source:
         return list(csv.DictReader(source, delimiter="\t"))
+
+
+def load_roster(
+    storage_root: Path, kind: ExperimentKind, experiment_id: UUID, column: _RecordColumn
+) -> dict[str, UUID]:
+    canonical = experiment_directory(storage_root, kind, experiment_id)
+    if canonical.exists():
+        return load_experiment_manifest(storage_root, kind, experiment_id)
+    return {
+        row["cell"]: UUID(row[column])
+        for row in read_cells(bundle_path(storage_root, kind, experiment_id))
+    }
 
 
 def publish_bundle(

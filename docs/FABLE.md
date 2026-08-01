@@ -826,9 +826,9 @@ results, or scientific definitions. The completed experiment directory contains 
 bundle under `experiments/feature_ablation/.<experiment_id>/`. For each architecture and chain it
 tests the full feature contract, each individual feature unit omitted, and a base-fee-only
 reference. Hour and day-of-week sine/cosine coordinates each remain one indivisible encoded unit.
-`experiments/launch.py candidates BUNDLE` submits its cells at a selected two- or three-GPU node
-capacity. It uses the fewest allocations and avoids a singleton tail when possible: seven pending
-cells at capacity three become `3 + 2 + 2`. After all canonical
+`experiments/launch.py candidates BUNDLE` submits its cells at a selected two- to four-GPU node
+capacity. It uses the fewest balanced allocations and avoids singleton tails when possible: nine
+pending cells at capacity four become `3 + 3 + 3`. After all canonical
 Studies exist, `close STORAGE_ROOT EXPERIMENT_ID` publishes the canonical manifest and removes
 the temporary bundle; `report` derives each chain/configuration mean from canonical Studies.
 
@@ -840,7 +840,10 @@ its job ID is printed. A repeated launch skips recorded rows; a failed submissio
 groups pending. Closure validates every referenced canonical record, writes the flat manifest,
 deletes the temporary request files and both TSV files, and publishes the manifest-only directory.
 
-`experiments/c_study.py` derives the full feature contract, authors the 45
+Before closure, an experiment author's hidden `cells.tsv` is its active cell-to-record roster;
+consumers use it only to locate records that are already canonical. After closure, the manifest
+replaces that roster as authority. `experiments/c_study.py` loads exactly the nine canonical full
+feature Studies through this interface, then authors the 45
 architecture-chain-context Studies for `C={25,50,100,200,400}`, then publishes their canonical
 Study references. `experiments/hpo.py` loads that manifest, selects one context per chain by mean
 validation objective across the three architectures, reports the selected contexts, and authors
@@ -952,7 +955,7 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 |  | `memory_gb` | PositiveInt, rendered as `--mem=<n>G` |
 |  | `time_limit` | nonempty Slurm time string |
 
-Each allocation contains one to three processes and requests one node and one task, GPU,
+Each allocation contains one to four processes and requests one node and one task, GPU,
 CPU allotment, and memory allotment per process input. Each process runs as an exclusive exact
 `srun` step, sees one GPU, receives one strict stdin record, and writes
 `<job_id>-<slot>.out` for every allocation size; `%j.out` remains the allocation log. The parent

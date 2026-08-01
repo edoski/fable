@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from bundle import StorageRoot, close_bundle, open_bundle, run, write_tune_cells
+from bundle import StorageRoot, close_bundle, load_roster, open_bundle, run, write_tune_cells
 
 from fable.config import TuneRequest
-from fable.experiments import ExperimentKind, load_experiment_manifest
+from fable.experiments import ExperimentKind
 from fable.study import Study, load_study
 
 _KIND = ExperimentKind.C_STUDY
@@ -18,15 +18,12 @@ _FAMILIES = ("lstm", "transformer", "transformer_lstm")
 
 
 def _full_feature_studies(storage_root: Path, experiment_id: UUID) -> dict[tuple[str, str], Study]:
-    manifest = load_experiment_manifest(
-        storage_root, ExperimentKind.FEATURE_ABLATION, experiment_id
-    )
-    studies: dict[tuple[str, str], Study] = {}
-    for cell, study_id in manifest.items():
-        chain, family, configuration = cell.split(".")
-        if configuration == "full":
-            studies[chain, family] = load_study(storage_root, study_id)
-    return studies
+    roster = load_roster(storage_root, ExperimentKind.FEATURE_ABLATION, experiment_id, "study_id")
+    return {
+        (chain, family): load_study(storage_root, roster[f"{chain}.{family}.full"])
+        for chain in _CHAINS
+        for family in _FAMILIES
+    }
 
 
 def prepare(storage_root: StorageRoot, feature_experiment_id: UUID) -> None:

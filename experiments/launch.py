@@ -52,7 +52,7 @@ def _launch(
     tasks_per_job: int,
 ) -> None:
     if not 2 <= tasks_per_job <= MAX_ALLOCATION_PROCESS_COUNT:
-        raise ValueError("tasks per job must be two or three")
+        raise ValueError("tasks per job must be between two and four")
 
     jobs_path = bundle / "jobs.tsv"
     jobs_exist = jobs_path.exists()
@@ -82,14 +82,9 @@ def _launch(
 
 
 def _allocation_sizes(pending_count: int, capacity: int) -> list[int]:
-    full_allocations, remainder = divmod(pending_count, capacity)
-    sizes = [capacity] * full_allocations
-    if remainder == 1 and capacity == 3 and pending_count > 1:
-        sizes[-1] = 2
-        sizes.append(2)
-    elif remainder:
-        sizes.append(remainder)
-    return sizes
+    allocation_count = (pending_count + capacity - 1) // capacity
+    minimum_size, larger_count = divmod(pending_count, allocation_count)
+    return [minimum_size + 1] * larger_count + [minimum_size] * (allocation_count - larger_count)
 
 
 def _load_submitted_rows(jobs_path: Path) -> set[int]:

@@ -68,14 +68,14 @@ def test_candidates_submit_typed_inputs_and_restart_skips_recorded_rows(
     result = dispatch(launcher.app, "candidates", str(bundle))
 
     assert result.exit_code == 0
-    assert result.output.splitlines() == [str(job_id) for job_id in range(1_001, 1_035)]
-    assert [len(batch) for batch in batches] == [3] * 34
+    assert result.output.splitlines() == [str(job_id) for job_id in range(1_001, 1_027)]
+    assert [len(batch) for batch in batches] == [4] * 24 + [3, 3]
     assert all(
         isinstance(candidate, CandidateProcessInput) for batch in batches for candidate in batch
     )
     jobs = read_tsv_rows(bundle / "jobs.tsv")
     assert len(jobs) == 102
-    assert jobs[:3] == [
+    assert jobs[:4] == [
         {"job_id": "1001", "slot": "0", "row": "0", "cell": "ethereum.lstm.full"},
         {"job_id": "1001", "slot": "1", "row": "1", "cell": "ethereum.lstm.without_base_fee"},
         {
@@ -84,18 +84,33 @@ def test_candidates_submit_typed_inputs_and_restart_skips_recorded_rows(
             "row": "2",
             "cell": "ethereum.lstm.without_gas_utilization",
         },
+        {
+            "job_id": "1001",
+            "slot": "3",
+            "row": "3",
+            "cell": "ethereum.lstm.without_exact_forming_base_fee",
+        },
     ]
 
     repeated = dispatch(launcher.app, "candidates", str(bundle))
 
     assert repeated.exit_code == 0
     assert repeated.output == ""
-    assert len(batches) == 34
+    assert len(batches) == 26
 
 
 @pytest.mark.parametrize(
     ("count", "capacity", "expected_sizes"),
-    ((7, 3, [3, 2, 2]), (8, 3, [3, 3, 2]), (3, 3, [3]), (1, 3, [1]), (7, 2, [2, 2, 2, 1])),
+    (
+        (7, 4, [4, 3]),
+        (9, 4, [3, 3, 3]),
+        (45, 4, [4] * 9 + [3] * 3),
+        (7, 3, [3, 2, 2]),
+        (8, 3, [3, 3, 2]),
+        (3, 3, [3]),
+        (1, 3, [1]),
+        (7, 2, [2, 2, 2, 1]),
+    ),
 )
 def test_workflows_use_fewest_ordered_allocations_without_avoidable_singletons(
     tmp_path: Path,
@@ -150,10 +165,10 @@ def test_launch_persists_each_success_and_failure_leaves_later_groups_pending(
 
     assert failed.exit_code == 1
     assert isinstance(failed.exception, RuntimeError)
-    assert [len(batch) for batch in batches] == [3, 3]
+    assert [len(batch) for batch in batches] == [4, 4]
     assert read_tsv_rows(bundle / "jobs.tsv") == [
         {"job_id": "3001", "slot": str(slot), "row": str(slot), "cell": f"cell-{slot}"}
-        for slot in range(3)
+        for slot in range(4)
     ]
 
     resumed_batches: list[tuple[EvaluateRequest, ...]] = []
@@ -166,15 +181,15 @@ def test_launch_persists_each_success_and_failure_leaves_later_groups_pending(
     resumed = dispatch(launcher.app, "workflows", str(bundle))
 
     assert resumed.exit_code == 0
-    assert resumed.output == "4001\n4002\n"
-    assert [len(batch) for batch in resumed_batches] == [3, 2]
+    assert resumed.output == "4001\n"
+    assert [len(batch) for batch in resumed_batches] == [4]
     assert [
         request.evaluation_id for batch in resumed_batches for request in batch
-    ] == evaluation_ids[3:]
+    ] == evaluation_ids[4:]
     assert [int(job["row"]) for job in read_tsv_rows(bundle / "jobs.tsv")] == list(range(8))
 
     replay = dispatch(launcher.app, "workflows", str(bundle))
 
     assert replay.exit_code == 0
     assert replay.output == ""
-    assert [len(batch) for batch in resumed_batches] == [3, 2]
+    assert [len(batch) for batch in resumed_batches] == [4]

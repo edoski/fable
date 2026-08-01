@@ -12,7 +12,7 @@ FABLE (Fee Analysis through Blockchain Learning and Estimation) needs one narrow
 
 Remote submission uses cwd-local `REMOTE.yaml`, OpenSSH, a generated Slurm script, one
 `sbatch --parsable` call per allocation, and the returned positive numeric job ID. An allocation
-contains either one process or an ordered batch of two or three independent processes. Every process runs
+contains either one process or an ordered batch of up to four independent processes. Every process runs
 the same immutable Apptainer image through one exclusive Slurm step and receives exactly one GPU.
 Its runscript invokes the installed `fable` executable with a generated-job entry point. Workflow
 processes receive one strict `WorkflowRequest` directly; candidate processes receive one strict

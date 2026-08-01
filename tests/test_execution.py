@@ -109,6 +109,34 @@ def test_submit_workflows_sends_golden_single_workflow_script(
     }
 
 
+def test_submit_workflows_packs_four_isolated_gpu_processes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    requests = tuple(
+        _request("evaluate").model_copy(
+            update={"evaluation_id": UUID(f"10000000-0000-4000-8000-{index:012d}")}
+        )
+        for index in range(1, 5)
+    )
+    write_remote(tmp_path / "REMOTE.yaml")
+    monkeypatch.chdir(tmp_path)
+    calls: list[str] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(str(kwargs["input"]))
+        return subprocess.CompletedProcess(argv, 0, stdout="456;research\n")
+
+    monkeypatch.setattr("fable.execution.subprocess.run", fake_run)
+
+    assert submit_workflows(requests) == 456
+    assert len(calls) == 1
+    script = calls[0]
+    assert "#SBATCH --ntasks=4\n" in script
+    assert "#SBATCH --gres=gpu:a100:4\n" in script
+    assert "#SBATCH --mem=192G\n" in script
+    assert script.count("srun --exclusive --exact") == 4
+
+
 @pytest.mark.parametrize("workflow", ["train", "evaluate"])
 def test_submit_cli_dispatches_request_json(
     workflow: Literal["train", "evaluate"], tmp_path: Path, monkeypatch: pytest.MonkeyPatch

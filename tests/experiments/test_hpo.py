@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from uuid import UUID
+
+import pytest
 
 from fable.config import TuneRequest
 from fable.experiments import ExperimentManifest
@@ -13,6 +16,37 @@ _ROOT = Path(__file__).parents[2]
 _FEATURE_SCRIPT = _ROOT / "experiments" / "feature_ablation.py"
 _C_SCRIPT = _ROOT / "experiments" / "c_study.py"
 _HPO_SCRIPT = _ROOT / "experiments" / "hpo.py"
+
+
+def test_context_study_can_start_from_canonical_full_studies_in_open_feature_bundle(
+    tmp_path: Path,
+) -> None:
+    feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
+    feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
+    full_rows = [
+        row for row in read_tsv_rows(feature_bundle / "cells.tsv") if row["cell"].endswith(".full")
+    ]
+    publish_generated_studies(tmp_path, full_rows, default_objective=1.0)
+
+    result = run_script(_C_SCRIPT, "prepare", tmp_path, feature_experiment_id)
+
+    experiment_id = UUID(result.stdout.strip())
+    bundle = tmp_path / "experiments" / "c_study" / f".{experiment_id}"
+    assert len(read_tsv_rows(bundle / "cells.tsv")) == 45
+
+
+def test_context_study_requires_every_canonical_full_study(tmp_path: Path) -> None:
+    feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
+    feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
+    full_rows = [
+        row for row in read_tsv_rows(feature_bundle / "cells.tsv") if row["cell"].endswith(".full")
+    ]
+    publish_generated_studies(tmp_path, full_rows[:-1], default_objective=1.0)
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_script(_C_SCRIPT, "prepare", tmp_path, feature_experiment_id)
+
+    assert "FileNotFoundError" in error.value.stderr
 
 
 def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winner(
