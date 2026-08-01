@@ -367,7 +367,9 @@ one explicit local owner, so later code edits cannot silently desynchronize expe
 
 ## Slice 3 — Demo consistency and mobile publication
 
-Status: proposed; depends on Slice 2 green.
+Status: green.
+
+Baseline: `c2c34dfe8b997a1fb183b08a70e10095521a497f`.
 
 ### Expected outcome
 
@@ -400,8 +402,28 @@ states the exact metric being shown.
 
 ### Implementation-review record
 
-- Baseline, implementer, head, checks, reviewer, Standards findings, Spec findings, correction
-  rounds, and final result: pending.
+- Implementer: `/root/slice3_implement` using the `implement` skill and App-interface TDD.
+- Initial implementation head: `360159113769654f1bc3820b4283fece22cbdee5`
+  (`refactor(app): order demo state and publication`); 18 files, 212 insertions, 257 deletions.
+- Implementer checks: required App seam failed before implementation and passed afterward; full
+  Vitest 36 passed; TypeScript passed; canonical mobile-export suite 11 passed including real
+  XNNPACK lowering/host execution; root Python suite 84 passed; Ruff check/format, Pyright, Vulture,
+  diff, and status audits passed.
+- Reviewer: `/root/slice3_review` using the `code-review` skill, with independent parallel Standards
+  and Spec axes over fixed `c2c34df...3601591`.
+- Initial review: Spec zero findings. Standards rejected the head with one P3 Mysterious Name:
+  `serializeHistory` had become the owner of both history and selection ordering.
+- Correction round 1: the same implementer committed
+  `a50c4887638783daeff3edf48e5d6169897e6196`
+  (`refactor(app): name ordered update queue`), renaming all five references to
+  `enqueueOrderedUpdate`. Focused App tests 4 passed; full Vitest 36 passed; TypeScript and diff
+  checks passed.
+- Correction review: the same reviewer inspected only fixed `3601591...a50c488`; Standards and Spec
+  both returned zero findings. The correction was rename-only and closed the sole finding.
+- Final head/result: `a50c4887638783daeff3edf48e5d6169897e6196`; `GREEN LIGHT`.
+- Reviewer mutation audits found no changes; only protected `?? docs/experiments/` remained.
+- Intentionally unrun: live RPC, generated model assets, native app build, simulator/device and
+  visual acceptance, GPU training, Slurm/SSH, remote checkout, research image build.
 
 ## Slice 4 — Compact-CUDA branch reconciliation
 
