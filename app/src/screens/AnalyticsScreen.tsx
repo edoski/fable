@@ -164,26 +164,28 @@ function SavingsByWaitChart({
 }: {
   buckets: readonly WaitBucket[];
 }) {
-  const values = buckets.flatMap((bucket) =>
-    bucket.savingsPercent === null ? [] : [bucket.savingsPercent],
+  const data = buckets.flatMap((bucket) =>
+    bucket.savingsPercent === null
+      ? []
+      : [
+          {
+            frontColor:
+              bucket.savingsPercent < 0 ? colors.red : colors.teal,
+            label: bucket.label,
+            value: bucket.savingsPercent,
+          },
+        ],
   );
   return (
     <ChartCard
-      empty={values.length === 0 ? "outcomes" : null}
+      empty={data.length === 0 ? "outcomes" : null}
       title="Savings by wait (%)"
       xAxisTitle="Wait (blocks)"
     >
       <GiftedBarChart
         {...AXIS_PROPS}
-        {...chartScale(values)}
-        data={buckets.map((bucket) => ({
-          frontColor:
-            bucket.savingsPercent !== null && bucket.savingsPercent < 0
-              ? colors.red
-              : colors.teal,
-          label: bucket.label,
-          value: bucket.savingsPercent ?? 0,
-        }))}
+        {...chartScale(data.map(({ value }) => value))}
+        data={data}
         formatYLabel={(label) => `${Number(label).toFixed(0)}%`}
       />
     </ChartCard>
@@ -255,11 +257,8 @@ function runSummary(run: InferenceRun): string {
       ? "Act now"
       : `Wait ${run.selected_action_k} block${run.selected_action_k === 1 ? "" : "s"}`;
   const savings = realizedSavingsPercent(run);
-  if (run.outcome === undefined) {
-    return `${wait} · Pending`;
-  }
   if (savings === null) {
-    return `${wait} · Unavailable`;
+    return `${wait} · Pending`;
   }
   const outcome =
     savings >= 0
@@ -278,19 +277,11 @@ function NetworkPicker({
   onSelect: (chain: Chain) => void;
 }) {
   return (
-    <Overlay
-      animationType="fade"
-      backdropLabel="Close network picker"
-      onClose={onClose}
-    >
+    <Overlay animationType="fade" onClose={onClose}>
       <View style={[styles.dialog, styles.sheet, styles.networkSheet]}>
         <View style={styles.headerRow}>
           <Text style={styles.networkSheetTitle}>Select network</Text>
-          <Pressable
-            accessibilityLabel="Close"
-            hitSlop={10}
-            onPress={onClose}
-          >
+          <Pressable hitSlop={10} onPress={onClose}>
             <Ionicons color={colors.muted} name="close" size={25} />
           </Pressable>
         </View>
@@ -299,8 +290,6 @@ function NetworkPicker({
             const active = chain === selected;
             return (
               <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
                 key={chain}
                 onPress={() => onSelect(chain)}
                 style={[
@@ -336,11 +325,7 @@ function RunDetails({
 }) {
   const savings = realizedSavingsPercent(run);
   return (
-    <Overlay
-      animationType="slide"
-      backdropLabel="Close run details"
-      onClose={onClose}
-    >
+    <Overlay animationType="slide" onClose={onClose}>
       <View style={[styles.dialog, styles.sheet, styles.runDialog]}>
         <View style={styles.handle} />
         <View style={styles.dialogHeader}>
@@ -348,11 +333,7 @@ function RunDetails({
             <Text style={styles.dialogTitle}>Run details</Text>
             <Text style={styles.dialogDate}>{formatRunDate(run.ran_at)}</Text>
           </View>
-          <Pressable
-            accessibilityLabel="Close"
-            hitSlop={10}
-            onPress={onClose}
-          >
+          <Pressable hitSlop={10} onPress={onClose}>
             <Ionicons color={colors.muted} name="close" size={27} />
           </Pressable>
         </View>
@@ -411,17 +392,10 @@ function RunDetails({
           <DetailRow
             label="Realized savings"
             last
-            value={
-              run.outcome === undefined
-                ? "Pending"
-                : savings === null
-                  ? "Unavailable"
-                  : formatSavings(savings)
-            }
+            value={savings === null ? "Pending" : formatSavings(savings)}
           />
         </View>
         <Pressable
-          accessibilityRole="button"
           onPress={onClose}
           style={[styles.button, styles.closeButton]}
         >
@@ -435,18 +409,18 @@ function RunDetails({
 export function AnalyticsScreen({
   runs,
   chain,
-  horizon,
+  initialHorizon,
   loadError,
   onChainChange,
 }: {
   runs: readonly InferenceRun[];
   chain: Chain;
-  horizon: Horizon;
+  initialHorizon: Horizon;
   loadError: string | null;
   onChainChange: (chain: Chain) => void;
 }) {
   const [analyticsHorizon, setAnalyticsHorizon] =
-    useState<Horizon>(horizon);
+    useState<Horizon>(initialHorizon);
   const [networkPickerOpen, setNetworkPickerOpen] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
@@ -463,8 +437,6 @@ export function AnalyticsScreen({
         <View style={styles.headerRow}>
           <Text style={styles.title}>Analytics</Text>
           <Pressable
-            accessibilityHint="Opens network picker"
-            accessibilityRole="button"
             onPress={() => setNetworkPickerOpen(true)}
             style={styles.networkBadge}
           >
@@ -477,7 +449,7 @@ export function AnalyticsScreen({
         </View>
 
         {loadError && (
-          <View accessibilityRole="alert" style={styles.storageError}>
+          <View style={styles.storageError}>
             <Text style={styles.storageErrorText}>{loadError}</Text>
           </View>
         )}
@@ -540,8 +512,6 @@ export function AnalyticsScreen({
             >
               {graphRuns.map((run, index) => (
                 <Pressable
-                  accessibilityHint="Opens run details"
-                  accessibilityRole="button"
                   key={run.id}
                   onPress={() => setSelectedRunId(run.id)}
                   style={[

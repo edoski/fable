@@ -63,8 +63,10 @@ export function createChainSession(
   function blockRow(
     block: GetBlockReturnType<typeof definition, false, "latest">,
   ): BlockRow {
-    if (block.baseFeePerGas === null) {
-      throw new Error(`RPC returned block ${block.number} without a base fee`);
+    if (block.baseFeePerGas === null || block.baseFeePerGas <= 0n) {
+      throw new Error(
+        `RPC returned block ${block.number} without a positive base fee`,
+      );
     }
     return {
       number: block.number,

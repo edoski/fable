@@ -277,19 +277,22 @@ describe("createChainSession", () => {
     session.dispose();
   });
 
-  it("requires an EIP-1559 base fee", async () => {
-    installRpc({
-      block: (number) =>
-        rpcBlock(number, {
-          baseFeePerGas: number === 12n ? null : undefined,
-        }),
-    });
-    const session = createChainSession("ethereum", manifestOf(1));
+  it("requires a positive EIP-1559 base fee", async () => {
+    for (const baseFeePerGas of [null, quantity(0n)] as const) {
+      installRpc({
+        block: (number) =>
+          rpcBlock(number, {
+            baseFeePerGas:
+              number === 12n ? baseFeePerGas : undefined,
+          }),
+      });
+      const session = createChainSession("ethereum", manifestOf(1));
 
-    await expect(session.sync()).rejects.toThrow(
-      "RPC returned block 12 without a base fee",
-    );
-    session.dispose();
+      await expect(session.sync()).rejects.toThrow(
+        "RPC returned block 12 without a positive base fee",
+      );
+      session.dispose();
+    }
   });
 
   it("forwards Viem watched blocks and unwatches on disposal", async () => {

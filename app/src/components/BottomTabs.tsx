@@ -23,8 +23,6 @@ export function BottomTabs({
         const active = selected === tab.value;
         return (
           <Pressable
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
             key={tab.value}
             onPress={() => onSelect(tab.value)}
             style={styles.tab}

@@ -238,4 +238,17 @@ describe("InferenceEngine", () => {
     );
     await engine.dispose();
   });
+
+  it("disposes the model when session disposal fails", async () => {
+    const chainSession = session();
+    vi.mocked(chainSession.dispose).mockImplementation(() => {
+      throw new Error("unwatch failed");
+    });
+    const model = runtime();
+    const engine = createTestEngine({ model, session: chainSession });
+
+    await expect(engine.dispose()).rejects.toThrow("unwatch failed");
+    expect(chainSession.dispose).toHaveBeenCalledOnce();
+    expect(model.dispose).toHaveBeenCalledOnce();
+  });
 });

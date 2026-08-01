@@ -58,8 +58,6 @@ function NetworkChoices({
         const label = CHAIN_LABELS[choice];
         return (
           <Pressable
-            accessibilityRole="radio"
-            accessibilityState={{ checked: active, disabled }}
             disabled={disabled}
             key={choice}
             onPress={() => onChange(choice)}
@@ -133,7 +131,6 @@ function HorizonSelector({
               <View style={styles.predictionLine} />
               {Array.from({ length: horizon }, (_, offset) => (
                 <View
-                  accessibilityLabel={`Future block ${offset + 1}`}
                   key={offset}
                   style={styles.predictionBlock}
                 >
@@ -171,16 +168,8 @@ function ErrorDialog({
   onRetry: () => void;
 }) {
   return (
-    <Overlay
-      animationType="fade"
-      backdropLabel="Dismiss inference error"
-      centered
-      onClose={onClose}
-    >
-      <View
-        accessibilityRole="alert"
-        style={[styles.dialog, styles.errorDialog]}
-      >
+    <Overlay animationType="fade" centered onClose={onClose}>
+      <View style={[styles.dialog, styles.errorDialog]}>
         <View style={styles.errorDialogIcon}>
           <Ionicons
             color={colors.red}
@@ -192,14 +181,12 @@ function ErrorDialog({
         <Text style={styles.errorDialogText}>{message}</Text>
         <View style={styles.errorActions}>
           <Pressable
-            accessibilityRole="button"
             onPress={onClose}
             style={styles.dismissButton}
           >
             <Text style={styles.dismissButtonText}>Dismiss</Text>
           </Pressable>
           <Pressable
-            accessibilityRole="button"
             onPress={onRetry}
             style={[styles.button, styles.retryButton]}
           >
@@ -220,64 +207,45 @@ function Setup({
   onChainChange,
   onHorizonChange,
   onRun,
-  onRunAgain,
 }: Props) {
   const loading = state.status === "loading";
   return (
     <>
-      <ScrollView
-        contentContainerStyle={styles.page}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.title}>Inference</Text>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Network</Text>
-          <NetworkChoices
-            chain={chain}
-            disabled={loading}
-            onChange={onChainChange}
-          />
-        </View>
-
-        <LiveConditions snapshot={snapshot} />
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            Horizon (K = {horizon})
-          </Text>
-          <HorizonSelector
-            disabled={loading}
-            horizon={horizon}
-            onChange={onHorizonChange}
-          />
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: loading }}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Network</Text>
+        <NetworkChoices
+          chain={chain}
           disabled={loading}
-          onPress={onRun}
-          style={[
-            styles.button,
-            styles.primaryButton,
-            styles.setupButton,
-            loading && styles.buttonDisabled,
-          ]}
-        >
-          {loading && <ActivityIndicator color={colors.surface} />}
-          <Text style={styles.buttonText}>
-            {loading ? "Generating…" : "Get recommendation"}
-          </Text>
-        </Pressable>
-      </ScrollView>
-      {state.status === "error" && (
-        <ErrorDialog
-          message={state.message}
-          onClose={onRunAgain}
-          onRetry={onRun}
+          onChange={onChainChange}
         />
-      )}
+      </View>
+
+      <LiveConditions snapshot={snapshot} />
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Horizon (K = {horizon})</Text>
+        <HorizonSelector
+          disabled={loading}
+          horizon={horizon}
+          onChange={onHorizonChange}
+        />
+      </View>
+
+      <Pressable
+        disabled={loading}
+        onPress={onRun}
+        style={[
+          styles.button,
+          styles.primaryButton,
+          styles.setupButton,
+          loading && styles.buttonDisabled,
+        ]}
+      >
+        {loading && <ActivityIndicator color={colors.surface} />}
+        <Text style={styles.buttonText}>
+          {loading ? "Generating…" : "Get recommendation"}
+        </Text>
+      </Pressable>
     </>
   );
 }
@@ -342,11 +310,7 @@ function Result({
       ? "Use the next block"
       : `Wait ${result.selected_action_k} ${result.selected_action_k === 1 ? "block" : "blocks"}`;
   return (
-    <ScrollView
-      contentContainerStyle={styles.page}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.title}>Inference</Text>
+    <>
       <View style={[styles.surface, styles.recommendation]}>
         <View style={styles.successIcon}>
           <Ionicons color={colors.surface} name="checkmark" size={30} />
@@ -379,25 +343,40 @@ function Result({
       </View>
 
       <Pressable
-        accessibilityRole="button"
         onPress={onRunAgain}
         style={[styles.button, styles.primaryButton]}
       >
         <Ionicons color={colors.surface} name="refresh" size={21} />
         <Text style={styles.buttonText}>Run again</Text>
       </Pressable>
-    </ScrollView>
+    </>
   );
 }
 
 export function InferenceScreen(props: Props) {
-  if (props.state.status === "success") {
-    return (
-      <Result
-        onRunAgain={props.onRunAgain}
-        result={props.state.result}
-      />
-    );
-  }
-  return <Setup {...props} />;
+  return (
+    <>
+      <ScrollView
+        contentContainerStyle={styles.page}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.title}>Inference</Text>
+        {props.state.status === "success" ? (
+          <Result
+            onRunAgain={props.onRunAgain}
+            result={props.state.result}
+          />
+        ) : (
+          <Setup {...props} />
+        )}
+      </ScrollView>
+      {props.state.status === "error" && (
+        <ErrorDialog
+          message={props.state.message}
+          onClose={props.onRunAgain}
+          onRetry={props.onRun}
+        />
+      )}
+    </>
+  );
 }
