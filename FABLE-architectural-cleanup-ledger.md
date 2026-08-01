@@ -309,7 +309,9 @@ unchanged.
 
 ## Slice 2 — Experiment authorship and durable grouping
 
-Status: proposed; depends on Slice 1 green.
+Status: green.
+
+Baseline: `97f417b723cc373f3429a0b75d17f5638f31f9ae`.
 
 ### Expected outcome
 
@@ -343,8 +345,25 @@ one explicit local owner, so later code edits cannot silently desynchronize expe
 
 ### Implementation-review record
 
-- Baseline, implementer, head, checks, reviewer, Standards findings, Spec findings, correction
-  rounds, and final result: pending.
+- Implementer: `/root/slice2_implement` using the `implement` skill.
+- Implementation head: `fd1e8a52efb32b5e3460068806aecd60ac856f85`
+  (`refactor(experiments): derive authored scientific controls`); five files, 166 insertions,
+  92 deletions.
+- Implementer checks: focused suite 36 passed; Ruff check and format check passed; Pyright zero
+  errors/warnings; Vulture no findings; full Python suite 84 passed; documentation residue, diff,
+  and exact status audits passed.
+- Reviewer: `/root/slice2_review` using the `code-review` skill, with independent parallel Standards
+  and Spec axes over fixed `97f417b...fd1e8a5`.
+- Standards: zero actionable findings and no baseline smells. Exact L9 order/values, shared
+  capacities, tie behavior, held-out geometry, documentation, and ADR boundaries verified.
+- Spec: zero actionable findings. Decisions 4–5 and the HPO comprehension cleanup are complete;
+  upstream Method inheritance, selected Study identity, maximum-horizon derivation, and fixed
+  `K=2…5` rolling policy remain exact.
+- Correction rounds: none.
+- Final result: `GREEN LIGHT`. Reviewer made no mutations; only protected
+  `?? docs/experiments/` remained.
+- Intentionally unrun: authored experiments, GPU training, Slurm/SSH, live RPC, remote checkout and
+  image build, app/mobile checks.
 
 ## Slice 3 — Demo consistency and mobile publication
 
