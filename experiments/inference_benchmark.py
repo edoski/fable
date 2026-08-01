@@ -516,6 +516,7 @@ def _run_energy_unit(
     cell = _load_cell(storage_root, cell_name, resolved)
     with torch.inference_mode():
         _warm(cell, warmup_iterations)
+        subprocess.run(("/usr/bin/sudo", "-v"), check=True)
         _publish(path, lambda temporary: _write_energy(temporary, cell, settings))
 
 

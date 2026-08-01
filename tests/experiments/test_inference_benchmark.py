@@ -592,6 +592,7 @@ def test_energy_cell_publishes_atomically_and_resumes(
     ]
     loads = 0
     captures = 0
+    events: list[str] = []
 
     def load(*args: object) -> benchmark._Cell:
         nonlocal loads
@@ -602,12 +603,20 @@ def test_energy_cell_publishes_atomically_and_resumes(
         nonlocal captures
         del measure
         captures += 1
+        events.append("collector")
         path.write_bytes(fixture + b"\0" + fixture + b"\0")
         return phases
 
+    def authorize(argv: tuple[str, ...], *, check: bool) -> subprocess.CompletedProcess[bytes]:
+        assert argv == ("/usr/bin/sudo", "-v")
+        assert check
+        events.append("authorize")
+        return subprocess.CompletedProcess(argv, 0)
+
     monkeypatch.setattr(benchmark, "_load_cell", load)
-    monkeypatch.setattr(benchmark, "_warm", lambda *_args: None)
+    monkeypatch.setattr(benchmark, "_warm", lambda *_args: events.append("warm"))
     monkeypatch.setattr(benchmark, "_capture_power", capture)
+    monkeypatch.setattr(benchmark.subprocess, "run", authorize)
     output = tmp_path / "campaign"
     settings = benchmark._energy_settings(pairs=1, phase_seconds=1, recovery_seconds=0)
 
@@ -623,6 +632,7 @@ def test_energy_cell_publishes_atomically_and_resumes(
 
     cell = output / "energy" / "ethereum.lstm"
     assert loads == captures == 1
+    assert events == ["warm", "authorize", "collector"]
     assert {path.name for path in cell.iterdir()} == {
         "powermetrics.plist",
         "phases.json",
