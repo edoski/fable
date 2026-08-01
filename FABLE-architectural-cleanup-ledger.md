@@ -425,9 +425,24 @@ states the exact metric being shown.
 - Intentionally unrun: live RPC, generated model assets, native app build, simulator/device and
   visual acceptance, GPU training, Slurm/SSH, remote checkout, research image build.
 
+## Main integration record
+
+- Product head: `ad75d5edcc4cb9e36d769d38e688d29224432ef1`.
+- Root Python suite: 84 passed with only expected local MPS/Lightning warnings.
+- Ruff check passed; Ruff format check found 47 files already formatted; Pyright reported zero
+  errors/warnings; Vulture reported no findings.
+- App Vitest: seven files and 36 tests passed; TypeScript typecheck passed.
+- Canonical isolated mobile-export suite: 11 passed, including portable negative control, real
+  XNNPACK lowering, serialization, and host execution; dependency deprecation/experimental warnings
+  only.
+- Documentation/identifier residue search found removed names only in this historical ledger. Diff,
+  branch, worktree, and status audits passed; only protected `?? docs/experiments/` remained.
+- Intentionally unrun: GPU training, Slurm/SSH, live RPC, remote checkout/image build, generated
+  model assets, native app build, simulator/device and visual acceptance.
+
 ## Slice 4 — Compact-CUDA branch reconciliation
 
-Status: proposed; depends on Slices 1–3 green and main integration checks passing.
+Status: ready; Slices 1–3 and main integration are green.
 
 Proposed baseline: `bc9532cfecba0d908188c8d234b5666c716701ed`. Re-resolve the exact target
 tip and finalized `main` head immediately before dispatch.
