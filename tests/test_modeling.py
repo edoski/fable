@@ -234,7 +234,11 @@ def test_epoch_logs_weight_short_batches_in_float64(monkeypatch: pytest.MonkeyPa
     batches = list(DataLoader(prepared.training, batch_size=3, shuffle=False))
     complete = next(iter(DataLoader(prepared.training, batch_size=4, shuffle=False)))
     with torch.no_grad():
-        expected = float(module._loss(complete).mean())
+        expected = float(
+            min_block_fee_loss(
+                module(complete["inputs"]), label=complete["label"], target=complete["target"]
+            ).mean()
+        )
     logged: dict[str, list[tuple[torch.Tensor, dict[str, Any]]]] = {
         "training_total_loss": [],
         "validation_total_loss": [],

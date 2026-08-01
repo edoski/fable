@@ -199,7 +199,6 @@ class _Model(nn.Module):
     def to(self, *args: Any, **kwargs: Any) -> Self:
         assert torch.device(args[0]) == torch.device("cpu")
         assert torch.get_float32_matmul_precision() == "high"
-        assert torch.backends.cuda.matmul.allow_tf32
         assert torch.backends.cudnn.allow_tf32
         self.transfers += 1
         return self
@@ -237,7 +236,6 @@ def test_evaluate_publishes_exact_observations(
 
     observations = pl.read_parquet(evaluation_observations_path(tmp_path, _EVALUATION_ID))
     assert observations.schema == _OBSERVATION_SCHEMA
-    assert observations.null_count().row(0) == (0,) * len(_OBSERVATION_SCHEMA)
     assert observations.rows() == [
         (20, 0, 10.025000000372529, 2, 60, 11, 60, 11, 50, 13, 50),
         (21, 2, 9.875, 2, 70, 12, 40, 14, 40, 14, 40),

@@ -7,12 +7,11 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, Literal, Self
-from uuid import UUID
 
 import yaml
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .config import EvaluateRequest, TrainRequest, TuneRequest, WorkflowRequest
+from .config import TuneRequest, WorkflowRequest
 from .records import StrictFrozenRecord
 
 _NonEmptyString = Annotated[str, Field(min_length=1)]
@@ -57,18 +56,12 @@ class CandidateProcessInput(StrictFrozenRecord):
 def submit_workflows(requests: Sequence[WorkflowRequest]) -> int:
     """Submit independent workflows as isolated one-GPU steps in one Slurm job."""
 
-    identities = tuple(_workflow_identity(request) for request in requests)
-    if len(set(identities)) != len(identities):
-        raise ValueError("workflow identities must be unique within an allocation")
     return _submit_allocation(requests, "workflow")
 
 
 def submit_candidates(candidates: Sequence[CandidateProcessInput]) -> int:
     """Submit independent candidates as isolated one-GPU steps in one Slurm job."""
 
-    slots = tuple((candidate.request.study_id, candidate.method_index) for candidate in candidates)
-    if len(set(slots)) != len(slots):
-        raise ValueError("candidate slots must be unique within an allocation")
     return _submit_allocation(candidates, "candidate")
 
 
@@ -144,14 +137,6 @@ for pid in "${{pids[@]}}"; do
 done
 exit "$status"
 """
-
-
-def _workflow_identity(request: WorkflowRequest) -> tuple[str, UUID]:
-    match request:
-        case TrainRequest():
-            return request.workflow, request.artifact_id
-        case EvaluateRequest():
-            return request.workflow, request.evaluation_id
 
 
 def _scaled_gres(gres: str, count: int) -> str:

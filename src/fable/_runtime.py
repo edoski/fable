@@ -27,5 +27,4 @@ def data_loader(dataset: Dataset[_Item], *, batch_size: int, shuffle: bool) -> D
 
 def configure_torch() -> None:
     torch.set_float32_matmul_precision("high")
-    torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True

@@ -17,8 +17,8 @@ from .modeling import run_candidate, train
 from .study import publish_study
 
 app = typer.Typer(add_completion=False)
-remote_app = typer.Typer(add_completion=False)
-study_app = typer.Typer(add_completion=False)
+remote_app = typer.Typer()
+study_app = typer.Typer()
 app.add_typer(remote_app, name="remote", hidden=True)
 app.add_typer(study_app, name="study")
 
@@ -41,7 +41,7 @@ def submit_command(
 
 @remote_app.command("workflow")
 def workflow_command() -> None:
-    request = WORKFLOW_REQUEST_ADAPTER.validate_json(sys.stdin.buffer.read(), strict=True)
+    request = WORKFLOW_REQUEST_ADAPTER.validate_json(sys.stdin.buffer.read())
     storage_root = _resolve_storage_root()
 
     if isinstance(request, TrainRequest):

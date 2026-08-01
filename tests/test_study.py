@@ -154,18 +154,6 @@ def test_publish_study_rejects_mismatched_result_request(tmp_path: Path) -> None
     assert not study_json_path(tmp_path, STUDY_ID).exists()
 
 
-def test_publish_study_rejects_result_for_wrong_file_index(tmp_path: Path) -> None:
-    request = _request((LSTM_METHOD, OTHER_LSTM_METHOD))
-    retain_result(tmp_path, request, 0, RESULT)
-    scratch = tmp_path / "studies" / f".{STUDY_ID}"
-    (scratch / "result-1.json").write_bytes((scratch / "result-0.json").read_bytes())
-
-    with pytest.raises(ValueError, match="result method index does not match file index"):
-        publish_study(tmp_path, STUDY_ID)
-
-    assert not study_json_path(tmp_path, STUDY_ID).exists()
-
-
 def test_load_selected_method_rejects_corpus_mismatch(tmp_path: Path) -> None:
     canonical = study_json_path(tmp_path, STUDY_ID)
     canonical.parent.mkdir(parents=True)

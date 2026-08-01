@@ -63,7 +63,7 @@ def _raw_feature_rows(
         if predecessor_blocks and feature_name != "block_interval_seconds":
             values = values[predecessor_blocks:]
         columns.append(values)
-    return np.ascontiguousarray(np.column_stack(columns), dtype=np.float64)
+    return np.column_stack(columns)
 
 
 def _feature_values(
@@ -154,19 +154,20 @@ class HistoricalDataset(Dataset[_HistoricalItem]):
     def __init__(
         self,
         backing: _HistoricalBacking,
-        first_origin_row: int,
-        labels: _IntVector,
-        targets: NDArray[np.float32],
-        *,
-        context_blocks: int,
-        horizon_blocks: int,
+        experiment: ExperimentSemantics,
+        window: BlockWindow,
+        target_state: TargetState,
     ) -> None:
+        origin_rows = _origin_rows(backing, window)
+        labels, minima = _minimum_outcomes(
+            backing.base_fees.numpy(), origin_rows, horizon_blocks=experiment.horizon_blocks
+        )
         self._backing = backing
-        self._first_origin_row = first_origin_row
+        self._first_origin_row = int(origin_rows[0])
         self._labels = torch.from_numpy(labels)
-        self._targets = torch.from_numpy(targets)
-        self._context_blocks = context_blocks
-        self._horizon_blocks = horizon_blocks
+        self._targets = torch.from_numpy(standardize_target(minima, target_state))
+        self._context_blocks = experiment.context_blocks
+        self._horizon_blocks = experiment.horizon_blocks
 
     def __len__(self) -> int:
         return len(self._labels)
@@ -221,8 +222,8 @@ def prepare_fit_history(
     target_state = fit_target_state(training_minima)
 
     return HistoricalPreparation(
-        training=_build_dataset(backing, experiment, training_window, target_state),
-        validation=_build_dataset(backing, experiment, validation_window, target_state),
+        training=HistoricalDataset(backing, experiment, training_window, target_state),
+        validation=HistoricalDataset(backing, experiment, validation_window, target_state),
         feature_state=feature_state,
         target_state=target_state,
     )
@@ -250,7 +251,7 @@ def prepare_historical_window(
         ordered_features=experiment.ordered_features,
         feature_state=feature_state,
     )
-    return _build_dataset(backing, experiment, window, target_state)
+    return HistoricalDataset(backing, experiment, window, target_state)
 
 
 def _build_backing(
@@ -297,23 +298,3 @@ def _minimum_outcomes(
         labels[start:stop] = outcomes.argmin(axis=1)
         minima[start:stop] = outcomes.min(axis=1)
     return labels, minima
-
-
-def _build_dataset(
-    backing: _HistoricalBacking,
-    experiment: ExperimentSemantics,
-    window: BlockWindow,
-    target_state: TargetState,
-) -> HistoricalDataset:
-    origin_rows = _origin_rows(backing, window)
-    labels, minima = _minimum_outcomes(
-        backing.base_fees.numpy(), origin_rows, horizon_blocks=experiment.horizon_blocks
-    )
-    return HistoricalDataset(
-        backing,
-        int(origin_rows[0]),
-        labels,
-        standardize_target(minima, target_state),
-        context_blocks=experiment.context_blocks,
-        horizon_blocks=experiment.horizon_blocks,
-    )

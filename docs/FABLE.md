@@ -620,9 +620,17 @@ The selected epoch cannot exceed completed epochs. The enclosing Study requires 
 
 #### Indexed results and publication
 
-Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary sibling. Each private result envelope carries the full request, method index, and retained metrics.
+Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary
+sibling. Each private result envelope carries the full request and retained metrics. Its canonical
+filename owns the Method index; the private loader ignores the retired embedded `method_index`
+field in active-campaign scratch written by an earlier executable.
 
-`publish_study(storage_root, study_id)` requires exactly `result-0.json` through `result-(N-1).json` for the request taken from the first result. All files must carry the identical request and an embedded index matching the filename. Publication assembles metrics in `request.methods` order at `studies/.<study_id>/study.json`, creates `studies/<study_id>.json` directly with `os.link()`, then removes scratch. An occupied canonical path makes the link fail without overwrite. Failed cleanup after a successful link can leave scratch beside the valid canonical Study.
+`publish_study(storage_root, study_id)` requires exactly `result-0.json` through
+`result-(N-1).json` for the request taken from the first result. All files must carry the identical
+request. Publication assembles metrics in filename and `request.methods` order at
+`studies/.<study_id>/study.json`, creates `studies/<study_id>.json` directly with `os.link()`, then
+removes scratch. An occupied canonical path makes the link fail without overwrite. Failed cleanup
+after a successful link can leave scratch beside the valid canonical Study.
 
 #### Selected training
 
@@ -944,8 +952,8 @@ Each allocation contains one to three processes and requests one node and one ta
 CPU allotment, and memory allotment per process input. Each process runs as an exclusive exact
 `srun` step, sees one GPU, receives one strict stdin record, and writes
 `<job_id>-<slot>.out` for every allocation size; `%j.out` remains the allocation log. The parent
-waits for every step and fails if any step fails. Candidate Study slots and workflow durable
-identities must be unique within an allocation.
+waits for every step and fails if any step fails. Experiment authors own unique workflow
+destinations and candidate Method indices before submission.
 
 Allocations change to `storage_root`, export `STORAGE_ROOT`, and run the immutable Apptainer image
 with NVIDIA support. The image dispatches `fable remote workflow` or `fable remote candidate`.
@@ -988,8 +996,9 @@ real-artifact acceptance boundary.
 The internal installed-executable profile fits LSTMs in `32-true`, Transformers in BF16 mixed
 precision, and Transformer-LSTMs in BF16 with their recurrent layer in float32. It also fixes fit
 batch size 64 and evaluation batch size 512; four persistent pinned-memory loader workers with
-prefetch factor 2; `high` float32 matrix-multiplication precision; and CUDA matmul and cuDNN TF32
-for float32 operations. Each fit calls `seed_everything(seed)` once. Lightning owns deterministic
+prefetch factor 2; `high` float32 matrix-multiplication precision, which owns CUDA matmul TF32; and
+a separate cuDNN TF32 flag for float32 operations. Each fit calls `seed_everything(seed)` once.
+Lightning owns deterministic
 setup through `Trainer(deterministic=True)` and norm clipping through the configured
 `gradient_clip_norm`; shuffled loading uses the seeded global Torch RNG. These are code facts, not
 request, schema, YAML, or public configuration surfaces.

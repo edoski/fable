@@ -9,7 +9,6 @@ import pytest
 from pydantic import ValidationError
 
 import fable.cli as cli
-import fable.execution as execution
 from fable.cli import app
 from fable.config import (
     EvaluateRequest,
@@ -108,19 +107,6 @@ def test_submit_workflows_sends_golden_single_workflow_script(
         "stdout": subprocess.PIPE,
         "check": True,
     }
-
-
-def test_submit_workflows_rejects_duplicate_durable_identities() -> None:
-    first = _request("train")
-    second = first.model_copy(
-        update={
-            "source": first.source.model_copy(
-                update={"study_id": UUID("00000000-0000-4000-8000-000000000006")}
-            )
-        }
-    )
-    with pytest.raises(ValueError, match="workflow identities must be unique"):
-        execution.submit_workflows((first, second))
 
 
 @pytest.mark.parametrize("workflow", ["train", "evaluate"])

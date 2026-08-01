@@ -101,18 +101,6 @@ def test_submit_candidates_scales_three_gpu_allocation_and_preserves_payload_ord
         assert f"--error=/remote/logs/${{SLURM_JOB_ID}}-{slot}.out" in script
 
 
-def test_submit_candidates_rejects_duplicate_study_slots() -> None:
-    first = CandidateProcessInput(request=REQUEST, method_index=0)
-    second = CandidateProcessInput(
-        request=REQUEST.model_copy(
-            update={"corpus_id": UUID("20000000-0000-4000-8000-000000000002")}
-        ),
-        method_index=0,
-    )
-    with pytest.raises(ValueError, match="candidate slots must be unique"):
-        execution.submit_candidates((first, second))
-
-
 def test_remote_candidate_dispatches_input(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = json.dumps(
         {"request": REQUEST.model_dump(mode="json"), "method_index": 0}, separators=(",", ":")

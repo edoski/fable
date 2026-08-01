@@ -170,21 +170,17 @@ class _TransformerModel(nn.Module):
             layers=definition.transformer_layers,
             dropout=definition.dropout,
         )
-        self.lstm = (
-            _lstm(
+        if isinstance(definition, TransformerLstmDefinition):
+            self.lstm = _lstm(
                 input_width=definition.model_width,
                 hidden=definition.lstm_hidden,
                 layers=definition.lstm_layers,
                 dropout=definition.dropout,
             )
-            if isinstance(definition, TransformerLstmDefinition)
-            else None
-        )
-        output_width = (
-            definition.lstm_hidden
-            if isinstance(definition, TransformerLstmDefinition)
-            else definition.model_width
-        )
+            output_width = definition.lstm_hidden
+        else:
+            self.lstm = None
+            output_width = definition.model_width
         self.heads = _Heads(output_width, definition.head_hidden, actions, definition.dropout)
 
     def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
@@ -221,11 +217,6 @@ class _FitModule(pl.LightningModule):
     def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
         return self.model(inputs)
 
-    def _loss(self, batch: Mapping[str, torch.Tensor]) -> torch.Tensor:
-        return min_block_fee_loss(
-            self(batch["inputs"]), label=batch["label"], target=batch["target"]
-        )
-
     def _log_epoch(self, name: str, values: torch.Tensor) -> None:
         self.log(
             name,
@@ -238,7 +229,9 @@ class _FitModule(pl.LightningModule):
 
     def training_step(self, batch: Mapping[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         del batch_idx
-        loss_by_origin = self._loss(batch)
+        loss_by_origin = min_block_fee_loss(
+            self(batch["inputs"]), label=batch["label"], target=batch["target"]
+        )
         self._log_epoch("training_total_loss", loss_by_origin)
         return loss_by_origin.mean()
 

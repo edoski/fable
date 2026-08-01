@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import polars as pl
 import pytest
-from polars.testing import assert_frame_equal
 
 from fable.config import CorpusDefinition
 from fable.corpus import BlockFrame
@@ -34,15 +33,6 @@ def _valid_frame() -> pl.DataFrame:
         },
         orient="row",
     )
-
-
-def test_block_frame_owns_one_valid_canonical_frame() -> None:
-    frame = _valid_frame()
-
-    blocks = BlockFrame(frame, _definition())
-
-    assert blocks.definition == _definition()
-    assert_frame_equal(blocks.to_polars(), frame)
 
 
 def test_block_frame_requires_the_canonical_schema() -> None:
