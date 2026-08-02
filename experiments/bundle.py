@@ -43,14 +43,32 @@ def open_bundle(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -
 
 
 def write_tune_cells(bundle: Path, cells: Iterable[tuple[str, TuneRequest]]) -> None:
+    _write_tune_cells(bundle, cells, mode="x")
+
+
+def append_tune_cells(bundle: Path, cells: Iterable[tuple[str, TuneRequest]]) -> None:
+    _write_tune_cells(bundle, cells, mode="a")
+
+
+def _write_tune_cells(
+    bundle: Path, cells: Iterable[tuple[str, TuneRequest]], *, mode: Literal["a", "x"]
+) -> None:
+    cells = tuple(cells)
+    existing = read_cells(bundle) if mode == "a" else []
+    existing_cells = {row["cell"] for row in existing}
+    new_cells = [cell for cell, _ in cells]
+    if len(set(new_cells)) != len(new_cells) or existing_cells & set(new_cells):
+        raise ValueError("experiment cells must be new and unique")
+
+    request_index = len(dict.fromkeys(row["request"] for row in existing))
     rows: list[tuple[str, Path, int, UUID]] = []
-    for index, (cell, request) in enumerate(cells):
+    for index, (cell, request) in enumerate(cells, start=request_index):
         request_path = _write_request(bundle, index, request)
         rows.extend(
             (cell, request_path, method_index, request.study_id)
             for method_index in range(len(request.methods))
         )
-    _write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
+    _write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows, mode=mode)
 
 
 def write_train_cells(bundle: Path, cells: Iterable[tuple[str, TrainRequest]]) -> None:
@@ -75,10 +93,17 @@ def _write_request(bundle: Path, index: int, request: BundleRequest) -> Path:
     return path
 
 
-def _write_cells(bundle: Path, header: Sequence[str], rows: Iterable[Sequence[object]]) -> None:
-    with (bundle / "cells.tsv").open("x", newline="", encoding="utf-8") as destination:
+def _write_cells(
+    bundle: Path,
+    header: Sequence[str],
+    rows: Iterable[Sequence[object]],
+    *,
+    mode: Literal["a", "x"] = "x",
+) -> None:
+    with (bundle / "cells.tsv").open(mode, newline="", encoding="utf-8") as destination:
         writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
-        writer.writerow(header)
+        if mode == "x":
+            writer.writerow(header)
         writer.writerows(rows)
 
 

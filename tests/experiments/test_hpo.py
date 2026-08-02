@@ -112,8 +112,9 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         )
         for family in ("lstm", "transformer", "transformer_lstm")
     }
+    ready_rows = [row for row in c_rows if not row["cell"].startswith("avalanche.")]
     publish_generated_studies(
-        tmp_path, c_rows, default_objective=1.0, objectives=context_objectives
+        tmp_path, ready_rows, default_objective=1.0, objectives=context_objectives
     )
     control_row = next(row for row in c_rows if row["cell"] == "ethereum.lstm.C50")
     control_path = tmp_path / "studies" / f"{control_row['study_id']}.json"
@@ -141,6 +142,30 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         ).model_dump_json(),
         encoding="utf-8",
     )
+
+    result = run_script(
+        _HPO_SCRIPT,
+        "prepare",
+        tmp_path,
+        c_experiment_id,
+        "--chain",
+        "ethereum",
+        "--chain",
+        "polygon",
+    )
+    experiment_id = UUID(result.stdout.strip())
+    assert result.stderr.splitlines() == ["ethereum\t50\t0.25", "polygon\t100\t0.5"]
+    bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
+    assert len(read_tsv_rows(bundle / "cells.tsv")) == 54
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_script(_HPO_SCRIPT, "select", tmp_path, experiment_id)
+    assert "HPO roster is incomplete" in error.value.stderr
+
+    avalanche_rows = [row for row in c_rows if row["cell"].startswith("avalanche.")]
+    publish_generated_studies(
+        tmp_path, avalanche_rows, default_objective=1.0, objectives=context_objectives
+    )
     c_result = run_script(_C_SCRIPT, "close", tmp_path, c_experiment_id)
     c_canonical = tmp_path / "experiments" / "c_study" / str(c_experiment_id)
     c_manifest = ExperimentManifest.model_validate_json(
@@ -155,14 +180,11 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     assert {path.name for path in c_canonical.iterdir()} == {"manifest.json"}
     assert not c_bundle.exists()
 
-    result = run_script(_HPO_SCRIPT, "prepare", tmp_path, c_experiment_id)
-    experiment_id = UUID(result.stdout.strip())
-    assert result.stderr.splitlines() == [
-        "ethereum\t50\t0.25",
-        "polygon\t100\t0.5",
-        "avalanche\t200\t0.75",
-    ]
-    bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
+    result = run_script(
+        _HPO_SCRIPT, "extend", tmp_path, c_experiment_id, experiment_id, "--chain", "avalanche"
+    )
+    assert result.stdout.strip() == str(experiment_id)
+    assert result.stderr.splitlines() == ["avalanche\t200\t0.75"]
     rows = read_tsv_rows(bundle / "cells.tsv")
     requests = {
         row["cell"]: TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
