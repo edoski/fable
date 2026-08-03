@@ -43,9 +43,9 @@ def render(storage_root: Path, experiment_id: UUID, output_directory: Path) -> P
         contexts_by_chain[chain].add(context)
         objectives[chain, family, context] = study.trials[0].objective
 
-    figure, axes = subplots(1, len(chains), height=2.5)
-    for column, chain in enumerate(chains):
-        axis = axes[0, column]
+    figure, axes = subplots(len(chains), 1, height=5.2)
+    for row, chain in enumerate(chains):
+        axis = axes[row, 0]
         contexts = sorted(contexts_by_chain[chain])
         for family in families_by_chain[chain]:
             missing = [
@@ -61,13 +61,17 @@ def render(storage_root: Path, experiment_id: UUID, output_directory: Path) -> P
                 marker=marker,
                 label=display_name(family),
             )
-        axis.set_title(display_name(chain))
-        axis.set_xlabel("Context blocks C")
+        axis.set_title(display_name(chain), loc="left")
+        axis.set_xscale("log", base=2)
         axis.set_xticks(contexts)
-        if column == 0:
-            axis.set_ylabel("Cost over optimum (%)")
+        axis.set_xticklabels([str(context) for context in contexts])
+        if row < len(chains) - 1:
+            axis.tick_params(axis="x", labelbottom=False)
+        else:
+            axis.set_xlabel("Context blocks C")
 
     add_family_legend(figure, axes[0, 0])
+    figure.supylabel("Cost over optimum (%)", fontsize=8)
     path = save_pdf(figure, output_directory / "context-study.pdf")
     print(path)
     return path

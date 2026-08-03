@@ -7,15 +7,10 @@ from collections import defaultdict
 from pathlib import Path
 from uuid import UUID
 
+import matplotlib as mpl
 import numpy as np
-from figure_style import (
-    DEFAULT_OUTPUT_DIRECTORY,
-    add_family_legend,
-    display_name,
-    family_style,
-    save_pdf,
-    subplots,
-)
+from figure_style import DEFAULT_OUTPUT_DIRECTORY, display_name, save_pdf, subplots
+from matplotlib.colors import TwoSlopeNorm
 
 from fable.experiments import ExperimentKind, load_experiment_manifest
 from fable.study import load_study
@@ -28,12 +23,27 @@ def _objective(storage_root: Path, study_id: UUID) -> float:
     return study.trials[0].objective
 
 
-def _configuration_label(configuration: str) -> str:
-    if configuration == "base_only":
-        return "Base fee only"
-    if configuration.startswith("without_"):
-        return f"Without {display_name(configuration.removeprefix('without_')).lower()}"
-    return display_name(configuration)
+_FEATURE_LABELS = {
+    "base_fee": "Base fee",
+    "gas_utilization": "Gas utilization",
+    "exact_forming_base_fee": "Forming base fee",
+    "gas_limit": "Gas limit",
+    "transaction_count": "Transaction count",
+    "block_interval": "Block interval",
+    "hour": "UTC hour",
+    "day_of_week": "UTC day of week",
+    "priority_fee_p50": "Priority-fee P50",
+    "priority_fee_p90": "Priority-fee P90",
+}
+
+
+def _feature_label(configuration: str) -> str:
+    feature = configuration.removeprefix("without_")
+    return _FEATURE_LABELS.get(feature, display_name(feature))
+
+
+def _family_label(family: str) -> str:
+    return "Hybrid" if family == "transformer_lstm" else display_name(family)
 
 
 def render(storage_root: Path, experiment_id: UUID, output_directory: Path) -> Path:
@@ -57,9 +67,11 @@ def render(storage_root: Path, experiment_id: UUID, output_directory: Path) -> P
             families_by_chain[chain].append(family)
         if configuration != "full" and configuration not in configurations_by_chain[chain]:
             configurations_by_chain[chain].append(configuration)
-        if configuration != "full" and configuration not in configurations:
+        if configuration.startswith("without_") and configuration not in configurations:
             configurations.append(configuration)
         objectives[chain, family, configuration] = _objective(storage_root, study_id)
+
+    configurations.sort(key=lambda value: value == "without_exact_forming_base_fee")
 
     for chain in chains:
         expected = ("full", *configurations_by_chain[chain])
@@ -72,34 +84,72 @@ def render(storage_root: Path, experiment_id: UUID, output_directory: Path) -> P
             if missing:
                 raise ValueError(f"{chain}.{family} lacks configurations {missing}")
 
-    figure, axes = subplots(1, len(chains), height=4.6)
+    deltas = np.full(
+        (len(chains), len(configurations), max(map(len, families_by_chain.values()))), np.nan
+    )
+    for chain_index, chain in enumerate(chains):
+        for family_index, family in enumerate(families_by_chain[chain]):
+            baseline = objectives[chain, family, "full"]
+            for configuration_index, configuration in enumerate(configurations):
+                if configuration in configurations_by_chain[chain]:
+                    deltas[chain_index, configuration_index, family_index] = 100.0 * (
+                        objectives[chain, family, configuration] - baseline
+                    )
+
+    finite = deltas[np.isfinite(deltas)]
+    if finite.size == 0:
+        raise ValueError("feature-ablation manifest contains no omission cells")
+    limit = float(np.max(np.abs(finite)))
+    norm = TwoSlopeNorm(vmin=-limit, vcenter=0.0, vmax=limit)
+    colormap = mpl.colormaps["RdBu_r"].copy()
+    colormap.set_bad("#F2F2F2")
+
+    figure, axes = subplots(1, len(chains), height=4.0)
+    image = None
     for column, chain in enumerate(chains):
         axis = axes[0, column]
         families = families_by_chain[chain]
-        positions = np.arange(len(configurations), dtype=float)
-        width = 0.8 / len(families)
-        for family_index, family in enumerate(families):
-            baseline = objectives[chain, family, "full"]
-            deltas = [
-                100.0 * (objectives[chain, family, configuration] - baseline)
-                if configuration in configurations_by_chain[chain]
-                else np.nan
-                for configuration in configurations
-            ]
-            color, _ = family_style(family)
-            offset = (family_index - (len(families) - 1) / 2.0) * width
-            axis.barh(
-                positions + offset, deltas, height=width, color=color, label=display_name(family)
-            )
-        axis.axvline(0.0, color="#333333", linewidth=0.7)
+        image = axis.imshow(
+            deltas[column, :, : len(families)], aspect="auto", cmap=colormap, norm=norm
+        )
         axis.set_title(display_name(chain))
-        axis.set_yticks(positions, [_configuration_label(value) for value in configurations])
-        axis.invert_yaxis()
-        axis.set_xlabel("Δ Cost over optimum (pp)")
+        axis.set_xticks(
+            range(len(families)),
+            [_family_label(value) for value in families],
+            rotation=30,
+            ha="right",
+            rotation_mode="anchor",
+        )
+        axis.set_yticks(
+            range(len(configurations)), [_feature_label(value) for value in configurations]
+        )
         if column > 0:
             axis.tick_params(axis="y", labelleft=False)
+        axis.grid(False)
+        axis.set_xticks(np.arange(-0.5, len(families), 1), minor=True)
+        axis.set_yticks(np.arange(-0.5, len(configurations), 1), minor=True)
+        axis.grid(which="minor", color="white", linewidth=0.8)
+        axis.tick_params(which="minor", bottom=False, left=False)
+        for configuration_index, configuration in enumerate(configurations):
+            if configuration not in configurations_by_chain[chain]:
+                for family_index in range(len(families)):
+                    axis.text(
+                        family_index,
+                        configuration_index,
+                        "N/A",
+                        ha="center",
+                        va="center",
+                        color="#666666",
+                        fontsize=6,
+                    )
 
-    add_family_legend(figure, axes[0, 0])
+    assert image is not None
+    colorbar = figure.colorbar(
+        image, ax=axes.ravel().tolist(), orientation="horizontal", shrink=0.72, aspect=35, pad=0.08
+    )
+    colorbar.set_label(
+        "Better (lower cost)  ←  change from full contract (pp)  →  Worse (higher cost)"
+    )
     path = save_pdf(figure, output_directory / "feature-ablation.pdf")
     print(path)
     return path
