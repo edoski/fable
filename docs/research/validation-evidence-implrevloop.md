@@ -1,6 +1,6 @@
 # Validation evidence and experiment refresh implementation-review ledger
 
-Status: approved; superseded campaign archived, Slice 1 ready
+Status: Slice 1 green; Slice 2 ready
 
 This ledger standardizes validation evidence across model-selection stages, extends the context
 study below 25 blocks, and defines the clean rerun sequence. Cost over optimum remains the sole
@@ -94,6 +94,10 @@ metric definitions. No stage-specific metric implementation is allowed.
 
 ### Context study
 
+Stage 1 uses `C=25` as its reference geometry. Stage 2 reuses those nine exact selected-feature
+Studies, then evaluates the remaining contexts. Stage 3 and later stages use the context selected
+for each chain by Stage 2.
+
 The frozen context roster is:
 
 `C = {1, 2, 3, 4, 5, 10, 15, 20, 25, 50, 100, 200, 400}`.
@@ -150,7 +154,21 @@ shims. Old experiments are archived before replacement.
 
 ## Slice 1 — Canonical fit evidence and shared reduction
 
-Status: ready
+Status: green
+
+### Implementation and review record
+
+- Baseline: `354a15a182cd706cbdaf01390e6cc3a9d7036b33`
+- Implementation: `f6f018f2bea762a9affb41d514f4ea4256fd7942`
+- Correction: `077584553fecfff4bd44e453fdb703ac902649bf`
+- Implementer: `/root/slice1_validation_evidence`
+- Reviewer: `/root/slice1_review`, with independent Standards and Spec axes
+- Initial review: rejected for a held-out precision regression, missing artifact epoch provenance,
+  and an omitted macro-F1 formula.
+- Correction review: `GREEN LIGHT`; zero actionable Standards or Spec findings. Held-out inference
+  remains FP32, selected-fit validation uses the established family precision, and artifact
+  checkpoint, observations, and compact result provenance publish atomically.
+- Verification: 110 tests passed; Pyright, Vulture, changed-file Ruff/format, and diff check clean.
 
 ### Scope
 
@@ -211,12 +229,12 @@ until `GREEN LIGHT`.
 
 ## Slice 2 — Stage protocol, lower contexts, and reporting
 
-Status: blocked on Slice 1 green
+Status: ready
 
 ### Scope
 
 - Expand Stage 2 to the fixed 13-context roster.
-- Reuse the nine exact new Stage 1 selected-feature `C=100` Studies; author the other 108 Stage 2
+- Reuse the nine exact new Stage 1 selected-feature `C=25` Studies; author the other 108 Stage 2
   fits.
 - Select the smallest context within the tentative 5% relative chain-mean tolerance, with smaller
   context as the tie-break.
@@ -243,7 +261,7 @@ choice directly and every candidate retains the same validation evidence.
 ### Checks
 
 - Exact contexts and 117-cell Stage 2 roster.
-- Exact reuse of nine `C=100` Study IDs and 108 newly authored fits.
+- Exact reuse of nine `C=25` Study IDs and 108 newly authored fits.
 - Three-family equal-weight means, relative tolerance, deterministic smaller-context tie-break,
   unconstrained-best reporting, and full-curve availability.
 - Nine Stage 3 Studies, 81 unique methods, strict source chain/family/context alignment.
@@ -290,7 +308,7 @@ Never delete corpora.
 
 ### Phase 2 — Expanded Stage 2
 
-- Reuse the nine exact Stage 1 `C=100` Studies.
+- Reuse the nine exact Stage 1 `C=25` Studies.
 - Run 108 new fits for the other 12 contexts across three chains and three architectures.
 - Close one 117-cell manifest, reduce the complete metric table, and freeze the selected context per
   chain under the approved tolerance.
