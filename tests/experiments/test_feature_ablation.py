@@ -52,7 +52,7 @@ def test_prepare_authors_full_leave_one_out_and_base_only_matrix(
     assert requests[0].experiment.model_dump() == {
         "training_window": {"first_parent_block": 23_936_094, "last_parent_block": 25_118_158},
         "validation_window": {"first_parent_block": 25_118_359, "last_parent_block": 25_268_763},
-        "context_blocks": 100,
+        "context_blocks": 25,
         "horizon_blocks": 5,
         "ordered_features": (
             "log_base_fee_per_gas",
@@ -99,7 +99,7 @@ def test_prepare_authors_full_leave_one_out_and_base_only_matrix(
     )
 
 
-def test_close_publishes_all_studies_and_report_averages_each_configuration(tmp_path: Path) -> None:
+def test_close_publishes_all_studies_and_reports_shared_validation_metrics(tmp_path: Path) -> None:
     experiment_id = UUID(run_script(_SCRIPT, "prepare", tmp_path).stdout.strip())
     bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
     objectives = {
@@ -132,11 +132,26 @@ def test_close_publishes_all_studies_and_report_averages_each_configuration(tmp_
 
     report = run_script(_SCRIPT, "report", tmp_path, experiment_id)
     lines = report.stdout.splitlines()
-    assert len(lines) == 34
-    assert lines[0] == "ethereum\tfull\t1"
-    assert lines[7] == "ethereum\twithout_hour\t0.75"
-    assert lines[21] == "polygon\twithout_priority_fee_p90\t0.5"
-    assert lines[-1] == "avalanche\tbase_only\t0.25"
+    assert len(lines) == 103
+    assert lines[0].split("\t") == [
+        "cell",
+        "method_index",
+        "accuracy",
+        "f1_macro",
+        "log_fee_mae",
+        "log_fee_mse",
+        "base_fee_savings",
+        "p50_fee_inclusive_savings",
+        "base_fee_optimality_gap",
+        "mean_immediate_base_fee_gwei",
+        "mean_selected_base_fee_gwei",
+        "mean_minimum_base_fee_gwei",
+        "mean_selected_minus_minimum_base_fee_gwei",
+    ]
+    assert lines[1].split("\t")[:2] == ["ethereum.lstm.full", "0"]
+    assert float(lines[1].split("\t")[8]) == 1.0
+    assert lines[-1].split("\t")[:2] == ["avalanche.transformer_lstm.base_only", "0"]
+    assert float(lines[-1].split("\t")[8]) == 0.25
 
 
 def test_close_rejects_existing_canonical_bundle_without_changing_scratch(tmp_path: Path) -> None:

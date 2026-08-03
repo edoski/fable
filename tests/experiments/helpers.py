@@ -26,7 +26,7 @@ def publish_test_study(storage_root: Path, study: Study) -> None:
         checkpoint = study_trial_checkpoint_path(storage_root, study.request.study_id, index)
         checkpoint.parent.mkdir(parents=True)
         checkpoint.touch()
-        minimum = 100
+        minimum = 1_000_000
         selected = minimum + round(minimum * result.objective)
         pl.DataFrame(
             [

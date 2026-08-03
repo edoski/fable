@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from itertools import product
-from pathlib import Path
-from statistics import fmean
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -13,13 +11,14 @@ from bundle import (
     StorageRoot,
     append_tune_cells,
     bundle_path,
-    load_roster,
     open_bundle,
+    print_study_metrics,
     publish_bundle,
     read_cells,
     run,
     write_tune_cells,
 )
+from c_study import report_context_selections, selected_context_studies
 
 from fable.config import (
     LstmDefinition,
@@ -98,32 +97,6 @@ def _methods(control: Method) -> tuple[Method, ...]:
     )
 
 
-def _selected_context_studies(
-    storage_root: Path, experiment_id: UUID, chains: tuple[str, ...]
-) -> tuple[dict[tuple[str, str], Study], tuple[tuple[str, int, float], ...]]:
-    roster = load_roster(storage_root, ExperimentKind.C_STUDY, experiment_id, "study_id")
-    studies: dict[tuple[str, str, int], Study] = {}
-    objectives: dict[tuple[str, int], list[float]] = {}
-    for cell, study_id in roster.items():
-        chain, family, context_label = cell.split(".")
-        if chain not in chains:
-            continue
-        context = int(context_label.removeprefix("C"))
-        study = load_study(storage_root, study_id)
-        studies[chain, family, context] = study
-        objectives.setdefault((chain, context), []).append(study.trials[0].objective)
-
-    selected: dict[tuple[str, str], Study] = {}
-    winners: list[tuple[str, int, float]] = []
-    for chain in chains:
-        contexts = {context for candidate_chain, _, context in studies if candidate_chain == chain}
-        winner = min(contexts, key=lambda context: (fmean(objectives[chain, context]), context))
-        winners.append((chain, winner, fmean(objectives[chain, winner])))
-        for family in _FAMILIES:
-            selected[chain, family] = studies[chain, family, winner]
-    return selected, tuple(winners)
-
-
 def _chains(values: list[str] | None) -> tuple[str, ...]:
     chains = tuple(values) if values else _CHAINS
     if len(set(chains)) != len(chains) or not set(chains) <= set(_CHAINS):
@@ -146,11 +119,6 @@ def _cells(
     return cells
 
 
-def _report(context_winners: tuple[tuple[str, int, float], ...]) -> None:
-    for chain, context, mean in context_winners:
-        typer.echo(f"{chain}\t{context}\t{mean:g}", err=True)
-
-
 def prepare(
     storage_root: StorageRoot,
     c_experiment_id: UUID,
@@ -158,11 +126,11 @@ def prepare(
 ) -> None:
     experiment_id = uuid4()
     chains = _chains(chain)
-    selected, context_winners = _selected_context_studies(storage_root, c_experiment_id, chains)
+    selected, context_winners = selected_context_studies(storage_root, c_experiment_id, chains)
     bundle = open_bundle(storage_root, _KIND, experiment_id)
     write_tune_cells(bundle, _cells(selected, chains))
 
-    _report(context_winners)
+    report_context_selections(context_winners)
     print(experiment_id)
 
 
@@ -173,10 +141,10 @@ def extend(
     chain: Annotated[list[str], typer.Option("--chain")],
 ) -> None:
     chains = _chains(chain)
-    selected, context_winners = _selected_context_studies(storage_root, c_experiment_id, chains)
+    selected, context_winners = selected_context_studies(storage_root, c_experiment_id, chains)
     append_tune_cells(bundle_path(storage_root, _KIND, experiment_id), _cells(selected, chains))
 
-    _report(context_winners)
+    report_context_selections(context_winners)
     print(experiment_id)
 
 
@@ -199,5 +167,9 @@ def select(storage_root: StorageRoot, experiment_id: UUID) -> None:
         print(f"{cell}\t{selected_index}\t{result.objective:g}")
 
 
+def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
+    print_study_metrics(storage_root, _KIND, experiment_id)
+
+
 if __name__ == "__main__":
-    run(prepare, extend, select)
+    run(prepare, extend, select, report)

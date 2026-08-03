@@ -52,7 +52,7 @@ def test_context_study_selects_chain_mean_winners_and_reuses_reference_studies(
     ]
     bundle = tmp_path / "experiments" / "c_study" / f".{experiment_id}"
     rows = read_tsv_rows(bundle / "cells.tsv")
-    assert len(rows) == 45
+    assert len(rows) == 117
 
     feature_studies = {row["cell"]: row["study_id"] for row in feature_rows}
     selected_configurations = {
@@ -65,10 +65,11 @@ def test_context_study_selects_chain_mean_winners_and_reuses_reference_studies(
         for chain, configuration in selected_configurations.items()
         for family in ("lstm", "transformer", "transformer_lstm")
     }
-    reference_rows = [row for row in rows if row["cell"].endswith(".C100")]
-    assert {row["cell"].removesuffix(".C100"): row["study_id"] for row in reference_rows} == (
+    reference_rows = [row for row in rows if row["cell"].endswith(".C25")]
+    assert {row["cell"].removesuffix(".C25"): row["study_id"] for row in reference_rows} == (
         selected
     )
+    assert len({row["study_id"] for row in rows} - set(selected.values())) == 108
 
     requests = {
         row["cell"]: TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
@@ -107,7 +108,9 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
     feature_objectives = {
-        f"polygon.{family}.full": 0.5 for family in ("lstm", "transformer", "transformer_lstm")
+        f"{chain}.{family}.full": objective
+        for chain, objective in (("ethereum", 0.26), ("polygon", 0.55))
+        for family in ("lstm", "transformer", "transformer_lstm")
     }
     publish_generated_studies(
         tmp_path,
@@ -127,8 +130,16 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         for row in c_rows
     ]
 
-    assert len(c_rows) == 45
-    assert [row["cell"] for row in c_rows[:5]] == [
+    assert len(c_rows) == 117
+    assert [row["cell"] for row in c_rows[:13]] == [
+        "ethereum.lstm.C1",
+        "ethereum.lstm.C2",
+        "ethereum.lstm.C3",
+        "ethereum.lstm.C4",
+        "ethereum.lstm.C5",
+        "ethereum.lstm.C10",
+        "ethereum.lstm.C15",
+        "ethereum.lstm.C20",
         "ethereum.lstm.C25",
         "ethereum.lstm.C50",
         "ethereum.lstm.C100",
@@ -136,9 +147,17 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         "ethereum.lstm.C400",
     ]
     assert c_rows[-1]["cell"] == "avalanche.transformer_lstm.C400"
-    assert len({request.study_id for request in c_requests}) == 45
+    assert len({request.study_id for request in c_requests}) == 117
     assert {row["method_index"] for row in c_rows} == {"0"}
-    assert [request.experiment.context_blocks for request in c_requests[:5]] == [
+    assert [request.experiment.context_blocks for request in c_requests[:13]] == [
+        1,
+        2,
+        3,
+        4,
+        5,
+        10,
+        15,
+        20,
         25,
         50,
         100,
@@ -148,7 +167,7 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     assert c_requests[0].experiment.ordered_features[-1] == (
         "log1p_effective_priority_fee_per_gas_p90"
     )
-    assert c_requests[15].experiment.ordered_features == (
+    assert c_requests[39].experiment.ordered_features == (
         "log_base_fee_per_gas",
         "gas_utilization",
         "log_gas_limit",
@@ -164,17 +183,26 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     context_objectives = {
         f"{chain}.{family}.{context}": objective
         for chain, context, objective in (
+            ("ethereum", "C25", 0.26),
             ("ethereum", "C50", 0.25),
+            ("polygon", "C50", 0.524),
             ("polygon", "C100", 0.5),
             ("avalanche", "C200", 0.75),
         )
         for family in ("lstm", "transformer", "transformer_lstm")
     }
+    context_objectives.update(
+        {
+            "ethereum.lstm.C50": 0.1,
+            "ethereum.transformer.C50": 0.25,
+            "ethereum.transformer_lstm.C50": 0.4,
+        }
+    )
     ready_rows = [row for row in c_rows if not row["cell"].startswith("avalanche.")]
     publish_generated_studies(
         tmp_path, ready_rows, default_objective=1.0, objectives=context_objectives
     )
-    control_row = next(row for row in c_rows if row["cell"] == "ethereum.lstm.C50")
+    control_row = next(row for row in c_rows if row["cell"] == "ethereum.lstm.C25")
     control_path = study_json_path(tmp_path, UUID(control_row["study_id"]))
     control_study = Study.model_validate_json(control_path.read_bytes(), strict=True)
     control = control_study.request.methods[0]
@@ -212,7 +240,11 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         "polygon",
     )
     experiment_id = UUID(result.stdout.strip())
-    assert result.stderr.splitlines() == ["ethereum\t50\t0.25", "polygon\t100\t0.5"]
+    assert result.stderr.splitlines() == [
+        "chain\tselected_context\tselected_mean\tbest_context\tbest_mean\tthreshold",
+        "ethereum\t25\t0.26\t50\t0.25\t0.2625",
+        "polygon\t50\t0.524\t100\t0.5\t0.525",
+    ]
     bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
     assert len(read_tsv_rows(bundle / "cells.tsv")) == 54
 
@@ -231,18 +263,31 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     )
 
     assert c_result.stdout.strip() == str(c_experiment_id)
-    assert len(c_manifest.root) == 45
+    assert len(c_manifest.root) == 117
     assert [str(record_id) for record_id in c_manifest.root.values()] == [
         row["study_id"] for row in c_rows
     ]
     assert {path.name for path in c_canonical.iterdir()} == {"manifest.json"}
     assert not c_bundle.exists()
 
+    c_report = run_script(_C_SCRIPT, "report", tmp_path, c_experiment_id)
+    assert len(c_report.stdout.splitlines()) == 118
+    assert c_report.stdout.splitlines()[0].startswith("cell\tmethod_index\taccuracy\t")
+    assert c_report.stderr.splitlines() == [
+        "chain\tselected_context\tselected_mean\tbest_context\tbest_mean\tthreshold",
+        "ethereum\t25\t0.26\t50\t0.25\t0.2625",
+        "polygon\t50\t0.524\t100\t0.5\t0.525",
+        "avalanche\t200\t0.75\t200\t0.75\t0.7875",
+    ]
+
     result = run_script(
         _HPO_SCRIPT, "extend", tmp_path, c_experiment_id, experiment_id, "--chain", "avalanche"
     )
     assert result.stdout.strip() == str(experiment_id)
-    assert result.stderr.splitlines() == ["avalanche\t200\t0.75"]
+    assert result.stderr.splitlines() == [
+        "chain\tselected_context\tselected_mean\tbest_context\tbest_mean\tthreshold",
+        "avalanche\t200\t0.75\t200\t0.75\t0.7875",
+    ]
     rows = read_tsv_rows(bundle / "cells.tsv")
     requests = {
         row["cell"]: TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
@@ -263,7 +308,7 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
             if cell.startswith(f"{chain}.")
         }
         for chain in ("ethereum", "polygon", "avalanche")
-    } == {"ethereum": {50}, "polygon": {100}, "avalanche": {200}}
+    } == {"ethereum": {25}, "polygon": {50}, "avalanche": {200}}
     assert requests["ethereum.lstm"].methods[0].model.model_dump() == {
         "family": "lstm",
         "hidden": 320,
@@ -362,3 +407,9 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         dict.fromkeys(row["study_id"] for row in rows)
     )
     assert not bundle.exists()
+
+    report = run_script(_HPO_SCRIPT, "report", tmp_path, experiment_id)
+    assert len(report.stdout.splitlines()) == 82
+    assert report.stdout.splitlines()[0].startswith("cell\tmethod_index\taccuracy\t")
+    assert report.stdout.splitlines()[1].startswith("ethereum.lstm\t0\t")
+    assert report.stdout.splitlines()[-1].startswith("avalanche.transformer_lstm\t8\t")

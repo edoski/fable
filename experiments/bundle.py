@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Annotated, Literal, TypeAlias
 from uuid import UUID
 
+import polars as pl
 import typer
 
 from fable.config import EvaluateRequest, TrainRequest, TuneRequest
@@ -18,6 +19,7 @@ from fable.experiments import (
     experiment_directory,
     load_experiment_manifest,
 )
+from fable.study import load_study, reduce_study_trial
 
 StorageRoot: TypeAlias = Annotated[Path, typer.Argument(resolve_path=True)]
 BundleRequest: TypeAlias = TuneRequest | TrainRequest | EvaluateRequest
@@ -159,3 +161,15 @@ def close_bundle(
 
     publish_bundle(storage_root, kind, experiment_id, cells)
     print(experiment_id)
+
+
+def print_study_metrics(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -> None:
+    results = []
+    for cell, study_id in load_experiment_manifest(storage_root, kind, experiment_id).items():
+        study = load_study(storage_root, study_id)
+        for method_index in range(len(study.trials)):
+            metrics = reduce_study_trial(storage_root, study_id, method_index)
+            results.append(
+                pl.DataFrame({"cell": [cell], "method_index": [method_index]}).hstack(metrics)
+            )
+    print(pl.concat(results).write_csv(None, separator="\t"), end="")
