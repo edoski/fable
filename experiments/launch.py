@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 from typing import TypeVar
 
@@ -31,7 +31,20 @@ def candidates(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) 
         process_inputs.append(
             CandidateProcessInput(request=request, method_index=int(row["method_index"]))
         )
-    _launch(bundle, rows, process_inputs, submit_candidates, tasks_per_job)
+    storage_root = bundle.parents[2]
+    completed_rows = {
+        index
+        for index, row in enumerate(rows)
+        if (storage_root / "studies" / f"{row['study_id']}.json").is_file()
+    }
+    _launch(
+        bundle,
+        rows,
+        process_inputs,
+        submit_candidates,
+        tasks_per_job,
+        completed_rows=completed_rows,
+    )
 
 
 def workflows(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) -> None:
@@ -50,6 +63,7 @@ def _launch(
     process_inputs: Sequence[_ProcessInput],
     submit: Callable[[Sequence[_ProcessInput]], int],
     tasks_per_job: int,
+    completed_rows: Collection[int] = (),
 ) -> None:
     if not 2 <= tasks_per_job <= MAX_ALLOCATION_PROCESS_COUNT:
         raise ValueError("tasks per job must be between two and four")
@@ -60,7 +74,7 @@ def _launch(
     pending = [
         (index, row, process_input)
         for index, (row, process_input) in enumerate(zip(rows, process_inputs, strict=True))
-        if index not in submitted_rows
+        if index not in submitted_rows and index not in completed_rows
     ]
     if not pending:
         return

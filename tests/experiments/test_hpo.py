@@ -18,30 +18,85 @@ _C_SCRIPT = _ROOT / "experiments" / "c_study.py"
 _HPO_SCRIPT = _ROOT / "experiments" / "hpo.py"
 
 
-def test_context_study_can_start_from_canonical_full_studies_in_open_feature_bundle(
+def test_context_study_selects_chain_mean_winners_and_reuses_reference_studies(
     tmp_path: Path,
 ) -> None:
     feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
-    full_rows = [
-        row for row in read_tsv_rows(feature_bundle / "cells.tsv") if row["cell"].endswith(".full")
-    ]
-    publish_generated_studies(tmp_path, full_rows, default_objective=1.0)
+    feature_rows = read_tsv_rows(feature_bundle / "cells.tsv")
+    objectives = {
+        f"{chain}.{family}.{configuration}": objective
+        for chain, configuration, objective in (
+            ("ethereum", "without_day_of_week", 0.4),
+            ("polygon", "without_block_interval", 0.5),
+        )
+        for family in ("lstm", "transformer", "transformer_lstm")
+    }
+    objectives.update(
+        {
+            "avalanche.lstm.without_base_fee": 1.2,
+            "avalanche.transformer.without_base_fee": 0.2,
+            "avalanche.transformer_lstm.without_base_fee": 0.2,
+        }
+    )
+    publish_generated_studies(
+        tmp_path, feature_rows, default_objective=1.0, objectives=objectives
+    )
 
     result = run_script(_C_SCRIPT, "prepare", tmp_path, feature_experiment_id)
 
     experiment_id = UUID(result.stdout.strip())
+    assert result.stderr.splitlines() == [
+        "ethereum\twithout_day_of_week\t0.4",
+        "polygon\twithout_block_interval\t0.5",
+        "avalanche\twithout_base_fee\t0.533333",
+    ]
     bundle = tmp_path / "experiments" / "c_study" / f".{experiment_id}"
-    assert len(read_tsv_rows(bundle / "cells.tsv")) == 45
+    rows = read_tsv_rows(bundle / "cells.tsv")
+    assert len(rows) == 45
+
+    feature_studies = {row["cell"]: row["study_id"] for row in feature_rows}
+    selected_configurations = {
+        "ethereum": "without_day_of_week",
+        "polygon": "without_block_interval",
+        "avalanche": "without_base_fee",
+    }
+    selected = {
+        f"{chain}.{family}": feature_studies[f"{chain}.{family}.{configuration}"]
+        for chain, configuration in selected_configurations.items()
+        for family in ("lstm", "transformer", "transformer_lstm")
+    }
+    reference_rows = [row for row in rows if row["cell"].endswith(".C100")]
+    assert {row["cell"].removesuffix(".C100"): row["study_id"] for row in reference_rows} == (
+        selected
+    )
+
+    requests = {
+        row["cell"]: TuneRequest.model_validate_json(
+            Path(row["request"]).read_bytes(), strict=True
+        )
+        for row in rows
+    }
+    assert "dow_sin" not in requests["ethereum.lstm.C25"].experiment.ordered_features
+    assert (
+        "block_interval_seconds"
+        not in requests["polygon.transformer.C25"].experiment.ordered_features
+    )
+    assert (
+        "log_base_fee_per_gas"
+        not in requests["avalanche.transformer_lstm.C25"].experiment.ordered_features
+    )
 
 
-def test_context_study_requires_every_canonical_full_study(tmp_path: Path) -> None:
+def test_context_study_requires_every_feature_candidate_study(tmp_path: Path) -> None:
     feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
-    full_rows = [
-        row for row in read_tsv_rows(feature_bundle / "cells.tsv") if row["cell"].endswith(".full")
+    candidate_rows = [
+        row
+        for row in read_tsv_rows(feature_bundle / "cells.tsv")
+        if not row["cell"].endswith(".base_only")
     ]
-    publish_generated_studies(tmp_path, full_rows[:-1], default_objective=1.0)
+    publish_generated_studies(tmp_path, candidate_rows[:-1], default_objective=1.0)
 
     with pytest.raises(subprocess.CalledProcessError) as error:
         run_script(_C_SCRIPT, "prepare", tmp_path, feature_experiment_id)

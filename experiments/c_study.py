@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from statistics import fmean
 from uuid import UUID, uuid4
 
+import typer
 from bundle import StorageRoot, close_bundle, load_roster, open_bundle, run, write_tune_cells
 
 from fable.config import TuneRequest
@@ -17,18 +19,42 @@ _CHAINS = ("ethereum", "polygon", "avalanche")
 _FAMILIES = ("lstm", "transformer", "transformer_lstm")
 
 
-def _full_feature_studies(storage_root: Path, experiment_id: UUID) -> dict[tuple[str, str], Study]:
+def _selected_feature_studies(
+    storage_root: Path, experiment_id: UUID
+) -> tuple[dict[tuple[str, str], Study], tuple[tuple[str, str, float], ...]]:
     roster = load_roster(storage_root, ExperimentKind.FEATURE_ABLATION, experiment_id, "study_id")
-    return {
-        (chain, family): load_study(storage_root, roster[f"{chain}.{family}.full"])
-        for chain in _CHAINS
-        for family in _FAMILIES
+    studies = {
+        tuple(cell.split(".")): load_study(storage_root, study_id)
+        for cell, study_id in roster.items()
+        if not cell.endswith(".base_only")
     }
+
+    selected: dict[tuple[str, str], Study] = {}
+    winners: list[tuple[str, str, float]] = []
+    for chain in _CHAINS:
+        configurations = tuple(
+            configuration
+            for candidate_chain, family, configuration in studies
+            if candidate_chain == chain and family == _FAMILIES[0]
+        )
+        means = {
+            configuration: fmean(
+                studies[chain, family, configuration].trials[0].objective
+                for family in _FAMILIES
+            )
+            for configuration in configurations
+        }
+        winner = min(configurations, key=means.__getitem__)
+        winners.append((chain, winner, means[winner]))
+        for family in _FAMILIES:
+            selected[chain, family] = studies[chain, family, winner]
+
+    return selected, tuple(winners)
 
 
 def prepare(storage_root: StorageRoot, feature_experiment_id: UUID) -> None:
     experiment_id = uuid4()
-    selected = _full_feature_studies(storage_root, feature_experiment_id)
+    selected, winners = _selected_feature_studies(storage_root, feature_experiment_id)
     bundle = open_bundle(storage_root, _KIND, experiment_id)
 
     cells: list[tuple[str, TuneRequest]] = []
@@ -37,17 +63,23 @@ def prepare(storage_root: StorageRoot, feature_experiment_id: UUID) -> None:
             source = selected[chain, family]
             method = source.request.methods[0]
             for context in _CONTEXTS:
-                request = TuneRequest(
-                    corpus_id=source.request.corpus_id,
-                    experiment=source.request.experiment.model_copy(
-                        update={"context_blocks": context}
-                    ),
-                    methods=(method,),
+                request = (
+                    source.request
+                    if context == source.request.experiment.context_blocks
+                    else TuneRequest(
+                        corpus_id=source.request.corpus_id,
+                        experiment=source.request.experiment.model_copy(
+                            update={"context_blocks": context}
+                        ),
+                        methods=(method,),
+                    )
                 )
                 cells.append((f"{chain}.{family}.C{context}", request))
 
     write_tune_cells(bundle, cells)
 
+    for chain, configuration, mean in winners:
+        typer.echo(f"{chain}\t{configuration}\t{mean:g}", err=True)
     print(experiment_id)
 
 

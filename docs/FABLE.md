@@ -513,10 +513,11 @@ For every architecture-chain cell, the rolling reduction uses every `K=5` testin
 
 A `TuneRequest` freezes the experiment and one finite tuple of complete Methods. An operator submits an index into that tuple. Each successful fit contributes validation base-fee optimality gap, earliest best epoch, and completed epochs in request order. Selected training names an exact result index.
 
-The planned thesis protocol is staged: measure the full, individual
-leave-one-feature-unit-out, and base-only configurations at reference geometry; run the `C` study
-with the full feature contract; run HPO; then run `K` sensitivity and final testing. Fit methods
-use seed `2026`. This is not a full factorial design. No experiments have been run.
+The thesis protocol is staged: measure the full, individual leave-one-feature-unit-out, and
+base-only configurations at reference geometry; select one feature route per chain by the lowest
+mean validation objective across the three architectures among the full and leave-one-out
+configurations; run the `C` study; run HPO; then run `K` sensitivity and final testing. Fit methods
+use seed `2026`. This is not a full factorial design.
 
 ## Architecture and deep interfaces
 
@@ -842,8 +843,9 @@ deletes the temporary request files and both TSV files, and publishes the manife
 
 Before closure, an experiment author's hidden `cells.tsv` is its active cell-to-record roster;
 consumers use it only to locate records that are already canonical. After closure, the manifest
-replaces that roster as authority. `experiments/c_study.py` loads exactly the nine canonical full
-feature Studies through this interface, then authors the 45
+replaces that roster as authority. `experiments/c_study.py` loads exactly the nine canonical
+feature-ablation winners through this interface, reuses their reference-geometry `C=100` Studies,
+then authors the other 36
 architecture-chain-context Studies for `C={25,50,100,200,400}`, then publishes their canonical
 Study references. `experiments/hpo.py` loads that manifest, selects one context per chain by mean
 validation objective across the three architectures, reports the selected contexts, and authors

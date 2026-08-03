@@ -10,6 +10,7 @@ import pytest
 
 from fable.config import EvaluateRequest
 from fable.execution import CandidateProcessInput
+from tests.experiments.helpers import publish_generated_studies
 from tests.helpers import dispatch, read_tsv_rows, run_script, window
 
 _ROOT = Path(__file__).parents[2]
@@ -97,6 +98,30 @@ def test_candidates_submit_typed_inputs_and_restart_skips_recorded_rows(
     assert repeated.exit_code == 0
     assert repeated.output == ""
     assert len(batches) == 26
+
+
+def test_candidates_skip_canonical_studies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
+    bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
+    rows = read_tsv_rows(bundle / "cells.tsv")
+    publish_generated_studies(tmp_path, rows[:9], default_objective=1.0)
+    launcher = _load_launcher(monkeypatch)
+    batches: list[tuple[object, ...]] = []
+
+    def submit(candidates: tuple[object, ...]) -> int:
+        batches.append(candidates)
+        return 2_000 + len(batches)
+
+    monkeypatch.setattr(launcher, "submit_candidates", submit)
+    result = dispatch(launcher.app, "candidates", str(bundle))
+
+    assert result.exit_code == 0
+    assert [len(batch) for batch in batches] == [4] * 21 + [3, 3, 3]
+    jobs = read_tsv_rows(bundle / "jobs.tsv")
+    assert len(jobs) == 93
+    assert [int(job["row"]) for job in jobs] == list(range(9, 102))
 
 
 @pytest.mark.parametrize(
