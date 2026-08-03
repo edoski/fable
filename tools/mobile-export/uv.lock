@@ -347,6 +347,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "matplotlib", specifier = ">=3.10" },
     { name = "pyright", specifier = ">=1.1" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "ruff", specifier = ">=0.6" },
