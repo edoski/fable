@@ -54,7 +54,6 @@ def evaluate(request: EvaluateRequest, storage_root: Path) -> None:
         request.testing_window,
         target_state=association.target_state,
         horizon_blocks=experiment.horizon_blocks,
-        model_family=association.method.model.family,
         device=_DEVICE,
         batch_size=_runtime.EVALUATION_BATCH_SIZE,
     )

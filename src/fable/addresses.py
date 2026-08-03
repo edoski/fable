@@ -50,6 +50,10 @@ def artifact_observations_path(storage_root: Path, artifact_id: UUID) -> Path:
     return artifact_directory(storage_root, artifact_id) / "validation.parquet"
 
 
+def artifact_result_path(storage_root: Path, artifact_id: UUID) -> Path:
+    return artifact_directory(storage_root, artifact_id) / "result.json"
+
+
 def evaluation_directory(storage_root: Path, evaluation_id: UUID) -> Path:
     return storage_root / "evaluations" / str(evaluation_id)
 

@@ -19,7 +19,12 @@ from pydantic import TypeAdapter, model_validator
 from torch import nn
 
 from . import _runtime
-from .addresses import artifact_checkpoint_path, artifact_directory, artifact_observations_path
+from .addresses import (
+    artifact_checkpoint_path,
+    artifact_directory,
+    artifact_observations_path,
+    artifact_result_path,
+)
 from .config import (
     LstmDefinition,
     Method,
@@ -288,6 +293,7 @@ def _fit(
     validation_loader = _runtime.data_loader(
         prepared.validation, batch_size=_runtime.FIT_BATCH_SIZE, shuffle=False
     )
+    use_bfloat16 = not isinstance(definition.method.model, LstmDefinition)
     best = ModelCheckpoint(
         dirpath=scratch,
         filename="best-{epoch:02d}",
@@ -300,7 +306,7 @@ def _fit(
     trainer = pl.Trainer(
         accelerator="gpu",
         devices=1,
-        precision=("32-true" if definition.method.model.family == "lstm" else "bf16-mixed"),
+        precision=("bf16-mixed" if use_bfloat16 else "32-true"),
         max_epochs=fit.max_epochs,
         check_val_every_n_epoch=fit.validate_every_completed_epoch,
         accumulate_grad_batches=fit.accumulation,
@@ -352,9 +358,9 @@ def _fit(
         definition.experiment.validation_window,
         target_state=prepared.target_state,
         horizon_blocks=definition.experiment.horizon_blocks,
-        model_family=definition.method.model.family,
         device=trainer.strategy.root_device,
         batch_size=_runtime.FIT_BATCH_SIZE,
+        autocast_dtype=torch.bfloat16 if use_bfloat16 else None,
     )
     objective = float(reduce_observation_frame(observations)["base_fee_optimality_gap"][0])
     if not math.isclose(float(score), objective, rel_tol=1e-12, abs_tol=1e-12):
@@ -387,12 +393,13 @@ def train(request: TrainRequest, storage_root: Path) -> None:
     )
 
     scratch = canonical.with_name(f".{request.artifact_id}")
-    best_checkpoint, observations, _ = _fit(association, prepared, blocks, scratch)
+    best_checkpoint, observations, result = _fit(association, prepared, blocks, scratch)
     completed = canonical.with_name(f".{request.artifact_id}.completed")
     shutil.rmtree(completed, ignore_errors=True)
     completed.mkdir()
     os.link(best_checkpoint, completed / "artifact.ckpt")
     observations.write_parquet(completed / "validation.parquet")
+    (completed / "result.json").write_text(result.model_dump_json(), encoding="utf-8")
     if canonical.exists():
         raise FileExistsError(canonical)
     try:
@@ -418,7 +425,11 @@ def run_candidate(storage_root: Path, request: TuneRequest, method_index: int) -
 
 def reduce_artifact_validation(storage_root: Path, artifact_id: UUID) -> plr.DataFrame:
     load_artifact(storage_root, artifact_id)
-    return reduce_observations(artifact_observations_path(storage_root, artifact_id))
+    result = _load_artifact_result(storage_root, artifact_id)
+    metrics = reduce_observations(artifact_observations_path(storage_root, artifact_id))
+    if result.objective != metrics["base_fee_optimality_gap"][0]:
+        raise ValueError("artifact objective must equal validation observations")
+    return metrics
 
 
 def load_artifact(storage_root: Path, artifact_id: UUID) -> tuple[ArtifactAssociation, nn.Module]:
@@ -433,6 +444,15 @@ def load_artifact(storage_root: Path, artifact_id: UUID) -> tuple[ArtifactAssoci
         raise ValueError("canonical artifact must contain a TrainRequest association")
     if association.request.artifact_id != artifact_id:
         raise ValueError("embedded artifact ID does not match the requested artifact")
+    result = _load_artifact_result(storage_root, artifact_id)
+    if result.completed_epochs > association.method.fit.max_epochs:
+        raise ValueError("completed_epochs must not exceed artifact Method fit.max_epochs")
     validate_observations(artifact_observations_path(storage_root, artifact_id))
     module.model.eval()
     return association, module.model
+
+
+def _load_artifact_result(storage_root: Path, artifact_id: UUID) -> RetainedResult:
+    return RetainedResult.model_validate_json(
+        artifact_result_path(storage_root, artifact_id).read_bytes()
+    )

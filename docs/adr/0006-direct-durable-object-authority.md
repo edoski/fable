@@ -15,7 +15,7 @@ UUIDv4 values identify instances. Each completed object owns its exact typed req
 - `corpora/<corpus_id>/corpus.json` and `blocks.parquet`;
 - `studies/<study_id>/study.json`, with each ordered trial's `selected.ckpt` and
   `validation.parquet` under `trials/<method_index>/`;
-- `artifacts/<artifact_id>/artifact.ckpt` and `validation.parquet`;
+- `artifacts/<artifact_id>/artifact.ckpt`, `validation.parquet`, and `result.json`;
 - `evaluations/<evaluation_id>/evaluation.json` and `observations.parquet`.
 
 Typed requests, embedded associations, and the selected Study result index plus exact Method establish meaning. Corpus, Study, and artifact loaders validate the requested UUID and association. Each completed fit retains its selected checkpoint and one deterministic pass over the exact validation window. Validation and testing use the same observation schema and transient reducer. Evaluation publication validates its inputs before atomically publishing the request and observations at the requested evaluation address.

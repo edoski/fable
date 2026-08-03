@@ -14,6 +14,7 @@ import fable.modeling as modeling
 from fable.addresses import (
     artifact_checkpoint_path,
     artifact_observations_path,
+    artifact_result_path,
     evaluation_directory,
 )
 from fable.config import (
@@ -138,6 +139,10 @@ def _publish_artifacts(storage_root: Path, rows: list[dict[str, str]]) -> None:
             },
             schema=OBSERVATION_SCHEMA,
         ).write_parquet(artifact_observations_path(storage_root, request.artifact_id))
+        artifact_result_path(storage_root, request.artifact_id).write_text(
+            RetainedResult(objective=0.0, selected_epoch=1, completed_epochs=1).model_dump_json(),
+            encoding="utf-8",
+        )
 
 
 def _publish_evaluations(storage_root: Path, rows: list[dict[str, str]]) -> None:

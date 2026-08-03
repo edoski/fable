@@ -43,9 +43,9 @@ def collect_observations(
     *,
     target_state: TargetState,
     horizon_blocks: int,
-    model_family: str,
     device: torch.device,
     batch_size: int,
+    autocast_dtype: torch.dtype | None = None,
 ) -> pl.DataFrame:
     """Run one ordered inference pass and own its prediction/outcome facts."""
 
@@ -67,8 +67,12 @@ def collect_observations(
     cursor = 0
     with torch.inference_mode():
         for batch in loader:
-            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=model_family != "lstm"):
-                output = model(batch["inputs"].to(device))
+            inputs = batch["inputs"].to(device)
+            if autocast_dtype is None:
+                output = model(inputs)
+            else:
+                with torch.autocast(device.type, dtype=autocast_dtype):
+                    output = model(inputs)
             if (
                 not torch.isfinite(output.action_logits).all()
                 or not torch.isfinite(output.minimum_fee_z).all()

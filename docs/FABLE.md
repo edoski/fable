@@ -485,6 +485,7 @@ presentation-time Gwei summaries:
 
 ```text
 accuracy                = mean_i indicator[hat{k}_i = k_i*]
+f1_macro                = mean_c 2 TP_c / (2 TP_c + FP_c + FN_c)
 log_fee_mae             = mean_i |hat{ell}_i - ell_i|
 log_fee_mse             = mean_i (hat{ell}_i - ell_i)^2
 base_fee_savings        = mean_i ((B_i(0) - B_i(hat{k}_i)) / B_i(0))
@@ -789,6 +790,7 @@ studies/<study_id>/trials/<method_index>/selected.ckpt
 studies/<study_id>/trials/<method_index>/validation.parquet
 artifacts/<artifact_id>/artifact.ckpt
 artifacts/<artifact_id>/validation.parquet
+artifacts/<artifact_id>/result.json
 evaluations/<evaluation_id>/evaluation.json
 evaluations/<evaluation_id>/observations.parquet
 ```
@@ -930,9 +932,10 @@ Its `ArtifactAssociation` contains:
 | `method` | exact selected Method |
 
 Fitting uses hidden scratch at `artifacts/.<artifact_id>/`. After selection, the checkpoint runs once
-over the exact validation window. Publication groups `artifact.ckpt` and `validation.parquet` in a
-complete hidden sibling, atomically renames it without overwrite to `artifacts/<artifact_id>/`, then
-removes resumable scratch. Failures preserve scratch.
+over the exact validation window. Publication groups `artifact.ckpt`, `validation.parquet`, and its
+compact `RetainedResult` in `result.json` inside a complete hidden sibling, atomically renames it
+without overwrite to `artifacts/<artifact_id>/`, then removes resumable scratch. Failures preserve
+scratch.
 
 Direct loader:
 

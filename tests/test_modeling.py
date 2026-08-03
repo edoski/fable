@@ -18,6 +18,7 @@ import fable.modeling as modeling
 from fable.addresses import (
     artifact_checkpoint_path,
     artifact_observations_path,
+    artifact_result_path,
     corpus_blocks_path,
     corpus_directory,
     corpus_json_path,
@@ -326,9 +327,16 @@ def test_lstm_trains_loads_and_applies_direct_loss(
     assert artifact_observations_path(tmp_path, artifact_id).is_file()
     assert {path.name for path in checkpoint.parent.iterdir()} == {
         "artifact.ckpt",
+        "result.json",
         "validation.parquet",
     }
-    assert reduce_artifact_validation(tmp_path, artifact_id).height == 1
+    metrics = reduce_artifact_validation(tmp_path, artifact_id)
+    result = RetainedResult.model_validate_json(
+        artifact_result_path(tmp_path, artifact_id).read_bytes()
+    )
+    assert result.objective == metrics["base_fee_optimality_gap"][0]
+    assert result.selected_epoch == 1
+    assert result.completed_epochs == 1
 
     application_history = prepare_fit_history(_blocks(), _experiment())
     batches = list(DataLoader(application_history.training, batch_size=3, shuffle=False))

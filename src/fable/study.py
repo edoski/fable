@@ -19,7 +19,7 @@ from .addresses import (
     study_trial_observations_path,
 )
 from .config import Method, SelectedStudySource, TrainingDefinition, TuneRequest
-from .observations import reduce_observation_frame, reduce_observations, validate_observations
+from .observations import reduce_observations, validate_observations
 from .records import StrictFrozenRecord
 
 _Epoch: TypeAlias = Annotated[int, Field(ge=1)]
@@ -69,16 +69,6 @@ def retain_result(
 ) -> None:
     """Atomically retain one completed candidate inside Study scratch."""
 
-    expected = TrainingDefinition(
-        experiment=request.experiment, method=request.method_at(method_index)
-    ).model_dump(mode="json")
-    checkpoint = torch.load(selected_checkpoint, map_location="cpu", weights_only=True)
-    if checkpoint["hyper_parameters"]["association"] != expected:
-        raise ValueError("selected checkpoint association must match the request Method")
-    objective = float(reduce_observation_frame(observations)["base_fee_optimality_gap"][0])
-    if result.objective != objective:
-        raise ValueError("result objective must equal validation observations")
-
     retained = _retained_trial_directory(storage_root, request.study_id, method_index)
     temporary = retained.with_name(f".{retained.name}.tmp")
     shutil.rmtree(temporary, ignore_errors=True)
@@ -88,6 +78,7 @@ def retain_result(
     (temporary / "result.json").write_text(
         _CandidateResult(request=request, result=result).model_dump_json(), encoding="utf-8"
     )
+    _validate_trial(temporary, request, method_index, result)
     temporary.rename(retained)
 
 

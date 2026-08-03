@@ -205,6 +205,7 @@ class _Model(nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
         assert torch.is_inference_mode_enabled()
+        assert not torch.is_autocast_enabled(inputs.device.type)
         assert not self.training
         size = inputs.shape[0]
         start = self.cursor
