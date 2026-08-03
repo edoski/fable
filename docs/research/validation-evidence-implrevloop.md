@@ -1,6 +1,6 @@
 # Validation evidence and experiment refresh implementation-review ledger
 
-Status: approved; superseded-campaign archive in progress, Slice 1 queued
+Status: approved; superseded campaign archived, Slice 1 ready
 
 This ledger standardizes validation evidence across model-selection stages, extends the context
 study below 25 blocks, and defines the clean rerun sequence. Cost over optimum remains the sole
@@ -11,6 +11,7 @@ selection objective. Other metrics are evidence and interpretation, not addition
 - Checkout: `/Users/edo/dev/python/fable`
 - Branch: `main`
 - Planning baseline: `8ff672f0fb841fefa51a5b52135d08aaddd424cb`
+- Approved-ledger commit: `bbf418ba7efa8f9f051a4976725d3154392f082d`
 - Checkout policy: direct `main`, no worktree, one writer at a time
 - Protected unrelated work:
   - modified `experiments/figure_context_study.py`
@@ -34,6 +35,21 @@ The user approved the complete ledger on 2026-08-03:
 - full Stage 1 rerun and replacement of the current Stage 2 campaign;
 - two implementation slices on direct `main`, without worktrees; and
 - metric implementation before the separate KAIROS rename.
+
+## Superseded campaign archive
+
+Completed 2026-08-03 before Slice 1:
+
+- Cancelled only running jobs 43568–43570 and pending jobs 43571–43573. Completed jobs
+  43565–43567 were not altered.
+- Archive: `/Users/edo/Desktop/fable-pre-validation-evidence-refresh-2026-08-03`.
+- Archived the 102 local canonical Stage 1 Studies and manifest, current 45-cell Stage 2 bundle,
+  every recoverable remote object for the 36 new Stage 2 Study IDs, and logs 43565–43573.
+- All three gzip streams passed integrity checks; local and remote SHA-256 values matched.
+- Moved the current Stage 2 authoring bundle out of repository outputs.
+- Removed only the archived 36 Stage 2 remote Study targets and exact job logs. Remote Stage 1
+  remains exactly 102 canonical Studies; hidden Studies and the superseded job queue are empty.
+- Deleted the obsolete Stage 2 heartbeat after the queue and active bundle were removed.
 
 ## Fixed scientific decisions
 
@@ -134,7 +150,7 @@ shims. Old experiments are archived before replacement.
 
 ## Slice 1 — Canonical fit evidence and shared reduction
 
-Status: queued after superseded-campaign archive
+Status: ready
 
 ### Scope
 
