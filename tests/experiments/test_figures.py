@@ -151,7 +151,7 @@ def test_feature_ablation_figure_rejects_incomplete_family_roster(tmp_path: Path
     cells = {
         "ethereum.lstm.full": _publish_study(tmp_path, (0.04,)),
         "ethereum.lstm.without_gas_utilization": _publish_study(tmp_path, (0.05,)),
-        "ethereum.transformer.full": _publish_study(tmp_path, (0.04,)),
+        "ethereum.transformer.full": _publish_study(tmp_path, (0.04,), family="transformer"),
     }
     experiment_id = _publish_manifest(tmp_path, ExperimentKind.FEATURE_ABLATION, cells)
 

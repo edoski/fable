@@ -102,9 +102,17 @@ def test_context_study_requires_every_feature_candidate_study(tmp_path: Path) ->
     assert "FileNotFoundError" in error.value.stderr
 
 
-@pytest.mark.parametrize("misalignment", ["family", "context"])
+@pytest.mark.parametrize(
+    ("misalignment", "message"),
+    [
+        ("family", "context-study cell does not match Study request"),
+        ("context", "context-study cell does not match Study request"),
+        ("source", "context-study chain source identity must match"),
+        ("method", "context-study family Method must match"),
+    ],
+)
 def test_hpo_rejects_context_study_cell_request_misalignment(
-    tmp_path: Path, misalignment: str
+    tmp_path: Path, misalignment: str, message: str
 ) -> None:
     feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
@@ -119,18 +127,29 @@ def test_hpo_rejects_context_study_cell_request_misalignment(
     ethereum_rows = [row for row in rows if row["cell"].startswith("ethereum.")]
     publish_generated_studies(tmp_path, ethereum_rows, default_objective=1.0)
 
-    target = next(row for row in rows if row["cell"] == "ethereum.lstm.C1")
+    target = next(row for row in rows if row["cell"] == "ethereum.lstm.C2")
     target_path = study_json_path(tmp_path, UUID(target["study_id"]))
     study = Study.model_validate_json(target_path.read_bytes(), strict=True)
     if misalignment == "family":
-        donor = next(row for row in rows if row["cell"] == "ethereum.transformer.C1")
+        donor = next(row for row in rows if row["cell"] == "ethereum.transformer.C2")
         donor_study = Study.model_validate_json(
             study_json_path(tmp_path, UUID(donor["study_id"])).read_bytes(), strict=True
         )
         request = study.request.model_copy(update={"methods": donor_study.request.methods})
-    else:
-        experiment = study.request.experiment.model_copy(update={"context_blocks": 2})
+    elif misalignment == "context":
+        experiment = study.request.experiment.model_copy(update={"context_blocks": 3})
         request = study.request.model_copy(update={"experiment": experiment})
+    elif misalignment == "source":
+        experiment = study.request.experiment.model_copy(
+            update={"ordered_features": ("log_base_fee_per_gas",)}
+        )
+        request = study.request.model_copy(update={"experiment": experiment})
+    else:
+        method = study.request.methods[0]
+        fit = method.fit.model_copy(update={"learning_rate": 1e-4})
+        request = study.request.model_copy(
+            update={"methods": (method.model_copy(update={"fit": fit}),)}
+        )
     target_path.write_text(
         Study(request=request, trials=study.trials).model_dump_json(), encoding="utf-8"
     )
@@ -138,7 +157,7 @@ def test_hpo_rejects_context_study_cell_request_misalignment(
     with pytest.raises(subprocess.CalledProcessError) as error:
         run_script(_HPO_SCRIPT, "prepare", tmp_path, c_experiment_id, "--chain", "ethereum")
 
-    assert "context-study cell does not match Study request" in error.value.stderr
+    assert message in error.value.stderr
 
 
 def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winner(
@@ -260,13 +279,17 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
             ),
         }
     )
-    control_path.write_text(
-        Study(
-            request=control_study.request.model_copy(update={"methods": (control,)}),
-            trials=control_study.trials,
-        ).model_dump_json(),
-        encoding="utf-8",
-    )
+    for row in c_rows:
+        if row["cell"].startswith("ethereum.lstm."):
+            path = study_json_path(tmp_path, UUID(row["study_id"]))
+            study = Study.model_validate_json(path.read_bytes(), strict=True)
+            path.write_text(
+                Study(
+                    request=study.request.model_copy(update={"methods": (control,)}),
+                    trials=study.trials,
+                ).model_dump_json(),
+                encoding="utf-8",
+            )
 
     result = run_script(
         _HPO_SCRIPT,

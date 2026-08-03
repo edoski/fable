@@ -84,6 +84,8 @@ def selected_context_studies(
         raise ValueError("context-study roster is incomplete")
 
     studies = {}
+    chain_sources = {}
+    family_methods = {}
     for cell, study_id in roster.items():
         chain, family, context_label = cell.split(".")
         if chain in chains:
@@ -96,6 +98,15 @@ def selected_context_studies(
                 or study.request.experiment.context_blocks != context
             ):
                 raise ValueError("context-study cell does not match Study request")
+            source = (
+                study.request.corpus_id,
+                study.request.experiment.model_copy(update={"context_blocks": 1}),
+            )
+            if chain_sources.setdefault(chain, source) != source:
+                raise ValueError("context-study chain source identity must match")
+            method = study.request.methods[0]
+            if family_methods.setdefault((chain, family), method) != method:
+                raise ValueError("context-study family Method must match")
             studies[chain, family, context] = study
 
     selected: dict[tuple[str, str], Study] = {}
