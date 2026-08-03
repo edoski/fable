@@ -15,6 +15,8 @@ from fable.config import (
     FitMethod,
     LstmDefinition,
     Method,
+    TransformerDefinition,
+    TransformerLstmDefinition,
     TuneRequest,
 )
 from fable.experiments import ExperimentKind, ExperimentManifest, experiment_directory
@@ -24,7 +26,6 @@ from tests.experiments.helpers import publish_test_study
 from tests.helpers import run_script
 
 _ROOT = Path(__file__).parents[2]
-_HPO_SCRIPT = _ROOT / "experiments" / "hpo.py"
 _CONTEXTS = (1, 2, 3, 4, 5, 10, 15, 20, 25, 50, 100, 200, 400)
 _FIGURE_SCRIPTS = {
     ExperimentKind.FEATURE_ABLATION: _ROOT / "experiments" / "figure_feature_ablation.py",
@@ -43,9 +44,6 @@ _FIT = FitMethod(
     patience=2,
     min_delta=0.0,
 )
-_METHOD = Method(
-    model=LstmDefinition(family="lstm", hidden=32, layers=1, head_hidden=16, dropout=0.2), fit=_FIT
-)
 _EXPERIMENT = ExperimentSemantics(
     training_window=BlockWindow(first_parent_block=100, last_parent_block=199),
     validation_window=BlockWindow(first_parent_block=205, last_parent_block=249),
@@ -55,14 +53,39 @@ _EXPERIMENT = ExperimentSemantics(
 )
 
 
-def _publish_study(storage_root: Path, objectives: tuple[float, ...]) -> UUID:
+def _publish_study(
+    storage_root: Path, objectives: tuple[float, ...], *, family: str = "lstm", context: int = 100
+) -> UUID:
     study_id = uuid4()
+    model = {
+        "lstm": LstmDefinition(family="lstm", hidden=32, layers=1, head_hidden=16, dropout=0.2),
+        "transformer": TransformerDefinition(
+            family="transformer",
+            model_width=32,
+            attention_heads=4,
+            transformer_layers=1,
+            feedforward_width=64,
+            head_hidden=16,
+            dropout=0.2,
+        ),
+        "transformer_lstm": TransformerLstmDefinition(
+            family="transformer_lstm",
+            model_width=32,
+            attention_heads=4,
+            transformer_layers=1,
+            feedforward_width=64,
+            lstm_hidden=32,
+            lstm_layers=1,
+            head_hidden=16,
+            dropout=0.2,
+        ),
+    }[family]
     request = TuneRequest(
         study_id=study_id,
         corpus_id=uuid4(),
-        experiment=_EXPERIMENT,
+        experiment=_EXPERIMENT.model_copy(update={"context_blocks": context}),
         methods=tuple(
-            _METHOD.model_copy(
+            Method(model=model, fit=_FIT).model_copy(
                 update={"fit": _FIT.model_copy(update={"learning_rate": 3e-4 + index * 1e-5})}
             )
             for index, _ in enumerate(objectives)
@@ -152,7 +175,10 @@ def test_context_and_hpo_figures_use_canonical_study_objectives(tmp_path: Path) 
         ExperimentKind.C_STUDY,
         {
             f"ethereum.{family}.C{context}": _publish_study(
-                tmp_path, (0.04 if context == 25 else 0.0419 if context == 1 else 0.08,)
+                tmp_path,
+                (0.04 if context == 25 else 0.0419 if context == 1 else 0.08,),
+                family=family,
+                context=context,
             )
             for family in ("lstm", "transformer", "transformer_lstm")
             for context in _CONTEXTS
@@ -178,12 +204,6 @@ def test_context_and_hpo_figures_use_canonical_study_objectives(tmp_path: Path) 
     _assert_pdf(hpo_figure)
     assert context.stdout.strip() == str(context_figure)
     assert hpo.stdout.strip() == str(hpo_figure)
-
-    selection = run_script(_HPO_SCRIPT, "prepare", tmp_path, context_id, "--chain", "ethereum")
-    assert selection.stderr.splitlines() == [
-        "chain\tselected_context\tselected_mean\tbest_context\tbest_mean\tthreshold",
-        "ethereum\t1\t0.0419\t25\t0.04\t0.042",
-    ]
 
 
 def _publish_evaluation(

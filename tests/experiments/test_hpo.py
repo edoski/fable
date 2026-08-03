@@ -102,6 +102,45 @@ def test_context_study_requires_every_feature_candidate_study(tmp_path: Path) ->
     assert "FileNotFoundError" in error.value.stderr
 
 
+@pytest.mark.parametrize("misalignment", ["family", "context"])
+def test_hpo_rejects_context_study_cell_request_misalignment(
+    tmp_path: Path, misalignment: str
+) -> None:
+    feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
+    feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
+    publish_generated_studies(
+        tmp_path, read_tsv_rows(feature_bundle / "cells.tsv"), default_objective=1.0
+    )
+    c_experiment_id = UUID(
+        run_script(_C_SCRIPT, "prepare", tmp_path, feature_experiment_id).stdout.strip()
+    )
+    c_bundle = tmp_path / "experiments" / "c_study" / f".{c_experiment_id}"
+    rows = read_tsv_rows(c_bundle / "cells.tsv")
+    ethereum_rows = [row for row in rows if row["cell"].startswith("ethereum.")]
+    publish_generated_studies(tmp_path, ethereum_rows, default_objective=1.0)
+
+    target = next(row for row in rows if row["cell"] == "ethereum.lstm.C1")
+    target_path = study_json_path(tmp_path, UUID(target["study_id"]))
+    study = Study.model_validate_json(target_path.read_bytes(), strict=True)
+    if misalignment == "family":
+        donor = next(row for row in rows if row["cell"] == "ethereum.transformer.C1")
+        donor_study = Study.model_validate_json(
+            study_json_path(tmp_path, UUID(donor["study_id"])).read_bytes(), strict=True
+        )
+        request = study.request.model_copy(update={"methods": donor_study.request.methods})
+    else:
+        experiment = study.request.experiment.model_copy(update={"context_blocks": 2})
+        request = study.request.model_copy(update={"experiment": experiment})
+    target_path.write_text(
+        Study(request=request, trials=study.trials).model_dump_json(), encoding="utf-8"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_script(_HPO_SCRIPT, "prepare", tmp_path, c_experiment_id, "--chain", "ethereum")
+
+    assert "context-study cell does not match Study request" in error.value.stderr
+
+
 def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winner(
     tmp_path: Path,
 ) -> None:

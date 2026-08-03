@@ -87,9 +87,16 @@ def selected_context_studies(
     for cell, study_id in roster.items():
         chain, family, context_label = cell.split(".")
         if chain in chains:
-            studies[chain, family, int(context_label.removeprefix("C"))] = load_study(
-                storage_root, study_id
-            )
+            context = int(context_label.removeprefix("C"))
+            study = load_study(storage_root, study_id)
+            if len(study.trials) != 1:
+                raise ValueError("context-study cells require one-trial Studies")
+            if (
+                study.request.methods[0].model.family != family
+                or study.request.experiment.context_blocks != context
+            ):
+                raise ValueError("context-study cell does not match Study request")
+            studies[chain, family, context] = study
 
     selected: dict[tuple[str, str], Study] = {}
     selections = []
