@@ -5,9 +5,9 @@ from uuid import UUID
 
 import pytest
 
-import fable.cli as cli
-from fable.cli import app
-from fable.config import EvaluateRequest, ExperimentSemantics, SelectedStudySource, TrainRequest
+import kairos.cli as cli
+from kairos.cli import app
+from kairos.config import EvaluateRequest, ExperimentSemantics, SelectedStudySource, TrainRequest
 from tests.helpers import dispatch, window
 
 CORPUS_ID = UUID("10000000-0000-4000-8000-000000000001")

@@ -8,8 +8,8 @@ from uuid import UUID
 
 import pytest
 
-from fable.config import EvaluateRequest
-from fable.execution import CandidateProcessInput
+from kairos.config import EvaluateRequest
+from kairos.execution import CandidateProcessInput
 from tests.experiments.helpers import publish_generated_studies
 from tests.helpers import dispatch, read_tsv_rows, run_script, window
 
@@ -100,9 +100,7 @@ def test_candidates_submit_typed_inputs_and_restart_skips_recorded_rows(
     assert len(batches) == 26
 
 
-def test_candidates_skip_canonical_studies(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_candidates_skip_canonical_studies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     bundle = tmp_path / "experiments" / "feature_ablation" / f".{experiment_id}"
     rows = read_tsv_rows(bundle / "cells.tsv")

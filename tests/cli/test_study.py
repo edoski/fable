@@ -7,11 +7,11 @@ from uuid import UUID
 import pytest
 from typer.testing import CliRunner
 
-import fable.cli as cli
-import fable.execution as execution
-from fable.cli import app
-from fable.config import ExperimentSemantics, FitMethod, LstmDefinition, Method, TuneRequest
-from fable.execution import CandidateProcessInput
+import kairos.cli as cli
+import kairos.execution as execution
+from kairos.cli import app
+from kairos.config import ExperimentSemantics, FitMethod, LstmDefinition, Method, TuneRequest
+from kairos.execution import CandidateProcessInput
 from tests.helpers import dispatch, window, write_remote
 
 STUDY_ID = UUID("10000000-0000-4000-8000-000000000001")
@@ -93,7 +93,7 @@ def test_submit_candidates_scales_three_gpu_allocation_and_preserves_payload_ord
     script = scripts[0]
     assert "#SBATCH --ntasks=3\n" in script
     assert "#SBATCH --gres=gpu:a100:3\n" in script
-    assert script.count("remote candidate <<'FABLE_REQUEST_") == 3
+    assert script.count("remote candidate <<'KAIROS_REQUEST_") == 3
     positions = [script.index(candidate.model_dump_json()) for candidate in candidates]
     assert positions == sorted(positions)
     for slot in range(3):

@@ -6,7 +6,7 @@ Date: 2026-08-01
 
 This note records the source investigation, including stricter alternatives considered during
 planning. GitHub issue #148 and the implementation-review ledger own the final contract. The
-approved Slice 1 implementation trusts canonical FABLE publishers and loaders, derives chain and
+approved Slice 1 implementation trusts canonical KAIROS publishers and loaders, derives chain and
 family groups from the manifests, reuses evaluator-owned `ROLLING_HORIZONS`, and keeps only the
 evaluation-to-artifact join, exact nine-group/36-label campaign cardinality, workload-origin, and
 resume-protocol checks at the benchmark boundary. It intentionally omits host probes, observation
@@ -36,7 +36,7 @@ The source review identified five corrections that are now incorporated in the i
 
 The implementation should stay experiment-private. A suitable shape is one operator entry point,
 `experiments/inference_benchmark.py`, with private helpers under an experiment-owned module and
-focused tests under `tests/experiments/`. It should not extend the installed `fable` CLI or create a
+focused tests under `tests/experiments/`. It should not extend the installed `kairos` CLI or create a
 generic benchmark database.
 
 ## Shared input and output contract
@@ -47,7 +47,7 @@ and an explicit output directory. It must fail rather than infer “latest” ob
 The completed K-study manifest is the artifact roster. K-study preparation creates names of the
 form `chain.family.K<horizon>` and the completed manifest maps each name directly to its artifact
 UUID ([`experiments/k_study.py:18-46`](../../experiments/k_study.py#L18),
-[`src/fable/experiments.py:21-40`](../../src/fable/experiments.py#L21)). The completed held-out
+[`src/kairos/experiments.py:21-40`](../../src/kairos/experiments.py#L21)). The completed held-out
 manifest uses the same names but maps them to evaluation UUIDs
 ([`experiments/held_out.py:21-54`](../../experiments/held_out.py#L21)). There is no separate canonical
 “final model” manifest joining these two objects.
@@ -97,13 +97,13 @@ For each evaluation, reconstruct inputs exactly as evaluation did:
 3. call `prepare_historical_window` with the exact testing window from `evaluation.json`.
 
 This reuses the same training-fitted normalization state and causal feature construction as the
-canonical evaluator ([`src/fable/evaluation.py:41-76`](../../src/fable/evaluation.py#L41),
-[`src/fable/temporal.py:232-254`](../../src/fable/temporal.py#L232)). A dataset item contains an
+canonical evaluator ([`src/kairos/evaluation.py:41-76`](../../src/kairos/evaluation.py#L41),
+[`src/kairos/temporal.py:232-254`](../../src/kairos/temporal.py#L232)). A dataset item contains an
 unbatched `[C,F]` input view and its exact origin block; batch size one is obtained outside the timed
 region by adding the leading dimension
-([`src/fable/temporal.py:151-183`](../../src/fable/temporal.py#L151)). Do not use the repository's
+([`src/kairos/temporal.py:151-183`](../../src/kairos/temporal.py#L151)). Do not use the repository's
 evaluation `DataLoader`: it is fixed at batch size 512, four workers, and pinned memory for CUDA
-evaluation ([`src/fable/_runtime.py:10-25`](../../src/fable/_runtime.py#L10)).
+evaluation ([`src/kairos/_runtime.py:10-25`](../../src/kairos/_runtime.py#L10)).
 
 The four testing windows are not equal. Held-out preparation gives shorter-horizon evaluations
 extra trailing origins so a root can advance up to three times; tests demonstrate the resulting
@@ -141,8 +141,8 @@ selected block = t + 1 + K2 action
 
 This is the canonical evaluator's rule: actions are range-checked, required origins are resolved by
 block number, and only a terminal action advances the origin
-([`src/fable/evaluation.py:201-248`](../../src/fable/evaluation.py#L201)). The manual gives the same
-fixed-deadline contract ([`docs/FABLE.md:504-510`](../FABLE.md#L504)). It is a **same-root rolling
+([`src/kairos/evaluation.py:201-248`](../../src/kairos/evaluation.py#L201)). The manual gives the same
+fixed-deadline contract ([`docs/KAIROS.md:504-510`](../KAIROS.md#L504)). It is a **same-root rolling
 episode** whose later decisions can belong to `h+1`, `h+2`, or `h+3`. Canonical held-out evaluation
 already owns its economic metrics; Slice 3 does not reconstruct it or compare it as one physical
 same-block latency event.
@@ -256,7 +256,7 @@ Python runner opens the output file and passes it as collector stdout, so the ra
 user-owned. Omit `--sample-count`, supervise the process, and terminate it with SIGTERM, which the
 manual defines as a clean stop. Preserve the raw NUL-separated bytes.
 
-The 2026-08-01 supervised capture at `/tmp/fable-powermetrics.DBpLW8` resolved the local schema.
+The 2026-08-01 supervised capture at `/tmp/kairos-powermetrics.DBpLW8` resolved the local schema.
 Each NUL-separated plist record contains a whole-second UTC `timestamp`, nanosecond `elapsed_ns`,
 top-level `thermal_pressure`, and `processor.cpu_power`, `gpu_power`, `ane_power`, and
 `combined_power`. The combined value equals the three rails within printed rounding, and the paired
@@ -402,8 +402,8 @@ For each chain, use the `K=5` testing window as the root-opportunity set. Read C
 each root `h` and its next block and compute `timestamp[h+1]-timestamp[h]`. This produces one
 chain-level interval set shared by all three architectures. Validate exact expected block numbers
 before positional slicing because `BlockFrame` enforces schema and range but does not rescan row
-numbers ([`src/fable/corpus.py:29-62`](../../src/fable/corpus.py#L29)). Corpus timestamps are integer
-seconds ([`src/fable/corpus.py:14-25`](../../src/fable/corpus.py#L14)).
+numbers ([`src/kairos/corpus.py:29-62`](../../src/kairos/corpus.py#L29)). Corpus timestamps are integer
+seconds ([`src/kairos/corpus.py:14-25`](../../src/kairos/corpus.py#L14)).
 
 Partition differences as follows:
 

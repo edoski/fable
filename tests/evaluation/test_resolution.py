@@ -7,9 +7,9 @@ from uuid import UUID
 import polars as pl
 import pytest
 
-from fable.addresses import evaluation_directory
-from fable.evaluation import reduce_baselines, reduce_evaluation
-from fable.observations import OBSERVATION_SCHEMA
+from kairos.addresses import evaluation_directory
+from kairos.evaluation import reduce_baselines, reduce_evaluation
+from kairos.observations import OBSERVATION_SCHEMA
 
 _EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000001")
 

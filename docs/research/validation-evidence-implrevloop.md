@@ -8,7 +8,7 @@ selection objective. Other metrics are evidence and interpretation, not addition
 
 ## Pre-run state
 
-- Checkout: `/Users/edo/dev/python/fable`
+- Checkout: `/Users/edo/dev/python/kairos`
 - Branch: `main`
 - Planning baseline: `8ff672f0fb841fefa51a5b52135d08aaddd424cb`
 - Approved-ledger commit: `bbf418ba7efa8f9f051a4976725d3154392f082d`
@@ -19,7 +19,7 @@ selection objective. Other metrics are evidence and interpretation, not addition
   - modified `tools/mobile-export/uv.lock`
   - untracked `docs/experiments/`
   - untracked `docs/research/macos-inference-energy.md`
-- Concurrent work gate: the inference-benchmark ledger and planned KAIROS rename must not write
+- Concurrent work gate: the inference-benchmark ledger and planned identity rename must not write
   concurrently with this run.
 - External state: the current 45-cell Stage 2 campaign remains live. This planning turn does not
   cancel, repack, finalize, extend, or launch jobs.
@@ -34,7 +34,7 @@ The user approved the complete ledger on 2026-08-03:
 - `last.ckpt` retained only while a fit is incomplete;
 - full Stage 1 rerun and replacement of the current Stage 2 campaign;
 - two implementation slices on direct `main`, without worktrees; and
-- metric implementation before the separate KAIROS rename.
+- metric implementation before the separate identity rename.
 
 ## Superseded campaign archive
 
@@ -42,7 +42,7 @@ Completed 2026-08-03 before Slice 1:
 
 - Cancelled only running jobs 43568–43570 and pending jobs 43571–43573. Completed jobs
   43565–43567 were not altered.
-- Archive: `/Users/edo/Desktop/fable-pre-validation-evidence-refresh-2026-08-03`.
+- Archive: `/Users/edo/Desktop/kairos-pre-validation-evidence-refresh-2026-08-03`.
 - Archived the 102 local canonical Stage 1 Studies and manifest, current 45-cell Stage 2 bundle,
   every recoverable remote object for the 36 new Stage 2 Study IDs, and logs 43565–43573.
 - All three gzip streams passed integrity checks; local and remote SHA-256 values matched.
@@ -297,14 +297,14 @@ slices.
 
 ### Gate A — Identity cutover
 
-The planned clean-break FABLE-to-KAIROS rename is a separate task. Preferred order:
+The planned clean-break project identity rename is a separate task. Preferred order:
 
 1. finish both metric slices;
-2. perform and review the KAIROS rename on top;
+2. perform and review the identity rename on top;
 3. build and smoke-test one immutable KAIROS CUDA image; and
 4. run refreshed campaigns only from that image and the new KAIROS paths.
 
-This avoids building an intermediate FABLE image and later migrating fresh experiment outputs.
+This avoids building an intermediate KAIROS image and later migrating fresh experiment outputs.
 Historical manifests and archives retain their original identity and hashes.
 
 ### Gate B — Superseded-output archive and reset
@@ -359,11 +359,11 @@ The existing inference-benchmark ledger remains separate.
   tolerance later requires no rerun.
 - Whether fixed-grid neighbors justify a separately approved refinement run.
 - Exact live RPC provider, cold/warm protocol, and one-shot-versus-rolling layout.
-- Final KAIROS rename schedule and repository/remote cutover window.
+- Final identity cutover schedule and repository/remote cutover window.
 
 ## Approval gates
 
 Both approved implementation slices received `GREEN LIGHT`. A final integrated run passed 114
 tests, Pyright, Vulture, changed-file Ruff/format, and the full-range diff check. External execution
-remains gated on the separate KAIROS rename completing and the resulting immutable CUDA image
+remains gated on the separate identity rename completing and the resulting immutable CUDA image
 passing container and GPU smoke tests.

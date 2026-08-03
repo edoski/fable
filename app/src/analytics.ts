@@ -2,7 +2,7 @@ import type { Chain, Horizon } from "./domain";
 import type { InferenceRun } from "./history";
 
 export type WaitBucket = {
-  fableGwei: number | null;
+  kairosGwei: number | null;
   immediateGwei: number | null;
   label: string;
   runCount: number;
@@ -84,7 +84,7 @@ export function waitBuckets(
     const outcomes = matchingRuns.flatMap((run) =>
       run.outcome === undefined ? [] : [run.outcome],
     );
-    const fableFeeMean = mean(
+    const kairosFeeMean = mean(
       outcomes.map((outcome) => outcome.selected_base_fee_per_gas),
     );
     const immediateFeeMean = mean(
@@ -92,7 +92,7 @@ export function waitBuckets(
     );
 
     return {
-      fableGwei: fableFeeMean === null ? null : fableFeeMean / GWEI,
+      kairosGwei: kairosFeeMean === null ? null : kairosFeeMean / GWEI,
       immediateGwei:
         immediateFeeMean === null ? null : immediateFeeMean / GWEI,
       label: String(offset),

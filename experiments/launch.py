@@ -12,9 +12,9 @@ from uuid import UUID
 import typer
 from bundle import read_cells
 
-from fable.addresses import study_json_path
-from fable.config import WORKFLOW_REQUEST_ADAPTER, TuneRequest
-from fable.execution import (
+from kairos.addresses import study_json_path
+from kairos.config import WORKFLOW_REQUEST_ADAPTER, TuneRequest
+from kairos.execution import (
     MAX_ALLOCATION_PROCESS_COUNT,
     CandidateProcessInput,
     submit_candidates,

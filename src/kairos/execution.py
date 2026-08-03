@@ -108,9 +108,9 @@ def _render_allocation_script(
             f"{shlex.quote(remote.image)} remote {leaf}"
         )
         return f"""\
-{command} <<'FABLE_REQUEST_{slot}' &
+{command} <<'KAIROS_REQUEST_{slot}' &
 {process_input_json}
-FABLE_REQUEST_{slot}
+KAIROS_REQUEST_{slot}
 pids+=("$!")"""
 
     steps = "\n".join(

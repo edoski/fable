@@ -139,7 +139,7 @@ export const styles = StyleSheet.create({
   },
   graphLegendDot: { borderRadius: 4, height: 7, marginLeft: 5, width: 7 },
   graphImmediateDot: { backgroundColor: colors.amberSoft },
-  graphFableDot: { backgroundColor: colors.blue },
+  graphKairosDot: { backgroundColor: colors.blue },
   graphLegendLabel: { color: colors.muted, fontSize: 8 },
   emptyGraph: {
     alignItems: "center",

@@ -6,10 +6,10 @@ from uuid import UUID
 
 import pytest
 
-from fable.addresses import study_json_path
-from fable.config import TuneRequest
-from fable.experiments import ExperimentManifest
-from fable.study import Study
+from kairos.addresses import study_json_path
+from kairos.config import TuneRequest
+from kairos.experiments import ExperimentManifest
+from kairos.study import Study
 from tests.experiments.helpers import publish_generated_studies
 from tests.helpers import read_tsv_rows, run_script
 

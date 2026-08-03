@@ -10,14 +10,14 @@ import polars as pl
 import pytest
 import torch
 
-import fable.modeling as modeling
-from fable.addresses import (
+import kairos.modeling as modeling
+from kairos.addresses import (
     artifact_checkpoint_path,
     artifact_observations_path,
     artifact_result_path,
     evaluation_directory,
 )
-from fable.config import (
+from kairos.config import (
     BlockWindow,
     EvaluateRequest,
     ExperimentSemantics,
@@ -27,12 +27,12 @@ from fable.config import (
     TrainRequest,
     TuneRequest,
 )
-from fable.experiments import ExperimentKind, ExperimentManifest, experiment_manifest_path
-from fable.min_block_fee import TargetState
-from fable.modeling import ArtifactAssociation
-from fable.observations import OBSERVATION_SCHEMA
-from fable.study import RetainedResult, Study
-from fable.temporal import FeatureState
+from kairos.experiments import ExperimentKind, ExperimentManifest, experiment_manifest_path
+from kairos.min_block_fee import TargetState
+from kairos.modeling import ArtifactAssociation
+from kairos.observations import OBSERVATION_SCHEMA
+from kairos.study import RetainedResult, Study
+from kairos.temporal import FeatureState
 from tests.experiments.helpers import publish_test_study
 from tests.helpers import read_tsv_rows, run_script
 

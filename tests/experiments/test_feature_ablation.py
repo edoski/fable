@@ -6,8 +6,8 @@ from uuid import UUID
 
 import pytest
 
-from fable.config import TuneRequest
-from fable.experiments import ExperimentManifest
+from kairos.config import TuneRequest
+from kairos.experiments import ExperimentManifest
 from tests.experiments.helpers import publish_generated_studies
 from tests.helpers import read_tsv_rows, run_script
 

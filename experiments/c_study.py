@@ -19,9 +19,9 @@ from bundle import (
     write_tune_cells,
 )
 
-from fable.config import TuneRequest
-from fable.experiments import ExperimentKind
-from fable.study import Study, load_study
+from kairos.config import TuneRequest
+from kairos.experiments import ExperimentKind
+from kairos.study import Study, load_study
 
 _KIND = ExperimentKind.C_STUDY
 _CONTEXTS = (1, 2, 3, 4, 5, 10, 15, 20, 25, 50, 100, 200, 400)

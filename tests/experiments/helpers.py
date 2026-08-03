@@ -6,14 +6,14 @@ from uuid import UUID
 
 import polars as pl
 
-from fable.addresses import (
+from kairos.addresses import (
     study_json_path,
     study_trial_checkpoint_path,
     study_trial_observations_path,
 )
-from fable.config import TuneRequest
-from fable.observations import OBSERVATION_SCHEMA
-from fable.study import RetainedResult, Study
+from kairos.config import TuneRequest
+from kairos.observations import OBSERVATION_SCHEMA
+from kairos.study import RetainedResult, Study
 
 
 def publish_test_study(storage_root: Path, study: Study) -> None:

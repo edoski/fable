@@ -1,1 +1,1 @@
-"""Test package for FABLE."""
+"""Test package for KAIROS."""

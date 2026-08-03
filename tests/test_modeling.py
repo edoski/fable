@@ -14,8 +14,8 @@ from lightning.pytorch.callbacks import Callback
 from pydantic import ValidationError
 from torch.utils.data import DataLoader
 
-import fable.modeling as modeling
-from fable.addresses import (
+import kairos.modeling as modeling
+from kairos.addresses import (
     artifact_checkpoint_path,
     artifact_observations_path,
     artifact_result_path,
@@ -26,7 +26,7 @@ from fable.addresses import (
     study_trial_checkpoint_path,
     study_trial_observations_path,
 )
-from fable.config import (
+from kairos.config import (
     BlockWindow,
     CorpusDefinition,
     CorpusRequest,
@@ -40,18 +40,18 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.corpus import BlockFrame
-from fable.min_block_fee import TargetState, min_block_fee_loss
-from fable.modeling import (
+from kairos.corpus import BlockFrame
+from kairos.min_block_fee import TargetState, min_block_fee_loss
+from kairos.modeling import (
     ArtifactAssociation,
     load_artifact,
     reduce_artifact_validation,
     run_candidate,
     train,
 )
-from fable.observations import OBSERVATION_SCHEMA
-from fable.study import RetainedResult, Study, load_study, publish_study
-from fable.temporal import FeatureState, prepare_fit_history
+from kairos.observations import OBSERVATION_SCHEMA
+from kairos.study import RetainedResult, Study, load_study, publish_study
+from kairos.temporal import FeatureState, prepare_fit_history
 
 ARTIFACT_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")

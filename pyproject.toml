@@ -3,9 +3,9 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "fable"
+name = "kairos"
 version = "0.1.0"
-description = "Fee Analysis through Blockchain Learning and Estimation."
+description = "Learning when to execute blockchain transactions."
 requires-python = ">=3.11,<3.12"
 license = { text = "MIT" }
 authors = [
@@ -41,7 +41,7 @@ dev = [
 ]
 
 [project.scripts]
-fable = "fable.cli:app"
+kairos = "kairos.cli:app"
 
 [tool.ruff]
 line-length = 100

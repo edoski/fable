@@ -82,35 +82,35 @@ describe("analytics", () => {
 
     expect(waitBuckets(collection, 5)).toEqual([
       {
-        fableGwei: 10,
+        kairosGwei: 10,
         immediateGwei: 10,
         label: "0",
         runCount: 1,
         savingsPercent: 0,
       },
       {
-        fableGwei: 10,
+        kairosGwei: 10,
         immediateGwei: 15,
         label: "1",
         runCount: 3,
         savingsPercent: 30,
       },
       {
-        fableGwei: 12,
+        kairosGwei: 12,
         immediateGwei: 10,
         label: "2",
         runCount: 1,
         savingsPercent: -20,
       },
       {
-        fableGwei: 0,
+        kairosGwei: 0,
         immediateGwei: 10,
         label: "3",
         runCount: 1,
         savingsPercent: 100,
       },
       {
-        fableGwei: null,
+        kairosGwei: null,
         immediateGwei: null,
         label: "4",
         runCount: 1,

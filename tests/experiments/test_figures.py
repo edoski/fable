@@ -8,8 +8,8 @@ from uuid import UUID, uuid4
 import polars as pl
 import pytest
 
-from fable.addresses import evaluation_directory
-from fable.config import (
+from kairos.addresses import evaluation_directory
+from kairos.config import (
     BlockWindow,
     ExperimentSemantics,
     FitMethod,
@@ -19,9 +19,9 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.experiments import ExperimentKind, ExperimentManifest, experiment_directory
-from fable.observations import OBSERVATION_SCHEMA
-from fable.study import RetainedResult, Study
+from kairos.experiments import ExperimentKind, ExperimentManifest, experiment_directory
+from kairos.observations import OBSERVATION_SCHEMA
+from kairos.study import RetainedResult, Study
 from tests.experiments.helpers import publish_test_study
 from tests.helpers import run_script
 

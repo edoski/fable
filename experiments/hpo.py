@@ -20,15 +20,15 @@ from bundle import (
 )
 from c_study import report_context_selections, selected_context_studies
 
-from fable.config import (
+from kairos.config import (
     LstmDefinition,
     Method,
     ModelDefinition,
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.experiments import ExperimentKind
-from fable.study import Study, load_study
+from kairos.experiments import ExperimentKind
+from kairos.study import Study, load_study
 
 _KIND = ExperimentKind.HPO
 _CHAINS = ("ethereum", "polygon", "avalanche")

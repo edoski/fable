@@ -21,15 +21,15 @@ import typer
 from pydantic import UUID4, Field
 from torch import nn
 
-from fable.addresses import evaluation_json_path
-from fable.config import EvaluateRequest
-from fable.corpus import BlockFrame, load_corpus_blocks
-from fable.evaluation import ROLLING_HORIZONS
-from fable.experiments import ExperimentKind, load_experiment_manifest
-from fable.min_block_fee import MinBlockFeeOutput, decode_action
-from fable.modeling import load_artifact
-from fable.records import StrictFrozenRecord
-from fable.temporal import HistoricalDataset, prepare_historical_window
+from kairos.addresses import evaluation_json_path
+from kairos.config import EvaluateRequest
+from kairos.corpus import BlockFrame, load_corpus_blocks
+from kairos.evaluation import ROLLING_HORIZONS
+from kairos.experiments import ExperimentKind, load_experiment_manifest
+from kairos.min_block_fee import MinBlockFeeOutput, decode_action
+from kairos.modeling import load_artifact
+from kairos.records import StrictFrozenRecord
+from kairos.temporal import HistoricalDataset, prepare_historical_window
 
 _T = TypeVar("_T")
 

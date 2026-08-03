@@ -18,8 +18,8 @@ from figure_style import (
     subplots,
 )
 
-from fable.evaluation import ROLLING_HORIZONS, reduce_evaluation, reduce_rolling
-from fable.experiments import ExperimentKind, load_experiment_manifest
+from kairos.evaluation import ROLLING_HORIZONS, reduce_evaluation, reduce_rolling
+from kairos.experiments import ExperimentKind, load_experiment_manifest
 
 _METRICS = (
     ("base_fee_savings", "Base-fee\nsavings (%)"),

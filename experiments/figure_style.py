@@ -86,7 +86,7 @@ def save_pdf(figure: Figure, path: Path) -> Path:
         path,
         format="pdf",
         metadata={
-            "Creator": "FABLE",
+            "Creator": "KAIROS",
             "Producer": "Matplotlib",
             "CreationDate": None,
             "ModDate": None,

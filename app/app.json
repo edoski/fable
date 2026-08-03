@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "FABLE Demo",
-    "slug": "fable-demo",
-    "scheme": "fable-demo",
+    "name": "KAIROS Demo",
+    "slug": "kairos-demo",
+    "scheme": "kairos-demo",
     "ios": {
-      "bundleIdentifier": "dev.edoski.fable.demo"
+      "bundleIdentifier": "dev.edoski.kairos.demo"
     },
     "android": {
-      "package": "dev.edoski.fable.demo"
+      "package": "dev.edoski.kairos.demo"
     },
     "plugins": [
       "expo-font",

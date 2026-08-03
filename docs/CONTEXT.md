@@ -1,6 +1,6 @@
-# FABLE (Fee Analysis through Blockchain Learning and Estimation) Context
+# KAIROS context
 
-This glossary defines FABLE's active domain language.
+This glossary defines KAIROS's active domain language.
 
 ## Active glossary
 

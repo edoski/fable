@@ -1,8 +1,8 @@
-# FABLE
+# KAIROS
 
-FABLE (Fee Analysis through Blockchain Learning and Estimation) is a closed-parent, fixed-block-horizon system for learning when a future block is likely to minimize base fee per gas. This manual is the canonical detailed account of the product's scientific contract, worked decision, architecture, interfaces, requests, durable objects, commands, operator configuration, mobile surface, evaluation schemas, limitations, and sources.
+KAIROS is a closed-parent, fixed-block-horizon system for learning when a future block is likely to minimize base fee per gas. This manual is the canonical detailed account of the product's scientific contract, worked decision, architecture, interfaces, requests, durable objects, commands, operator configuration, mobile surface, evaluation schemas, limitations, and sources.
 
-FABLE derives from and extends selected temporal work from *SPICE: A Predictive Framework for Cost-Optimization in Multichain Environments*. FABLE is neither SPICE nor a reproduction of SPICE. Domain terms are defined in [CONTEXT.md](CONTEXT.md); active durable-object and execution-boundary decisions are indexed in [adr/](adr/).
+KAIROS derives from and extends selected temporal work from *SPICE: A Predictive Framework for Cost-Optimization in Multichain Environments*. KAIROS is neither SPICE nor a reproduction of SPICE. Domain terms are defined in [CONTEXT.md](CONTEXT.md); active durable-object and execution-boundary decisions are indexed in [adr/](adr/).
 
 ## Contents
 
@@ -15,7 +15,7 @@ FABLE derives from and extends selected temporal work from *SPICE: A Predictive 
 
 ## Overview
 
-FABLE is organized around strict request values, direct owner functions, native library objects, and UUID-addressed durable objects. Dependencies point from operator edges toward scientific owners.
+KAIROS is organized around strict request values, direct owner functions, native library objects, and UUID-addressed durable objects. Dependencies point from operator edges toward scientific owners.
 
 ### System shape
 
@@ -33,7 +33,7 @@ strict workflow request --> CLI or direct Python call
 transient observation-derived reductions
 ```
 
-`fable.config` owns frozen Pydantic values, small discriminated unions, and fresh request construction through model defaults. Raw JSON and durable bytes are strictly hydrated once at their owning boundary; downstream code trusts those typed values and their already-typed nested values.
+`kairos.config` owns frozen Pydantic values, small discriminated unions, and fresh request construction through model defaults. Raw JSON and durable bytes are strictly hydrated once at their owning boundary; downstream code trusts those typed values and their already-typed nested values.
 
 ### Dependency direction
 
@@ -60,11 +60,11 @@ This high-level diagram summarizes the production import direction. Direct owner
 
 The closed model union is LSTM, Transformer, or Transformer-LSTM. Historical preparation supplies lazy contiguous CPU-backed examples; each model consumes float32 `[B,C,F]` and returns action logits `[B,K]` plus standardized minimum-fee prediction `[B]`. Architecture stays independent of target construction and evaluation accounting.
 
-Corpus production is external. Native OpenSSH and Slurm begin at `fable.execution.submit_workflows()` ([ADR 0007](adr/0007-native-external-execution-boundary.md)). Completed objects own one exact request at direct canonical addresses; UUIDs identify instances and typed associations establish meaning ([ADR 0006](adr/0006-direct-durable-object-authority.md)).
+Corpus production is external. Native OpenSSH and Slurm begin at `kairos.execution.submit_workflows()` ([ADR 0007](adr/0007-native-external-execution-boundary.md)). Completed objects own one exact request at direct canonical addresses; UUIDs identify instances and typed associations establish meaning ([ADR 0006](adr/0006-direct-durable-object-authority.md)).
 
 ## One decision, end to end
 
-FABLE makes a decision immediately after a closed parent block `h`. Every number in this hand-computable Ethereum example is a fabricated teaching value.
+KAIROS makes a decision immediately after a closed parent block `h`. Every number in this hand-computable Ethereum example is a fabricated teaching value.
 
 ### 1. Fix the geometry
 
@@ -260,13 +260,13 @@ The last value follows current mobile decoding arithmetic: the displayed float32
 
 ## Scientific contract
 
-FABLE is a closed-parent, fixed-block-horizon temporal learning system. This document owns the causal information set, `C/K/k` geometry, fitted-state rules, feature and target equations, evaluation estimands, claim boundaries, sources, and limitations.
+KAIROS is a closed-parent, fixed-block-horizon temporal learning system. This document owns the causal information set, `C/K/k` geometry, fitted-state rules, feature and target equations, evaluation estimands, claim boundaries, sources, and limitations.
 
 ### Lineage and ownership
 
 The manuscript *SPICE: A Predictive Framework for Cost-Optimization in Multichain Environments* describes a broader spatial, temporal, and distributed-reputation system. Its temporal experiment motivates a future minimum-block decision, an associated scalar fee prediction, the LSTM/Transformer/Transformer-LSTM comparison, chronological roles, and a weighted cross-entropy plus Smooth-L1 lineage.
 
-FABLE specifies the current closed-parent origins, fixed block-count geometry, causal features,
+KAIROS specifies the current closed-parent origins, fixed block-count geometry, causal features,
 raw-integer target selection, training-fitted state, fixed training loss, exhaustive equal-origin
 evaluation, durable objects, and mobile semantics.
 
@@ -454,13 +454,13 @@ Validation logs `mean_i q_i` as `validation_base_fee_optimality_gap`. Loss-based
 
 ### Model concepts
 
-FABLE uses a closed discriminated union of three concrete sequence models:
+KAIROS uses a closed discriminated union of three concrete sequence models:
 
 - LSTM recurrently summarizes the fixed context and uses its final state.
 - Transformer projects each row, adds sinusoidal positions, applies self-attention, and uses the final encoded position.
 - Transformer-LSTM applies the Transformer encoder, then recurrently summarizes the encoded sequence.
 
-All three attach the same two MLP heads. Architecture capacity belongs to `ModelDefinition` or Method; target and loss meaning stays in `fable.min_block_fee`.
+All three attach the same two MLP heads. Architecture capacity belongs to `ModelDefinition` or Method; target and loss meaning stays in `kairos.min_block_fee`.
 
 ### Evaluation estimands
 
@@ -531,7 +531,7 @@ The sections below place each direct owner interface beside the scientific and d
 
 ### Corpus input
 
-FABLE consumes one completed canonical Corpus pair. Corpus production is external.
+KAIROS consumes one completed canonical Corpus pair. Corpus production is external.
 
 ```text
 corpora/<corpus_id>/
@@ -563,7 +563,7 @@ For live inference, each Run reads one closed head and one fresh exact context, 
 
 ### Minimum-block-fee task
 
-Top-level `fable.min_block_fee` keeps the architecture-neutral target, loss, and decode contract. Temporal preparation supplies its targets, model families return its output, and evaluation consumes the result.
+Top-level `kairos.min_block_fee` keeps the architecture-neutral target, loss, and decode contract. Temporal preparation supplies its targets, model families return its output, and evaluation consumes the result.
 
 #### Owned values
 
@@ -680,7 +680,7 @@ Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only eac
 
 ## Exact reference
 
-This reference defines FABLE's strict requests, completed objects, direct addresses, commands,
+This reference defines KAIROS's strict requests, completed objects, direct addresses, commands,
 operator YAML, mobile bundle and runtime surfaces, and evaluation schemas.
 
 ### Scalar conventions
@@ -693,7 +693,7 @@ operator YAML, mobile bundle and runtime surfaces, and evaluation schemas.
 - Timestamps and elapsed values are integer seconds.
 - Raw JSON and durable bytes hydrate once with strict scalar parsing and unknown-field rejection. `StrictFrozenRecord` values are immutable; downstream code trusts already-typed nested Pydantic values instead of revalidating instances.
 
-Distribution name, import root, and installed executable are `fable`; the static distribution version is `0.1.0`.
+Distribution name, import root, and installed executable are `kairos`; the static distribution version is `0.1.0`.
 
 ### Requests and definitions
 
@@ -882,9 +882,9 @@ report commands print, but do not persist, the ordinary and rolling reductions. 
 the exact 81 evaluation references and removes the temporary bundle. `experiments/launch.py
 workflows BUNDLE` packs Train or Evaluate cells with the same packed execution contract.
 
-Research figures remain outside `src/fable` and outside the experiment command flow. The four
+Research figures remain outside `src/kairos` and outside the experiment command flow. The four
 self-contained scripts load completed manifests and canonical Studies or Evaluations through their
-owning FABLE loaders, derive presentation-only percentages and deltas in memory, and write vector
+owning KAIROS loaders, derive presentation-only percentages and deltas in memory, and write vector
 PDFs under `outputs/figures/`:
 
 ```text
@@ -955,9 +955,9 @@ load_artifact(
 Three public command leaves:
 
 ```text
-fable submit REQUEST.json [REQUEST.json ...]
-fable study run TUNE_REQUEST.json METHOD_INDEX
-fable study finalize STUDY_ID
+kairos submit REQUEST.json [REQUEST.json ...]
+kairos study run TUNE_REQUEST.json METHOD_INDEX
+kairos study finalize STUDY_ID
 ```
 
 - `submit` accepts one or more WorkflowRequest files and prints one positive Slurm job ID per request.
@@ -967,15 +967,15 @@ fable study finalize STUDY_ID
 Two help-hidden generated-job leaves:
 
 ```text
-fable remote workflow
-fable remote candidate
+kairos remote workflow
+kairos remote candidate
 ```
 
 Generated Slurm scripts call these leaves with strict JSON on standard input.
 
 ### Remote submission
 
-`fable.execution` exposes two submission functions:
+`kairos.execution` exposes two submission functions:
 
 ```python
 submit_workflows(requests: Sequence[WorkflowRequest]) -> int
@@ -1004,12 +1004,12 @@ waits for every step and fails if any step fails. Experiment authors own unique 
 destinations and candidate Method indices before submission.
 
 Allocations change to `storage_root`, export `STORAGE_ROOT`, and run the immutable Apptainer image
-with NVIDIA support. The image dispatches `fable remote workflow` or `fable remote candidate`.
+with NVIDIA support. The image dispatches `kairos remote workflow` or `kairos remote candidate`.
 Workflow stdin is the Train or Evaluate request JSON directly. Candidate stdin is the strict
 record containing the TuneRequest and validated Method index. Each allocation uses one
 `ssh -T -o BatchMode=yes … sbatch --parsable` call.
 
-The image owns one exact FABLE revision and fixed runtime profile. Its path must remain unchanged
+The image owns one exact KAIROS revision and fixed runtime profile. Its path must remain unchanged
 while submitted jobs are queued.
 
 `STORAGE_ROOT` is the neutral implicit environment input to current CLI, remote Python, and mobile
@@ -1017,7 +1017,7 @@ export paths.
 
 ### Mobile deployment
 
-The isolated `tools/mobile-export` project pins Torch 2.11 and ExecuTorch 1.2 without changing FABLE's Torch 2.7.1 environment. Its strict `MOBILE.yaml` roster contains exactly `ethereum`, `polygon`, and `avalanche`, each with integer horizons `2…5` mapped to artifact UUIDv4 values.
+The isolated `tools/mobile-export` project pins Torch 2.11 and ExecuTorch 1.2 without changing KAIROS's Torch 2.7.1 environment. Its strict `MOBILE.yaml` roster contains exactly `ethereum`, `polygon`, and `avalanche`, each with integer horizons `2…5` mapped to artifact UUIDv4 values.
 
 Every cell must match artifact identity, chain, horizon, shared feature contract, native output semantics, eager-to-XNNPACK host parity, selected action, and decoded-fee tolerance. At least one delegate across the exported program's execution plans must have exact ID `XnnpackBackend`. The exporter reads only the Corpus request needed for chain identity, rejects an occupied output before lowering, builds a hidden sibling directory, checks again immediately before rename, and removes scratch on failure. Publication is all twelve models plus one manifest:
 
@@ -1031,7 +1031,7 @@ app/assets/models/
 
 The manifest owns shared context and feature state plus each model's artifact UUID and target state. The app trusts this build-time bundle through typed direct lookups and twelve static `.pte` requires. It has no download, alternate runtime, or remote inference fallback.
 
-Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; the raw adapter requires every block to contain a positive base fee, so a rejected outcome read remains pending and retryable. Session disposal unwatches without aborting in-flight reads. App owns one selection record containing the applied selection and latest intent. Selection application shares the rejection-safe history FIFO with persistence and outcome retries, so an accepted history update publishes before the latest queued intent is applied; only an applied chain change replaces the engine. Applied selection and engine identity reject stale results. The model runtime serializes native load, forward, replacement, and disposal. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call must begin at the first context block and return exactly `C` rows containing nonnegative P50 and P90 values. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
+Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `kairos.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; the raw adapter requires every block to contain a positive base fee, so a rejected outcome read remains pending and retryable. Session disposal unwatches without aborting in-flight reads. App owns one selection record containing the applied selection and latest intent. Selection application shares the rejection-safe history FIFO with persistence and outcome retries, so an accepted history update publishes before the latest queued intent is applied; only an applied chain change replaces the engine. Applied selection and engine identity reject stale results. The model runtime serializes native load, forward, replacement, and disposal. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call must begin at the first context block and return exactly `C` rows containing nonnegative P50 and P90 values. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
 
 The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real
 `MOBILE.yaml`, generated assets, and device-acceptance evidence do not yet exist. The
@@ -1061,7 +1061,7 @@ reduce_study(storage_root: Path, study_id: UUID) -> polars.DataFrame
 reduce_artifact_validation(storage_root: Path, artifact_id: UUID) -> polars.DataFrame
 ```
 
-Public exports from `fable.evaluation`:
+Public exports from `kairos.evaluation`:
 
 ```python
 evaluate(

@@ -13,7 +13,7 @@ from bundle import (
     write_tune_cells,
 )
 
-from fable.config import (
+from kairos.config import (
     BlockWindow,
     ExperimentSemantics,
     FeatureName,
@@ -24,8 +24,8 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.experiments import ExperimentKind
-from fable.study import load_study
+from kairos.experiments import ExperimentKind
+from kairos.study import load_study
 
 _KIND = ExperimentKind.FEATURE_ABLATION
 _CHAINS = (

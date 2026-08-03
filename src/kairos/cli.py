@@ -1,4 +1,4 @@
-"""FABLE command-line application."""
+"""KAIROS command-line application."""
 
 from __future__ import annotations
 

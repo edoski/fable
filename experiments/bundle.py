@@ -12,14 +12,14 @@ from uuid import UUID
 import polars as pl
 import typer
 
-from fable.config import EvaluateRequest, TrainRequest, TuneRequest
-from fable.experiments import (
+from kairos.config import EvaluateRequest, TrainRequest, TuneRequest
+from kairos.experiments import (
     ExperimentKind,
     ExperimentManifest,
     experiment_directory,
     load_experiment_manifest,
 )
-from fable.study import reduce_study
+from kairos.study import reduce_study
 
 StorageRoot: TypeAlias = Annotated[Path, typer.Argument(resolve_path=True)]
 BundleRequest: TypeAlias = TuneRequest | TrainRequest | EvaluateRequest

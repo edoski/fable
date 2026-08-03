@@ -8,12 +8,12 @@ import pytest
 import torch
 from pydantic import ValidationError
 
-from fable.addresses import (
+from kairos.addresses import (
     study_json_path,
     study_trial_checkpoint_path,
     study_trial_observations_path,
 )
-from fable.config import (
+from kairos.config import (
     BlockWindow,
     ExperimentSemantics,
     FitMethod,
@@ -23,8 +23,8 @@ from fable.config import (
     TrainingDefinition,
     TuneRequest,
 )
-from fable.observations import OBSERVATION_SCHEMA
-from fable.study import (
+from kairos.observations import OBSERVATION_SCHEMA
+from kairos.study import (
     RetainedResult,
     Study,
     load_selected_method,

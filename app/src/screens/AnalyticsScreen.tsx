@@ -201,9 +201,9 @@ function BaseFeeByWaitChart({
     (
       bucket,
     ): bucket is WaitBucket & {
-      fableGwei: number;
+      kairosGwei: number;
       immediateGwei: number;
-    } => bucket.fableGwei !== null && bucket.immediateGwei !== null,
+    } => bucket.kairosGwei !== null && bucket.immediateGwei !== null,
   );
   return (
     <ChartCard
@@ -213,8 +213,8 @@ function BaseFeeByWaitChart({
             style={[styles.graphLegendDot, styles.graphImmediateDot]}
           />
           <Text style={styles.graphLegendLabel}>Act now</Text>
-          <View style={[styles.graphLegendDot, styles.graphFableDot]} />
-          <Text style={styles.graphLegendLabel}>FABLE</Text>
+          <View style={[styles.graphLegendDot, styles.graphKairosDot]} />
+          <Text style={styles.graphLegendLabel}>KAIROS</Text>
         </View>
       }
       title="Base fee by wait (Gwei)"
@@ -224,7 +224,7 @@ function BaseFeeByWaitChart({
       <GiftedBarChart
         {...AXIS_PROPS}
         {...chartScale(
-          data.flatMap((bucket) => [bucket.immediateGwei, bucket.fableGwei]),
+          data.flatMap((bucket) => [bucket.immediateGwei, bucket.kairosGwei]),
         )}
         barWidth={18}
         data={data.flatMap((bucket, index) => [
@@ -238,7 +238,7 @@ function BaseFeeByWaitChart({
           {
             frontColor: colors.blue,
             spacing: index === data.length - 1 ? 0 : 20,
-            value: bucket.fableGwei,
+            value: bucket.kairosGwei,
           },
         ])}
         formatYLabel={(label) => {

@@ -4,7 +4,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from fable.experiments import (
+from kairos.experiments import (
     ExperimentKind,
     ExperimentManifest,
     experiment_manifest_path,

@@ -2,13 +2,13 @@
 
 Status: implementation active; Slices 1 and 2 green, Slice 3 ready, scientific campaigns gated
 
-Authority: [GitHub issue #148](https://github.com/edoski/fable/issues/148). Primary-source and
+Authority: [GitHub issue #148](https://github.com/edoski/kairos/issues/148). Primary-source and
 repository evidence: [inference-benchmark-slice-research.md](inference-benchmark-slice-research.md)
 and [inference-economic-assumptions.md](inference-economic-assumptions.md).
 
 ## Pre-run state
 
-- Checkout: `/Users/edo/dev/python/fable`
+- Checkout: `/Users/edo/dev/python/kairos`
 - Branch: `main`
 - Immutable planning baseline: `5364af1dbfb01aa52397adad9d9bca7f29855409`
 - Last alignment audit: `64f8d7cffab87a47744f565495117d9bce74747a`
@@ -44,7 +44,7 @@ and [inference-economic-assumptions.md](inference-economic-assumptions.md).
   evaluation. Completed K-study and held-out manifests, artifacts, evaluations, and corpora cross
   the existing file-transfer boundary before local measurement.
 - No CUDA comparison is part of issue #148. The configured remote is a heterogeneous CUDA
-  environment with no FABLE-owned comparable energy contract; it would be a separately named
+  environment with no KAIROS-owned comparable energy contract; it would be a separately named
   datacenter deployment study.
 
 ### Coverage and model boundary
@@ -167,7 +167,7 @@ and [inference-economic-assumptions.md](inference-economic-assumptions.md).
 
 The strongest permitted conclusion is model-compute-only:
 
-> On the declared MacBook Pro M2 Max, runtime, and final artifacts, FABLE's four-forward
+> On the declared MacBook Pro M2 Max, runtime, and final artifacts, KAIROS's four-forward
 > model-compute stress cascade fits within the positive inter-block intervals observed during the
 > sealed testing period under the declared p99-versus-p01 comparison.
 
@@ -179,7 +179,7 @@ depend on infrastructure and are outside this experiment.
 
 One experiment-private operator entry point under `experiments/` owns resolution, measurement, and
 reduction. Private helper modules are allowed when they keep power parsing and statistical
-reduction deep; no installed `fable` CLI, public evaluator API, compatibility layer, or benchmark
+reduction deep; no installed `kairos` CLI, public evaluator API, compatibility layer, or benchmark
 database is added. Focused tests live under `tests/experiments/`.
 
 The operator receives explicit K-study and held-out experiment UUIDs and an explicit output
@@ -275,7 +275,7 @@ centralizing its existing fixed horizon sequence as one shared constant.
 
 One local command can resume and complete ten auditable full-period CPU sweeps over all nine cells,
 producing individual-call horizon and four-forward stress-cascade latency records without changing
-FABLE's canonical evaluation pipeline.
+KAIROS's canonical evaluation pipeline.
 
 ### Checks
 
@@ -375,7 +375,7 @@ recompute every joule value.
 
 ### Dependencies and gates
 
-Schema gate passed on 2026-08-01 using `/tmp/fable-powermetrics.DBpLW8`: three NUL-separated plist
+Schema gate passed on 2026-08-01 using `/tmp/kairos-powermetrics.DBpLW8`: three NUL-separated plist
 records exposed `timestamp`, nanosecond `elapsed_ns`, nominal thermal state, and CPU, GPU, ANE, and
 combined processor power fields; combined power equalled the three rails within printed rounding.
 The paired text capture labelled the powers in milliwatts. Raw host and boot fields will not enter

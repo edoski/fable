@@ -8,9 +8,9 @@ import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
 
-from fable.addresses import corpus_blocks_path, corpus_json_path
-from fable.config import CorpusDefinition, CorpusRequest
-from fable.corpus import load_corpus_blocks
+from kairos.addresses import corpus_blocks_path, corpus_json_path
+from kairos.config import CorpusDefinition, CorpusRequest
+from kairos.corpus import load_corpus_blocks
 
 CORPUS_ID = UUID("11111111-1111-4111-8111-111111111111")
 OTHER_CORPUS_ID = UUID("22222222-2222-4222-8222-222222222222")

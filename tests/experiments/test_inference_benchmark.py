@@ -14,7 +14,7 @@ import torch
 from torch import nn
 
 import experiments.inference_benchmark as benchmark
-from fable.config import (
+from kairos.config import (
     BlockWindow,
     EvaluateRequest,
     ExperimentSemantics,
@@ -24,9 +24,9 @@ from fable.config import (
     SelectedStudySource,
     TrainRequest,
 )
-from fable.min_block_fee import MinBlockFeeOutput, TargetState
-from fable.modeling import ArtifactAssociation
-from fable.temporal import FeatureState, HistoricalDataset, _HistoricalBacking
+from kairos.min_block_fee import MinBlockFeeOutput, TargetState
+from kairos.modeling import ArtifactAssociation
+from kairos.temporal import FeatureState, HistoricalDataset, _HistoricalBacking
 
 _K_STUDY_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 _HELD_OUT_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")

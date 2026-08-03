@@ -16,8 +16,8 @@ from figure_style import (
     subplots,
 )
 
-from fable.experiments import ExperimentKind, load_experiment_manifest
-from fable.study import load_study
+from kairos.experiments import ExperimentKind, load_experiment_manifest
+from kairos.study import load_study
 
 
 def render(storage_root: Path, experiment_id: UUID, output_directory: Path) -> Path:

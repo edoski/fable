@@ -7,7 +7,7 @@ import type {
   InferenceResult,
 } from "./inference";
 
-const STORAGE_KEY = "fable.runs";
+const STORAGE_KEY = "kairos.runs";
 
 export type InferenceRun = InferenceResult & {
   id: string;

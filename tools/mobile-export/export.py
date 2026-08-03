@@ -18,9 +18,9 @@ from executorch.runtime import Runtime
 from pydantic import UUID4, Field, TypeAdapter
 from torch import nn
 
-from fable.config import CorpusRequest, FeatureName
-from fable.corpus import load_corpus_request
-from fable.modeling import ArtifactAssociation, load_artifact
+from kairos.config import CorpusRequest, FeatureName
+from kairos.corpus import load_corpus_request
+from kairos.modeling import ArtifactAssociation, load_artifact
 
 _Chain = Literal["ethereum", "polygon", "avalanche"]
 _Horizon = Annotated[int, Field(ge=2, le=5)]

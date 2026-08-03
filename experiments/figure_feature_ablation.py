@@ -12,8 +12,8 @@ import numpy as np
 from figure_style import DEFAULT_OUTPUT_DIRECTORY, display_name, save_pdf, subplots
 from matplotlib.colors import TwoSlopeNorm
 
-from fable.experiments import ExperimentKind, load_experiment_manifest
-from fable.study import load_study
+from kairos.experiments import ExperimentKind, load_experiment_manifest
+from kairos.study import load_study
 
 
 def _objective(storage_root: Path, study_id: UUID) -> float:

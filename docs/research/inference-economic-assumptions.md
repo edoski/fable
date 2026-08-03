@@ -2,7 +2,7 @@
 
 Research frozen on 2026-08-01. The lean primary study needs one economic input: an electricity
 price in EUR/kWh. Native-token prices are not inputs to inference cost. They are needed only if a
-separate analysis converts FABLE's native-unit fee savings into euros and compares them with the
+separate analysis converts KAIROS's native-unit fee savings into euros and compares them with the
 inference electricity cost.
 
 ## Recommended primary contract
