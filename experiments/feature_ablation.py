@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-from statistics import fmean
 from uuid import UUID, uuid4
 
-from bundle import StorageRoot, close_bundle, open_bundle, run, write_tune_cells
+from bundle import (
+    StorageRoot,
+    close_bundle,
+    open_bundle,
+    print_study_metrics,
+    run,
+    write_tune_cells,
+)
 
-from fable.config import (
+from kairos.config import (
     BlockWindow,
     ExperimentSemantics,
     FeatureName,
@@ -18,8 +24,8 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.experiments import ExperimentKind, load_experiment_manifest
-from fable.study import load_study
+from kairos.experiments import ExperimentKind
+from kairos.study import load_study
 
 _KIND = ExperimentKind.FEATURE_ABLATION
 _CHAINS = (
@@ -130,7 +136,7 @@ def prepare(storage_root: StorageRoot) -> None:
                     experiment=ExperimentSemantics(
                         training_window=training_window,
                         validation_window=validation_window,
-                        context_blocks=100,
+                        context_blocks=25,
                         horizon_blocks=5,
                         ordered_features=ordered_features,
                     ),
@@ -148,16 +154,7 @@ def close(storage_root: StorageRoot, experiment_id: UUID) -> None:
 
 
 def report(storage_root: StorageRoot, experiment_id: UUID) -> None:
-    manifest = load_experiment_manifest(storage_root, _KIND, experiment_id)
-    objectives: dict[tuple[str, str], list[float]] = {}
-    for cell, study_id in manifest.items():
-        chain, _, configuration = cell.split(".")
-        study = load_study(storage_root, study_id)
-        objectives.setdefault((chain, configuration), []).append(study.trials[0].objective)
-
-    for chain, *_ in _CHAINS:
-        for configuration, _ in _feature_configurations(chain):
-            print(f"{chain}\t{configuration}\t{fmean(objectives[chain, configuration]):g}")
+    print_study_metrics(storage_root, _KIND, experiment_id)
 
 
 if __name__ == "__main__":

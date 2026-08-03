@@ -6,10 +6,10 @@ from uuid import UUID, uuid4
 
 from bundle import StorageRoot, close_bundle, open_bundle, run, write_train_cells
 
-from fable.config import SelectedStudySource, TrainRequest
-from fable.experiments import ExperimentKind, load_experiment_manifest
-from fable.modeling import load_artifact
-from fable.study import load_study
+from kairos.config import SelectedStudySource, TrainRequest
+from kairos.experiments import ExperimentKind, load_experiment_manifest
+from kairos.modeling import load_artifact
+from kairos.study import load_study
 
 _KIND = ExperimentKind.K_STUDY
 _HORIZONS = (2, 3, 4, 5, 10, 25, 50, 100, 200)

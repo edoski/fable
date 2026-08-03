@@ -17,7 +17,7 @@ from .records import StrictFrozenRecord
 _NonEmptyString = Annotated[str, Field(min_length=1)]
 _NonNegativeInt = Annotated[int, Field(ge=0)]
 _PositiveInt = Annotated[int, Field(gt=0)]
-MAX_ALLOCATION_PROCESS_COUNT = 3
+MAX_ALLOCATION_PROCESS_COUNT = 4
 
 
 class _Resources(StrictFrozenRecord):
@@ -69,7 +69,7 @@ def _submit_allocation(
     inputs: Sequence[StrictFrozenRecord], leaf: Literal["workflow", "candidate"]
 ) -> int:
     if not 1 <= len(inputs) <= MAX_ALLOCATION_PROCESS_COUNT:
-        raise ValueError("an allocation requires one to three process inputs")
+        raise ValueError("an allocation requires one to four process inputs")
     remote = _Remote.model_validate(yaml.safe_load(Path("REMOTE.yaml").read_bytes()))
     return _invoke_sbatch(
         remote,
@@ -108,9 +108,9 @@ def _render_allocation_script(
             f"{shlex.quote(remote.image)} remote {leaf}"
         )
         return f"""\
-{command} <<'FABLE_REQUEST_{slot}' &
+{command} <<'KAIROS_REQUEST_{slot}' &
 {process_input_json}
-FABLE_REQUEST_{slot}
+KAIROS_REQUEST_{slot}
 pids+=("$!")"""
 
     steps = "\n".join(

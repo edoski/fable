@@ -8,6 +8,7 @@ __pycache__/
 .ruff_cache/
 build/
 dist/
+/outputs/figures/
 /app/node_modules/
 /app/.expo/
 /app/ios/

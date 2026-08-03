@@ -4,8 +4,48 @@ from collections.abc import Mapping
 from pathlib import Path
 from uuid import UUID
 
-from fable.config import TuneRequest
-from fable.study import RetainedResult, Study
+import polars as pl
+
+from kairos.addresses import (
+    study_json_path,
+    study_trial_checkpoint_path,
+    study_trial_observations_path,
+)
+from kairos.config import TuneRequest
+from kairos.observations import OBSERVATION_SCHEMA
+from kairos.study import RetainedResult, Study
+
+
+def publish_test_study(storage_root: Path, study: Study) -> None:
+    path = study_json_path(storage_root, study.request.study_id)
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(study.model_dump_json(), encoding="utf-8")
+    for index, result in enumerate(study.trials):
+        checkpoint = study_trial_checkpoint_path(storage_root, study.request.study_id, index)
+        checkpoint.parent.mkdir(parents=True)
+        checkpoint.touch()
+        minimum = 1_000_000
+        selected = minimum + round(minimum * result.objective)
+        pl.DataFrame(
+            [
+                {
+                    "origin_block": 1,
+                    "predicted_action_k": 1,
+                    "predicted_minimum_log_base_fee": 1.0,
+                    "minimum_action_k": 0,
+                    "immediate_base_fee_per_gas": 200,
+                    "immediate_effective_priority_fee_per_gas_p50": 2,
+                    "selected_base_fee_per_gas": selected,
+                    "selected_effective_priority_fee_per_gas_p50": 1,
+                    "deadline_base_fee_per_gas": 150,
+                    "deadline_effective_priority_fee_per_gas_p50": 1,
+                    "minimum_base_fee_per_gas": minimum,
+                }
+            ],
+            schema=OBSERVATION_SCHEMA,
+        ).write_parquet(study_trial_observations_path(storage_root, study.request.study_id, index))
 
 
 def publish_generated_studies(
@@ -32,6 +72,4 @@ def publish_generated_studies(
                 for method_index, _ in enumerate(request.methods)
             ),
         )
-        path = storage_root / "studies" / f"{request.study_id}.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(study.model_dump_json(), encoding="utf-8")
+        publish_test_study(storage_root, study)

@@ -20,8 +20,8 @@ Use `uv run vulture` for dead-code checks. The repo config runs Vulture at 90% c
 
 The research login node does not expose Apptainer. Build immutable images through Slurm's
 `sbuild` partition from an isolated checkout at
-`/scratch.hpc/edoardo.galli3/build/fable-cuda-<short-sha>`. Assert the checkout's full commit SHA,
-use `/scratch.hpc/edoardo.galli3/cache/fable-cuda-<short-sha>` as `APPTAINER_CACHEDIR`, and write
-`/scratch.hpc/edoardo.galli3/deployments/fable-cuda-<short-sha>.sif`. The proven allocation is one
+`/scratch.hpc/edoardo.galli3/build/kairos-cuda-<short-sha>`. Assert the checkout's full commit SHA,
+use `/scratch.hpc/edoardo.galli3/cache/kairos-cuda-<short-sha>` as `APPTAINER_CACHEDIR`, and write
+`/scratch.hpc/edoardo.galli3/deployments/kairos-cuda-<short-sha>.sif`. The proven allocation is one
 node and task, 8 CPUs, 30 GB RAM, and a one-hour limit. Run `apptainer build` followed by
 `apptainer test`; preserve the preceding image until the replacement passes GPU smoke tests.

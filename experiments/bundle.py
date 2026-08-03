@@ -9,10 +9,17 @@ from pathlib import Path
 from typing import Annotated, Literal, TypeAlias
 from uuid import UUID
 
+import polars as pl
 import typer
 
-from fable.config import EvaluateRequest, TrainRequest, TuneRequest
-from fable.experiments import ExperimentKind, ExperimentManifest, experiment_directory
+from kairos.config import EvaluateRequest, TrainRequest, TuneRequest
+from kairos.experiments import (
+    ExperimentKind,
+    ExperimentManifest,
+    experiment_directory,
+    load_experiment_manifest,
+)
+from kairos.study import reduce_study
 
 StorageRoot: TypeAlias = Annotated[Path, typer.Argument(resolve_path=True)]
 BundleRequest: TypeAlias = TuneRequest | TrainRequest | EvaluateRequest
@@ -38,14 +45,32 @@ def open_bundle(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -
 
 
 def write_tune_cells(bundle: Path, cells: Iterable[tuple[str, TuneRequest]]) -> None:
+    _write_tune_cells(bundle, cells, mode="x")
+
+
+def append_tune_cells(bundle: Path, cells: Iterable[tuple[str, TuneRequest]]) -> None:
+    _write_tune_cells(bundle, cells, mode="a")
+
+
+def _write_tune_cells(
+    bundle: Path, cells: Iterable[tuple[str, TuneRequest]], *, mode: Literal["a", "x"]
+) -> None:
+    cells = tuple(cells)
+    existing = read_cells(bundle) if mode == "a" else []
+    existing_cells = {row["cell"] for row in existing}
+    new_cells = [cell for cell, _ in cells]
+    if len(set(new_cells)) != len(new_cells) or existing_cells & set(new_cells):
+        raise ValueError("experiment cells must be new and unique")
+
+    request_index = len(dict.fromkeys(row["request"] for row in existing))
     rows: list[tuple[str, Path, int, UUID]] = []
-    for index, (cell, request) in enumerate(cells):
+    for index, (cell, request) in enumerate(cells, start=request_index):
         request_path = _write_request(bundle, index, request)
         rows.extend(
             (cell, request_path, method_index, request.study_id)
             for method_index in range(len(request.methods))
         )
-    _write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows)
+    _write_cells(bundle, ("cell", "request", "method_index", "study_id"), rows, mode=mode)
 
 
 def write_train_cells(bundle: Path, cells: Iterable[tuple[str, TrainRequest]]) -> None:
@@ -70,16 +95,35 @@ def _write_request(bundle: Path, index: int, request: BundleRequest) -> Path:
     return path
 
 
-def _write_cells(bundle: Path, header: Sequence[str], rows: Iterable[Sequence[object]]) -> None:
-    with (bundle / "cells.tsv").open("x", newline="", encoding="utf-8") as destination:
+def _write_cells(
+    bundle: Path,
+    header: Sequence[str],
+    rows: Iterable[Sequence[object]],
+    *,
+    mode: Literal["a", "x"] = "x",
+) -> None:
+    with (bundle / "cells.tsv").open(mode, newline="", encoding="utf-8") as destination:
         writer = csv.writer(destination, delimiter="\t", lineterminator="\n")
-        writer.writerow(header)
+        if mode == "x":
+            writer.writerow(header)
         writer.writerows(rows)
 
 
 def read_cells(bundle: Path) -> list[dict[str, str]]:
     with (bundle / "cells.tsv").open(newline="", encoding="utf-8") as source:
         return list(csv.DictReader(source, delimiter="\t"))
+
+
+def load_roster(
+    storage_root: Path, kind: ExperimentKind, experiment_id: UUID, column: _RecordColumn
+) -> dict[str, UUID]:
+    canonical = experiment_directory(storage_root, kind, experiment_id)
+    if canonical.exists():
+        return load_experiment_manifest(storage_root, kind, experiment_id)
+    return {
+        row["cell"]: UUID(row[column])
+        for row in read_cells(bundle_path(storage_root, kind, experiment_id))
+    }
 
 
 def publish_bundle(
@@ -117,3 +161,11 @@ def close_bundle(
 
     publish_bundle(storage_root, kind, experiment_id, cells)
     print(experiment_id)
+
+
+def print_study_metrics(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -> None:
+    results = []
+    for cell, study_id in load_experiment_manifest(storage_root, kind, experiment_id).items():
+        metrics = reduce_study(storage_root, study_id)
+        results.append(pl.DataFrame({"cell": [cell] * metrics.height}).hstack(metrics))
+    print(pl.concat(results).write_csv(None, separator="\t"), end="")

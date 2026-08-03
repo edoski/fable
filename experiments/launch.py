@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import csv
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 from typing import TypeVar
+from uuid import UUID
 
 import typer
 from bundle import read_cells
 
-from fable.config import WORKFLOW_REQUEST_ADAPTER, TuneRequest
-from fable.execution import (
+from kairos.addresses import study_json_path
+from kairos.config import WORKFLOW_REQUEST_ADAPTER, TuneRequest
+from kairos.execution import (
     MAX_ALLOCATION_PROCESS_COUNT,
     CandidateProcessInput,
     submit_candidates,
@@ -31,7 +33,20 @@ def candidates(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) 
         process_inputs.append(
             CandidateProcessInput(request=request, method_index=int(row["method_index"]))
         )
-    _launch(bundle, rows, process_inputs, submit_candidates, tasks_per_job)
+    storage_root = bundle.parents[2]
+    completed_rows = {
+        index
+        for index, row in enumerate(rows)
+        if study_json_path(storage_root, UUID(row["study_id"])).is_file()
+    }
+    _launch(
+        bundle,
+        rows,
+        process_inputs,
+        submit_candidates,
+        tasks_per_job,
+        completed_rows=completed_rows,
+    )
 
 
 def workflows(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) -> None:
@@ -50,9 +65,10 @@ def _launch(
     process_inputs: Sequence[_ProcessInput],
     submit: Callable[[Sequence[_ProcessInput]], int],
     tasks_per_job: int,
+    completed_rows: Collection[int] = (),
 ) -> None:
     if not 2 <= tasks_per_job <= MAX_ALLOCATION_PROCESS_COUNT:
-        raise ValueError("tasks per job must be two or three")
+        raise ValueError("tasks per job must be between two and four")
 
     jobs_path = bundle / "jobs.tsv"
     jobs_exist = jobs_path.exists()
@@ -60,7 +76,7 @@ def _launch(
     pending = [
         (index, row, process_input)
         for index, (row, process_input) in enumerate(zip(rows, process_inputs, strict=True))
-        if index not in submitted_rows
+        if index not in submitted_rows and index not in completed_rows
     ]
     if not pending:
         return
@@ -82,14 +98,9 @@ def _launch(
 
 
 def _allocation_sizes(pending_count: int, capacity: int) -> list[int]:
-    full_allocations, remainder = divmod(pending_count, capacity)
-    sizes = [capacity] * full_allocations
-    if remainder == 1 and capacity == 3 and pending_count > 1:
-        sizes[-1] = 2
-        sizes.append(2)
-    elif remainder:
-        sizes.append(remainder)
-    return sizes
+    allocation_count = (pending_count + capacity - 1) // capacity
+    minimum_size, larger_count = divmod(pending_count, allocation_count)
+    return [minimum_size + 1] * larger_count + [minimum_size] * (allocation_count - larger_count)
 
 
 def _load_submitted_rows(jobs_path: Path) -> set[int]:

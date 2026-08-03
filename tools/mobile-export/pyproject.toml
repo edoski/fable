@@ -1,10 +1,10 @@
 [project]
-name = "fable-mobile-export"
+name = "kairos-mobile-export"
 version = "0.1.0"
 requires-python = "==3.11.*"
 dependencies = [
   "executorch==1.2.0",
-  "fable",
+  "kairos",
   "PyYAML>=6.0",
   "torch==2.11.0",
   "typer>=0.16",
@@ -21,4 +21,4 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
-fable = { path = "../..", editable = true }
+kairos = { path = "../..", editable = true }

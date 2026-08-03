@@ -13,15 +13,19 @@ import torch
 from lightning.pytorch.callbacks import Callback
 from pydantic import ValidationError
 
-import fable.modeling as modeling
-from fable.addresses import (
+import kairos.modeling as modeling
+from kairos.addresses import (
     artifact_checkpoint_path,
+    artifact_observations_path,
+    artifact_result_path,
     corpus_blocks_path,
     corpus_directory,
     corpus_json_path,
     study_json_path,
+    study_trial_checkpoint_path,
+    study_trial_observations_path,
 )
-from fable.config import (
+from kairos.config import (
     BlockWindow,
     CorpusDefinition,
     CorpusRequest,
@@ -35,11 +39,18 @@ from fable.config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from fable.corpus import BlockFrame
-from fable.min_block_fee import TargetState, min_block_fee_loss
-from fable.modeling import ArtifactAssociation, load_artifact, run_candidate, train
-from fable.study import RetainedResult, Study, load_study, publish_study
-from fable.temporal import FeatureState, prepare_fit_history
+from kairos.corpus import BlockFrame
+from kairos.min_block_fee import TargetState, min_block_fee_loss
+from kairos.modeling import (
+    ArtifactAssociation,
+    load_artifact,
+    reduce_artifact_validation,
+    run_candidate,
+    train,
+)
+from kairos.observations import OBSERVATION_SCHEMA
+from kairos.study import RetainedResult, Study, load_study, publish_study
+from kairos.temporal import FeatureState, prepare_fit_history
 
 ARTIFACT_ID = UUID("10000000-0000-4000-8000-000000000001")
 CORPUS_ID = UUID("20000000-0000-4000-8000-000000000001")
@@ -177,6 +188,27 @@ def _write_selected_study(storage_root: Path, request: TrainRequest, method: Met
     path = study_json_path(storage_root, source.study_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(study.model_dump_json(), encoding="utf-8")
+    checkpoint = study_trial_checkpoint_path(storage_root, source.study_id, 0)
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.touch()
+    pl.DataFrame(
+        [
+            {
+                "origin_block": 20,
+                "predicted_action_k": 1,
+                "predicted_minimum_log_base_fee": 1.0,
+                "minimum_action_k": 0,
+                "immediate_base_fee_per_gas": 20,
+                "immediate_effective_priority_fee_per_gas_p50": 0,
+                "selected_base_fee_per_gas": 15,
+                "selected_effective_priority_fee_per_gas_p50": 0,
+                "deadline_base_fee_per_gas": 15,
+                "deadline_effective_priority_fee_per_gas_p50": 0,
+                "minimum_base_fee_per_gas": 10,
+            }
+        ],
+        schema=OBSERVATION_SCHEMA,
+    ).write_parquet(study_trial_observations_path(storage_root, source.study_id, 0))
 
 
 def _use_cpu_trainer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -285,8 +317,21 @@ def test_lstm_trains_loads_and_applies_direct_loss(
     association, loaded_model = load_artifact(tmp_path, artifact_id)
 
     assert association.request == request
-    assert checkpoint == tmp_path / "artifacts" / f"{artifact_id}.ckpt"
+    assert checkpoint == tmp_path / "artifacts" / str(artifact_id) / "artifact.ckpt"
     assert checkpoint.is_file()
+    assert artifact_observations_path(tmp_path, artifact_id).is_file()
+    assert {path.name for path in checkpoint.parent.iterdir()} == {
+        "artifact.ckpt",
+        "result.json",
+        "validation.parquet",
+    }
+    metrics = reduce_artifact_validation(tmp_path, artifact_id)
+    result = RetainedResult.model_validate_json(
+        artifact_result_path(tmp_path, artifact_id).read_bytes()
+    )
+    assert result.objective == metrics["base_fee_optimality_gap"][0]
+    assert result.selected_epoch == 1
+    assert result.completed_epochs == 1
 
     application_history = prepare_fit_history(_blocks(), _experiment())
     batches = list(
@@ -302,7 +347,9 @@ def test_lstm_trains_loads_and_applies_direct_loss(
         assert torch.isfinite(loss_by_origin.mean())
 
     mismatched_id = UUID("30000000-0000-4000-8000-000000000009")
-    checkpoint.rename(artifact_checkpoint_path(tmp_path, mismatched_id))
+    mismatched_checkpoint = artifact_checkpoint_path(tmp_path, mismatched_id)
+    mismatched_checkpoint.parent.mkdir()
+    checkpoint.rename(mismatched_checkpoint)
     with pytest.raises(ValueError, match="embedded artifact ID"):
         load_artifact(tmp_path, mismatched_id)
 
@@ -315,19 +362,21 @@ def test_train_preserves_canonical_created_during_publication(
     _write_corpus(tmp_path)
     _write_selected_study(tmp_path, request, _METHOD)
     _use_cpu_trainer(monkeypatch)
-    canonical = artifact_checkpoint_path(tmp_path, artifact_id)
-    real_link = modeling.os.link
+    canonical = artifact_checkpoint_path(tmp_path, artifact_id).parent
+    real_rename = Path.rename
 
-    def create_collision(source: Path, target: Path) -> None:
-        canonical.write_bytes(b"occupied")
-        real_link(source, target)
+    def create_collision(source: Path, target: Path) -> Path:
+        if target == canonical:
+            canonical.mkdir()
+            (canonical / "occupied").write_text("occupied", encoding="utf-8")
+        return real_rename(source, target)
 
-    monkeypatch.setattr(modeling.os, "link", create_collision)
+    monkeypatch.setattr(Path, "rename", create_collision)
 
     with pytest.raises(FileExistsError):
         train(request, tmp_path)
 
-    assert canonical.read_bytes() == b"occupied"
+    assert (canonical / "occupied").read_text(encoding="utf-8") == "occupied"
     assert (canonical.parent / f".{artifact_id}").is_dir()
 
 
@@ -401,6 +450,9 @@ def test_candidate_failure_preserves_checkpoint_and_resume_publishes_result(
     assert not scratch.exists()
     publish_study(tmp_path, request.study_id)
     second = load_study(tmp_path, request.study_id).trials[0]
+
+    assert study_trial_checkpoint_path(tmp_path, request.study_id, 0).is_file()
+    assert study_trial_observations_path(tmp_path, request.study_id, 0).is_file()
 
     assert first_progress == []
     assert [epoch for epoch, _, _ in second_progress] == [2, 4]

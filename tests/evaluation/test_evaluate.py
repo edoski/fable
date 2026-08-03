@@ -11,8 +11,8 @@ import pytest
 import torch
 from torch import nn
 
-import fable.evaluation as evaluation_module
-from fable.addresses import (
+import kairos.evaluation as evaluation_module
+from kairos.addresses import (
     corpus_blocks_path,
     corpus_directory,
     corpus_json_path,
@@ -20,7 +20,7 @@ from fable.addresses import (
     evaluation_json_path,
     evaluation_observations_path,
 )
-from fable.config import (
+from kairos.config import (
     BlockWindow,
     CorpusDefinition,
     CorpusRequest,
@@ -32,9 +32,9 @@ from fable.config import (
     SelectedStudySource,
     TrainRequest,
 )
-from fable.min_block_fee import MinBlockFeeOutput, TargetState
-from fable.modeling import ArtifactAssociation
-from fable.temporal import FeatureState
+from kairos.min_block_fee import MinBlockFeeOutput, TargetState
+from kairos.modeling import ArtifactAssociation
+from kairos.temporal import FeatureState
 
 _CORPUS_ID = UUID("10000000-0000-4000-8000-000000000001")
 _OTHER_CORPUS_ID = UUID("10000000-0000-4000-8000-000000000002")
@@ -200,6 +200,7 @@ class _Model(nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> MinBlockFeeOutput:
         assert torch.is_inference_mode_enabled()
+        assert not torch.is_autocast_enabled(inputs.device.type)
         assert not self.training
         size = inputs.shape[0]
         start = self.cursor

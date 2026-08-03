@@ -1,10 +1,10 @@
-# FABLE on-device inference decision and acceptance plan
+# KAIROS on-device inference decision and acceptance plan
 
 Date: 2026-07-26
 
 ## Decision
 
-FABLE mobile inference is a self-contained application path:
+KAIROS mobile inference is a self-contained application path:
 
 ```text
 public EVM JSON-RPC
@@ -30,7 +30,7 @@ second model interface without reducing the thesis scope.
 ## Implemented repository contract
 
 The canonical implemented exporter and app runtime contract is owned by
-[Mobile deployment](../FABLE.md#mobile-deployment). This research note records the decision
+[Mobile deployment](../KAIROS.md#mobile-deployment). This research note records the decision
 rationale and the real-artifact evidence still required.
 
 ## Current boundary
@@ -44,7 +44,7 @@ The twelve final artifact UUIDs do not exist, so the repository intentionally ha
 - no generated `manifest.json`;
 - no placeholder `.pte` files.
 
-Therefore no claim is made that a final FABLE model exports, bundles, loads, or matches the Python
+Therefore no claim is made that a final KAIROS model exports, bundles, loads, or matches the Python
 model in the simulator.
 
 ## Developer flow

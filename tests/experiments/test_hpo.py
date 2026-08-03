@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from uuid import UUID
 
-from fable.config import TuneRequest
-from fable.experiments import ExperimentManifest
-from fable.study import Study
+import pytest
+
+from kairos.addresses import study_json_path
+from kairos.config import TuneRequest
+from kairos.experiments import ExperimentManifest
+from kairos.study import Study
 from tests.experiments.helpers import publish_generated_studies
 from tests.helpers import read_tsv_rows, run_script
 
@@ -15,13 +19,162 @@ _C_SCRIPT = _ROOT / "experiments" / "c_study.py"
 _HPO_SCRIPT = _ROOT / "experiments" / "hpo.py"
 
 
-def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winner(
+def test_context_study_selects_chain_mean_winners_and_reuses_reference_studies(
     tmp_path: Path,
+) -> None:
+    feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
+    feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
+    feature_rows = read_tsv_rows(feature_bundle / "cells.tsv")
+    objectives = {
+        f"{chain}.{family}.{configuration}": objective
+        for chain, configuration, objective in (
+            ("ethereum", "without_day_of_week", 0.4),
+            ("polygon", "without_block_interval", 0.5),
+        )
+        for family in ("lstm", "transformer", "transformer_lstm")
+    }
+    objectives.update(
+        {
+            "avalanche.lstm.without_base_fee": 1.2,
+            "avalanche.transformer.without_base_fee": 0.2,
+            "avalanche.transformer_lstm.without_base_fee": 0.2,
+        }
+    )
+    publish_generated_studies(tmp_path, feature_rows, default_objective=1.0, objectives=objectives)
+
+    result = run_script(_C_SCRIPT, "prepare", tmp_path, feature_experiment_id)
+
+    experiment_id = UUID(result.stdout.strip())
+    assert result.stderr.splitlines() == [
+        "ethereum\twithout_day_of_week\t0.4",
+        "polygon\twithout_block_interval\t0.5",
+        "avalanche\twithout_base_fee\t0.533333",
+    ]
+    bundle = tmp_path / "experiments" / "c_study" / f".{experiment_id}"
+    rows = read_tsv_rows(bundle / "cells.tsv")
+    assert len(rows) == 117
+
+    feature_studies = {row["cell"]: row["study_id"] for row in feature_rows}
+    selected_configurations = {
+        "ethereum": "without_day_of_week",
+        "polygon": "without_block_interval",
+        "avalanche": "without_base_fee",
+    }
+    selected = {
+        f"{chain}.{family}": feature_studies[f"{chain}.{family}.{configuration}"]
+        for chain, configuration in selected_configurations.items()
+        for family in ("lstm", "transformer", "transformer_lstm")
+    }
+    reference_rows = [row for row in rows if row["cell"].endswith(".C25")]
+    assert {row["cell"].removesuffix(".C25"): row["study_id"] for row in reference_rows} == (
+        selected
+    )
+    assert len({row["study_id"] for row in rows} - set(selected.values())) == 108
+
+    requests = {
+        row["cell"]: TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
+        for row in rows
+    }
+    assert "dow_sin" not in requests["ethereum.lstm.C25"].experiment.ordered_features
+    assert (
+        "block_interval_seconds"
+        not in requests["polygon.transformer.C25"].experiment.ordered_features
+    )
+    assert (
+        "log_base_fee_per_gas"
+        not in requests["avalanche.transformer_lstm.C25"].experiment.ordered_features
+    )
+
+
+def test_context_study_requires_every_feature_candidate_study(tmp_path: Path) -> None:
+    feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
+    feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
+    candidate_rows = [
+        row
+        for row in read_tsv_rows(feature_bundle / "cells.tsv")
+        if not row["cell"].endswith(".base_only")
+    ]
+    publish_generated_studies(tmp_path, candidate_rows[:-1], default_objective=1.0)
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_script(_C_SCRIPT, "prepare", tmp_path, feature_experiment_id)
+
+    assert "FileNotFoundError" in error.value.stderr
+
+
+@pytest.mark.parametrize(
+    ("misalignment", "message"),
+    [
+        ("family", "context-study cell does not match Study request"),
+        ("context", "context-study cell does not match Study request"),
+        ("source", "context-study chain source identity must match"),
+        ("method", "context-study family Method must match"),
+    ],
+)
+def test_hpo_rejects_context_study_cell_request_misalignment(
+    tmp_path: Path, misalignment: str, message: str
 ) -> None:
     feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
     publish_generated_studies(
         tmp_path, read_tsv_rows(feature_bundle / "cells.tsv"), default_objective=1.0
+    )
+    c_experiment_id = UUID(
+        run_script(_C_SCRIPT, "prepare", tmp_path, feature_experiment_id).stdout.strip()
+    )
+    c_bundle = tmp_path / "experiments" / "c_study" / f".{c_experiment_id}"
+    rows = read_tsv_rows(c_bundle / "cells.tsv")
+    ethereum_rows = [row for row in rows if row["cell"].startswith("ethereum.")]
+    publish_generated_studies(tmp_path, ethereum_rows, default_objective=1.0)
+
+    target = next(row for row in rows if row["cell"] == "ethereum.lstm.C2")
+    target_path = study_json_path(tmp_path, UUID(target["study_id"]))
+    study = Study.model_validate_json(target_path.read_bytes(), strict=True)
+    if misalignment == "family":
+        donor = next(row for row in rows if row["cell"] == "ethereum.transformer.C2")
+        donor_study = Study.model_validate_json(
+            study_json_path(tmp_path, UUID(donor["study_id"])).read_bytes(), strict=True
+        )
+        request = study.request.model_copy(update={"methods": donor_study.request.methods})
+    elif misalignment == "context":
+        experiment = study.request.experiment.model_copy(update={"context_blocks": 3})
+        request = study.request.model_copy(update={"experiment": experiment})
+    elif misalignment == "source":
+        experiment = study.request.experiment.model_copy(
+            update={"ordered_features": ("log_base_fee_per_gas",)}
+        )
+        request = study.request.model_copy(update={"experiment": experiment})
+    else:
+        method = study.request.methods[0]
+        fit = method.fit.model_copy(update={"learning_rate": 1e-4})
+        request = study.request.model_copy(
+            update={"methods": (method.model_copy(update={"fit": fit}),)}
+        )
+    target_path.write_text(
+        Study(request=request, trials=study.trials).model_dump_json(), encoding="utf-8"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_script(_HPO_SCRIPT, "prepare", tmp_path, c_experiment_id, "--chain", "ethereum")
+
+    assert message in error.value.stderr
+
+
+def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winner(
+    tmp_path: Path,
+) -> None:
+    feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
+    feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
+    feature_objectives = {
+        f"{chain}.{family}.full": objective
+        for chain, objective in (("ethereum", 0.26), ("polygon", 0.55))
+        for family in ("lstm", "transformer", "transformer_lstm")
+    }
+    publish_generated_studies(
+        tmp_path,
+        read_tsv_rows(feature_bundle / "cells.tsv"),
+        default_objective=1.0,
+        objectives=feature_objectives,
     )
     run_script(_FEATURE_SCRIPT, "close", tmp_path, feature_experiment_id)
 
@@ -35,8 +188,16 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         for row in c_rows
     ]
 
-    assert len(c_rows) == 45
-    assert [row["cell"] for row in c_rows[:5]] == [
+    assert len(c_rows) == 117
+    assert [row["cell"] for row in c_rows[:13]] == [
+        "ethereum.lstm.C1",
+        "ethereum.lstm.C2",
+        "ethereum.lstm.C3",
+        "ethereum.lstm.C4",
+        "ethereum.lstm.C5",
+        "ethereum.lstm.C10",
+        "ethereum.lstm.C15",
+        "ethereum.lstm.C20",
         "ethereum.lstm.C25",
         "ethereum.lstm.C50",
         "ethereum.lstm.C100",
@@ -44,9 +205,17 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         "ethereum.lstm.C400",
     ]
     assert c_rows[-1]["cell"] == "avalanche.transformer_lstm.C400"
-    assert len({request.study_id for request in c_requests}) == 45
+    assert len({request.study_id for request in c_requests}) == 117
     assert {row["method_index"] for row in c_rows} == {"0"}
-    assert [request.experiment.context_blocks for request in c_requests[:5]] == [
+    assert [request.experiment.context_blocks for request in c_requests[:13]] == [
+        1,
+        2,
+        3,
+        4,
+        5,
+        10,
+        15,
+        20,
         25,
         50,
         100,
@@ -56,7 +225,7 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     assert c_requests[0].experiment.ordered_features[-1] == (
         "log1p_effective_priority_fee_per_gas_p90"
     )
-    assert c_requests[15].experiment.ordered_features == (
+    assert c_requests[39].experiment.ordered_features == (
         "log_base_fee_per_gas",
         "gas_utilization",
         "log_gas_limit",
@@ -72,17 +241,27 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     context_objectives = {
         f"{chain}.{family}.{context}": objective
         for chain, context, objective in (
+            ("ethereum", "C25", 0.26),
             ("ethereum", "C50", 0.25),
+            ("polygon", "C50", 0.524),
             ("polygon", "C100", 0.5),
             ("avalanche", "C200", 0.75),
         )
         for family in ("lstm", "transformer", "transformer_lstm")
     }
-    publish_generated_studies(
-        tmp_path, c_rows, default_objective=1.0, objectives=context_objectives
+    context_objectives.update(
+        {
+            "ethereum.lstm.C50": 0.1,
+            "ethereum.transformer.C50": 0.25,
+            "ethereum.transformer_lstm.C50": 0.4,
+        }
     )
-    control_row = next(row for row in c_rows if row["cell"] == "ethereum.lstm.C50")
-    control_path = tmp_path / "studies" / f"{control_row['study_id']}.json"
+    ready_rows = [row for row in c_rows if not row["cell"].startswith("avalanche.")]
+    publish_generated_studies(
+        tmp_path, ready_rows, default_objective=1.0, objectives=context_objectives
+    )
+    control_row = next(row for row in c_rows if row["cell"] == "ethereum.lstm.C25")
+    control_path = study_json_path(tmp_path, UUID(control_row["study_id"]))
     control_study = Study.model_validate_json(control_path.read_bytes(), strict=True)
     control = control_study.request.methods[0]
     control = control.model_copy(
@@ -100,12 +279,44 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
             ),
         }
     )
-    control_path.write_text(
-        Study(
-            request=control_study.request.model_copy(update={"methods": (control,)}),
-            trials=control_study.trials,
-        ).model_dump_json(),
-        encoding="utf-8",
+    for row in c_rows:
+        if row["cell"].startswith("ethereum.lstm."):
+            path = study_json_path(tmp_path, UUID(row["study_id"]))
+            study = Study.model_validate_json(path.read_bytes(), strict=True)
+            path.write_text(
+                Study(
+                    request=study.request.model_copy(update={"methods": (control,)}),
+                    trials=study.trials,
+                ).model_dump_json(),
+                encoding="utf-8",
+            )
+
+    result = run_script(
+        _HPO_SCRIPT,
+        "prepare",
+        tmp_path,
+        c_experiment_id,
+        "--chain",
+        "ethereum",
+        "--chain",
+        "polygon",
+    )
+    experiment_id = UUID(result.stdout.strip())
+    assert result.stderr.splitlines() == [
+        "chain\tselected_context\tselected_mean\tbest_context\tbest_mean\tthreshold",
+        "ethereum\t25\t0.26\t50\t0.25\t0.2625",
+        "polygon\t50\t0.524\t100\t0.5\t0.525",
+    ]
+    bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
+    assert len(read_tsv_rows(bundle / "cells.tsv")) == 54
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_script(_HPO_SCRIPT, "select", tmp_path, experiment_id)
+    assert "HPO roster is incomplete" in error.value.stderr
+
+    avalanche_rows = [row for row in c_rows if row["cell"].startswith("avalanche.")]
+    publish_generated_studies(
+        tmp_path, avalanche_rows, default_objective=1.0, objectives=context_objectives
     )
     c_result = run_script(_C_SCRIPT, "close", tmp_path, c_experiment_id)
     c_canonical = tmp_path / "experiments" / "c_study" / str(c_experiment_id)
@@ -114,21 +325,31 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
     )
 
     assert c_result.stdout.strip() == str(c_experiment_id)
-    assert len(c_manifest.root) == 45
+    assert len(c_manifest.root) == 117
     assert [str(record_id) for record_id in c_manifest.root.values()] == [
         row["study_id"] for row in c_rows
     ]
     assert {path.name for path in c_canonical.iterdir()} == {"manifest.json"}
     assert not c_bundle.exists()
 
-    result = run_script(_HPO_SCRIPT, "prepare", tmp_path, c_experiment_id)
-    experiment_id = UUID(result.stdout.strip())
-    assert result.stderr.splitlines() == [
-        "ethereum\t50\t0.25",
-        "polygon\t100\t0.5",
-        "avalanche\t200\t0.75",
+    c_report = run_script(_C_SCRIPT, "report", tmp_path, c_experiment_id)
+    assert len(c_report.stdout.splitlines()) == 118
+    assert c_report.stdout.splitlines()[0].startswith("cell\tmethod_index\taccuracy\t")
+    assert c_report.stderr.splitlines() == [
+        "chain\tselected_context\tselected_mean\tbest_context\tbest_mean\tthreshold",
+        "ethereum\t25\t0.26\t50\t0.25\t0.2625",
+        "polygon\t50\t0.524\t100\t0.5\t0.525",
+        "avalanche\t200\t0.75\t200\t0.75\t0.7875",
     ]
-    bundle = tmp_path / "experiments" / "hpo" / f".{experiment_id}"
+
+    result = run_script(
+        _HPO_SCRIPT, "extend", tmp_path, c_experiment_id, experiment_id, "--chain", "avalanche"
+    )
+    assert result.stdout.strip() == str(experiment_id)
+    assert result.stderr.splitlines() == [
+        "chain\tselected_context\tselected_mean\tbest_context\tbest_mean\tthreshold",
+        "avalanche\t200\t0.75\t200\t0.75\t0.7875",
+    ]
     rows = read_tsv_rows(bundle / "cells.tsv")
     requests = {
         row["cell"]: TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
@@ -149,7 +370,7 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
             if cell.startswith(f"{chain}.")
         }
         for chain in ("ethereum", "polygon", "avalanche")
-    } == {"ethereum": {50}, "polygon": {100}, "avalanche": {200}}
+    } == {"ethereum": {25}, "polygon": {50}, "avalanche": {200}}
     assert requests["ethereum.lstm"].methods[0].model.model_dump() == {
         "family": "lstm",
         "hidden": 320,
@@ -248,3 +469,9 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         dict.fromkeys(row["study_id"] for row in rows)
     )
     assert not bundle.exists()
+
+    report = run_script(_HPO_SCRIPT, "report", tmp_path, experiment_id)
+    assert len(report.stdout.splitlines()) == 82
+    assert report.stdout.splitlines()[0].startswith("cell\tmethod_index\taccuracy\t")
+    assert report.stdout.splitlines()[1].startswith("ethereum.lstm\t0\t")
+    assert report.stdout.splitlines()[-1].startswith("avalanche.transformer_lstm\t8\t")

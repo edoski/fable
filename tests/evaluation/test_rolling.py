@@ -8,8 +8,9 @@ import numpy as np
 import polars as pl
 import pytest
 
-from fable.addresses import evaluation_directory
-from fable.evaluation import OBSERVATION_SCHEMA, reduce_rolling
+from kairos.addresses import evaluation_directory
+from kairos.evaluation import reduce_rolling
+from kairos.observations import OBSERVATION_SCHEMA
 
 _EVALUATION_IDS = {
     horizon: UUID(f"20000000-0000-4000-8000-{horizon:012d}") for horizon in range(2, 6)

@@ -1,6 +1,6 @@
-# FABLE (Fee Analysis through Blockchain Learning and Estimation) Context
+# KAIROS context
 
-This glossary defines FABLE's active domain language.
+This glossary defines KAIROS's active domain language.
 
 ## Active glossary
 
@@ -25,3 +25,10 @@ This glossary defines FABLE's active domain language.
 **Action.** Zero-based offset `k` selecting target block `b = h+1+k` within the horizon.
 
 **Role.** One of training, validation, or testing. Training fits weights and data-dependent state, validation selects, and testing measures.
+
+**Selected validation evidence.** One deterministic prediction pass from the selected checkpoint
+over the exact validation window, retained with the checkpoint and reduced through the same
+observation schema and metric definitions as held-out testing.
+
+**Cost over optimum.** The mean per-origin fraction by which the selected base fee exceeds the
+minimum base fee in the horizon. It is the sole validation selection objective and is lower-is-better.

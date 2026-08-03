@@ -1,8 +1,8 @@
-# FABLE
+# KAIROS
 
-FABLE (Fee Analysis through Blockchain Learning and Estimation) is a closed-parent, fixed-block-horizon system for learning when a future block is likely to minimize base fee per gas. This manual is the canonical detailed account of the product's scientific contract, worked decision, architecture, interfaces, requests, durable objects, commands, operator configuration, mobile surface, evaluation schemas, limitations, and sources.
+KAIROS is a closed-parent, fixed-block-horizon system for learning when a future block is likely to minimize base fee per gas. This manual is the canonical detailed account of the product's scientific contract, worked decision, architecture, interfaces, requests, durable objects, commands, operator configuration, mobile surface, evaluation schemas, limitations, and sources.
 
-FABLE derives from and extends selected temporal work from *SPICE: A Predictive Framework for Cost-Optimization in Multichain Environments*. FABLE is neither SPICE nor a reproduction of SPICE. Domain terms are defined in [CONTEXT.md](CONTEXT.md); active durable-object and execution-boundary decisions are indexed in [adr/](adr/).
+KAIROS derives from and extends selected temporal work from *SPICE: A Predictive Framework for Cost-Optimization in Multichain Environments*. KAIROS is neither SPICE nor a reproduction of SPICE. Domain terms are defined in [CONTEXT.md](CONTEXT.md); active durable-object and execution-boundary decisions are indexed in [adr/](adr/).
 
 ## Contents
 
@@ -15,7 +15,7 @@ FABLE derives from and extends selected temporal work from *SPICE: A Predictive 
 
 ## Overview
 
-FABLE is organized around strict request values, direct owner functions, native library objects, and UUID-addressed durable objects. Dependencies point from operator edges toward scientific owners.
+KAIROS is organized around strict request values, direct owner functions, native library objects, and UUID-addressed durable objects. Dependencies point from operator edges toward scientific owners.
 
 ### System shape
 
@@ -33,7 +33,7 @@ strict workflow request --> CLI or direct Python call
 transient observation-derived reductions
 ```
 
-`fable.config` owns frozen Pydantic values, small discriminated unions, and fresh request construction through model defaults. Raw JSON and durable bytes are strictly hydrated once at their owning boundary; downstream code trusts those typed values and their already-typed nested values.
+`kairos.config` owns frozen Pydantic values, small discriminated unions, and fresh request construction through model defaults. Raw JSON and durable bytes are strictly hydrated once at their owning boundary; downstream code trusts those typed values and their already-typed nested values.
 
 ### Dependency direction
 
@@ -60,11 +60,11 @@ This high-level diagram summarizes the production import direction. Direct owner
 
 The closed model union is LSTM, Transformer, or Transformer-LSTM. Historical preparation supplies one compact contiguous source for device-side origin-index gathering; each model consumes float32 `[B,C,F]` and returns action logits `[B,K]` plus standardized minimum-fee prediction `[B]`. Architecture stays independent of target construction and evaluation accounting.
 
-Corpus production is external. Native OpenSSH and Slurm begin at `fable.execution.submit_workflows()` ([ADR 0007](adr/0007-native-external-execution-boundary.md)). Completed objects own one exact request at direct canonical addresses; UUIDs identify instances and typed associations establish meaning ([ADR 0006](adr/0006-direct-durable-object-authority.md)).
+Corpus production is external. Native OpenSSH and Slurm begin at `kairos.execution.submit_workflows()` ([ADR 0007](adr/0007-native-external-execution-boundary.md)). Completed objects own one exact request at direct canonical addresses; UUIDs identify instances and typed associations establish meaning ([ADR 0006](adr/0006-direct-durable-object-authority.md)).
 
 ## One decision, end to end
 
-FABLE makes a decision immediately after a closed parent block `h`. Every number in this hand-computable Ethereum example is a fabricated teaching value.
+KAIROS makes a decision immediately after a closed parent block `h`. Every number in this hand-computable Ethereum example is a fabricated teaching value.
 
 ### 1. Fix the geometry
 
@@ -260,13 +260,13 @@ The last value follows current mobile decoding arithmetic: the displayed float32
 
 ## Scientific contract
 
-FABLE is a closed-parent, fixed-block-horizon temporal learning system. This document owns the causal information set, `C/K/k` geometry, fitted-state rules, feature and target equations, evaluation estimands, claim boundaries, sources, and limitations.
+KAIROS is a closed-parent, fixed-block-horizon temporal learning system. This document owns the causal information set, `C/K/k` geometry, fitted-state rules, feature and target equations, evaluation estimands, claim boundaries, sources, and limitations.
 
 ### Lineage and ownership
 
 The manuscript *SPICE: A Predictive Framework for Cost-Optimization in Multichain Environments* describes a broader spatial, temporal, and distributed-reputation system. Its temporal experiment motivates a future minimum-block decision, an associated scalar fee prediction, the LSTM/Transformer/Transformer-LSTM comparison, chronological roles, and a weighted cross-entropy plus Smooth-L1 lineage.
 
-FABLE specifies the current closed-parent origins, fixed block-count geometry, causal features,
+KAIROS specifies the current closed-parent origins, fixed block-count geometry, causal features,
 raw-integer target selection, training-fitted state, fixed training loss, exhaustive equal-origin
 evaluation, durable objects, and mobile semantics.
 
@@ -455,17 +455,17 @@ Validation logs `mean_i q_i` as `validation_base_fee_optimality_gap`. Loss-based
 
 ### Model concepts
 
-FABLE uses a closed discriminated union of three concrete sequence models:
+KAIROS uses a closed discriminated union of three concrete sequence models:
 
 - LSTM recurrently summarizes the fixed context and uses its final state.
 - Transformer projects each row, adds sinusoidal positions, applies self-attention, and uses the final encoded position.
 - Transformer-LSTM applies the Transformer encoder, then recurrently summarizes the encoded sequence.
 
-All three attach the same two MLP heads. Architecture capacity belongs to `ModelDefinition` or Method; target and loss meaning stays in `fable.min_block_fee`.
+All three attach the same two MLP heads. Architecture capacity belongs to `ModelDefinition` or Method; target and loss meaning stays in `kairos.min_block_fee`.
 
 ### Evaluation estimands
 
-For testing origin `i`, the canonical observation stores these direct values:
+For any validation or testing origin `i`, the canonical observation stores these direct values:
 
 ```text
 hat{k}_i        predicted action
@@ -481,10 +481,12 @@ hat{ell}_i      predicted dimensionless log minimum
 Evaluation de-standardizes `hat{z}_i` to `hat{ell}_i` before publication. Reduction reads the
 stored facts directly; `ell_i=ln(m_i/u)` is the true dimensionless log coordinate.
 
-Over the testing origins, learned-model reduction returns exactly seven Float64 metrics:
+Validation and testing use one observation reducer. It returns seven scientific metrics plus four
+presentation-time Gwei summaries:
 
 ```text
 accuracy                = mean_i indicator[hat{k}_i = k_i*]
+f1_macro                = mean_c 2 TP_c / (2 TP_c + FP_c + FN_c)
 log_fee_mae             = mean_i |hat{ell}_i - ell_i|
 log_fee_mse             = mean_i (hat{ell}_i - ell_i)^2
 base_fee_savings        = mean_i ((B_i(0) - B_i(hat{k}_i)) / B_i(0))
@@ -492,6 +494,10 @@ p50_fee_inclusive_savings
                         = mean_i (1 - (B_i(hat{k}_i) + P_i(hat{k}_i))
                                           / (B_i(0) + P_i(0)))
 base_fee_optimality_gap = mean_i ((B_i(hat{k}_i) - m_i) / m_i)
+mean_immediate_base_fee_gwei
+mean_selected_base_fee_gwei
+mean_minimum_base_fee_gwei
+mean_selected_minus_minimum_base_fee_gwei
 ```
 
 `f1_macro` is standard unweighted macro-F1 over the union of action classes present in truth or predictions. Classes absent from both do not enter the mean.
@@ -514,10 +520,11 @@ For every architecture-chain cell, the rolling reduction uses every `K=5` testin
 
 A `TuneRequest` freezes the experiment and one finite tuple of complete Methods. An operator submits an index into that tuple. Each successful fit contributes validation base-fee optimality gap, earliest best epoch, and completed epochs in request order. Selected training names an exact result index.
 
-The planned thesis protocol is staged: measure the full, individual
-leave-one-feature-unit-out, and base-only configurations at reference geometry; run the `C` study
-with the full feature contract; run HPO; then run `K` sensitivity and final testing. Fit methods
-use seed `2026`. This is not a full factorial design. No experiments have been run.
+The thesis protocol is staged: measure the full, individual leave-one-feature-unit-out, and
+base-only configurations at reference geometry; select one feature route per chain by the lowest
+mean validation objective across the three architectures among the full and leave-one-out
+configurations; run the `C` study; run HPO; then run `K` sensitivity and final testing. Fit methods
+use seed `2026`. This is not a full factorial design.
 
 ## Architecture and deep interfaces
 
@@ -525,7 +532,7 @@ The sections below place each direct owner interface beside the scientific and d
 
 ### Corpus input
 
-FABLE consumes one completed canonical Corpus pair. Corpus production is external.
+KAIROS consumes one completed canonical Corpus pair. Corpus production is external.
 
 ```text
 corpora/<corpus_id>/
@@ -558,7 +565,7 @@ For live inference, each Run reads one closed head and one fresh exact context, 
 
 ### Minimum-block-fee task
 
-Top-level `fable.min_block_fee` keeps the architecture-neutral target, loss, and decode contract. Temporal preparation supplies its targets, model families return its output, and evaluation consumes the result.
+Top-level `kairos.min_block_fee` keeps the architecture-neutral target, loss, and decode contract. Temporal preparation supplies its targets, model families return its output, and evaluation consumes the result.
 
 #### Owned values
 
@@ -591,8 +598,8 @@ The exact equations are in the [theory](#targets-loss-and-decode).
 #### Boundaries
 
 Temporal preparation owns raw `[K]` `B_i(k)` outcomes, `k_i*` labels, and standardized `z_i`
-targets. Model fitting owns the validation-only base-fee optimality gap used for checkpoint and
-Study selection. Evaluation owns held-out observation publication and full economic accounting.
+targets. Model fitting owns checkpoint selection and one selected-checkpoint validation pass.
+Validation and held-out evaluation share observation collection and scientific reduction.
 
 ### Study
 
@@ -607,9 +614,11 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 `modeling.run_candidate(storage_root, request, method_index)` loads the request's Corpus, prepares
 training history and state, fits the indexed Method through native Lightning, and retains one
 successful result. Method index `i` owns checkpoint scratch at
-`studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while
-fit or publication failure preserves it for full-state `last.ckpt` resume. Candidate checkpoints
-embed only the `TrainingDefinition` needed to rebuild the candidate model.
+`studies/.<study_id>/candidate-<i>/`. After fitting, the exact selected checkpoint runs once over
+the exact validation window. Candidate success retains that checkpoint, canonical observations,
+and result metadata, then removes `candidate-<i>/`; failure preserves it for full-state
+`last.ckpt` resume. Candidate checkpoints embed only the `TrainingDefinition` needed to rebuild the
+candidate model.
 
 `RetainedResult` has three fields:
 
@@ -622,17 +631,21 @@ The selected epoch cannot exceed completed epochs. The enclosing Study requires 
 
 #### Indexed results and publication
 
-Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary
-sibling. Each private result envelope carries the full request and retained metrics. Its canonical
-filename owns the Method index; the private loader ignores the retired embedded `method_index`
-field in active-campaign scratch written by an earlier executable.
+Each hidden retained trial carries the full request, compact result, selected checkpoint, and
+validation observations. `publish_study(storage_root, study_id)` requires exactly one retained
+trial per request Method, identical requests, exact checkpoint associations, canonical observation
+schemas, and objective equality. It assembles the complete hidden object and atomically renames it
+without overwrite to:
 
-`publish_study(storage_root, study_id)` requires exactly `result-0.json` through
-`result-(N-1).json` for the request taken from the first result. All files must carry the identical
-request. Publication assembles metrics in filename and `request.methods` order at
-`studies/.<study_id>/study.json`, creates `studies/<study_id>.json` directly with `os.link()`, then
-removes scratch. An occupied canonical path makes the link fail without overwrite. Failed cleanup
-after a successful link can leave scratch beside the valid canonical Study.
+```text
+studies/<study_id>/
+  study.json
+  trials/<method_index>/
+    selected.ckpt
+    validation.parquet
+```
+
+Successful publication removes resumable scratch. Publication conflicts preserve it.
 
 #### Selected training
 
@@ -669,7 +682,7 @@ Public `reduce_rolling(storage_root, roster) -> polars.DataFrame` reads only eac
 
 ## Exact reference
 
-This reference defines FABLE's strict requests, completed objects, direct addresses, commands,
+This reference defines KAIROS's strict requests, completed objects, direct addresses, commands,
 operator YAML, mobile bundle and runtime surfaces, and evaluation schemas.
 
 ### Scalar conventions
@@ -682,7 +695,7 @@ operator YAML, mobile bundle and runtime surfaces, and evaluation schemas.
 - Timestamps and elapsed values are integer seconds.
 - Raw JSON and durable bytes hydrate once with strict scalar parsing and unknown-field rejection. `StrictFrozenRecord` values are immutable; downstream code trusts already-typed nested Pydantic values instead of revalidating instances.
 
-Distribution name, import root, and installed executable are `fable`; the static distribution version is `0.1.0`.
+Distribution name, import root, and installed executable are `kairos`; the static distribution version is `0.1.0`.
 
 ### Requests and definitions
 
@@ -774,8 +787,12 @@ Given an explicit `storage_root`:
 corpora/<corpus_id>/corpus.json
 corpora/<corpus_id>/blocks.parquet
 experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>/manifest.json
-studies/<study_id>.json
-artifacts/<artifact_id>.ckpt
+studies/<study_id>/study.json
+studies/<study_id>/trials/<method_index>/selected.ckpt
+studies/<study_id>/trials/<method_index>/validation.parquet
+artifacts/<artifact_id>/artifact.ckpt
+artifacts/<artifact_id>/validation.parquet
+artifacts/<artifact_id>/result.json
 evaluations/<evaluation_id>/evaluation.json
 evaluations/<evaluation_id>/observations.parquet
 ```
@@ -828,9 +845,9 @@ results, or scientific definitions. The completed experiment directory contains 
 bundle under `experiments/feature_ablation/.<experiment_id>/`. For each architecture and chain it
 tests the full feature contract, each individual feature unit omitted, and a base-fee-only
 reference. Hour and day-of-week sine/cosine coordinates each remain one indivisible encoded unit.
-`experiments/launch.py candidates BUNDLE` submits its cells at a selected two- or three-GPU node
-capacity. It uses the fewest allocations and avoids a singleton tail when possible: seven pending
-cells at capacity three become `3 + 2 + 2`. After all canonical
+`experiments/launch.py candidates BUNDLE` submits its cells at a selected two- to four-GPU node
+capacity. It uses the fewest balanced allocations and avoids singleton tails when possible: nine
+pending cells at capacity four become `3 + 3 + 3`. After all canonical
 Studies exist, `close STORAGE_ROOT EXPERIMENT_ID` publishes the canonical manifest and removes
 the temporary bundle; `report` derives each chain/configuration mean from canonical Studies.
 
@@ -842,7 +859,11 @@ its job ID is printed. A repeated launch skips recorded rows; a failed submissio
 groups pending. Closure validates every referenced canonical record, writes the flat manifest,
 deletes the temporary request files and both TSV files, and publishes the manifest-only directory.
 
-`experiments/c_study.py` derives the full feature contract, authors the 45
+Before closure, an experiment author's hidden `cells.tsv` is its active cell-to-record roster;
+consumers use it only to locate records that are already canonical. After closure, the manifest
+replaces that roster as authority. `experiments/c_study.py` loads exactly the nine canonical
+feature-ablation winners through this interface, reuses their reference-geometry `C=100` Studies,
+then authors the other 36
 architecture-chain-context Studies for `C={25,50,100,200,400}`, then publishes their canonical
 Study references. `experiments/hpo.py` loads that manifest, selects one context per chain by mean
 validation objective across the three architectures, reports the selected contexts, and authors
@@ -863,9 +884,27 @@ report commands print, but do not persist, the ordinary and rolling reductions. 
 the exact 81 evaluation references and removes the temporary bundle. `experiments/launch.py
 workflows BUNDLE` packs Train or Evaluate cells with the same packed execution contract.
 
+Research figures remain outside `src/kairos` and outside the experiment command flow. The four
+self-contained scripts load completed manifests and canonical Studies or Evaluations through their
+owning KAIROS loaders, derive presentation-only percentages and deltas in memory, and write vector
+PDFs under `outputs/figures/`:
+
+```text
+uv run python experiments/figure_feature_ablation.py STORAGE_ROOT EXPERIMENT_ID
+uv run python experiments/figure_context_study.py STORAGE_ROOT EXPERIMENT_ID
+uv run python experiments/figure_hpo.py STORAGE_ROOT EXPERIMENT_ID
+uv run python experiments/figure_held_out.py STORAGE_ROOT EXPERIMENT_ID
+```
+
+`figure_style.py` owns their shared typography, architecture colors, dimensions, and deterministic
+PDF metadata. The held-out script owns both horizon economics and rolling-minus-one-shot deltas;
+the K-study manifest alone contains artifacts and therefore has no independent result figure. The
+scripts never persist derived metrics or parse experiment scratch files. A manuscript may copy a
+selected final PDF and owns only its caption, label, placement, and discussion.
+
 #### Study object
 
-`studies/<study_id>.json` is a strict `Study`:
+`studies/<study_id>/study.json` is a strict `Study`:
 
 ```text
 request: TuneRequest
@@ -884,7 +923,8 @@ Each `RetainedResult` has exact ordered fields:
 
 #### Native Lightning artifact
 
-`artifacts/<artifact_id>.ckpt` is the native Lightning weights-only best checkpoint. Its `ArtifactAssociation` contains:
+`artifacts/<artifact_id>/artifact.ckpt` is the native Lightning weights-only selected checkpoint.
+Its `ArtifactAssociation` contains:
 
 | Ordered field | Type/rule |
 | --- | --- |
@@ -893,7 +933,11 @@ Each `RetainedResult` has exact ordered fields:
 | `target_state` | Float64 finite mean and positive standard deviation |
 | `method` | exact selected Method |
 
-Fitting uses hidden scratch at `artifacts/.<artifact_id>/`. Publication hardlinks the selected best checkpoint directly from that scratch to `artifacts/<artifact_id>.ckpt`, then removes scratch. An occupied target fails without overwrite. Failed cleanup after a successful link can leave scratch beside the valid canonical artifact.
+Fitting uses hidden scratch at `artifacts/.<artifact_id>/`. After selection, the checkpoint runs once
+over the exact validation window. Publication groups `artifact.ckpt`, `validation.parquet`, and its
+compact `RetainedResult` in `result.json` inside a complete hidden sibling, atomically renames it
+without overwrite to `artifacts/<artifact_id>/`, then removes resumable scratch. Failures preserve
+scratch.
 
 Direct loader:
 
@@ -913,9 +957,9 @@ load_artifact(
 Three public command leaves:
 
 ```text
-fable submit REQUEST.json [REQUEST.json ...]
-fable study run TUNE_REQUEST.json METHOD_INDEX
-fable study finalize STUDY_ID
+kairos submit REQUEST.json [REQUEST.json ...]
+kairos study run TUNE_REQUEST.json METHOD_INDEX
+kairos study finalize STUDY_ID
 ```
 
 - `submit` accepts one or more WorkflowRequest files and prints one positive Slurm job ID per request.
@@ -925,15 +969,15 @@ fable study finalize STUDY_ID
 Two help-hidden generated-job leaves:
 
 ```text
-fable remote workflow
-fable remote candidate
+kairos remote workflow
+kairos remote candidate
 ```
 
 Generated Slurm scripts call these leaves with strict JSON on standard input.
 
 ### Remote submission
 
-`fable.execution` exposes two submission functions:
+`kairos.execution` exposes two submission functions:
 
 ```python
 submit_workflows(requests: Sequence[WorkflowRequest]) -> int
@@ -954,7 +998,7 @@ It reads cwd-local `REMOTE.yaml` with this exact strict schema:
 |  | `memory_gb` | PositiveInt, rendered as `--mem=<n>G` |
 |  | `time_limit` | nonempty Slurm time string |
 
-Each allocation contains one to three processes and requests one node and one task, GPU,
+Each allocation contains one to four processes and requests one node and one task, GPU,
 CPU allotment, and memory allotment per process input. Each process runs as an exclusive exact
 `srun` step, sees one GPU, receives one strict stdin record, and writes
 `<job_id>-<slot>.out` for every allocation size; `%j.out` remains the allocation log. The parent
@@ -962,12 +1006,12 @@ waits for every step and fails if any step fails. Experiment authors own unique 
 destinations and candidate Method indices before submission.
 
 Allocations change to `storage_root`, export `STORAGE_ROOT`, and run the immutable Apptainer image
-with NVIDIA support. The image dispatches `fable remote workflow` or `fable remote candidate`.
+with NVIDIA support. The image dispatches `kairos remote workflow` or `kairos remote candidate`.
 Workflow stdin is the Train or Evaluate request JSON directly. Candidate stdin is the strict
 record containing the TuneRequest and validated Method index. Each allocation uses one
 `ssh -T -o BatchMode=yes … sbatch --parsable` call.
 
-The image owns one exact FABLE revision and fixed runtime profile. Its path must remain unchanged
+The image owns one exact KAIROS revision and fixed runtime profile. Its path must remain unchanged
 while submitted jobs are queued.
 
 `STORAGE_ROOT` is the neutral implicit environment input to current CLI, remote Python, and mobile
@@ -975,7 +1019,7 @@ export paths.
 
 ### Mobile deployment
 
-The isolated `tools/mobile-export` project pins Torch 2.11 and ExecuTorch 1.2 without changing FABLE's Torch 2.7.1 environment. Its strict `MOBILE.yaml` roster contains exactly `ethereum`, `polygon`, and `avalanche`, each with integer horizons `2…5` mapped to artifact UUIDv4 values.
+The isolated `tools/mobile-export` project pins Torch 2.11 and ExecuTorch 1.2 without changing KAIROS's Torch 2.7.1 environment. Its strict `MOBILE.yaml` roster contains exactly `ethereum`, `polygon`, and `avalanche`, each with integer horizons `2…5` mapped to artifact UUIDv4 values.
 
 Every cell must match artifact identity, chain, horizon, shared feature contract, native output semantics, eager-to-XNNPACK host parity, selected action, and decoded-fee tolerance. At least one delegate across the exported program's execution plans must have exact ID `XnnpackBackend`. The exporter reads only the Corpus request needed for chain identity, rejects an occupied output before lowering, builds a hidden sibling directory, checks again immediately before rename, and removes scratch on failure. Publication is all twelve models plus one manifest:
 
@@ -989,7 +1033,7 @@ app/assets/models/
 
 The manifest owns shared context and feature state plus each model's artifact UUID and target state. The app trusts this build-time bundle through typed direct lookups and twelve static `.pte` requires. It has no download, alternate runtime, or remote inference fallback.
 
-Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `fable.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; the raw adapter requires every block to contain a positive base fee, so a rejected outcome read remains pending and retryable. Session disposal unwatches without aborting in-flight reads. App owns one selection record containing the applied selection and latest intent. Selection application shares the rejection-safe history FIFO with persistence and outcome retries, so an accepted history update publishes before the latest queued intent is applied; only an applied chain change replaces the engine. Applied selection and engine identity reject stale results. The model runtime serializes native load, forward, replacement, and disposal. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call must begin at the first context block and return exactly `C` rows containing nonnegative P50 and P90 values. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
+Expo SDK 55, React Native 0.83, and React Native ExecuTorch 0.9 require a custom native build; Expo Go is unsupported. The app reads public EVM RPC for chains `1`, `137`, and `43114`, prepares one fresh exact closed-head context per Run, runs the selected `(chain,K)` model, stores unbounded local `kairos.runs` history, resolves outcomes through RPC, and derives analytics from the selected `(chain,K)` subset. Viem owns HTTP batching, the ten-second timeout, zero retries, and block watching; the raw adapter requires every block to contain a positive base fee, so a rejected outcome read remains pending and retryable. Session disposal unwatches without aborting in-flight reads. App owns one selection record containing the applied selection and latest intent. Selection application shares the rejection-safe history FIFO with persistence and outcome retries, so an accepted history update publishes before the latest queued intent is applied; only an applied chain change replaces the engine. Applied selection and engine identity reject stale results. The model runtime serializes native load, forward, replacement, and disposal. When the selected feature route contains priority fees, one context-wide `eth_feeHistory(...,[50,90])` call must begin at the first context block and return exactly `C` rows containing nonnegative P50 and P90 values. Avalanche uses this direct live RPC path because the model context is at most 400 blocks; BigQuery is historical Corpus acquisition only.
 
 The code and non-asset tests implement this contract, but the twelve final artifact UUIDs, real
 `MOBILE.yaml`, generated assets, and device-acceptance evidence do not yet exist. The
@@ -1001,18 +1045,25 @@ real-artifact acceptance boundary.
 
 The internal installed-executable profile fits LSTMs in `32-true`, Transformers in BF16 mixed
 precision, and Transformer-LSTMs in BF16 with their recurrent layer in float32. It also fixes fit
-batch size 64 and evaluation batch size 512. Historical execution keeps one contiguous feature
-and outcome source on the accelerator and gathers each batch by origin index without materializing
-every overlapping context window. Float32 matrix-multiplication precision is `high`, which owns
-CUDA matmul TF32; a separate cuDNN TF32 flag remains enabled for float32 operations. Each fit calls
-`seed_everything(seed)` once. Lightning owns deterministic setup through
-`Trainer(deterministic=True)` and norm clipping through the configured `gradient_clip_norm`;
-shuffled loading uses the seeded global Torch RNG. These are code facts, not request, schema, YAML,
-or public configuration surfaces.
+and selected-validation batch size 64 and held-out evaluation batch size 512. Historical execution
+keeps one contiguous feature and outcome source on the accelerator and gathers each batch by origin
+index without materializing every overlapping context window. Float32 matrix-multiplication
+precision is `high`, which owns CUDA matmul TF32; a separate cuDNN TF32 flag remains enabled for
+float32 operations. Each fit calls `seed_everything(seed)` once. Lightning owns deterministic setup
+through `Trainer(deterministic=True)` and norm clipping through the configured
+`gradient_clip_norm`; shuffled loading uses the seeded global Torch RNG. These are code facts, not
+request, schema, YAML, or public configuration surfaces.
 
 ### Evaluation API
 
-Public exports from `fable.evaluation`:
+Validation reductions are direct views over completed fit evidence:
+
+```python
+reduce_study(storage_root: Path, study_id: UUID) -> polars.DataFrame
+reduce_artifact_validation(storage_root: Path, artifact_id: UUID) -> polars.DataFrame
+```
+
+Public exports from `kairos.evaluation`:
 
 ```python
 evaluate(
@@ -1038,7 +1089,10 @@ reduce_rolling(
 
 #### Canonical observations
 
-Destination: `evaluations/<evaluation_id>/observations.parquet`. Status: canonical, ordered, nonnull, one row per inclusive origin in ascending block order.
+Destinations are `studies/<study_id>/trials/<method_index>/validation.parquet`,
+`artifacts/<artifact_id>/validation.parquet`, and
+`evaluations/<evaluation_id>/observations.parquet`. Each is canonical, ordered, nonnull, and has one
+row per inclusive origin in ascending block order.
 
 | # | Field | Type | Unit/meaning |
 | ---: | --- | --- | --- |
@@ -1058,7 +1112,8 @@ The file contains predictions and the observed truth needed for local reduction.
 
 #### Transient reduction
 
-Destination: none. `reduce_evaluation()` validates the canonical observation schema, trusts atomic publication for request pairing, ordered coverage, and values, and returns a one-row DataFrame whose seven metrics must be finite. Status: derived, transient, noncanonical, nonnull. The row does not store `evaluation_id`, `n`, counts, sums, supports, arrays, or auxiliary fields.
+Destination: none. The shared reducer validates the canonical observation schema and returns one
+transient, noncanonical, nonnull row. Validation and testing call the same reducer.
 
 | # | Field | Type | Unit/direction |
 | ---: | --- | --- | --- |
@@ -1069,6 +1124,10 @@ Destination: none. `reduce_evaluation()` validates the canonical observation sch
 | 5 | `base_fee_savings` | Float64 | mean per-origin fraction versus immediate; higher is better |
 | 6 | `p50_fee_inclusive_savings` | Float64 | mean per-origin representative-cost fraction versus immediate; higher is better |
 | 7 | `base_fee_optimality_gap` | Float64 | mean per-origin fraction above optimum; lower is better |
+| 8 | `mean_immediate_base_fee_gwei` | Float64 | mean immediate base fee, Gwei/gas |
+| 9 | `mean_selected_base_fee_gwei` | Float64 | mean selected base fee, Gwei/gas |
+| 10 | `mean_minimum_base_fee_gwei` | Float64 | mean horizon-minimum base fee, Gwei/gas |
+| 11 | `mean_selected_minus_minimum_base_fee_gwei` | Float64 | mean selected excess, Gwei/gas |
 
 `accuracy` compares `predicted_action_k` (`hat{k}_i`) with `minimum_action_k` (`k_i*`). `f1_macro`
 averages over the union of classes appearing in truth or predictions.

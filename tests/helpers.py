@@ -9,10 +9,10 @@ from click.testing import Result
 from typer import Typer
 from typer.testing import CliRunner
 
-from fable.config import BlockWindow
+from kairos.config import BlockWindow
 
 REMOTE_YAML = """ssh: research-alias
-image: /opt/fable image.sif
+image: /opt/kairos image.sif
 storage_root: /remote/storage root
 log_root: /remote/logs
 resources:

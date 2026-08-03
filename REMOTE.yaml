@@ -3,8 +3,8 @@ image: /scratch.hpc/edoardo.galli3/deployments/fable-cuda-c7f08f3e.sif
 storage_root: /scratch.hpc/edoardo.galli3/fable
 log_root: /scratch.hpc/edoardo.galli3/logs/fable
 resources:
-  partition: h100sxm5,h100pcie,l40s
+  partition: h100sxm5,h100pcie,a100,l40s,l40
   gres: gpu:1
-  cpus_per_task: 56
-  memory_gb: 256
+  cpus_per_task: 32
+  memory_gb: 64
   time_limit: "3-00:00:00"

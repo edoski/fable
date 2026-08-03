@@ -8,16 +8,16 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-import fable.cli as cli
-from fable.cli import app
-from fable.config import (
+import kairos.cli as cli
+from kairos.cli import app
+from kairos.config import (
     EvaluateRequest,
     ExperimentSemantics,
     SelectedStudySource,
     TrainRequest,
     WorkflowRequest,
 )
-from fable.execution import submit_workflows
+from kairos.execution import submit_workflows
 from tests.helpers import REMOTE_YAML, dispatch, window, write_remote
 
 CORPUS_ID = UUID("00000000-0000-4000-8000-000000000001")
@@ -66,7 +66,7 @@ def test_submit_workflows_sends_golden_single_workflow_script(
         calls.append((argv, kwargs))
         return subprocess.CompletedProcess(argv, 0, stdout="456;research\n")
 
-    monkeypatch.setattr("fable.execution.subprocess.run", fake_run)
+    monkeypatch.setattr("kairos.execution.subprocess.run", fake_run)
 
     result = submit_workflows((request,))
 
@@ -93,9 +93,9 @@ def test_submit_workflows_sends_golden_single_workflow_script(
             "--output=/remote/logs/${SLURM_JOB_ID}-0.out "
             "--error=/remote/logs/${SLURM_JOB_ID}-0.out "
             "apptainer run --nv --bind '/remote/storage root' "
-            "'/opt/fable image.sif' remote workflow <<'FABLE_REQUEST_0' &\n"
+            "'/opt/kairos image.sif' remote workflow <<'KAIROS_REQUEST_0' &\n"
             f"{request.model_dump_json()}\n"
-            "FABLE_REQUEST_0\n"
+            "KAIROS_REQUEST_0\n"
             'pids+=("$!")\n'
             "status=0\n"
             'for pid in "${pids[@]}"; do\n'
@@ -107,6 +107,34 @@ def test_submit_workflows_sends_golden_single_workflow_script(
         "stdout": subprocess.PIPE,
         "check": True,
     }
+
+
+def test_submit_workflows_packs_four_isolated_gpu_processes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    requests = tuple(
+        _request("evaluate").model_copy(
+            update={"evaluation_id": UUID(f"10000000-0000-4000-8000-{index:012d}")}
+        )
+        for index in range(1, 5)
+    )
+    write_remote(tmp_path / "REMOTE.yaml")
+    monkeypatch.chdir(tmp_path)
+    calls: list[str] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(str(kwargs["input"]))
+        return subprocess.CompletedProcess(argv, 0, stdout="456;research\n")
+
+    monkeypatch.setattr("kairos.execution.subprocess.run", fake_run)
+
+    assert submit_workflows(requests) == 456
+    assert len(calls) == 1
+    script = calls[0]
+    assert "#SBATCH --ntasks=4\n" in script
+    assert "#SBATCH --gres=gpu:a100:4\n" in script
+    assert "#SBATCH --mem=192G\n" in script
+    assert script.count("srun --exclusive --exact") == 4
 
 
 @pytest.mark.parametrize("workflow", ["train", "evaluate"])
@@ -131,7 +159,7 @@ def test_submit_cli_dispatches_request_json(
 def test_submit_rejects_relative_remote_image(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    remote_yaml = REMOTE_YAML.replace("image: /opt/fable image.sif", "image: relative/fable.sif")
+    remote_yaml = REMOTE_YAML.replace("image: /opt/kairos image.sif", "image: relative/kairos.sif")
     write_remote(tmp_path / "REMOTE.yaml", remote_yaml)
     monkeypatch.chdir(tmp_path)
 
@@ -143,7 +171,7 @@ def test_submit_rejects_invalid_job_id(tmp_path: Path, monkeypatch: pytest.Monke
     write_remote(tmp_path / "REMOTE.yaml")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "fable.execution.subprocess.run",
+        "kairos.execution.subprocess.run",
         lambda argv, **_: subprocess.CompletedProcess(argv, 0, stdout="not-a-job\n"),
     )
 

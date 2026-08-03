@@ -17,7 +17,7 @@ export function AppHeader({
 }) {
   return (
     <View style={styles.header}>
-      <Text style={styles.brand}>FABLE</Text>
+      <Text style={styles.brand}>KAIROS</Text>
       <View style={[styles.dot, { backgroundColor: STATUS[status] }]} />
     </View>
   );

@@ -2,21 +2,21 @@ Bootstrap: docker
 From: python:3.11-slim-trixie
 
 %files
-    pyproject.toml /opt/fable/pyproject.toml
-    uv.lock /opt/fable/uv.lock
-    src /opt/fable/src
+    pyproject.toml /opt/kairos/pyproject.toml
+    uv.lock /opt/kairos/uv.lock
+    src /opt/kairos/src
 
 %post
     python -m pip install --no-cache-dir uv==0.11.32
-    cd /opt/fable
+    cd /opt/kairos
     UV_LINK_MODE=copy uv sync --frozen --no-dev --no-editable
 
 %environment
-    export PATH=/opt/fable/.venv/bin:$PATH
+    export PATH=/opt/kairos/.venv/bin:$PATH
     export PYTHONUNBUFFERED=1
 
 %runscript
-    exec fable "$@"
+    exec kairos "$@"
 
 %test
-    python -c "import fable, lightning, polars, torch"
+    python -c "import kairos, lightning, polars, torch"

@@ -5,7 +5,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from fable.config import (
+from kairos.config import (
     WORKFLOW_REQUEST_ADAPTER,
     BlockWindow,
     ExperimentSemantics,

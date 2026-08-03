@@ -3,8 +3,8 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from fable.config import CorpusDefinition
-from fable.corpus import BlockFrame
+from kairos.config import CorpusDefinition
+from kairos.corpus import BlockFrame
 
 
 def _definition(first_block: int = 100, last_block: int = 104) -> CorpusDefinition:

@@ -9,11 +9,11 @@ from uuid import UUID, uuid4
 import polars as pl
 from bundle import StorageRoot, close_bundle, open_bundle, run, write_evaluate_cells
 
-from fable.config import BlockWindow, EvaluateRequest
-from fable.corpus import load_corpus_request
-from fable.evaluation import reduce_baselines, reduce_evaluation, reduce_rolling
-from fable.experiments import ExperimentKind, load_experiment_manifest
-from fable.study import load_study
+from kairos.config import BlockWindow, EvaluateRequest
+from kairos.corpus import load_corpus_request
+from kairos.evaluation import ROLLING_HORIZONS, reduce_baselines, reduce_evaluation, reduce_rolling
+from kairos.experiments import ExperimentKind, load_experiment_manifest
+from kairos.study import load_study
 
 _KIND = ExperimentKind.HELD_OUT
 
@@ -79,7 +79,7 @@ def rolling(storage_root: StorageRoot, experiment_id: UUID) -> None:
     for experiment_cell, evaluation_id in manifest.items():
         cell, horizon_label = experiment_cell.rsplit(".", maxsplit=1)
         horizon = int(horizon_label.removeprefix("K"))
-        if horizon in (2, 3, 4, 5):
+        if horizon in ROLLING_HORIZONS:
             roster.setdefault(cell, {})[horizon] = evaluation_id
     print(reduce_rolling(storage_root, roster).write_csv(None, separator="\t"), end="")
 

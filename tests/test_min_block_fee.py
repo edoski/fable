@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import torch
 
-from fable.min_block_fee import (
+from kairos.min_block_fee import (
     MinBlockFeeOutput,
     decode_action,
     fit_target_state,

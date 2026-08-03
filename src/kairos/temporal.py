@@ -188,16 +188,11 @@ class HistoricalDataset(Dataset[int]):
         return self._to(self._backing.to(device), device)
 
     def loader(self, *, batch_size: int, shuffle: bool) -> Iterable[_HistoricalItem]:
-        return DataLoader(self, batch_size=batch_size, shuffle=shuffle, collate_fn=self._batch)
+        return DataLoader(self, batch_size=batch_size, shuffle=shuffle, collate_fn=self.batch)
 
-    def _to(self, backing: _HistoricalBacking, device: torch.device) -> HistoricalDataset:
-        dataset = copy(self)
-        dataset._backing = backing
-        dataset._labels = self._labels.to(device)
-        dataset._targets = self._targets.to(device)
-        return dataset
+    def batch(self, indexes: list[int]) -> _HistoricalItem:
+        """Gather one batch by dataset index."""
 
-    def _batch(self, indexes: list[int]) -> _HistoricalItem:
         positions = torch.tensor(indexes, device=self._labels.device)
         origins = self._first_origin_row + positions
         inputs = self._backing.inputs.unfold(0, self._context_blocks, 1).transpose(1, 2)
@@ -209,6 +204,13 @@ class HistoricalDataset(Dataset[int]):
             "base_fees": base_fees[origins + 1],
             "origin_block": self._backing.first_block + origins,
         }
+
+    def _to(self, backing: _HistoricalBacking, device: torch.device) -> HistoricalDataset:
+        dataset = copy(self)
+        dataset._backing = backing
+        dataset._labels = self._labels.to(device)
+        dataset._targets = self._targets.to(device)
+        return dataset
 
 
 @dataclass(frozen=True, slots=True)

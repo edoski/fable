@@ -6,9 +6,9 @@ import numpy as np
 import polars as pl
 import pytest
 
-from fable.config import CorpusDefinition, FeatureName
-from fable.corpus import BlockFrame
-from fable.temporal import FeatureState, fit_feature_state, transform_feature_rows
+from kairos.config import CorpusDefinition, FeatureName
+from kairos.corpus import BlockFrame
+from kairos.temporal import FeatureState, fit_feature_state, transform_feature_rows
 
 
 def _blocks(

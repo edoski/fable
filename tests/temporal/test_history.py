@@ -5,9 +5,9 @@ import polars as pl
 import pytest
 import torch
 
-from fable.config import BlockWindow, CorpusDefinition, ExperimentSemantics
-from fable.corpus import BlockFrame
-from fable.temporal import prepare_fit_history, prepare_historical_window
+from kairos.config import BlockWindow, CorpusDefinition, ExperimentSemantics
+from kairos.corpus import BlockFrame
+from kairos.temporal import prepare_fit_history, prepare_historical_window
 
 _BASE_FEES = np.array(
     [11, 12, 10, 4, 9, 4, 8, 3, 5, 6, 10, 6, 2, 2, 7, 6, 5, 4, 4, 9], dtype=np.int64
