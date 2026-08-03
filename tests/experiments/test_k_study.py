@@ -11,7 +11,11 @@ import pytest
 import torch
 
 import fable.modeling as modeling
-from fable.addresses import artifact_checkpoint_path, evaluation_directory
+from fable.addresses import (
+    artifact_checkpoint_path,
+    artifact_observations_path,
+    evaluation_directory,
+)
 from fable.config import (
     BlockWindow,
     EvaluateRequest,
@@ -22,12 +26,13 @@ from fable.config import (
     TrainRequest,
     TuneRequest,
 )
-from fable.evaluation import OBSERVATION_SCHEMA
 from fable.experiments import ExperimentKind, ExperimentManifest, experiment_manifest_path
 from fable.min_block_fee import TargetState
 from fable.modeling import ArtifactAssociation
+from fable.observations import OBSERVATION_SCHEMA
 from fable.study import RetainedResult, Study
 from fable.temporal import FeatureState
+from tests.experiments.helpers import publish_test_study
 from tests.helpers import read_tsv_rows, run_script
 
 _ROOT = Path(__file__).parents[2]
@@ -86,9 +91,7 @@ def _publish_hpo(storage_root: Path) -> None:
                 RetainedResult(objective=1.0, selected_epoch=1, completed_epochs=1),
             ),
         )
-        path = storage_root / "studies" / f"{study_id}.json"
-        path.parent.mkdir(exist_ok=True)
-        path.write_text(study.model_dump_json(), encoding="utf-8")
+        publish_test_study(storage_root, study)
         cells[cell] = study_id
     manifest_path = experiment_manifest_path(storage_root, ExperimentKind.HPO, _HPO_EXPERIMENT_ID)
     manifest_path.parent.mkdir(parents=True)
@@ -119,6 +122,22 @@ def _publish_artifacts(storage_root: Path, rows: list[dict[str, str]]) -> None:
             },
             path,
         )
+        pl.DataFrame(
+            {
+                "origin_block": [401],
+                "predicted_action_k": [0],
+                "predicted_minimum_log_base_fee": [0.0],
+                "minimum_action_k": [0],
+                "immediate_base_fee_per_gas": [10],
+                "immediate_effective_priority_fee_per_gas_p50": [1],
+                "selected_base_fee_per_gas": [10],
+                "selected_effective_priority_fee_per_gas_p50": [1],
+                "deadline_base_fee_per_gas": [10],
+                "deadline_effective_priority_fee_per_gas_p50": [1],
+                "minimum_base_fee_per_gas": [10],
+            },
+            schema=OBSERVATION_SCHEMA,
+        ).write_parquet(artifact_observations_path(storage_root, request.artifact_id))
 
 
 def _publish_evaluations(storage_root: Path, rows: list[dict[str, str]]) -> None:
@@ -195,7 +214,7 @@ def test_k_study_authors_and_closes_eighty_one_selected_study_artifacts(tmp_path
     assert len({request.artifact_id for request in requests}) == 81
 
     for row in rows:
-        checkpoint = tmp_path / "artifacts" / f"{row['artifact_id']}.ckpt"
+        checkpoint = artifact_checkpoint_path(tmp_path, UUID(row["artifact_id"]))
         checkpoint.parent.mkdir(parents=True, exist_ok=True)
         checkpoint.touch()
     with pytest.raises(subprocess.CalledProcessError):

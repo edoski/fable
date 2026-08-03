@@ -8,10 +8,18 @@ from pathlib import Path
 from typing import Annotated, Self, TypeAlias
 from uuid import UUID
 
+import polars as pl
+import torch
 from pydantic import UUID4, Field, model_validator
 
-from .addresses import study_json_path
-from .config import Method, SelectedStudySource, TuneRequest
+from .addresses import (
+    study_directory,
+    study_json_path,
+    study_trial_checkpoint_path,
+    study_trial_observations_path,
+)
+from .config import Method, SelectedStudySource, TrainingDefinition, TuneRequest
+from .observations import reduce_observation_frame, reduce_observations, validate_observations
 from .records import StrictFrozenRecord
 
 _Epoch: TypeAlias = Annotated[int, Field(ge=1)]
@@ -52,43 +60,78 @@ class _CandidateResult(StrictFrozenRecord):
 
 
 def retain_result(
-    storage_root: Path, request: TuneRequest, method_index: int, result: RetainedResult
+    storage_root: Path,
+    request: TuneRequest,
+    method_index: int,
+    result: RetainedResult,
+    selected_checkpoint: Path,
+    observations: pl.DataFrame,
 ) -> None:
-    result_path = _result_path(storage_root, request.study_id, method_index)
-    result_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = result_path.with_name(f".{result_path.name}.tmp")
-    temporary.write_text(
+    """Atomically retain one completed candidate inside Study scratch."""
+
+    expected = TrainingDefinition(
+        experiment=request.experiment, method=request.method_at(method_index)
+    ).model_dump(mode="json")
+    checkpoint = torch.load(selected_checkpoint, map_location="cpu", weights_only=True)
+    if checkpoint["hyper_parameters"]["association"] != expected:
+        raise ValueError("selected checkpoint association must match the request Method")
+    objective = float(reduce_observation_frame(observations)["base_fee_optimality_gap"][0])
+    if result.objective != objective:
+        raise ValueError("result objective must equal validation observations")
+
+    retained = _retained_trial_directory(storage_root, request.study_id, method_index)
+    temporary = retained.with_name(f".{retained.name}.tmp")
+    shutil.rmtree(temporary, ignore_errors=True)
+    temporary.mkdir(parents=True)
+    os.link(selected_checkpoint, temporary / "selected.ckpt")
+    observations.write_parquet(temporary / "validation.parquet")
+    (temporary / "result.json").write_text(
         _CandidateResult(request=request, result=result).model_dump_json(), encoding="utf-8"
     )
-    os.replace(temporary, result_path)
+    temporary.rename(retained)
 
 
 def publish_study(storage_root: Path, study_id: UUID4) -> None:
     scratch = _study_scratch(storage_root, study_id)
-    first_path = _result_path(storage_root, study_id, 0)
-    first = _load_candidate_result_path(first_path)
+    first = _load_candidate_result_path(_retained_trial_directory(storage_root, study_id, 0))
     request = first.request
     if request.study_id != study_id:
         raise ValueError("result Study ID does not match requested Study ID")
 
-    expected_paths = tuple(
-        _result_path(storage_root, study_id, index) for index in range(len(request.methods))
+    expected_trials = tuple(
+        _retained_trial_directory(storage_root, study_id, index)
+        for index in range(len(request.methods))
     )
-    if set(scratch.glob("result-*.json")) != set(expected_paths):
-        raise ValueError("result files do not match TuneRequest methods")
+    if set(scratch.glob("trial-*")) != set(expected_trials):
+        raise ValueError("retained trials do not match TuneRequest methods")
 
-    trials: list[RetainedResult] = []
-    for result_path in expected_paths:
-        candidate = first if result_path == first_path else _load_candidate_result_path(result_path)
+    trials = []
+    completed = scratch.with_name(f".{study_id}.completed")
+    shutil.rmtree(completed, ignore_errors=True)
+    (completed / "trials").mkdir(parents=True)
+    for index, retained in enumerate(expected_trials):
+        candidate = first if index == 0 else _load_candidate_result_path(retained)
         if candidate.request != request:
             raise ValueError("result requests must be identical")
+        _validate_trial(retained, request, index, candidate.result)
+        trial = completed / "trials" / str(index)
+        trial.mkdir()
+        os.link(retained / "selected.ckpt", trial / "selected.ckpt")
+        os.link(retained / "validation.parquet", trial / "validation.parquet")
         trials.append(candidate.result)
 
-    completed = scratch / "study.json"
-    completed.write_text(
+    (completed / "study.json").write_text(
         Study(request=request, trials=tuple(trials)).model_dump_json(), encoding="utf-8"
     )
-    os.link(completed, study_json_path(storage_root, study_id))
+    canonical = study_directory(storage_root, study_id)
+    if canonical.exists():
+        raise FileExistsError(canonical)
+    try:
+        completed.rename(canonical)
+    except OSError as error:
+        if canonical.exists():
+            raise FileExistsError(canonical) from error
+        raise
     shutil.rmtree(scratch)
 
 
@@ -96,18 +139,46 @@ def load_study(storage_root: Path, study_id: UUID) -> Study:
     study = Study.model_validate_json(study_json_path(storage_root, study_id).read_bytes())
     if study.request.study_id != study_id:
         raise ValueError("Study ID does not match requested Study ID")
+    for index in range(len(study.trials)):
+        if not study_trial_checkpoint_path(storage_root, study_id, index).is_file():
+            raise FileNotFoundError("Study trial selected checkpoint is missing")
+        validate_observations(study_trial_observations_path(storage_root, study_id, index))
     return study
+
+
+def reduce_study_trial(storage_root: Path, study_id: UUID, method_index: int) -> pl.DataFrame:
+    study = load_study(storage_root, study_id)
+    study.request.method_at(method_index)
+    result = study.trials[method_index]
+    observations_path = study_trial_observations_path(storage_root, study_id, method_index)
+    metrics = reduce_observations(observations_path)
+    if result.objective != metrics["base_fee_optimality_gap"][0]:
+        raise ValueError("Study objective must equal validation observations")
+    return metrics
 
 
 def load_selected_method(storage_root: Path, source: SelectedStudySource) -> Method:
     study = load_study(storage_root, source.study_id)
     if study.request.corpus_id != source.corpus_id:
         raise ValueError("selected source Corpus ID does not match canonical Study")
-
     return study.request.method_at(source.study_result_index)
 
 
-def _study_scratch(storage_root: Path, study_id: UUID4) -> Path:
+def _validate_trial(
+    retained: Path, request: TuneRequest, method_index: int, result: RetainedResult
+) -> None:
+    expected = TrainingDefinition(
+        experiment=request.experiment, method=request.method_at(method_index)
+    ).model_dump(mode="json")
+    checkpoint = torch.load(retained / "selected.ckpt", map_location="cpu", weights_only=True)
+    if checkpoint["hyper_parameters"]["association"] != expected:
+        raise ValueError("selected checkpoint association must match the request Method")
+    metrics = reduce_observations(retained / "validation.parquet")
+    if result.objective != metrics["base_fee_optimality_gap"][0]:
+        raise ValueError("result objective must equal validation observations")
+
+
+def _study_scratch(storage_root: Path, study_id: UUID) -> Path:
     return storage_root / "studies" / f".{study_id}"
 
 
@@ -115,9 +186,9 @@ def candidate_scratch_directory(storage_root: Path, study_id: UUID4, method_inde
     return _study_scratch(storage_root, study_id) / f"candidate-{method_index}"
 
 
-def _result_path(storage_root: Path, study_id: UUID4, method_index: int) -> Path:
-    return _study_scratch(storage_root, study_id) / f"result-{method_index}.json"
+def _retained_trial_directory(storage_root: Path, study_id: UUID, method_index: int) -> Path:
+    return _study_scratch(storage_root, study_id) / f"trial-{method_index}"
 
 
 def _load_candidate_result_path(path: Path) -> _CandidateResult:
-    return _CandidateResult.model_validate_json(path.read_bytes(), extra="ignore")
+    return _CandidateResult.model_validate_json((path / "result.json").read_bytes())

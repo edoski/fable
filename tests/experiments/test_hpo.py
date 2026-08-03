@@ -6,6 +6,7 @@ from uuid import UUID
 
 import pytest
 
+from fable.addresses import study_json_path
 from fable.config import TuneRequest
 from fable.experiments import ExperimentManifest
 from fable.study import Study
@@ -39,9 +40,7 @@ def test_context_study_selects_chain_mean_winners_and_reuses_reference_studies(
             "avalanche.transformer_lstm.without_base_fee": 0.2,
         }
     )
-    publish_generated_studies(
-        tmp_path, feature_rows, default_objective=1.0, objectives=objectives
-    )
+    publish_generated_studies(tmp_path, feature_rows, default_objective=1.0, objectives=objectives)
 
     result = run_script(_C_SCRIPT, "prepare", tmp_path, feature_experiment_id)
 
@@ -72,9 +71,7 @@ def test_context_study_selects_chain_mean_winners_and_reuses_reference_studies(
     )
 
     requests = {
-        row["cell"]: TuneRequest.model_validate_json(
-            Path(row["request"]).read_bytes(), strict=True
-        )
+        row["cell"]: TuneRequest.model_validate_json(Path(row["request"]).read_bytes(), strict=True)
         for row in rows
     }
     assert "dow_sin" not in requests["ethereum.lstm.C25"].experiment.ordered_features
@@ -109,8 +106,14 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
 ) -> None:
     feature_experiment_id = UUID(run_script(_FEATURE_SCRIPT, "prepare", tmp_path).stdout.strip())
     feature_bundle = tmp_path / "experiments" / "feature_ablation" / f".{feature_experiment_id}"
+    feature_objectives = {
+        f"polygon.{family}.full": 0.5 for family in ("lstm", "transformer", "transformer_lstm")
+    }
     publish_generated_studies(
-        tmp_path, read_tsv_rows(feature_bundle / "cells.tsv"), default_objective=1.0
+        tmp_path,
+        read_tsv_rows(feature_bundle / "cells.tsv"),
+        default_objective=1.0,
+        objectives=feature_objectives,
     )
     run_script(_FEATURE_SCRIPT, "close", tmp_path, feature_experiment_id)
 
@@ -172,7 +175,7 @@ def test_hpo_pipeline_authors_context_and_search_studies_then_selects_each_winne
         tmp_path, ready_rows, default_objective=1.0, objectives=context_objectives
     )
     control_row = next(row for row in c_rows if row["cell"] == "ethereum.lstm.C50")
-    control_path = tmp_path / "studies" / f"{control_row['study_id']}.json"
+    control_path = study_json_path(tmp_path, UUID(control_row["study_id"]))
     control_study = Study.model_validate_json(control_path.read_bytes(), strict=True)
     control = control_study.request.methods[0]
     control = control.model_copy(

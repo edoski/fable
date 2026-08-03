@@ -464,7 +464,7 @@ All three attach the same two MLP heads. Architecture capacity belongs to `Model
 
 ### Evaluation estimands
 
-For testing origin `i`, the canonical observation stores these direct values:
+For any validation or testing origin `i`, the canonical observation stores these direct values:
 
 ```text
 hat{k}_i        predicted action
@@ -480,7 +480,8 @@ hat{ell}_i      predicted dimensionless log minimum
 Evaluation de-standardizes `hat{z}_i` to `hat{ell}_i` before publication. Reduction reads the
 stored facts directly; `ell_i=ln(m_i/u)` is the true dimensionless log coordinate.
 
-Over the testing origins, learned-model reduction returns exactly seven Float64 metrics:
+Validation and testing use one observation reducer. It returns seven scientific metrics plus four
+presentation-time Gwei summaries:
 
 ```text
 accuracy                = mean_i indicator[hat{k}_i = k_i*]
@@ -491,6 +492,10 @@ p50_fee_inclusive_savings
                         = mean_i (1 - (B_i(hat{k}_i) + P_i(hat{k}_i))
                                           / (B_i(0) + P_i(0)))
 base_fee_optimality_gap = mean_i ((B_i(hat{k}_i) - m_i) / m_i)
+mean_immediate_base_fee_gwei
+mean_selected_base_fee_gwei
+mean_minimum_base_fee_gwei
+mean_selected_minus_minimum_base_fee_gwei
 ```
 
 `f1_macro` is standard unweighted macro-F1 over the union of action classes present in truth or predictions. Classes absent from both do not enter the mean.
@@ -590,8 +595,8 @@ The exact equations are in the [theory](#targets-loss-and-decode).
 #### Boundaries
 
 Temporal preparation owns raw `[K]` `B_i(k)` outcomes, `k_i*` labels, and standardized `z_i`
-targets. Model fitting owns the validation-only base-fee optimality gap used for checkpoint and
-Study selection. Evaluation owns held-out observation publication and full economic accounting.
+targets. Model fitting owns checkpoint selection and one selected-checkpoint validation pass.
+Validation and held-out evaluation share observation collection and scientific reduction.
 
 ### Study
 
@@ -606,9 +611,11 @@ Tuning is a bounded question over a finite tuple of complete Methods. A Study co
 `modeling.run_candidate(storage_root, request, method_index)` loads the request's Corpus, prepares
 training history and state, fits the indexed Method through native Lightning, and retains one
 successful result. Method index `i` owns checkpoint scratch at
-`studies/.<study_id>/candidate-<i>/`; successful result publication removes that directory, while
-fit or publication failure preserves it for full-state `last.ckpt` resume. Candidate checkpoints
-embed only the `TrainingDefinition` needed to rebuild the candidate model.
+`studies/.<study_id>/candidate-<i>/`. After fitting, the exact selected checkpoint runs once over
+the exact validation window. Candidate success retains that checkpoint, canonical observations,
+and result metadata, then removes `candidate-<i>/`; failure preserves it for full-state
+`last.ckpt` resume. Candidate checkpoints embed only the `TrainingDefinition` needed to rebuild the
+candidate model.
 
 `RetainedResult` has three fields:
 
@@ -621,17 +628,21 @@ The selected epoch cannot exceed completed epochs. The enclosing Study requires 
 
 #### Indexed results and publication
 
-Candidate success publishes `studies/.<study_id>/result-<i>.json` through its own hidden temporary
-sibling. Each private result envelope carries the full request and retained metrics. Its canonical
-filename owns the Method index; the private loader ignores the retired embedded `method_index`
-field in active-campaign scratch written by an earlier executable.
+Each hidden retained trial carries the full request, compact result, selected checkpoint, and
+validation observations. `publish_study(storage_root, study_id)` requires exactly one retained
+trial per request Method, identical requests, exact checkpoint associations, canonical observation
+schemas, and objective equality. It assembles the complete hidden object and atomically renames it
+without overwrite to:
 
-`publish_study(storage_root, study_id)` requires exactly `result-0.json` through
-`result-(N-1).json` for the request taken from the first result. All files must carry the identical
-request. Publication assembles metrics in filename and `request.methods` order at
-`studies/.<study_id>/study.json`, creates `studies/<study_id>.json` directly with `os.link()`, then
-removes scratch. An occupied canonical path makes the link fail without overwrite. Failed cleanup
-after a successful link can leave scratch beside the valid canonical Study.
+```text
+studies/<study_id>/
+  study.json
+  trials/<method_index>/
+    selected.ckpt
+    validation.parquet
+```
+
+Successful publication removes resumable scratch. Publication conflicts preserve it.
 
 #### Selected training
 
@@ -773,8 +784,11 @@ Given an explicit `storage_root`:
 corpora/<corpus_id>/corpus.json
 corpora/<corpus_id>/blocks.parquet
 experiments/{feature_ablation,c_study,hpo,k_study,held_out}/<UUID>/manifest.json
-studies/<study_id>.json
-artifacts/<artifact_id>.ckpt
+studies/<study_id>/study.json
+studies/<study_id>/trials/<method_index>/selected.ckpt
+studies/<study_id>/trials/<method_index>/validation.parquet
+artifacts/<artifact_id>/artifact.ckpt
+artifacts/<artifact_id>/validation.parquet
 evaluations/<evaluation_id>/evaluation.json
 evaluations/<evaluation_id>/observations.parquet
 ```
@@ -886,7 +900,7 @@ selected final PDF and owns only its caption, label, placement, and discussion.
 
 #### Study object
 
-`studies/<study_id>.json` is a strict `Study`:
+`studies/<study_id>/study.json` is a strict `Study`:
 
 ```text
 request: TuneRequest
@@ -905,7 +919,8 @@ Each `RetainedResult` has exact ordered fields:
 
 #### Native Lightning artifact
 
-`artifacts/<artifact_id>.ckpt` is the native Lightning weights-only best checkpoint. Its `ArtifactAssociation` contains:
+`artifacts/<artifact_id>/artifact.ckpt` is the native Lightning weights-only selected checkpoint.
+Its `ArtifactAssociation` contains:
 
 | Ordered field | Type/rule |
 | --- | --- |
@@ -914,7 +929,10 @@ Each `RetainedResult` has exact ordered fields:
 | `target_state` | Float64 finite mean and positive standard deviation |
 | `method` | exact selected Method |
 
-Fitting uses hidden scratch at `artifacts/.<artifact_id>/`. Publication hardlinks the selected best checkpoint directly from that scratch to `artifacts/<artifact_id>.ckpt`, then removes scratch. An occupied target fails without overwrite. Failed cleanup after a successful link can leave scratch beside the valid canonical artifact.
+Fitting uses hidden scratch at `artifacts/.<artifact_id>/`. After selection, the checkpoint runs once
+over the exact validation window. Publication groups `artifact.ckpt` and `validation.parquet` in a
+complete hidden sibling, atomically renames it without overwrite to `artifacts/<artifact_id>/`, then
+removes resumable scratch. Failures preserve scratch.
 
 Direct loader:
 
@@ -1022,8 +1040,9 @@ real-artifact acceptance boundary.
 
 The internal installed-executable profile fits LSTMs in `32-true`, Transformers in BF16 mixed
 precision, and Transformer-LSTMs in BF16 with their recurrent layer in float32. It also fixes fit
-batch size 64 and evaluation batch size 512; four persistent pinned-memory loader workers with
-prefetch factor 2; `high` float32 matrix-multiplication precision, which owns CUDA matmul TF32; and
+and selected-validation batch size 64 and held-out evaluation batch size 512; four persistent
+pinned-memory loader workers with prefetch factor 2; `high` float32 matrix-multiplication precision,
+which owns CUDA matmul TF32; and
 a separate cuDNN TF32 flag for float32 operations. Each fit calls `seed_everything(seed)` once.
 Lightning owns deterministic
 setup through `Trainer(deterministic=True)` and norm clipping through the configured
@@ -1031,6 +1050,13 @@ setup through `Trainer(deterministic=True)` and norm clipping through the config
 request, schema, YAML, or public configuration surfaces.
 
 ### Evaluation API
+
+Validation reductions are direct views over completed fit evidence:
+
+```python
+reduce_study_trial(storage_root: Path, study_id: UUID, method_index: int) -> polars.DataFrame
+reduce_artifact_validation(storage_root: Path, artifact_id: UUID) -> polars.DataFrame
+```
 
 Public exports from `fable.evaluation`:
 
@@ -1058,7 +1084,10 @@ reduce_rolling(
 
 #### Canonical observations
 
-Destination: `evaluations/<evaluation_id>/observations.parquet`. Status: canonical, ordered, nonnull, one row per inclusive origin in ascending block order.
+Destinations are `studies/<study_id>/trials/<method_index>/validation.parquet`,
+`artifacts/<artifact_id>/validation.parquet`, and
+`evaluations/<evaluation_id>/observations.parquet`. Each is canonical, ordered, nonnull, and has one
+row per inclusive origin in ascending block order.
 
 | # | Field | Type | Unit/meaning |
 | ---: | --- | --- | --- |
@@ -1078,7 +1107,8 @@ The file contains predictions and the observed truth needed for local reduction.
 
 #### Transient reduction
 
-Destination: none. `reduce_evaluation()` validates the canonical observation schema, trusts atomic publication for request pairing, ordered coverage, and values, and returns a one-row DataFrame whose seven metrics must be finite. Status: derived, transient, noncanonical, nonnull. The row does not store `evaluation_id`, `n`, counts, sums, supports, arrays, or auxiliary fields.
+Destination: none. The shared reducer validates the canonical observation schema and returns one
+transient, noncanonical, nonnull row. Validation and testing call the same reducer.
 
 | # | Field | Type | Unit/direction |
 | ---: | --- | --- | --- |
@@ -1089,6 +1119,10 @@ Destination: none. `reduce_evaluation()` validates the canonical observation sch
 | 5 | `base_fee_savings` | Float64 | mean per-origin fraction versus immediate; higher is better |
 | 6 | `p50_fee_inclusive_savings` | Float64 | mean per-origin representative-cost fraction versus immediate; higher is better |
 | 7 | `base_fee_optimality_gap` | Float64 | mean per-origin fraction above optimum; lower is better |
+| 8 | `mean_immediate_base_fee_gwei` | Float64 | mean immediate base fee, Gwei/gas |
+| 9 | `mean_selected_base_fee_gwei` | Float64 | mean selected base fee, Gwei/gas |
+| 10 | `mean_minimum_base_fee_gwei` | Float64 | mean horizon-minimum base fee, Gwei/gas |
+| 11 | `mean_selected_minus_minimum_base_fee_gwei` | Float64 | mean selected excess, Gwei/gas |
 
 `accuracy` compares `predicted_action_k` (`hat{k}_i`) with `minimum_action_k` (`k_i*`). `f1_macro`
 averages over the union of classes appearing in truth or predictions.

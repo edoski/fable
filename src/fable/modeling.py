@@ -12,13 +12,14 @@ from typing import Self, cast
 from uuid import UUID
 
 import lightning.pytorch as pl
+import polars as plr
 import torch
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from pydantic import TypeAdapter, model_validator
 from torch import nn
 
 from . import _runtime
-from .addresses import artifact_checkpoint_path
+from .addresses import artifact_checkpoint_path, artifact_directory, artifact_observations_path
 from .config import (
     LstmDefinition,
     Method,
@@ -28,8 +29,14 @@ from .config import (
     TransformerLstmDefinition,
     TuneRequest,
 )
-from .corpus import load_corpus_blocks
+from .corpus import BlockFrame, load_corpus_blocks
 from .min_block_fee import MinBlockFeeOutput, TargetState, decode_action, min_block_fee_loss
+from .observations import (
+    collect_observations,
+    reduce_observation_frame,
+    reduce_observations,
+    validate_observations,
+)
 from .records import StrictFrozenRecord
 from .study import RetainedResult, candidate_scratch_directory, load_selected_method, retain_result
 from .temporal import FeatureState, HistoricalPreparation, prepare_fit_history
@@ -266,8 +273,8 @@ class _FitModule(pl.LightningModule):
 
 
 def _fit(
-    association: _Association, prepared: HistoricalPreparation, scratch: Path
-) -> tuple[Path, RetainedResult]:
+    association: _Association, prepared: HistoricalPreparation, blocks: BlockFrame, scratch: Path
+) -> tuple[Path, plr.DataFrame, RetainedResult]:
     definition = _training_definition(association)
     scratch.mkdir(parents=True, exist_ok=True)
     _runtime.configure_torch()
@@ -334,23 +341,44 @@ def _fit(
     score = best.best_model_score
     if score is None:
         raise RuntimeError("fit completed without a best validation objective")
-    return best_checkpoint, RetainedResult(
-        objective=float(score),
-        selected_epoch=int(best_checkpoint.stem.removeprefix("best-")) + 1,
-        completed_epochs=trainer.current_epoch,
+
+    selected = _FitModule.load_from_checkpoint(
+        best_checkpoint, map_location="cpu", weights_only=True, strict=True
+    )
+    observations = collect_observations(
+        prepared.validation,
+        selected.model,
+        blocks,
+        definition.experiment.validation_window,
+        target_state=prepared.target_state,
+        horizon_blocks=definition.experiment.horizon_blocks,
+        model_family=definition.method.model.family,
+        device=trainer.strategy.root_device,
+        batch_size=_runtime.FIT_BATCH_SIZE,
+    )
+    objective = float(reduce_observation_frame(observations)["base_fee_optimality_gap"][0])
+    if not math.isclose(float(score), objective, rel_tol=1e-12, abs_tol=1e-12):
+        raise ValueError("selected checkpoint objective must equal validation observations")
+    return (
+        best_checkpoint,
+        observations,
+        RetainedResult(
+            objective=objective,
+            selected_epoch=int(best_checkpoint.stem.removeprefix("best-")) + 1,
+            completed_epochs=trainer.current_epoch,
+        ),
     )
 
 
 def train(request: TrainRequest, storage_root: Path) -> None:
     source = request.source
-    canonical = artifact_checkpoint_path(storage_root, request.artifact_id)
+    canonical = artifact_directory(storage_root, request.artifact_id)
     if canonical.exists():
         raise FileExistsError(canonical)
 
     method = load_selected_method(storage_root, source)
-    prepared = prepare_fit_history(
-        load_corpus_blocks(storage_root, source.corpus_id), source.experiment
-    )
+    blocks = load_corpus_blocks(storage_root, source.corpus_id)
+    prepared = prepare_fit_history(blocks, source.experiment)
     association = ArtifactAssociation(
         request=request,
         feature_state=prepared.feature_state,
@@ -358,23 +386,39 @@ def train(request: TrainRequest, storage_root: Path) -> None:
         method=method,
     )
 
-    scratch = canonical.parent / f".{request.artifact_id}"
-    best_checkpoint, _ = _fit(association, prepared, scratch)
-    os.link(best_checkpoint, canonical)
+    scratch = canonical.with_name(f".{request.artifact_id}")
+    best_checkpoint, observations, _ = _fit(association, prepared, blocks, scratch)
+    completed = canonical.with_name(f".{request.artifact_id}.completed")
+    shutil.rmtree(completed, ignore_errors=True)
+    completed.mkdir()
+    os.link(best_checkpoint, completed / "artifact.ckpt")
+    observations.write_parquet(completed / "validation.parquet")
+    if canonical.exists():
+        raise FileExistsError(canonical)
+    try:
+        completed.rename(canonical)
+    except OSError as error:
+        if canonical.exists():
+            raise FileExistsError(canonical) from error
+        raise
     shutil.rmtree(scratch)
 
 
 def run_candidate(storage_root: Path, request: TuneRequest, method_index: int) -> None:
     candidate_scratch = candidate_scratch_directory(storage_root, request.study_id, method_index)
-    prepared = prepare_fit_history(
-        load_corpus_blocks(storage_root, request.corpus_id), request.experiment
-    )
+    blocks = load_corpus_blocks(storage_root, request.corpus_id)
+    prepared = prepare_fit_history(blocks, request.experiment)
     definition = TrainingDefinition(
         experiment=request.experiment, method=request.method_at(method_index)
     )
-    _, result = _fit(definition, prepared, candidate_scratch)
-    retain_result(storage_root, request, method_index, result)
+    checkpoint, observations, result = _fit(definition, prepared, blocks, candidate_scratch)
+    retain_result(storage_root, request, method_index, result, checkpoint, observations)
     shutil.rmtree(candidate_scratch)
+
+
+def reduce_artifact_validation(storage_root: Path, artifact_id: UUID) -> plr.DataFrame:
+    load_artifact(storage_root, artifact_id)
+    return reduce_observations(artifact_observations_path(storage_root, artifact_id))
 
 
 def load_artifact(storage_root: Path, artifact_id: UUID) -> tuple[ArtifactAssociation, nn.Module]:
@@ -389,5 +433,6 @@ def load_artifact(storage_root: Path, artifact_id: UUID) -> tuple[ArtifactAssoci
         raise ValueError("canonical artifact must contain a TrainRequest association")
     if association.request.artifact_id != artifact_id:
         raise ValueError("embedded artifact ID does not match the requested artifact")
+    validate_observations(artifact_observations_path(storage_root, artifact_id))
     module.model.eval()
     return association, module.model

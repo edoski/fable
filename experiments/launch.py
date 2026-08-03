@@ -7,10 +7,12 @@ import os
 from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 from typing import TypeVar
+from uuid import UUID
 
 import typer
 from bundle import read_cells
 
+from fable.addresses import study_json_path
 from fable.config import WORKFLOW_REQUEST_ADAPTER, TuneRequest
 from fable.execution import (
     MAX_ALLOCATION_PROCESS_COUNT,
@@ -35,7 +37,7 @@ def candidates(bundle: Path, tasks_per_job: int = MAX_ALLOCATION_PROCESS_COUNT) 
     completed_rows = {
         index
         for index, row in enumerate(rows)
-        if (storage_root / "studies" / f"{row['study_id']}.json").is_file()
+        if study_json_path(storage_root, UUID(row["study_id"])).is_file()
     }
     _launch(
         bundle,

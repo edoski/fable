@@ -8,7 +8,8 @@ import polars as pl
 import pytest
 
 from fable.addresses import evaluation_directory
-from fable.evaluation import OBSERVATION_SCHEMA, reduce_baselines, reduce_evaluation
+from fable.evaluation import reduce_baselines, reduce_evaluation
+from fable.observations import OBSERVATION_SCHEMA
 
 _EVALUATION_ID = UUID("10000000-0000-4000-8000-000000000001")
 
@@ -21,6 +22,10 @@ _RESULT_SCHEMA = pl.Schema(
         "base_fee_savings": pl.Float64,
         "p50_fee_inclusive_savings": pl.Float64,
         "base_fee_optimality_gap": pl.Float64,
+        "mean_immediate_base_fee_gwei": pl.Float64,
+        "mean_selected_base_fee_gwei": pl.Float64,
+        "mean_minimum_base_fee_gwei": pl.Float64,
+        "mean_selected_minus_minimum_base_fee_gwei": pl.Float64,
     }
 )
 _BASELINE_RESULT_SCHEMA = pl.Schema(
@@ -93,7 +98,19 @@ def test_reduce_evaluation_derives_exact_metrics_from_self_contained_observation
     assert result.schema == _RESULT_SCHEMA
     assert result.height == 1
     assert result.row(0) == pytest.approx(
-        (3.0 / 7.0, 0.375, 1.0, 1.5, 199.0 / 980.0, 1.0 / 14.0, 69.0 / 98.0)
+        (
+            3.0 / 7.0,
+            0.375,
+            1.0,
+            1.5,
+            199.0 / 980.0,
+            1.0 / 14.0,
+            69.0 / 98.0,
+            32.0e-9,
+            162.0 / 7.0e9,
+            96.0 / 7.0e9,
+            66.0 / 7.0e9,
+        )
     )
 
 

@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 import polars as pl
 import pytest
 
-from fable.addresses import evaluation_directory, study_json_path
+from fable.addresses import evaluation_directory
 from fable.config import (
     BlockWindow,
     ExperimentSemantics,
@@ -17,9 +17,10 @@ from fable.config import (
     Method,
     TuneRequest,
 )
-from fable.evaluation import OBSERVATION_SCHEMA
 from fable.experiments import ExperimentKind, ExperimentManifest, experiment_directory
+from fable.observations import OBSERVATION_SCHEMA
 from fable.study import RetainedResult, Study
+from tests.experiments.helpers import publish_test_study
 from tests.helpers import run_script
 
 _ROOT = Path(__file__).parents[2]
@@ -72,9 +73,7 @@ def _publish_study(storage_root: Path, objectives: tuple[float, ...]) -> UUID:
             for value in objectives
         ),
     )
-    path = study_json_path(storage_root, study_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(study.model_dump_json(), encoding="utf-8")
+    publish_test_study(storage_root, study)
     return study_id
 
 
