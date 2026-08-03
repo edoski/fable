@@ -24,6 +24,8 @@ from tests.experiments.helpers import publish_test_study
 from tests.helpers import run_script
 
 _ROOT = Path(__file__).parents[2]
+_HPO_SCRIPT = _ROOT / "experiments" / "hpo.py"
+_CONTEXTS = (1, 2, 3, 4, 5, 10, 15, 20, 25, 50, 100, 200, 400)
 _FIGURE_SCRIPTS = {
     ExperimentKind.FEATURE_ABLATION: _ROOT / "experiments" / "figure_feature_ablation.py",
     ExperimentKind.C_STUDY: _ROOT / "experiments" / "figure_context_study.py",
@@ -149,8 +151,11 @@ def test_context_and_hpo_figures_use_canonical_study_objectives(tmp_path: Path) 
         tmp_path,
         ExperimentKind.C_STUDY,
         {
-            f"ethereum.lstm.C{context}": _publish_study(tmp_path, (objective,))
-            for context, objective in ((25, 0.06), (100, 0.04), (200, 0.05))
+            f"ethereum.{family}.C{context}": _publish_study(
+                tmp_path, (0.04 if context == 25 else 0.0419 if context == 1 else 0.08,)
+            )
+            for family in ("lstm", "transformer", "transformer_lstm")
+            for context in _CONTEXTS
         },
     )
     hpo_id = _publish_manifest(
@@ -173,6 +178,12 @@ def test_context_and_hpo_figures_use_canonical_study_objectives(tmp_path: Path) 
     _assert_pdf(hpo_figure)
     assert context.stdout.strip() == str(context_figure)
     assert hpo.stdout.strip() == str(hpo_figure)
+
+    selection = run_script(_HPO_SCRIPT, "prepare", tmp_path, context_id, "--chain", "ethereum")
+    assert selection.stderr.splitlines() == [
+        "chain\tselected_context\tselected_mean\tbest_context\tbest_mean\tthreshold",
+        "ethereum\t1\t0.0419\t25\t0.04\t0.042",
+    ]
 
 
 def _publish_evaluation(

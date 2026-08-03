@@ -30,7 +30,7 @@ from fable.study import (
     load_selected_method,
     load_study,
     publish_study,
-    reduce_study_trial,
+    reduce_study,
     retain_result,
 )
 
@@ -156,7 +156,9 @@ def test_retain_publish_and_load_selected_method_in_request_order(tmp_path: Path
 
     assert canonical == Study(request=request, trials=(first, second))
     assert selected == OTHER_LSTM_METHOD
-    assert reduce_study_trial(tmp_path, STUDY_ID, 1)["base_fee_optimality_gap"][0] == 0.3
+    reduced = reduce_study(tmp_path, STUDY_ID)
+    assert reduced["method_index"].to_list() == [0, 1]
+    assert reduced["base_fee_optimality_gap"].to_list() == [0.4, 0.3]
     canonical_directory = study_json_path(tmp_path, STUDY_ID).parent
     assert {path.name for path in canonical_directory.iterdir()} == {"study.json", "trials"}
     assert {path.name for path in (canonical_directory / "trials" / "0").iterdir()} == {

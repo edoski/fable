@@ -1057,7 +1057,7 @@ request, schema, YAML, or public configuration surfaces.
 Validation reductions are direct views over completed fit evidence:
 
 ```python
-reduce_study_trial(storage_root: Path, study_id: UUID, method_index: int) -> polars.DataFrame
+reduce_study(storage_root: Path, study_id: UUID) -> polars.DataFrame
 reduce_artifact_validation(storage_root: Path, artifact_id: UUID) -> polars.DataFrame
 ```
 

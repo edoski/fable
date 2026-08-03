@@ -137,15 +137,16 @@ def load_study(storage_root: Path, study_id: UUID) -> Study:
     return study
 
 
-def reduce_study_trial(storage_root: Path, study_id: UUID, method_index: int) -> pl.DataFrame:
+def reduce_study(storage_root: Path, study_id: UUID) -> pl.DataFrame:
     study = load_study(storage_root, study_id)
-    study.request.method_at(method_index)
-    result = study.trials[method_index]
-    observations_path = study_trial_observations_path(storage_root, study_id, method_index)
-    metrics = reduce_observations(observations_path)
-    if result.objective != metrics["base_fee_optimality_gap"][0]:
-        raise ValueError("Study objective must equal validation observations")
-    return metrics
+    reductions = []
+    for method_index, result in enumerate(study.trials):
+        observations_path = study_trial_observations_path(storage_root, study_id, method_index)
+        metrics = reduce_observations(observations_path)
+        if result.objective != metrics["base_fee_optimality_gap"][0]:
+            raise ValueError("Study objective must equal validation observations")
+        reductions.append(pl.DataFrame({"method_index": [method_index]}).hstack(metrics))
+    return pl.concat(reductions)
 
 
 def load_selected_method(storage_root: Path, source: SelectedStudySource) -> Method:

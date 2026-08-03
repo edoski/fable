@@ -19,7 +19,7 @@ from fable.experiments import (
     experiment_directory,
     load_experiment_manifest,
 )
-from fable.study import load_study, reduce_study_trial
+from fable.study import reduce_study
 
 StorageRoot: TypeAlias = Annotated[Path, typer.Argument(resolve_path=True)]
 BundleRequest: TypeAlias = TuneRequest | TrainRequest | EvaluateRequest
@@ -166,10 +166,6 @@ def close_bundle(
 def print_study_metrics(storage_root: Path, kind: ExperimentKind, experiment_id: UUID) -> None:
     results = []
     for cell, study_id in load_experiment_manifest(storage_root, kind, experiment_id).items():
-        study = load_study(storage_root, study_id)
-        for method_index in range(len(study.trials)):
-            metrics = reduce_study_trial(storage_root, study_id, method_index)
-            results.append(
-                pl.DataFrame({"cell": [cell], "method_index": [method_index]}).hstack(metrics)
-            )
+        metrics = reduce_study(storage_root, study_id)
+        results.append(pl.DataFrame({"cell": [cell] * metrics.height}).hstack(metrics))
     print(pl.concat(results).write_csv(None, separator="\t"), end="")
