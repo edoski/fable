@@ -1,6 +1,6 @@
 # Validation evidence and experiment refresh implementation-review ledger
 
-Status: Slice 1 green; Slice 2 ready
+Status: implementation complete; both slices green
 
 This ledger standardizes validation evidence across model-selection stages, extends the context
 study below 25 blocks, and defines the clean rerun sequence. Cost over optimum remains the sole
@@ -229,7 +229,24 @@ until `GREEN LIGHT`.
 
 ## Slice 2 — Stage protocol, lower contexts, and reporting
 
-Status: ready
+Status: green
+
+### Implementation and review record
+
+- Baseline: `c1d8d67c4ec18f229d38dfbb8b56d02805ab3e83`
+- Implementation: `7ddaec98f5635109e3831d4fcc053a4d11a599cc`
+- Corrections: `f071904e4977eee65839b81c31c20b5782a4ff67`,
+  `40ffb6c915414bb80b30dd387b0581e54bcb6b03`, and
+  `3a5f5fc3fe8254388ee3e3e0b242e27de2835199`
+- Implementer: `/root/slice2_stage_protocol`
+- Reviewer: `/root/slice2_review`, with independent Standards and Spec axes
+- Review loop removed quadratic Study reduction and redundant figure-test work, then closed source
+  identity gaps exposed by the fixtures.
+- Final review: `GREEN LIGHT`; zero actionable Standards or Spec findings. Selection requires one
+  aligned trial per cell, exact family/context labels, one corpus and normalized Experiment identity
+  per chain, and one Method identity per chain-family. Only context may vary across the Stage 2
+  curve.
+- Verification: 114 tests passed; Pyright, Vulture, changed-file Ruff/format, and diff check clean.
 
 ### Scope
 
@@ -346,6 +363,7 @@ The existing inference-benchmark ledger remains separate.
 
 ## Approval gates
 
-All implementation gates are approved. External execution remains gated on both slices receiving
-`GREEN LIGHT`, the separate KAIROS rename completing, and the resulting immutable CUDA image
+Both approved implementation slices received `GREEN LIGHT`. A final integrated run passed 114
+tests, Pyright, Vulture, changed-file Ruff/format, and the full-range diff check. External execution
+remains gated on the separate KAIROS rename completing and the resulting immutable CUDA image
 passing container and GPU smoke tests.
